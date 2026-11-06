@@ -350,7 +350,7 @@ contract MandateVault is IMandateVaultEvents {
     }
 
     /// @dev Spec §3.1: borrowing adds risk, so checks 4-6 apply to every supplied collateral, then the projected
-    /// health factor must clear minHealthFactor (targetHealthFactor inside the Friday derisk window).
+    /// health factor must clear minHealthFactor (targetHealthFactor inside the derisk window).
     function _checkBorrow(ICreditAdapter ca, uint256 amount) internal view returns (Reason) {
         Reason r = _checkCollateralMarket(ca, true);
         if (r != Reason.OK) return r;
