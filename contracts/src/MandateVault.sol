@@ -103,7 +103,7 @@ contract MandateVault is IMandateVaultEvents {
         if (msg.sender != executor) revert NotExecutor();
         if (usedIntent[intent.id]) revert IntentAlreadyUsed(intent.id);
         usedIntent[intent.id] = true;
-        if (tokenConfig[intent.token].allowed) _syncMultiplier(intent.token);
+        if (_hasMarket(tokenConfig[intent.token])) _syncMultiplier(intent.token);
 
         uint256 price;
         (reason, price) = _check(intent);
@@ -131,7 +131,7 @@ contract MandateVault is IMandateVaultEvents {
     }
 
     function syncMultiplier(address token) external {
-        if (tokenConfig[token].allowed) _syncMultiplier(token);
+        if (_hasMarket(tokenConfig[token])) _syncMultiplier(token);
     }
 
     // ------------------------------------------------------------------ owner
@@ -260,8 +260,9 @@ contract MandateVault is IMandateVaultEvents {
         if (intent.action != Action.BUY && intent.action != Action.SELL) return (_checkCredit(intent), 0);
 
         TokenConfig memory cfg = tokenConfig[intent.token];
-        if (!cfg.allowed) return (Reason.TOKEN_NOT_ALLOWED, 0);
         bool isBuy = intent.action == Action.BUY;
+        // SELL also works for exit-only tokens, so a delisting never traps a holding while a market exists
+        if (isBuy ? !cfg.allowed : !_hasMarket(cfg)) return (Reason.TOKEN_NOT_ALLOWED, 0);
         (Reason r, uint256 price) = GuardLib.checkMarket(_marketCheck(intent.token, cfg, isBuy));
         if (r != Reason.OK) return (r, 0);
 
@@ -572,6 +573,13 @@ contract MandateVault is IMandateVaultEvents {
         return a == Action.SUPPLY || a == Action.WITHDRAW_COLLATERAL || a == Action.BORROW || a == Action.REPAY;
     }
 
+    /// @dev A token with a feed or pool configured has a market: it is validated like an allowed token and its
+    /// multiplier is tracked. allowed=false with a market is exit-only: SELL keeps working, BUY and SUPPLY are
+    /// refused. Clearing both feed and pool removes the market (no SELL; collateral can still be withdrawn).
+    function _hasMarket(TokenConfig memory c) internal pure returns (bool) {
+        return c.allowed || c.feed != address(0) || c.pool != address(0);
+    }
+
     /// @dev Credit actions are neither trades nor expenses: spentOnDay is untouched, and recordedUsdc is reset so
     /// borrowed USDC is never reported as revenue (nor repaid USDC as a loss). Mutating adapter calls are
     /// low-level: a typed call, even inside try with its `returns` clause omitted, still ABI-decodes the declared
@@ -662,13 +670,16 @@ contract MandateVault is IMandateVaultEvents {
 
     function _setToken(address token, TokenConfig memory c) internal {
         if (token == address(0)) revert ZeroAddress();
-        if (c.allowed) _requireValidTokenConfig(token, c);
+        // every listed token is read in execute() loops; a call to an address without code would revert it
+        if (token.code.length == 0) revert InvalidConfig();
+        bool market = _hasMarket(c);
+        if (market) _requireValidTokenConfig(token, c);
         if (!_listed[token]) {
             _listed[token] = true;
             _tokens.push(token);
         }
         tokenConfig[token] = c;
-        if (c.allowed) {
+        if (market) {
             uint256 cur = IB20Asset(token).uiMultiplier();
             // First snapshot (last == 0) starts no cooldown; re-applying must not silently absorb a later change.
             if (lastMultiplier[token] == 0) lastMultiplier[token] = cur;

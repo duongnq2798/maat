@@ -406,4 +406,36 @@ contract MandateVaultCreditTest is CreditFixture {
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         this.deployVaultExternal(m);
     }
+
+    // ------------------------------------------------------------------ exit-only collateral (Task 5)
+
+    function _applyNvdaConfig(TokenConfig memory c) internal {
+        _queueTokenAndWait(address(nvda), c);
+        vm.prank(owner);
+        vault.applyTokenConfig(address(nvda), c);
+        feed.set(200e8, vm.getBlockTimestamp()); // the 24h wait left the feed stale
+    }
+
+    function test_exitOnlyCollateralCanBeWithdrawnNotSupplied() public {
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 0.5e8), Reason.OK);
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(feed), pool: address(pool), maxWeightBps: 0}));
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 0.5e8), Reason.TOKEN_NOT_ALLOWED);
+        _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 0.5e8), Reason.OK);
+        assertEq(nvda.balanceOf(address(vault)), 1e8);
+    }
+
+    function test_fullyDelistedCollateralComesHomeWithoutDebt() public {
+        _supplyAll();
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0}));
+        _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 1e8), Reason.OK);
+        assertEq(nvda.balanceOf(address(vault)), 1e8);
+    }
+
+    function test_fullyDelistedCollateralBlocksBorrowing() public {
+        _supplyAll();
+        credit.setDebt(1e6);
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0}));
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.BAD_PRICE);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 1e6), Reason.OK);
+    }
 }
