@@ -193,9 +193,28 @@ contract MandateVaultCreditTest is CreditFixture {
         _assertReason(_execCredit(Action.REPAY, address(nvda), 5e6), Reason.TOKEN_NOT_ALLOWED);
         _assertReason(_execCredit(Action.REPAY, address(usdc), 0), Reason.INSUFFICIENT_BALANCE);
         _assertReason(_execCredit(Action.REPAY, address(usdc), 200e6 + 1), Reason.INSUFFICIENT_BALANCE);
+    }
+
+    /// @dev Spec 3.1: REPAY is only stopped by checks 2-3 (B20 pause, transfer policy), never by the vault pause.
+    function test_repayIsAllowedWhileVaultPaused() public {
+        _supplyAll();
+        credit.setDebt(5e6);
         vm.prank(owner);
         vault.setPaused(true);
-        _assertReason(_execCredit(Action.REPAY, address(usdc), 5e6), Reason.VAULT_PAUSED);
+        Intent memory i = _creditIntent(Action.REPAY, address(usdc), 5e6);
+        _assertReason(vault.previewIntent(i), Reason.OK);
+        (, Reason r) = _exec(i);
+        _assertReason(r, Reason.OK);
+        assertEq(credit.debt(), 0);
+        // its other checks still apply while paused
+        _assertReason(_execCredit(Action.REPAY, address(nvda), 1e6), Reason.TOKEN_NOT_ALLOWED);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 0), Reason.INSUFFICIENT_BALANCE);
+        // everything else stays paused
+        nvda.mint(address(vault), 1e8);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.VAULT_PAUSED);
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.VAULT_PAUSED);
+        _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 1e8), Reason.VAULT_PAUSED);
+        _assertReason(vault.previewIntent(_creditIntent(Action.SUPPLY, address(nvda), 1e8)), Reason.VAULT_PAUSED);
     }
 
     function test_concentrationCountsSuppliedCollateral() public {

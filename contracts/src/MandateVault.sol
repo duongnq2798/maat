@@ -255,7 +255,8 @@ contract MandateVault is IMandateVaultEvents {
     // ------------------------------------------------------------------ internal: checks
 
     function _check(Intent calldata intent) internal view returns (Reason, uint256) {
-        if (paused) return (Reason.VAULT_PAUSED, 0);
+        // REPAY only lowers risk: spec 3.1 lets it through the vault pause; its own checks still apply
+        if (paused && intent.action != Action.REPAY) return (Reason.VAULT_PAUSED, 0);
         if (intent.action == Action.PAY_EXPENSE) return (_checkExpense(intent), 0);
         if (intent.action != Action.BUY && intent.action != Action.SELL) return (_checkCredit(intent), 0);
 
