@@ -3,16 +3,22 @@ import { z } from "zod";
 export const LLM_ACTIONS = ["BUY", "SELL", "SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY"] as const;
 export const LLM_SYMBOLS = ["USDC", "NVDAc", "GOOGLc", "AAPLc"] as const;
 
+/** The bounds BatchSchema enforces; SYSTEM_PROMPT states the same numbers to Claude. */
+export const MAX_INTENTS = 6;
+export const MAX_RATIONALE_CHARS = 600;
+export const MAX_SUMMARY_CHARS = 1200;
+export const MAX_AMOUNT_USD = 1_000_000;
+
 export const ProposalSchema = z.strictObject({
   action: z.enum(LLM_ACTIONS),
   symbol: z.enum(LLM_SYMBOLS),
-  amountUsd: z.number().positive().max(1_000_000),
-  rationale: z.string().min(1).max(600),
+  amountUsd: z.number().positive().max(MAX_AMOUNT_USD),
+  rationale: z.string().min(1).max(MAX_RATIONALE_CHARS),
 });
 
 export const BatchSchema = z.strictObject({
-  summary: z.string().min(1).max(1200),
-  intents: z.array(ProposalSchema).max(6),
+  summary: z.string().min(1).max(MAX_SUMMARY_CHARS),
+  intents: z.array(ProposalSchema).max(MAX_INTENTS),
 });
 
 export type Batch = z.infer<typeof BatchSchema>;

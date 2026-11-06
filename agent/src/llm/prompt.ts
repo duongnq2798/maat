@@ -1,5 +1,6 @@
 import type { ProposerInput } from "./proposer.js";
 import { usdc6ToUsd } from "../units.js";
+import { MAX_INTENTS, MAX_RATIONALE_CHARS, MAX_SUMMARY_CHARS } from "./schema.js";
 
 export const SYSTEM_PROMPT = `You are Maat, the treasury agent of an onchain vault on Base. The vault holds USDC and tokenized US stocks
 (B20 tokens NVDAc, GOOGLc, AAPLc) and can borrow USDC against them on Aave V4. Motto: "LLM proposes, contract decides."
@@ -20,7 +21,8 @@ When the market is closed or a feed is stale, the contract will refuse trades; y
 itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
 
 Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
-and in English.`;
+and in English. Hard limits (an answer that breaks one is rejected whole): at most ${MAX_INTENTS} intents, each rationale
+at most ${MAX_RATIONALE_CHARS} characters, the summary at most ${MAX_SUMMARY_CHARS} characters, every amount positive.`;
 
 const usd = (v: bigint) => Number(usdc6ToUsd(v).toFixed(6));
 

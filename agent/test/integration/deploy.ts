@@ -19,6 +19,9 @@ const POOLS: Address[] = ["0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC", "0x16c70
 const RESERVE_IDS = [5n, 2n, 0n]; // NVDAc, GOOGLc, AAPLc (basket order)
 
 export async function deployStack(url: string) {
+  // This deploys with unlocked dev accounts and impersonation: it must only ever talk to a local node.
+  const host = new URL(url).hostname;
+  if (host !== "127.0.0.1" && host !== "localhost") throw new Error(`deployStack only runs against a local anvil, not ${host}`);
   const transport = http(url, { timeout: 600_000 });
   const pub = createPublicClient({ chain: base, transport });
   const wallet = createWalletClient({ chain: base, transport });
