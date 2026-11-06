@@ -126,4 +126,140 @@ contract MandateVaultAdminTest is VaultFixture {
         vm.expectRevert(MandateVault.NotExecutor.selector);
         vault.execute(i);
     }
+
+    // ---------------------------------------------------------------- fix round 1
+
+    function _tokenCfg(uint16 weight) internal view returns (TokenConfig memory) {
+        return TokenConfig({allowed: true, feed: address(feed), pool: address(pool), maxWeightBps: weight});
+    }
+
+    function test_applyMandateCannotBeReplayed() public {
+        Mandate memory m = defaultMandate();
+        m.maxPremiumBps = 100;
+        bytes32 h = vault.mandateChangeHash(m);
+        vm.startPrank(owner);
+        vault.queueChange(h);
+        vm.warp(block.timestamp + 24 hours);
+        vault.applyMandate(m);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, h));
+        vault.applyMandate(m);
+        vm.stopPrank();
+    }
+
+    function test_applyPayeeTimelockNegativePaths() public {
+        address pA = makeAddr("payeeA");
+        address pB = makeAddr("payeeB");
+        bytes32 hA = vault.payeeChangeHash(pA, true);
+        bytes32 hB = vault.payeeChangeHash(pB, true);
+        uint256 t0 = THU_1030_ET; // constant: via_ir may rematerialize block.timestamp after vm.warp
+
+        vm.startPrank(owner);
+        // unqueued
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, hA));
+        vault.applyPayee(pA, true);
+
+        // queued but early
+        vault.queueChange(hA);
+        vm.warp(t0 + 23 hours);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotReady.selector, hA, t0 + 24 hours));
+        vault.applyPayee(pA, true);
+
+        // queued A, apply different params B
+        vm.warp(t0 + 24 hours);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, hB));
+        vault.applyPayee(pB, true);
+
+        // success clears the queue, replay fails
+        vault.applyPayee(pA, true);
+        assertEq(vault.queuedAt(hA), 0);
+        assertTrue(vault.allowedPayee(pA));
+        assertFalse(vault.allowedPayee(pB));
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, hA));
+        vault.applyPayee(pA, true);
+        vm.stopPrank();
+    }
+
+    function test_applyTokenConfigTimelockNegativePaths() public {
+        TokenConfig memory cA = _tokenCfg(2000);
+        TokenConfig memory cB = _tokenCfg(3000);
+        bytes32 hA = vault.tokenChangeHash(address(nvda), cA);
+        bytes32 hB = vault.tokenChangeHash(address(nvda), cB);
+        uint256 t0 = THU_1030_ET; // constant: via_ir may rematerialize block.timestamp after vm.warp
+
+        vm.startPrank(owner);
+        // unqueued
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, hA));
+        vault.applyTokenConfig(address(nvda), cA);
+
+        // queued but early
+        vault.queueChange(hA);
+        vm.warp(t0 + 23 hours);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotReady.selector, hA, t0 + 24 hours));
+        vault.applyTokenConfig(address(nvda), cA);
+
+        // queued A, apply different params B
+        vm.warp(t0 + 24 hours);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, hB));
+        vault.applyTokenConfig(address(nvda), cB);
+
+        // success clears the queue, replay fails
+        vault.applyTokenConfig(address(nvda), cA);
+        assertEq(vault.queuedAt(hA), 0);
+        (,,, uint16 w) = vault.tokenConfig(address(nvda));
+        assertEq(w, 2000);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, hA));
+        vault.applyTokenConfig(address(nvda), cA);
+        vm.stopPrank();
+    }
+
+    function test_nonOwnerCannotCancelChange() public {
+        bytes32 h = bytes32(uint256(7));
+        vm.prank(owner);
+        vault.queueChange(h);
+        address stranger = makeAddr("stranger");
+
+        vm.prank(executor);
+        vm.expectRevert(MandateVault.NotOwner.selector);
+        vault.cancelChange(h);
+        vm.prank(stranger);
+        vm.expectRevert(MandateVault.NotOwner.selector);
+        vault.cancelChange(h);
+        assertEq(vault.queuedAt(h), block.timestamp);
+    }
+
+    function test_nonOwnerCannotApplyReadyChanges() public {
+        Mandate memory m = defaultMandate();
+        m.maxPremiumBps = 100;
+        TokenConfig memory c = _tokenCfg(2000);
+        address newPayee = makeAddr("newPayee");
+        address stranger = makeAddr("stranger");
+        bytes32 hM = vault.mandateChangeHash(m);
+        bytes32 hT = vault.tokenChangeHash(address(nvda), c);
+        bytes32 hP = vault.payeeChangeHash(newPayee, true);
+
+        vm.startPrank(owner);
+        vault.queueChange(hM);
+        vault.queueChange(hT);
+        vault.queueChange(hP);
+        vm.stopPrank();
+        vm.warp(block.timestamp + 24 hours);
+
+        address[2] memory callers = [executor, stranger];
+        for (uint256 i; i < callers.length; ++i) {
+            vm.startPrank(callers[i]);
+            vm.expectRevert(MandateVault.NotOwner.selector);
+            vault.applyMandate(m);
+            vm.expectRevert(MandateVault.NotOwner.selector);
+            vault.applyTokenConfig(address(nvda), c);
+            vm.expectRevert(MandateVault.NotOwner.selector);
+            vault.applyPayee(newPayee, true);
+            vm.stopPrank();
+        }
+        // nothing was consumed or applied
+        assertEq(vault.queuedAt(hM), THU_1030_ET);
+        assertEq(vault.queuedAt(hT), THU_1030_ET);
+        assertEq(vault.queuedAt(hP), THU_1030_ET);
+        assertEq(vault.mandate().maxPremiumBps, 50);
+        assertFalse(vault.allowedPayee(newPayee));
+    }
 }
