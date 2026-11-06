@@ -346,13 +346,13 @@ contract MandateVault is IMandateVaultEvents {
             return Reason.CREDIT_FAILED;
         }
         // Against debt it adds risk: checks 4-6 here, the health factor in the adapter after the withdrawal.
-        return _checkCollateralMarket(ca);
+        return _checkCollateralMarket(ca, false);
     }
 
     /// @dev Spec §3.1: borrowing adds risk, so checks 4-6 apply to every supplied collateral, then the projected
     /// health factor must clear minHealthFactor (targetHealthFactor inside the Friday derisk window).
     function _checkBorrow(ICreditAdapter ca, uint256 amount) internal view returns (Reason) {
-        Reason r = _checkCollateralMarket(ca);
+        Reason r = _checkCollateralMarket(ca, true);
         if (r != Reason.OK) return r;
         try ca.projectedHealthFactorAfterBorrow(amount) returns (uint256 hf) {
             return _healthReason(hf);
@@ -362,7 +362,8 @@ contract MandateVault is IMandateVaultEvents {
     }
 
     /// @dev Market open (check 4), then for each supplied collateral: not paused, live feed, no multiplier change.
-    function _checkCollateralMarket(ICreditAdapter ca) internal view returns (Reason) {
+    /// BORROW also refuses exit-only collateral (allowed == false): a delisted token may be unwound, not levered.
+    function _checkCollateralMarket(ICreditAdapter ca, bool isBorrow) internal view returns (Reason) {
         Mandate memory m = _mandate;
         if (!GuardLib.marketOpen(m.calendar, m.sessionMode)) return Reason.MARKET_CLOSED;
         for (uint256 i; i < _tokens.length; ++i) {
@@ -370,6 +371,7 @@ contract MandateVault is IMandateVaultEvents {
             (bool ok, uint256 supplied) = _supplied(ca, t);
             if (!ok) return Reason.CREDIT_FAILED;
             if (supplied == 0) continue;
+            if (isBorrow && !tokenConfig[t].allowed) return Reason.TOKEN_NOT_ALLOWED;
             Reason r = GuardLib.collateralHealthy(
                 GuardLib.CollateralCheck({
                     token: t,

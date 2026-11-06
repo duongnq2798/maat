@@ -533,6 +533,17 @@ contract MandateVaultCreditTest is CreditFixture {
         assertEq(nvda.balanceOf(address(vault)), 1e8);
     }
 
+    function test_exitOnlyCollateralBlocksBorrowingNotWithdrawing() public {
+        _supplyAll();
+        credit.setDebt(1e6);
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(feed), pool: address(pool), maxWeightBps: 0}));
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.TOKEN_NOT_ALLOWED);
+        assertEq(credit.debt(), 1e6);
+        // unwinding still works: withdraw against the remaining debt, and repay
+        _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 0.5e8), Reason.OK);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 1e6), Reason.OK);
+    }
+
     function test_fullyDelistedCollateralComesHomeWithoutDebt() public {
         _supplyAll();
         _applyNvdaConfig(TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0}));
@@ -544,7 +555,7 @@ contract MandateVaultCreditTest is CreditFixture {
         _supplyAll();
         credit.setDebt(1e6);
         _applyNvdaConfig(TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0}));
-        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.BAD_PRICE);
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.TOKEN_NOT_ALLOWED); // before BAD_PRICE
         _assertReason(_execCredit(Action.REPAY, address(usdc), 1e6), Reason.OK);
     }
 }
