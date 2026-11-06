@@ -8,6 +8,9 @@ import {B20Constants} from "../src/interfaces/IB20Asset.sol";
 import {MockPool} from "./mocks/MockPool.sol";
 import {MockB20} from "./mocks/MockB20.sol";
 import {MockFeed} from "./mocks/MockFeed.sol";
+import {MockERC20} from "./mocks/MockERC20.sol";
+import {MockReverter} from "./mocks/MockReverter.sol";
+import {MockFaultyERC20} from "./mocks/MockFaultyERC20.sol";
 
 contract MandateVaultTest is VaultFixture {
     function test_buyInSessionIsAllowed() public {
@@ -454,5 +457,159 @@ contract MandateVaultTest is VaultFixture {
         assertEq(nvda.allowance(address(vault), address(adapter)), 0);
         assertEq(vault.spentOnDay(vault.today()), 20e6);
         assertTrue(vault.usedIntent(i.id));
+    }
+
+    // ------------------------------------------------------------------ final review: M1 token-call failures
+
+    /// @dev Replaces the fixture vault with one whose USDC can be made to fail transfer()/approve().
+    function _useFaultyUsdcVault() internal returns (MockFaultyERC20 fusdc) {
+        fusdc = new MockFaultyERC20();
+        MockPool fpool = new MockPool(address(fusdc), address(nvda));
+        fpool.setTick(-6932, 1800);
+        address[] memory toks = new address[](1);
+        toks[0] = address(nvda);
+        TokenConfig[] memory cfgs = new TokenConfig[](1);
+        cfgs[0] = TokenConfig({allowed: true, feed: address(feed), pool: address(fpool), maxWeightBps: 4000});
+        address[] memory payees = new address[](1);
+        payees[0] = payee;
+        vault =
+            new MandateVault(owner, executor, address(fusdc), address(registry), defaultMandate(), toks, cfgs, payees);
+        fusdc.mint(address(vault), 200e6);
+        vault.notifyRevenue();
+    }
+
+    function _assertFailedPayExpense(MockFaultyERC20.Mode mode) internal {
+        MockFaultyERC20 fusdc = _useFaultyUsdcVault();
+        fusdc.setModes(mode, MockFaultyERC20.Mode.OK);
+        Intent memory i = _intent(Action.PAY_EXPENSE, 5e6);
+        i.payee = payee;
+        _assertReason(vault.previewIntent(i), Reason.OK); // preview cannot predict a token-call failure
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit Decision(i.id, Action.PAY_EXPENSE, address(nvda), 5e6, false, Reason.TRANSFER_FAILED, i.rationaleHash);
+        (bool allowed, Reason r) = _exec(i);
+        assertFalse(allowed);
+        _assertReason(r, Reason.TRANSFER_FAILED);
+        assertTrue(vault.usedIntent(i.id));
+        assertEq(fusdc.balanceOf(address(vault)), 200e6);
+        assertEq(fusdc.balanceOf(payee), 0);
+        assertEq(vault.spentOnDay(vault.today()), 0);
+        assertEq(vault.recordedUsdc(), 200e6);
+        assertEq(vault.notifyRevenue(), 0);
+    }
+
+    function test_payExpenseTransferReturningFalseIsLogged() public {
+        _assertFailedPayExpense(MockFaultyERC20.Mode.RETURN_FALSE);
+    }
+
+    function test_payExpenseTransferRevertIsLogged() public {
+        _assertFailedPayExpense(MockFaultyERC20.Mode.REVERT);
+    }
+
+    function _assertFailedApprove(MockFaultyERC20.Mode mode) internal {
+        MockFaultyERC20 fusdc = _useFaultyUsdcVault();
+        fusdc.setModes(MockFaultyERC20.Mode.OK, mode);
+        adapter.setNextOut(0.1e8);
+        Intent memory i = _intent(Action.BUY, 20e6);
+        (bool allowed, Reason r) = _exec(i);
+        assertFalse(allowed);
+        _assertReason(r, Reason.TRANSFER_FAILED);
+        assertTrue(vault.usedIntent(i.id));
+        assertEq(fusdc.balanceOf(address(vault)), 200e6);
+        assertEq(nvda.balanceOf(address(vault)), 0);
+        assertEq(fusdc.allowance(address(vault), address(adapter)), 0);
+        assertEq(vault.spentOnDay(vault.today()), 0);
+        assertEq(vault.recordedUsdc(), 200e6);
+    }
+
+    function test_buyApproveReturningFalseIsLogged() public {
+        _assertFailedApprove(MockFaultyERC20.Mode.RETURN_FALSE);
+    }
+
+    function test_buyApproveRevertIsLogged() public {
+        _assertFailedApprove(MockFaultyERC20.Mode.REVERT);
+    }
+
+    function test_faultyUsdcVaultStillTradesWhenHealthy() public {
+        MockFaultyERC20 fusdc = _useFaultyUsdcVault();
+        adapter.setNextOut(0.1e8);
+        (, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.OK);
+        assertEq(fusdc.balanceOf(address(vault)), 180e6);
+        Intent memory i = _intent(Action.PAY_EXPENSE, 5e6);
+        i.payee = payee;
+        (, r) = _exec(i);
+        _assertReason(r, Reason.OK);
+        assertEq(fusdc.balanceOf(payee), 5e6);
+        assertEq(vault.spentOnDay(vault.today()), 25e6);
+    }
+
+    function test_transferFailedIsAppendedLast() public pure {
+        assertEq(uint8(Reason.SWAP_FAILED), 15);
+        assertEq(uint8(Reason.TRANSFER_FAILED), 16);
+    }
+
+    // ------------------------------------------------------------------ final review: M3 market reasons first
+
+    function test_marketReasonTakesPrecedenceOverBalance() public {
+        // in session, stale feed: an over-balance BUY reports the market reason
+        feed.set(200e8, block.timestamp - 7200);
+        (, Reason r) = _exec(_intent(Action.BUY, 1_000e6));
+        _assertReason(r, Reason.FEED_STALE);
+
+        vm.warp(SAT_1300_ET);
+        feed.set(200e8, SAT_1300_ET);
+        (, r) = _exec(_intent(Action.SELL, 1e8)); // vault holds no NVDAc
+        _assertReason(r, Reason.MARKET_CLOSED);
+        (, r) = _exec(_intent(Action.BUY, 0));
+        _assertReason(r, Reason.MARKET_CLOSED);
+    }
+
+    // ------------------------------------------------------------------ final review: M7 decimals validation
+
+    function deployTokenExternal(address token, TokenConfig memory c) external returns (MandateVault) {
+        address[] memory toks = new address[](1);
+        toks[0] = token;
+        TokenConfig[] memory cfgs = new TokenConfig[](1);
+        cfgs[0] = c;
+        return new MandateVault(
+            owner, executor, address(usdc), address(registry), defaultMandate(), toks, cfgs, new address[](0)
+        );
+    }
+
+    function test_rejectsFeedWithNon8Decimals() public {
+        MockFeed f18 = new MockFeed(200e8);
+        f18.setDecimals(18);
+        TokenConfig memory c = _goodConfig();
+        c.feed = address(f18);
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        this.deployExternal(defaultMandate(), c);
+
+        _queueTokenAndWait(address(nvda), c);
+        vm.prank(owner);
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        vault.applyTokenConfig(address(nvda), c);
+    }
+
+    function test_rejectsFeedWithRevertingDecimals() public {
+        TokenConfig memory c = _goodConfig();
+        c.feed = address(new MockReverter());
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        this.deployExternal(defaultMandate(), c);
+    }
+
+    function test_rejectsTokenWithMoreThan18Decimals() public {
+        MockERC20 big = new MockERC20("BIG", 19);
+        TokenConfig memory c = _goodConfig();
+        c.pool = address(new MockPool(address(usdc), address(big)));
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        this.deployTokenExternal(address(big), c);
+    }
+
+    function test_rejectsTokenWithRevertingDecimals() public {
+        address bad = address(new MockReverter());
+        TokenConfig memory c = _goodConfig();
+        c.pool = address(new MockPool(address(usdc), bad));
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        this.deployTokenExternal(bad, c);
     }
 }

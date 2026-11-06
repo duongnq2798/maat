@@ -7,7 +7,7 @@ import {IMandateVaultEvents} from "./IMandateVaultEvents.sol";
 import {PriceLib} from "./lib/PriceLib.sol";
 import {TokenTransfer} from "./lib/TokenTransfer.sol";
 import {IB20Asset} from "./interfaces/IB20Asset.sol";
-import {IERC20Minimal, ICLPool} from "./interfaces/IExternal.sol";
+import {IERC20Minimal, ICLPool, IAggregatorV3} from "./interfaces/IExternal.sol";
 import {ISwapAdapter} from "./adapters/ISwapAdapter.sol";
 
 /// @title MandateVault — "LLM proposes, contract decides."
@@ -105,7 +105,8 @@ contract MandateVault is IMandateVaultEvents {
         emit Decision(intent.id, intent.action, intent.token, intent.amount, allowed, reason, intent.rationaleHash);
     }
 
-    /// @notice Same verdict execute() would reach before trading. Cannot predict SWAP_FAILED.
+    /// @notice Same verdict execute() would reach before trading. Cannot predict SWAP_FAILED / TRANSFER_FAILED.
+    /// @dev Does not check usedIntent: a reused id previews normally but execute() reverts IntentAlreadyUsed.
     function previewIntent(Intent calldata intent) external view returns (Reason reason) {
         (reason,) = _check(intent);
     }
@@ -252,13 +253,14 @@ contract MandateVault is IMandateVaultEvents {
         TokenConfig memory cfg = tokenConfig[intent.token];
         if (!cfg.allowed) return (Reason.TOKEN_NOT_ALLOWED, 0);
         bool isBuy = intent.action == Action.BUY;
+        (Reason r, uint256 price) = GuardLib.checkMarket(_marketCheck(intent.token, cfg, isBuy));
+        if (r != Reason.OK) return (r, 0);
+
+        // after the market checks so market reasons take precedence (spec §3.1 table order, checks 2-7)
         uint256 available = isBuy
             ? IERC20Minimal(usdc).balanceOf(address(this))
             : IB20Asset(intent.token).balanceOf(address(this));
         if (intent.amount == 0 || intent.amount > available) return (Reason.INSUFFICIENT_BALANCE, 0);
-
-        (Reason r, uint256 price) = GuardLib.checkMarket(_marketCheck(intent.token, cfg, isBuy));
-        if (r != Reason.OK) return (r, 0);
 
         uint256 notional = isBuy ? intent.amount : _valueUsd(intent.token, intent.amount, price);
         if (!_withinCaps(notional)) return (Reason.SIZE_LIMIT, 0);
@@ -342,7 +344,8 @@ contract MandateVault is IMandateVaultEvents {
         notifyRevenue();
         uint256 notional = intent.amount;
         if (intent.action == Action.PAY_EXPENSE) {
-            usdc.safeTransfer(intent.payee, intent.amount);
+            // nothing is recorded on failure: spentOnDay unchanged, recordedUsdc already equals the balance
+            if (!usdc.tryTransfer(intent.payee, intent.amount)) return Reason.TRANSFER_FAILED;
         } else {
             bool isBuy = intent.action == Action.BUY;
             address tokenIn = isBuy ? usdc : intent.token;
@@ -354,13 +357,18 @@ contract MandateVault is IMandateVaultEvents {
             uint256 minOut = intent.minOut > floorOut ? intent.minOut : floorOut;
 
             address adapter = _mandate.swapAdapter;
-            tokenIn.safeApprove(adapter, intent.amount);
+            // A failing approve is a token-call failure, not a swap failure: TRANSFER_FAILED. Allowance resets
+            // are best effort (results ignored) so a token whose approve fails can never revert execute().
+            if (!tokenIn.tryApprove(adapter, intent.amount)) {
+                tokenIn.tryApprove(adapter, 0);
+                return Reason.TRANSFER_FAILED;
+            }
             try ISwapAdapter(adapter).swapExactIn(
                 tokenConfig[intent.token].pool, tokenIn, intent.amount, minOut, address(this)
             ) returns (uint256) {
-                tokenIn.safeApprove(adapter, 0);
+                tokenIn.tryApprove(adapter, 0);
             } catch {
-                tokenIn.safeApprove(adapter, 0);
+                tokenIn.tryApprove(adapter, 0);
                 return Reason.SWAP_FAILED;
             }
         }
@@ -424,6 +432,20 @@ contract MandateVault is IMandateVaultEvents {
         }
         bool matches = (t0 == token && t1 == usdc) || (t0 == usdc && t1 == token);
         if (!matches) revert InvalidConfig();
+        // Valuation math assumes an 8-decimal Chainlink answer and 10 ** (tokenDecimals + 2) scaling.
+        // Config-time only (constructor loop / timelocked apply), so calls/reverts in a loop are intended.
+        // forge-lint: disable-start(calls-loop, require-revert-in-loop)
+        try IAggregatorV3(c.feed).decimals() returns (uint8 d) {
+            if (d != PriceLib.PRICE_DECIMALS) revert InvalidConfig();
+        } catch {
+            revert InvalidConfig();
+        }
+        try IERC20Minimal(token).decimals() returns (uint8 d) {
+            if (d > 18) revert InvalidConfig();
+        } catch {
+            revert InvalidConfig();
+        }
+        // forge-lint: disable-end(calls-loop, require-revert-in-loop)
     }
 
     function _setPayee(address payee, bool allowed) internal {

@@ -4,10 +4,15 @@ pragma solidity 0.8.28;
 contract MockFeed {
     int256 public answer;
     uint256 public updatedAt;
+    uint8 public decimals = 8; // Chainlink equity feeds
 
     constructor(int256 answer_) {
         answer = answer_;
         updatedAt = block.timestamp;
+    }
+
+    function setDecimals(uint8 d) external {
+        decimals = d;
     }
 
     function set(int256 answer_, uint256 updatedAt_) external {

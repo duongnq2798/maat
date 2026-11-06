@@ -27,7 +27,8 @@ enum Reason {
     CONCENTRATION,
     PAYEE_NOT_ALLOWED,
     INSUFFICIENT_BALANCE,
-    SWAP_FAILED
+    SWAP_FAILED,
+    TRANSFER_FAILED // appended: token transfer/approve failed inside execute(); never reorder this enum
 }
 
 enum SessionMode {
