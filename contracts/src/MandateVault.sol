@@ -394,13 +394,22 @@ contract MandateVault is IMandateVaultEvents {
         return _inDeriskWindow() ? _mandate.targetHealthFactor : _mandate.minHealthFactor;
     }
 
-    /// @dev The last `deriskWindow` seconds before Fri 20:00 ET, when Chainlink equity feeds stop and prices
-    /// freeze for the weekend. Fail-closed: an unreadable calendar counts as inside the window.
+    /// @dev The last `deriskWindow` seconds before 20:00 ET on the last session day before a freeze: every
+    /// Friday (Chainlink equity feeds stop for the weekend), and a Mon-Thu followed by a holiday on Friday or
+    /// mid-week. Fail-closed: an unreadable calendar or holiday flag counts as inside the window.
     function _inDeriskWindow() internal view returns (bool) {
         uint256 w = _mandate.deriskWindow;
         if (w == 0) return false;
-        try MarketCalendar(_mandate.calendar).localTime(block.timestamp) returns (uint256, uint256 wd, uint256 minute) {
-            return wd == FRIDAY && minute < FEED_FREEZE_MINUTE && minute + w / 60 >= FEED_FREEZE_MINUTE;
+        MarketCalendar cal = MarketCalendar(_mandate.calendar);
+        try cal.localTime(block.timestamp) returns (uint256 etDay, uint256 wd, uint256 minute) {
+            if (minute >= FEED_FREEZE_MINUTE || minute + w / 60 < FEED_FREEZE_MINUTE) return false;
+            if (wd == FRIDAY) return true;
+            if (wd == 0 || wd == 6) return false;
+            try cal.isHoliday(etDay + 1) returns (bool h) {
+                return h;
+            } catch {
+                return true;
+            }
         } catch {
             return true;
         }

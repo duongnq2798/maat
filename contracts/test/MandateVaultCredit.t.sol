@@ -333,6 +333,63 @@ contract MandateVaultCreditTest is CreditFixture {
         assertEq(credit.lastMinHf(), TARGET_HF);
     }
 
+    uint256 internal constant THU_1500_ET = 1793908800; // Thu 2026-11-05 20:00 UTC, Fri 11-06 is a session
+    uint256 internal constant THU_DEC24_1230_ET = 1798133400; // Thu 2026-12-24 17:30 UTC (13:00 early close)
+    uint256 internal constant THU_DEC31_1500_ET = 1798747200; // Thu 2026-12-31 20:00 UTC, Fri 2027-01-01 holiday
+
+    function test_deriskWindowCoversLastSessionBeforeFridayHoliday() public {
+        // 8h (the MaatConfig default) reaches back to 12:00 ET, inside Dec 24's 09:30-13:00 early-close session
+        Mandate memory m = creditMandate();
+        m.deriskWindow = 8 hours;
+        (vault, credit) = _deployCreditVault(m);
+        nvda.mint(address(vault), 1e8);
+        _supplyAll();
+        credit.setProjectedHf(1.8e18);
+        _warpFresh(THU_DEC24_1230_ET);
+        (uint256 day, uint256 wd,) = calendar.localTime(vm.getBlockTimestamp());
+        assertEq(wd, 4);
+        assertTrue(calendar.isHoliday(day + 1));
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.DERISK_WINDOW);
+        credit.setProjectedHf(TARGET_HF);
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.OK);
+        assertEq(credit.lastMinHf(), TARGET_HF);
+    }
+
+    function test_deriskWindowCoversThursdayBeforeNewYear() public {
+        _supplyAll();
+        credit.setProjectedHf(1.8e18);
+        _warpFresh(THU_DEC31_1500_ET); // 15:00 + 6h > 20:00, and Fri Jan 1 is a holiday
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.DERISK_WINDOW);
+    }
+
+    function test_ordinaryThursdayIsNotInDeriskWindow() public {
+        _supplyAll();
+        credit.setProjectedHf(1.8e18);
+        _warpFresh(THU_1500_ET); // same minute as the holiday case, but Friday is a session
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.OK);
+        assertEq(credit.lastMinHf(), MIN_HF);
+    }
+
+    function test_unreadableHolidayCountsAsDeriskWindow() public {
+        _supplyAll();
+        credit.setProjectedHf(1.8e18);
+        _warpFresh(THU_1500_ET);
+        vm.mockCallRevert(address(calendar), abi.encodeWithSelector(calendar.isHoliday.selector), "");
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 1e6), Reason.DERISK_WINDOW);
+    }
+
+    function test_deriskWindowRequiresTargetHealthFactorToWithdrawAgainstDebt() public {
+        _supplyAll();
+        credit.setDebt(5e6);
+        _warpFresh(FRI_1500_ET);
+        credit.setNextHf(1.8e18); // above min, below target
+        _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 0.5e8), Reason.DERISK_WINDOW);
+        assertEq(credit.suppliedOf(address(nvda)), 1e8);
+        credit.setNextHf(TARGET_HF);
+        _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 0.5e8), Reason.OK);
+        assertEq(credit.lastMinHf(), TARGET_HF);
+    }
+
     function test_deriskWindowDisabledWhenZero() public {
         Mandate memory m = creditMandate();
         m.deriskWindow = 0;
