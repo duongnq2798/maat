@@ -20,7 +20,11 @@ contract DeployForkTest is Test {
         vm.setEnv("MAAT_OWNER", vm.toString(owner));
         vm.setEnv("MAAT_EXECUTOR", vm.toString(executor));
         vm.setEnv("MAAT_EXPENSE_PAYEE", vm.toString(payee));
-        vm.setEnv("MAAT_DEPLOYER", vm.toString(makeAddr("deployer")));
+        address deployer = makeAddr("deployer");
+        vm.setEnv("MAAT_DEPLOYER", vm.toString(deployer));
+        // a used deployer: the vault-address prediction must start from its real nonce, not zero
+        uint64 n = vm.getNonce(deployer) + 7;
+        vm.setNonce(deployer, n);
 
         (MarketCalendar calendar, AerodromeSwapAdapter adapter, AaveV4CreditAdapter credit, MandateVault vault) =
             new Deploy().run();
@@ -37,6 +41,7 @@ contract DeployForkTest is Test {
         assertEq(calendar.owner(), owner);
         assertEq(vault.mandate().creditAdapter, address(credit));
         assertEq(credit.vault(), address(vault));
+        assertEq(address(vault), vm.computeCreateAddress(deployer, n + 3));
         assertEq(credit.usdc(), A.USDC);
         assertEq(credit.hub(), A.AAVE_EQUITIES_HUB);
         assertEq(address(credit.spoke()), A.AAVE_MAG7_SPOKE);
