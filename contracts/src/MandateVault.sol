@@ -9,6 +9,7 @@ import {TokenTransfer} from "./lib/TokenTransfer.sol";
 import {IB20Asset} from "./interfaces/IB20Asset.sol";
 import {IERC20Minimal, ICLPool, IAggregatorV3} from "./interfaces/IExternal.sol";
 import {ISwapAdapter} from "./adapters/ISwapAdapter.sol";
+import {ICreditAdapter} from "./adapters/ICreditAdapter.sol";
 
 /// @title MandateVault — "LLM proposes, contract decides."
 /// @notice Holds an agent's USDC + tokenized-stock treasury. The executor submits intents; the vault applies
@@ -20,6 +21,8 @@ contract MandateVault is IMandateVaultEvents {
     /// @notice A queued change must be applied within this window after its eta, or it expires.
     uint256 public constant GRACE_PERIOD = 7 days;
     uint256 internal constant BPS = 10_000;
+    uint256 internal constant WAD = 1e18;
+    uint256 internal constant MAX_DERISK_WINDOW = 12 hours;
 
     address public immutable owner;
     address public immutable usdc;
@@ -52,6 +55,7 @@ contract MandateVault is IMandateVaultEvents {
     error ChangeNotQueued(bytes32 changeHash);
     error ChangeNotReady(bytes32 changeHash, uint256 eta);
     error ChangeExpired(bytes32 changeHash);
+    error CreditPositionOpen();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -179,6 +183,7 @@ contract MandateVault is IMandateVaultEvents {
     function applyMandate(Mandate calldata m) external onlyOwner {
         _consume(mandateChangeHash(m));
         _requireValidMandate(m);
+        _requireNoOrphanedPosition(m.creditAdapter);
         _mandate = m;
         emit MandateApplied(keccak256(abi.encode(m)));
         emit PolicyHashUpdated(policyHash());
@@ -397,6 +402,38 @@ contract MandateVault is IMandateVaultEvents {
     function _requireValidMandate(Mandate memory m) internal view {
         if (m.calendar.code.length == 0 || m.swapAdapter.code.length == 0) revert InvalidConfig();
         if (m.maxSlippageBps > BPS) revert InvalidConfig();
+        if (m.creditAdapter != address(0)) _requireValidCredit(m);
+    }
+
+    /// @dev The adapter must be a contract bound to this vault and its USDC, so the vault can never route
+    /// collateral into a position it does not control.
+    function _requireValidCredit(Mandate memory m) internal view {
+        if (m.creditAdapter.code.length == 0) revert InvalidConfig();
+        if (m.minHealthFactor < WAD || m.targetHealthFactor < m.minHealthFactor) revert InvalidConfig();
+        if (m.deriskWindow > MAX_DERISK_WINDOW) revert InvalidConfig();
+        ICreditAdapter ca = ICreditAdapter(m.creditAdapter);
+        try ca.vault() returns (address v) {
+            if (v != address(this)) revert InvalidConfig();
+        } catch {
+            revert InvalidConfig();
+        }
+        try ca.usdc() returns (address u) {
+            if (u != usdc) revert InvalidConfig();
+        } catch {
+            revert InvalidConfig();
+        }
+    }
+
+    /// @dev Only this vault can move a position held by its adapter, so switching or disabling the adapter
+    /// while debt or collateral remains would strand it. Fail-closed: an unreadable position counts as open.
+    function _requireNoOrphanedPosition(address next) internal view {
+        address current = _mandate.creditAdapter;
+        if (current == address(0) || current == next) return;
+        try ICreditAdapter(current).hasPosition() returns (bool open) {
+            if (open) revert CreditPositionOpen();
+        } catch {
+            revert CreditPositionOpen();
+        }
     }
 
     function _setToken(address token, TokenConfig memory c) internal {

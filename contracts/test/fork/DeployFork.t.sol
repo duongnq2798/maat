@@ -34,7 +34,7 @@ contract DeployForkTest is Test {
         assertEq(calendar.owner(), owner);
 
         // the deployed policy is exactly MaatConfig's
-        Mandate memory m = MaatConfig.defaultMandate(SessionMode.REGULAR, address(calendar), address(adapter));
+        Mandate memory m = MaatConfig.defaultMandate(SessionMode.REGULAR, address(calendar), address(adapter), address(0));
         assertEq(vault.mandateHash(), keccak256(abi.encode(m)));
 
         (address[] memory toks, TokenConfig[] memory cfgs) = MaatConfig.basket();

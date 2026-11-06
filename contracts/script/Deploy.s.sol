@@ -27,7 +27,7 @@ contract Deploy is Script {
             executor,
             A.USDC,
             A.POLICY_REGISTRY,
-            MaatConfig.defaultMandate(SessionMode.REGULAR, address(calendar), address(adapter)),
+            MaatConfig.defaultMandate(SessionMode.REGULAR, address(calendar), address(adapter), address(0)),
             toks,
             cfgs,
             payees

@@ -187,6 +187,14 @@ contract MandateVaultTest is VaultFixture {
         _assertReason(r, Reason.ACTION_NOT_SUPPORTED);
     }
 
+    function test_creditActionsRefusedWhenCreditDisabled() public {
+        Action[4] memory acts = [Action.SUPPLY, Action.WITHDRAW_COLLATERAL, Action.BORROW, Action.REPAY];
+        for (uint256 k; k < acts.length; ++k) {
+            (, Reason r) = _exec(_intent(acts[k], 1e6));
+            _assertReason(r, Reason.ACTION_NOT_SUPPORTED);
+        }
+    }
+
     function test_vaultPaused() public {
         vm.prank(owner);
         vault.setPaused(true);

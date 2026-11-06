@@ -6,7 +6,12 @@ import {BaseAddresses as A} from "./BaseAddresses.sol";
 
 /// @notice Agent #1 mandate (spec §3.2) and basket (spec §3.5).
 library MaatConfig {
-    function defaultMandate(SessionMode mode, address calendar, address adapter)
+    /// Credit defaults (spec §3.2). targetHealthFactor already includes the spec's "targetHF + buffer".
+    uint64 internal constant MIN_HEALTH_FACTOR = 1.5e18;
+    uint64 internal constant TARGET_HEALTH_FACTOR = 2e18;
+    uint32 internal constant DERISK_WINDOW = 4 hours;
+
+    function defaultMandate(SessionMode mode, address calendar, address swapAdapter, address creditAdapter)
         internal
         pure
         returns (Mandate memory)
@@ -23,7 +28,11 @@ library MaatConfig {
             perTradeCapUsd: 50e6,
             dailyCapUsd: 100e6,
             calendar: calendar,
-            swapAdapter: adapter
+            swapAdapter: swapAdapter,
+            creditAdapter: creditAdapter,
+            minHealthFactor: MIN_HEALTH_FACTOR,
+            targetHealthFactor: TARGET_HEALTH_FACTOR,
+            deriskWindow: DERISK_WINDOW
         });
     }
 
