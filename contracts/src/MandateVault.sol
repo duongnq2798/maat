@@ -17,6 +17,8 @@ contract MandateVault is IMandateVaultEvents {
     using TokenTransfer for address;
 
     uint256 public constant TIMELOCK = 24 hours;
+    /// @notice A queued change must be applied within this window after its eta, or it expires.
+    uint256 public constant GRACE_PERIOD = 7 days;
     uint256 internal constant BPS = 10_000;
 
     address public immutable owner;
@@ -30,6 +32,8 @@ contract MandateVault is IMandateVaultEvents {
     mapping(address => bool) internal _listed;
     address[] internal _tokens;
     mapping(address => bool) public allowedPayee;
+    address[] internal _payees;
+    mapping(address => uint256) internal _payeeIndex; // 1-based position in _payees, 0 = absent
 
     mapping(bytes32 => bool) public usedIntent;
     mapping(uint256 utcDay => uint256) public spentOnDay;
@@ -47,6 +51,7 @@ contract MandateVault is IMandateVaultEvents {
     error IntentAlreadyUsed(bytes32 id);
     error ChangeNotQueued(bytes32 changeHash);
     error ChangeNotReady(bytes32 changeHash, uint256 eta);
+    error ChangeExpired(bytes32 changeHash);
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -80,9 +85,9 @@ contract MandateVault is IMandateVaultEvents {
         }
         for (uint256 i; i < payees_.length; ++i) {
             if (payees_[i] == address(0)) revert ZeroAddress();
-            allowedPayee[payees_[i]] = true;
-            emit PayeeApplied(payees_[i], true);
+            _setPayee(payees_[i], true);
         }
+        emit PolicyHashUpdated(policyHash());
     }
 
     // ------------------------------------------------------------------ executor
@@ -140,9 +145,29 @@ contract MandateVault is IMandateVaultEvents {
         emit Withdrawn(token, amount);
     }
 
-    function queueChange(bytes32 changeHash) external onlyOwner {
-        queuedAt[changeHash] = block.timestamp;
-        emit ChangeQueued(changeHash, block.timestamp + TIMELOCK);
+    /// @notice Owner capital injection. Pulls USDC from the owner (approve first) and records it so it is not
+    /// reported as revenue by notifyRevenue(). Revenue that was already pending stays pending.
+    function fund(uint256 amount) external onlyOwner {
+        usdc.safeTransferFrom(msg.sender, address(this), amount); // msg.sender == owner (onlyOwner)
+        recordedUsdc += amount;
+        emit Funded(amount);
+    }
+
+    /// @notice Timelocked changes are queued with their full parameters (emitted in the event) and can be
+    /// applied with exactly those parameters between eta = queuedAt + TIMELOCK and eta + GRACE_PERIOD.
+    function queueMandate(Mandate calldata m) external onlyOwner returns (bytes32 changeHash) {
+        changeHash = mandateChangeHash(m);
+        emit MandateChangeQueued(changeHash, _queue(changeHash), m);
+    }
+
+    function queueTokenConfig(address token, TokenConfig calldata c) external onlyOwner returns (bytes32 changeHash) {
+        changeHash = tokenChangeHash(token, c);
+        emit TokenConfigChangeQueued(changeHash, _queue(changeHash), token, c);
+    }
+
+    function queuePayee(address payee, bool allowed) external onlyOwner returns (bytes32 changeHash) {
+        changeHash = payeeChangeHash(payee, allowed);
+        emit PayeeChangeQueued(changeHash, _queue(changeHash), payee, allowed);
     }
 
     function cancelChange(bytes32 changeHash) external onlyOwner {
@@ -155,18 +180,20 @@ contract MandateVault is IMandateVaultEvents {
         _requireValidMandate(m);
         _mandate = m;
         emit MandateApplied(keccak256(abi.encode(m)));
+        emit PolicyHashUpdated(policyHash());
     }
 
     function applyTokenConfig(address token, TokenConfig calldata c) external onlyOwner {
         _consume(tokenChangeHash(token, c));
         _setToken(token, c);
+        emit PolicyHashUpdated(policyHash());
     }
 
     function applyPayee(address payee, bool allowed) external onlyOwner {
         if (allowed && payee == address(0)) revert ZeroAddress();
         _consume(payeeChangeHash(payee, allowed));
-        allowedPayee[payee] = allowed;
-        emit PayeeApplied(payee, allowed);
+        _setPayee(payee, allowed);
+        emit PolicyHashUpdated(policyHash());
     }
 
     // ------------------------------------------------------------------ views
@@ -181,6 +208,22 @@ contract MandateVault is IMandateVaultEvents {
 
     function tokens() external view returns (address[] memory) {
         return _tokens;
+    }
+
+    function payees() external view returns (address[] memory) {
+        return _payees;
+    }
+
+    /// @notice Commitment to the whole policy: keccak256(abi.encode(mandate, tokens, configs, payees)), where
+    /// configs[i] = tokenConfig[tokens[i]] (tokens in listing order, delisted ones included) and payees is the
+    /// current allowlist in payees() order. Emitted as PolicyHashUpdated on construction and every apply.
+    function policyHash() public view returns (bytes32) {
+        uint256 n = _tokens.length;
+        TokenConfig[] memory configs = new TokenConfig[](n);
+        for (uint256 i; i < n; ++i) {
+            configs[i] = tokenConfig[_tokens[i]];
+        }
+        return keccak256(abi.encode(_mandate, _tokens, configs, _payees));
     }
 
     function today() public view returns (uint256) {
@@ -383,10 +426,34 @@ contract MandateVault is IMandateVaultEvents {
         if (!matches) revert InvalidConfig();
     }
 
+    function _setPayee(address payee, bool allowed) internal {
+        uint256 idx = _payeeIndex[payee];
+        if (allowed && idx == 0) {
+            _payees.push(payee);
+            _payeeIndex[payee] = _payees.length;
+        } else if (!allowed && idx != 0) {
+            address last = _payees[_payees.length - 1];
+            _payees[idx - 1] = last;
+            _payeeIndex[last] = idx;
+            _payees.pop();
+            delete _payeeIndex[payee];
+        }
+        allowedPayee[payee] = allowed;
+        emit PayeeApplied(payee, allowed);
+    }
+
+    /// @return eta earliest time the change can be applied. Re-queueing the same change restarts its clock.
+    function _queue(bytes32 changeHash) internal returns (uint256 eta) {
+        queuedAt[changeHash] = block.timestamp;
+        eta = block.timestamp + TIMELOCK;
+    }
+
     function _consume(bytes32 changeHash) internal {
         uint256 t = queuedAt[changeHash];
         if (t == 0) revert ChangeNotQueued(changeHash);
         if (block.timestamp < t + TIMELOCK) revert ChangeNotReady(changeHash, t + TIMELOCK);
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > t + TIMELOCK + GRACE_PERIOD) revert ChangeExpired(changeHash);
         delete queuedAt[changeHash];
     }
 }

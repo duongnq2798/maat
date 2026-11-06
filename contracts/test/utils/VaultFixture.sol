@@ -91,4 +91,24 @@ abstract contract VaultFixture is Test, IMandateVaultEvents {
     function _assertReason(Reason got, Reason want) internal pure {
         assertEq(uint8(got), uint8(want));
     }
+
+    // ---------------------------------------------------------------- typed timelock helpers
+
+    function _queueMandateAndWait(Mandate memory m) internal {
+        vm.prank(owner);
+        vault.queueMandate(m);
+        vm.warp(vm.getBlockTimestamp() + 24 hours); // via_ir may cache block.timestamp across warps
+    }
+
+    function _queueTokenAndWait(address token, TokenConfig memory c) internal {
+        vm.prank(owner);
+        vault.queueTokenConfig(token, c);
+        vm.warp(vm.getBlockTimestamp() + 24 hours); // via_ir may cache block.timestamp across warps
+    }
+
+    function _queuePayeeAndWait(address p, bool allowed) internal {
+        vm.prank(owner);
+        vault.queuePayee(p, allowed);
+        vm.warp(vm.getBlockTimestamp() + 24 hours); // via_ir may cache block.timestamp across warps
+    }
 }

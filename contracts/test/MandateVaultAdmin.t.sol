@@ -17,8 +17,8 @@ contract MandateVaultAdminTest is VaultFixture {
 
         vm.prank(owner);
         vm.expectEmit(true, false, false, true, address(vault));
-        emit ChangeQueued(h, block.timestamp + 24 hours);
-        vault.queueChange(h);
+        emit MandateChangeQueued(h, block.timestamp + 24 hours, m);
+        vault.queueMandate(m);
 
         vm.warp(block.timestamp + 23 hours);
         vm.prank(owner);
@@ -36,9 +36,8 @@ contract MandateVaultAdminTest is VaultFixture {
     function test_appliedParamsMustMatchQueued() public {
         Mandate memory queued = defaultMandate();
         queued.maxPremiumBps = 100;
-        bytes32 queuedHash = vault.mandateChangeHash(queued); // evaluate before pranking: a view call would consume the prank
         vm.prank(owner);
-        vault.queueChange(queuedHash);
+        vault.queueMandate(queued);
         vm.warp(block.timestamp + 25 hours);
 
         Mandate memory other = defaultMandate();
@@ -54,7 +53,7 @@ contract MandateVaultAdminTest is VaultFixture {
         m.dailyCapUsd = 1_000e6;
         bytes32 h = vault.mandateChangeHash(m);
         vm.startPrank(owner);
-        vault.queueChange(h);
+        vault.queueMandate(m);
         vault.cancelChange(h);
         vm.warp(block.timestamp + 25 hours);
         vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, h));
@@ -66,8 +65,8 @@ contract MandateVaultAdminTest is VaultFixture {
         address newPayee = makeAddr("newPayee");
         TokenConfig memory c = TokenConfig({allowed: true, feed: address(feed), pool: address(pool), maxWeightBps: 2000});
         vm.startPrank(owner);
-        vault.queueChange(vault.payeeChangeHash(newPayee, true));
-        vault.queueChange(vault.tokenChangeHash(address(nvda), c));
+        vault.queuePayee(newPayee, true);
+        vault.queueTokenConfig(address(nvda), c);
         vm.warp(block.timestamp + 24 hours);
         vault.applyPayee(newPayee, true);
         vault.applyTokenConfig(address(nvda), c);
@@ -83,7 +82,13 @@ contract MandateVaultAdminTest is VaultFixture {
         vm.expectRevert(MandateVault.NotOwner.selector);
         vault.withdraw(address(usdc), 1e6);
         vm.expectRevert(MandateVault.NotOwner.selector);
-        vault.queueChange(bytes32(uint256(1)));
+        vault.queueMandate(defaultMandate());
+        vm.expectRevert(MandateVault.NotOwner.selector);
+        vault.queueTokenConfig(address(nvda), _tokenCfg(2000));
+        vm.expectRevert(MandateVault.NotOwner.selector);
+        vault.queuePayee(executor, true);
+        vm.expectRevert(MandateVault.NotOwner.selector);
+        vault.fund(1e6);
         vm.expectRevert(MandateVault.NotOwner.selector);
         vault.setExecutor(executor);
         vm.expectRevert(MandateVault.NotOwner.selector);
@@ -138,7 +143,7 @@ contract MandateVaultAdminTest is VaultFixture {
         m.maxPremiumBps = 100;
         bytes32 h = vault.mandateChangeHash(m);
         vm.startPrank(owner);
-        vault.queueChange(h);
+        vault.queueMandate(m);
         vm.warp(block.timestamp + 24 hours);
         vault.applyMandate(m);
         vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotQueued.selector, h));
@@ -159,7 +164,7 @@ contract MandateVaultAdminTest is VaultFixture {
         vault.applyPayee(pA, true);
 
         // queued but early
-        vault.queueChange(hA);
+        vault.queuePayee(pA, true);
         vm.warp(t0 + 23 hours);
         vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotReady.selector, hA, t0 + 24 hours));
         vault.applyPayee(pA, true);
@@ -192,7 +197,7 @@ contract MandateVaultAdminTest is VaultFixture {
         vault.applyTokenConfig(address(nvda), cA);
 
         // queued but early
-        vault.queueChange(hA);
+        vault.queueTokenConfig(address(nvda), cA);
         vm.warp(t0 + 23 hours);
         vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeNotReady.selector, hA, t0 + 24 hours));
         vault.applyTokenConfig(address(nvda), cA);
@@ -213,9 +218,10 @@ contract MandateVaultAdminTest is VaultFixture {
     }
 
     function test_nonOwnerCannotCancelChange() public {
-        bytes32 h = bytes32(uint256(7));
+        address p = makeAddr("queuedPayee");
+        bytes32 h = vault.payeeChangeHash(p, true);
         vm.prank(owner);
-        vault.queueChange(h);
+        vault.queuePayee(p, true);
         address stranger = makeAddr("stranger");
 
         vm.prank(executor);
@@ -238,9 +244,9 @@ contract MandateVaultAdminTest is VaultFixture {
         bytes32 hP = vault.payeeChangeHash(newPayee, true);
 
         vm.startPrank(owner);
-        vault.queueChange(hM);
-        vault.queueChange(hT);
-        vault.queueChange(hP);
+        vault.queueMandate(m);
+        vault.queueTokenConfig(address(nvda), c);
+        vault.queuePayee(newPayee, true);
         vm.stopPrank();
         vm.warp(block.timestamp + 24 hours);
 
@@ -261,5 +267,201 @@ contract MandateVaultAdminTest is VaultFixture {
         assertEq(vault.queuedAt(hP), THU_1030_ET);
         assertEq(vault.mandate().maxPremiumBps, 50);
         assertFalse(vault.allowedPayee(newPayee));
+    }
+
+    // ---------------------------------------------------------------- final review: I1 public, expiring timelock
+
+    function test_queueTokenConfigAndPayeeEmitFullParams() public {
+        TokenConfig memory c = _tokenCfg(2000);
+        address p = makeAddr("newPayee");
+        bytes32 hT = vault.tokenChangeHash(address(nvda), c);
+        bytes32 hP = vault.payeeChangeHash(p, true);
+        uint256 eta = THU_1030_ET + 24 hours;
+
+        vm.startPrank(owner);
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit TokenConfigChangeQueued(hT, eta, address(nvda), c);
+        vault.queueTokenConfig(address(nvda), c);
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit PayeeChangeQueued(hP, eta, p, true);
+        vault.queuePayee(p, true);
+        vm.stopPrank();
+        assertEq(vault.queuedAt(hT), THU_1030_ET);
+        assertEq(vault.queuedAt(hP), THU_1030_ET);
+    }
+
+    function test_expiredChangeReverts() public {
+        Mandate memory m = defaultMandate();
+        m.perTradeCapUsd = 10e6;
+        bytes32 h = vault.mandateChangeHash(m);
+        address p = makeAddr("latePayee");
+        bytes32 hP = vault.payeeChangeHash(p, true);
+        uint256 t0 = THU_1030_ET; // constant: via_ir may rematerialize block.timestamp after vm.warp
+
+        vm.startPrank(owner);
+        vault.queueMandate(m);
+        vault.queuePayee(p, true);
+        vm.warp(t0 + 24 hours + 7 days + 1);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeExpired.selector, h));
+        vault.applyMandate(m);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeExpired.selector, hP));
+        vault.applyPayee(p, true);
+        assertEq(vault.mandate().perTradeCapUsd, 50e6);
+        assertFalse(vault.allowedPayee(p));
+
+        // re-queueing restarts the clock
+        vault.queueMandate(m);
+        vm.warp(t0 + 24 hours + 7 days + 1 + 24 hours);
+        vault.applyMandate(m);
+        vm.stopPrank();
+        assertEq(vault.mandate().perTradeCapUsd, 10e6);
+    }
+
+    function test_applyAtExactGraceEdgeWorks() public {
+        Mandate memory m = defaultMandate();
+        m.perTradeCapUsd = 10e6;
+        vm.startPrank(owner);
+        vault.queueMandate(m);
+        vm.warp(THU_1030_ET + vault.TIMELOCK() + vault.GRACE_PERIOD());
+        vault.applyMandate(m);
+        vm.stopPrank();
+        assertEq(vault.mandate().perTradeCapUsd, 10e6);
+        assertEq(vault.GRACE_PERIOD(), 7 days);
+    }
+
+    // ---------------------------------------------------------------- final review: I2 hash-committed full policy
+
+    function _policyHashOf(Mandate memory m, address[] memory payees_) internal view returns (bytes32) {
+        address[] memory toks = vault.tokens();
+        TokenConfig[] memory cfgs = new TokenConfig[](toks.length);
+        for (uint256 i; i < toks.length; ++i) {
+            (bool a, address f, address pl, uint16 w) = vault.tokenConfig(toks[i]);
+            cfgs[i] = TokenConfig({allowed: a, feed: f, pool: pl, maxWeightBps: w});
+        }
+        return keccak256(abi.encode(m, toks, cfgs, payees_));
+    }
+
+    function _one(address a) internal pure returns (address[] memory arr) {
+        arr = new address[](1);
+        arr[0] = a;
+    }
+
+    function test_constructorEmitsPolicyHash() public {
+        address[] memory toks = _one(address(nvda));
+        TokenConfig[] memory cfgs = new TokenConfig[](1);
+        cfgs[0] = _tokenCfg(4000);
+        bytes32 expected = keccak256(abi.encode(defaultMandate(), toks, cfgs, _one(payee)));
+        vm.expectEmit(false, false, false, true);
+        emit PolicyHashUpdated(expected);
+        MandateVault v =
+            new MandateVault(owner, executor, address(usdc), address(registry), defaultMandate(), toks, cfgs, _one(payee));
+        assertEq(v.policyHash(), expected);
+        assertEq(vault.policyHash(), expected); // fixture vault has the same policy
+    }
+
+    function test_payeesReflectsAllowAndRevoke() public {
+        address p2 = makeAddr("payee2");
+        assertEq(vault.payees().length, 1);
+        assertEq(vault.payees()[0], payee);
+
+        _queuePayeeAndWait(p2, true);
+        vm.prank(owner);
+        vault.applyPayee(p2, true);
+        address[] memory list = vault.payees();
+        assertEq(list.length, 2);
+        assertEq(list[1], p2);
+
+        // allowing an already-allowed payee adds no duplicate
+        _queuePayeeAndWait(p2, true);
+        vm.prank(owner);
+        vault.applyPayee(p2, true);
+        assertEq(vault.payees().length, 2);
+
+        _queuePayeeAndWait(payee, false);
+        vm.prank(owner);
+        vault.applyPayee(payee, false);
+        list = vault.payees();
+        assertEq(list.length, 1);
+        assertEq(list[0], p2);
+        assertFalse(vault.allowedPayee(payee));
+
+        // revoking a payee that is not allowed is a no-op on the list
+        _queuePayeeAndWait(payee, false);
+        vm.prank(owner);
+        vault.applyPayee(payee, false);
+        assertEq(vault.payees().length, 1);
+    }
+
+    function test_constructorDeduplicatesPayees() public {
+        address[] memory ps = new address[](2);
+        ps[0] = payee;
+        ps[1] = payee;
+        MandateVault v = new MandateVault(
+            owner, executor, address(usdc), address(registry), defaultMandate(), new address[](0), new TokenConfig[](0), ps
+        );
+        assertEq(v.payees().length, 1);
+    }
+
+    function test_policyHashTracksPayeeAndTokenConfig() public {
+        bytes32 h0 = vault.policyHash();
+        bytes32 m0 = vault.mandateHash();
+        assertEq(h0, _policyHashOf(defaultMandate(), _one(payee)));
+
+        address p2 = makeAddr("payee2");
+        address[] memory both = new address[](2);
+        both[0] = payee;
+        both[1] = p2;
+        bytes32 h1 = _policyHashOf(defaultMandate(), both);
+        _queuePayeeAndWait(p2, true);
+        vm.prank(owner);
+        vm.expectEmit(false, false, false, true, address(vault));
+        emit PolicyHashUpdated(h1);
+        vault.applyPayee(p2, true);
+        assertEq(vault.policyHash(), h1);
+        assertTrue(h1 != h0);
+        assertEq(vault.mandateHash(), m0); // mandateHash unchanged by payee changes
+
+        TokenConfig memory c = _tokenCfg(2000);
+        _queueTokenAndWait(address(nvda), c);
+        vm.prank(owner);
+        vault.applyTokenConfig(address(nvda), c);
+        bytes32 h2 = vault.policyHash();
+        assertTrue(h2 != h1);
+        assertEq(h2, _policyHashOf(defaultMandate(), both));
+        assertEq(vault.mandateHash(), m0);
+
+        Mandate memory m = defaultMandate();
+        m.dailyCapUsd = 90e6;
+        _queueMandateAndWait(m);
+        vm.prank(owner);
+        vault.applyMandate(m);
+        assertEq(vault.policyHash(), _policyHashOf(m, both));
+        assertEq(vault.mandateHash(), keccak256(abi.encode(m)));
+    }
+
+    // ---------------------------------------------------------------- final review: M4 owner funding
+
+    function test_fundIsNotCountedAsRevenue() public {
+        usdc.mint(owner, 100e6);
+        vm.startPrank(owner);
+        usdc.approve(address(vault), 100e6);
+        vm.expectEmit(false, false, false, true, address(vault));
+        emit Funded(100e6);
+        vault.fund(100e6);
+        vm.stopPrank();
+        assertEq(usdc.balanceOf(address(vault)), 300e6);
+        assertEq(vault.recordedUsdc(), 300e6);
+        assertEq(vault.notifyRevenue(), 0);
+    }
+
+    function test_fundKeepsPendingRevenue() public {
+        usdc.mint(address(vault), 10e6); // unrecorded revenue lands first
+        usdc.mint(owner, 50e6);
+        vm.startPrank(owner);
+        usdc.approve(address(vault), 50e6);
+        vault.fund(50e6);
+        vm.stopPrank();
+        assertEq(vault.notifyRevenue(), 10e6);
+        assertEq(vault.recordedUsdc(), 260e6);
     }
 }

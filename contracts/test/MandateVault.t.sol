@@ -228,12 +228,6 @@ contract MandateVaultTest is VaultFixture {
         return TokenConfig({allowed: true, feed: address(feed), pool: address(pool), maxWeightBps: 4000});
     }
 
-    function _queueAndWait(bytes32 h) internal {
-        vm.prank(owner);
-        vault.queueChange(h);
-        vm.warp(block.timestamp + 24 hours);
-    }
-
     /// @dev external wrapper so vm.expectRevert targets the vault constructor revert, not helper internals
     function deployExternal(Mandate memory m, TokenConfig memory c) external returns (MandateVault) {
         return _deploy(m, c);
@@ -292,14 +286,14 @@ contract MandateVaultTest is VaultFixture {
     function test_applyTokenConfigRejectsInvalidFeedAndPool() public {
         TokenConfig memory c = _goodConfig();
         c.feed = makeAddr("noCodeFeed");
-        _queueAndWait(vault.tokenChangeHash(address(nvda), c));
+        _queueTokenAndWait(address(nvda), c);
         vm.prank(owner);
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         vault.applyTokenConfig(address(nvda), c);
 
         TokenConfig memory d = _goodConfig();
         d.pool = address(new MockPool(address(usdc), makeAddr("otherToken")));
-        _queueAndWait(vault.tokenChangeHash(address(nvda), d));
+        _queueTokenAndWait(address(nvda), d);
         vm.prank(owner);
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         vault.applyTokenConfig(address(nvda), d);
@@ -308,7 +302,7 @@ contract MandateVaultTest is VaultFixture {
     function test_applyMandateRejectsCalendarWithoutCode() public {
         Mandate memory m = defaultMandate();
         m.calendar = makeAddr("noCodeCalendar");
-        _queueAndWait(vault.mandateChangeHash(m));
+        _queueMandateAndWait(m);
         vm.prank(owner);
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         vault.applyMandate(m);
@@ -317,7 +311,7 @@ contract MandateVaultTest is VaultFixture {
     function test_applyMandateAcceptsValidMandateAfterTimelock() public {
         Mandate memory m = defaultMandate();
         m.perTradeCapUsd = 10e6;
-        _queueAndWait(vault.mandateChangeHash(m));
+        _queueMandateAndWait(m);
         vm.prank(owner);
         vault.applyMandate(m);
         assertEq(vault.mandate().perTradeCapUsd, 10e6);
@@ -325,7 +319,7 @@ contract MandateVaultTest is VaultFixture {
 
     function test_disallowedTokenConfigSkipsFeedPoolValidation() public {
         TokenConfig memory c = TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0});
-        _queueAndWait(vault.tokenChangeHash(address(nvda), c));
+        _queueTokenAndWait(address(nvda), c);
         vm.prank(owner);
         vault.applyTokenConfig(address(nvda), c);
         (bool allowed,,,) = vault.tokenConfig(address(nvda));
@@ -340,7 +334,7 @@ contract MandateVaultTest is VaultFixture {
         MockPool poolB = new MockPool(address(usdc), address(aapl));
         TokenConfig memory c =
             TokenConfig({allowed: true, feed: address(feedB), pool: address(poolB), maxWeightBps: 4000});
-        _queueAndWait(vault.tokenChangeHash(address(aapl), c));
+        _queueTokenAndWait(address(aapl), c);
         vm.prank(owner);
         vault.applyTokenConfig(address(aapl), c);
     }
@@ -354,8 +348,8 @@ contract MandateVaultTest is VaultFixture {
         });
         TokenConfig memory del = TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0});
         vm.startPrank(owner);
-        vault.queueChange(vault.tokenChangeHash(address(aapl), add));
-        vault.queueChange(vault.tokenChangeHash(address(aapl), del));
+        vault.queueTokenConfig(address(aapl), add);
+        vault.queueTokenConfig(address(aapl), del);
         vm.stopPrank();
         vm.warp(block.timestamp + 24 hours);
         vm.startPrank(owner);
@@ -405,13 +399,13 @@ contract MandateVaultTest is VaultFixture {
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         this.deployExternal(m, _goodConfig());
 
-        _queueAndWait(vault.mandateChangeHash(m));
+        _queueMandateAndWait(m);
         vm.prank(owner);
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         vault.applyMandate(m);
 
         m.maxSlippageBps = 10_000; // boundary is accepted
-        _queueAndWait(vault.mandateChangeHash(m));
+        _queueMandateAndWait(m);
         vm.prank(owner);
         vault.applyMandate(m);
     }
@@ -424,7 +418,7 @@ contract MandateVaultTest is VaultFixture {
         vm.expectRevert(MandateVault.ZeroAddress.selector);
         new MandateVault(owner, executor, address(usdc), address(registry), m, toks, cfgs, payees);
 
-        _queueAndWait(vault.payeeChangeHash(address(0), true));
+        _queuePayeeAndWait(address(0), true);
         vm.prank(owner);
         vm.expectRevert(MandateVault.ZeroAddress.selector);
         vault.applyPayee(address(0), true);
@@ -433,7 +427,7 @@ contract MandateVaultTest is VaultFixture {
     function test_reapplyingTokenConfigDoesNotAbsorbMultiplierChange() public {
         nvda.setUiMultiplier(1.05e18); // changed, but never synced into the vault
         TokenConfig memory c = _goodConfig();
-        _queueAndWait(vault.tokenChangeHash(address(nvda), c));
+        _queueTokenAndWait(address(nvda), c);
         vm.prank(owner);
         vault.applyTokenConfig(address(nvda), c);
         assertEq(vault.lastMultiplier(address(nvda)), 1.05e18);
