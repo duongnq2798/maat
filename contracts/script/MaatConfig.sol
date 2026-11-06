@@ -9,7 +9,8 @@ library MaatConfig {
     /// Credit defaults (spec §3.2). targetHealthFactor already includes the spec's "targetHF + buffer".
     uint64 internal constant MIN_HEALTH_FACTOR = 1.5e18;
     uint64 internal constant TARGET_HEALTH_FACTOR = 2e18;
-    uint32 internal constant DERISK_WINDOW = 4 hours;
+    // 8h: starts Fri 12:00 ET, so REGULAR gets 4 trading hours (12:00-16:00) at targetHF before the 20:00 freeze.
+    uint32 internal constant DERISK_WINDOW = 8 hours;
 
     function defaultMandate(SessionMode mode, address calendar, address swapAdapter, address creditAdapter)
         internal
