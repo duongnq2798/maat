@@ -81,7 +81,8 @@ export function evaluatePolicy(
   // 4. SUPPLY
   if (credit) {
     for (const w of weights) {
-      if (big(w.walletUsd6) && w.weightBps <= w.targetBps + params.driftBps) {
+      const allowed = priced.find((p) => p.symbol === w.symbol)!.config.allowed;
+      if (allowed && big(w.walletUsd6) && w.weightBps <= w.targetBps + params.driftBps) {
         out.push({ action: "SUPPLY", symbol: w.symbol, amountUsd6: w.walletUsd6, why: `${usd(w.walletUsd6)} of ${w.symbol} idle in the vault; use it as collateral` });
       }
     }
@@ -103,7 +104,7 @@ export function evaluatePolicy(
   // 6. Rebalance up
   for (const w of weights) {
     const t = priced.find((p) => p.symbol === w.symbol)!;
-    if (t.price8 === null || w.weightBps >= w.targetBps - params.driftBps) continue;
+    if (!t.config.allowed || t.price8 === null || w.weightBps >= w.targetBps - params.driftBps) continue;
     const amt = minBig(ofEquity(w.targetBps - w.weightBps), cap, spendable);
     if (!big(amt)) continue;
     out.push({ action: "BUY", symbol: w.symbol, amountUsd6: amt, why: `${w.symbol} ${pct(w.weightBps)} vs target ${pct(w.targetBps)} (drift ${(w.driftBps / 100).toFixed(1)}pp)` });

@@ -142,6 +142,21 @@ describe("evaluatePolicy", () => {
     expect(v.suggestions.some((s) => s.symbol === "GOOGLc")).toBe(false);
   });
 
+  it("does not supply an exit-only token (config.allowed false)", () => {
+    const t = tok(0, 20_000_000n);
+    t.config = { ...t.config, allowed: false };
+    const v = evaluatePolicy(state({ tokens: [t, tok(1, 0n), tok(2, 0n)], usdcBalance: 80_000_000n }), noBills);
+    expect(v.suggestions.some((s) => s.action === "SUPPLY")).toBe(false);
+  });
+
+  it("does not buy an exit-only underweight token but still buys the others", () => {
+    const t = tok(1, 0n);
+    t.config = { ...t.config, allowed: false };
+    const v = evaluatePolicy(state({ tokens: [tok(0, 0n), t, tok(2, 0n)] }), noBills);
+    const buys = v.suggestions.filter((s) => s.action === "BUY").map((b) => b.symbol);
+    expect(buys).toEqual(["NVDAc", "AAPLc"]);
+  });
+
   it("ignores dust below minTradeUsd6", () => {
     const v = evaluatePolicy(state({ usdcBalance: 4_000_000n }), noBills); // spendable 0.5 -> no buys
     expect(v.suggestions.filter((s) => s.action === "BUY")).toEqual([]);
