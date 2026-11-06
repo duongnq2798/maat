@@ -6,10 +6,11 @@ import { buildRuntime } from "./runtime.js";
 
 const args = new Set(process.argv.slice(2));
 const cfg = loadConfig();
-const deps = await buildRuntime(cfg, { forceDryRun: args.has("--dry-run") });
-console.log(`maat agent: mode=${deps.mode} vault=${cfg.vault} executor=${cfg.executor} data=${cfg.dataDir}`);
+// Lock before building the runtime: a second process must not even open the Store or connect to CDP.
 const release = await acquireLock(cfg.dataDir);
 try {
+  const deps = await buildRuntime(cfg, { forceDryRun: args.has("--dry-run") });
+  console.log(`maat agent: mode=${deps.mode} vault=${cfg.vault} executor=${cfg.executor} data=${cfg.dataDir}`);
   if (args.has("--once")) {
     const r = await runOnce(deps);
     console.log(JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2));
