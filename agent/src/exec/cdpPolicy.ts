@@ -1,6 +1,6 @@
 import type { Address } from "viem";
 
-/** CDP policy for the executor account (research/05 §6). Accept-only rules make each listed operation default-deny. */
+/** CDP policy for the executor account. Accept-only rules make each listed operation default-deny. */
 export function executorPolicy(vault: Address) {
   return {
     scope: "account" as const,

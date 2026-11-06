@@ -1,7 +1,7 @@
 import { getAddress, keccak256, toBytes, type Address, type Hex } from "viem";
 import type { TxRequest, TxSender } from "./sender.js";
 
-/** The slice of CdpClient the runtime uses (research/05 §3-4). Tests pass a fake. */
+/** The slice of CdpClient the runtime uses. Tests pass a fake. */
 export interface CdpLike {
   evm: {
     getAccount(o: { name: string }): Promise<{ address: Address }>;
