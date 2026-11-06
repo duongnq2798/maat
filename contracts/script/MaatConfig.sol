@@ -47,4 +47,16 @@ library MaatConfig {
         toks[2] = A.AAPLC;
         cfgs[2] = TokenConfig({allowed: true, feed: A.AAPL_FEED, pool: A.AAPLC_USDC_POOL, maxWeightBps: 4000});
     }
+
+    /// Aave V4 MAG7 reserves for the basket, in basket order.
+    function creditReserves() internal pure returns (address[] memory toks, uint256[] memory ids) {
+        toks = new address[](3);
+        ids = new uint256[](3);
+        toks[0] = A.NVDAC;
+        ids[0] = A.AAVE_RESERVE_NVDAC;
+        toks[1] = A.GOOGLC;
+        ids[1] = A.AAVE_RESERVE_GOOGLC;
+        toks[2] = A.AAPLC;
+        ids[2] = A.AAVE_RESERVE_AAPLC;
+    }
 }
