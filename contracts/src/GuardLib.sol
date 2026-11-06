@@ -31,19 +31,21 @@ library GuardLib {
         uint256 multiplierChangedAt;
     }
 
+    /// @notice A token held as lending collateral: checks 2, 5 and 6 only (no trade, so no premium or path).
+    struct CollateralCheck {
+        address token;
+        address feed;
+        uint32 maxStaleness;
+        uint32 multiplierCooldown;
+        uint256 lastMultiplier;
+        uint256 multiplierChangedAt;
+    }
+
     function checkMarket(MarketCheck memory c) internal view returns (Reason, uint256) {
         IB20Asset t = IB20Asset(c.token);
-        try t.isPaused(B20Constants.FEATURE_TRANSFER) returns (bool paused) {
-            if (paused) return (Reason.TOKEN_PAUSED, 0);
-        } catch {
-            return (Reason.TOKEN_PAUSED, 0);
-        }
+        if (tokenPaused(c.token)) return (Reason.TOKEN_PAUSED, 0);
         if (!transferPathAuthorized(c)) return (Reason.POLICY_BLOCKED, 0);
-        try MarketCalendar(c.calendar).isOpen(block.timestamp, c.sessionMode) returns (bool open) {
-            if (!open) return (Reason.MARKET_CLOSED, 0);
-        } catch {
-            return (Reason.MARKET_CLOSED, 0);
-        }
+        if (!marketOpen(c.calendar, c.sessionMode)) return (Reason.MARKET_CLOSED, 0);
 
         (bool ok, uint256 oracle, uint256 age) = PriceLib.readFeed(c.feed);
         if (!ok) return (Reason.BAD_PRICE, 0);
@@ -57,6 +59,59 @@ library GuardLib {
         if (!tok) return (Reason.BAD_PRICE, 0);
         if (PriceLib.premiumBps(dex, oracle) > c.maxPremiumBps) return (Reason.PREMIUM_TOO_HIGH, 0);
         return (Reason.OK, oracle);
+    }
+
+    /// @dev Fail-closed: a reverting isPaused() counts as paused.
+    function tokenPaused(address token) internal view returns (bool) {
+        try IB20Asset(token).isPaused(B20Constants.FEATURE_TRANSFER) returns (bool p) {
+            return p;
+        } catch {
+            return true;
+        }
+    }
+
+    /// @dev Fail-closed: a reverting calendar counts as closed.
+    function marketOpen(address calendar, SessionMode mode) internal view returns (bool) {
+        try MarketCalendar(calendar).isOpen(block.timestamp, mode) returns (bool open) {
+            return open;
+        } catch {
+            return false;
+        }
+    }
+
+    /// @notice Collateral is safe to borrow against: not paused, live price, no multiplier change pending.
+    /// @dev A feed address without code (a token whose market was removed) is BAD_PRICE, never a revert.
+    function collateralHealthy(CollateralCheck memory c) internal view returns (Reason) {
+        if (tokenPaused(c.token)) return Reason.TOKEN_PAUSED;
+        if (c.feed.code.length == 0) return Reason.BAD_PRICE;
+        (bool ok,, uint256 age) = PriceLib.readFeed(c.feed);
+        if (!ok) return Reason.BAD_PRICE;
+        if (age > c.maxStaleness) return Reason.FEED_STALE;
+        if (multiplierBlocked(IB20Asset(c.token), c.lastMultiplier, c.multiplierChangedAt, c.multiplierCooldown)) {
+            return Reason.MULTIPLIER_COOLDOWN;
+        }
+        return Reason.OK;
+    }
+
+    /// @notice Every sender, receiver and executor leg of a multi-hop B20 transfer is authorized. tx.origin is
+    /// always checked as an executor too, as in transferPathAuthorized.
+    function transferable(
+        address token,
+        address registry,
+        address[] memory senders,
+        address[] memory receivers,
+        address[] memory executors
+    ) internal view returns (bool) {
+        for (uint256 i; i < senders.length; ++i) {
+            if (!authorized(token, registry, B20Constants.TRANSFER_SENDER_POLICY, senders[i])) return false;
+        }
+        for (uint256 i; i < receivers.length; ++i) {
+            if (!authorized(token, registry, B20Constants.TRANSFER_RECEIVER_POLICY, receivers[i])) return false;
+        }
+        for (uint256 i; i < executors.length; ++i) {
+            if (!authorized(token, registry, B20Constants.TRANSFER_EXECUTOR_POLICY, executors[i])) return false;
+        }
+        return authorized(token, registry, B20Constants.TRANSFER_EXECUTOR_POLICY, tx.origin);
     }
 
     /// @dev Fail-closed: a reverting uiMultiplier()/effectiveAt() counts as blocked.

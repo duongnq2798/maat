@@ -17,10 +17,35 @@ contract GuardHarness {
     function check(GuardLib.MarketCheck memory c) external view returns (Reason, uint256) {
         return GuardLib.checkMarket(c);
     }
+
+    function collateral(GuardLib.CollateralCheck memory c) external view returns (Reason) {
+        return GuardLib.collateralHealthy(c);
+    }
+
+    function open(address calendar, SessionMode mode) external view returns (bool) {
+        return GuardLib.marketOpen(calendar, mode);
+    }
+
+    function paused(address token) external view returns (bool) {
+        return GuardLib.tokenPaused(token);
+    }
+
+    function transferable(
+        address token,
+        address registry,
+        address[] memory senders,
+        address[] memory receivers,
+        address[] memory executors
+    ) external view returns (bool) {
+        return GuardLib.transferable(token, registry, senders, receivers, executors);
+    }
 }
 
 contract GuardLibTest is Test {
     uint256 internal constant THU_1030_ET = 1793892600;
+    uint256 internal constant SAT_1300_ET = 1793469600;
+    address internal constant HUB = address(0x4B);
+    address internal constant SPOKE = address(0x5B);
     address internal constant VAULT = address(0xA11CE);
     address internal constant ADAPTER = address(0xADA);
     address internal constant ORIGIN = address(0x0816);
@@ -259,5 +284,136 @@ contract GuardLibTest is Test {
         GuardLib.MarketCheck memory c = _c();
         c.isBuy = false;
         _expect(c, Reason.OK);
+    }
+
+    // ------------------------------------------------------------------ credit helpers (Plan 2A)
+
+    function _cc() internal view returns (GuardLib.CollateralCheck memory) {
+        return GuardLib.CollateralCheck({
+            token: address(nvda),
+            feed: address(feed),
+            maxStaleness: 3600,
+            multiplierCooldown: 1 days,
+            lastMultiplier: 1e18,
+            multiplierChangedAt: 0
+        });
+    }
+
+    function _expectCollateral(GuardLib.CollateralCheck memory c, Reason want) internal view {
+        assertEq(uint8(h.collateral(c)), uint8(want));
+    }
+
+    function test_collateralHealthy() public view {
+        _expectCollateral(_cc(), Reason.OK);
+    }
+
+    function test_collateralPaused() public {
+        nvda.setPaused(B20Constants.FEATURE_TRANSFER, true);
+        _expectCollateral(_cc(), Reason.TOKEN_PAUSED);
+    }
+
+    function test_collateralPauseReadFailsClosed() public {
+        nvda.setReverts(true, false, false, false);
+        _expectCollateral(_cc(), Reason.TOKEN_PAUSED);
+        assertTrue(h.paused(address(nvda)));
+    }
+
+    function test_collateralFeedWithoutCodeIsBadPrice() public view {
+        GuardLib.CollateralCheck memory c = _cc();
+        c.feed = address(0);
+        _expectCollateral(c, Reason.BAD_PRICE);
+    }
+
+    function test_collateralNegativePriceIsBadPrice() public {
+        feed.set(-1, THU_1030_ET);
+        _expectCollateral(_cc(), Reason.BAD_PRICE);
+    }
+
+    function test_collateralStaleFeed() public {
+        feed.set(200e8, THU_1030_ET - 3601);
+        _expectCollateral(_cc(), Reason.FEED_STALE);
+    }
+
+    function test_collateralMultiplierChange() public {
+        nvda.setUiMultiplier(2e18);
+        _expectCollateral(_cc(), Reason.MULTIPLIER_COOLDOWN);
+    }
+
+    function test_collateralIgnoresMarketHours() public {
+        vm.warp(SAT_1300_ET);
+        feed.set(200e8, SAT_1300_ET);
+        _expectCollateral(_cc(), Reason.OK);
+    }
+
+    function test_marketOpenInSession() public view {
+        assertTrue(h.open(address(calendar), SessionMode.REGULAR));
+    }
+
+    function test_marketClosedOnSaturday() public {
+        vm.warp(SAT_1300_ET);
+        assertFalse(h.open(address(calendar), SessionMode.REGULAR));
+        assertFalse(h.open(address(calendar), SessionMode.FEED_24_5));
+    }
+
+    function test_revertingCalendarCountsAsClosed() public {
+        assertFalse(h.open(address(new MockReverter()), SessionMode.REGULAR));
+    }
+
+    function test_tokenNotPaused() public view {
+        assertFalse(h.paused(address(nvda)));
+    }
+
+    /// @dev Policy for `scope` that authorizes every account in this test except `blocked`.
+    function _blockOnly(bytes32 scope, address blocked) internal {
+        uint64 id = nextPolicyId++;
+        nvda.setPolicyId(scope, id);
+        address[5] memory all = [VAULT, ADAPTER, HUB, SPOKE, ORIGIN];
+        for (uint256 i; i < all.length; ++i) {
+            registry.setAuthorized(id, all[i], all[i] != blocked);
+        }
+    }
+
+    /// @dev Supply-shaped path: vault -> adapter -> hub, pulled by the adapter then the spoke.
+    function _transferable() internal returns (bool) {
+        address[] memory s = new address[](2);
+        s[0] = VAULT;
+        s[1] = ADAPTER;
+        address[] memory r = new address[](2);
+        r[0] = ADAPTER;
+        r[1] = HUB;
+        address[] memory e = new address[](2);
+        e[0] = ADAPTER;
+        e[1] = SPOKE;
+        vm.prank(address(this), ORIGIN);
+        return h.transferable(address(nvda), address(registry), s, r, e);
+    }
+
+    function test_transferableWhenEveryLegIsAllowed() public {
+        assertTrue(_transferable());
+    }
+
+    function test_transferableBlockedSender() public {
+        _blockOnly(B20Constants.TRANSFER_SENDER_POLICY, ADAPTER);
+        assertFalse(_transferable());
+    }
+
+    function test_transferableBlockedReceiver() public {
+        _blockOnly(B20Constants.TRANSFER_RECEIVER_POLICY, HUB);
+        assertFalse(_transferable());
+    }
+
+    function test_transferableBlockedExecutor() public {
+        _blockOnly(B20Constants.TRANSFER_EXECUTOR_POLICY, SPOKE);
+        assertFalse(_transferable());
+    }
+
+    function test_transferableChecksTxOrigin() public {
+        _blockOnly(B20Constants.TRANSFER_EXECUTOR_POLICY, ORIGIN);
+        assertFalse(_transferable());
+    }
+
+    function test_transferablePolicyReadFailsClosed() public {
+        nvda.setReverts(false, true, false, false);
+        assertFalse(_transferable());
     }
 }
