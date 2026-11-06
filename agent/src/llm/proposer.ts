@@ -62,7 +62,11 @@ export class ClaudeProposer implements Proposer {
       const cost = costUsd6(res.model, res.usage);
       if (res.stop_reason === "refusal") return { ok: false, error: "claude refused", costUsd6: cost };
       if (res.stop_reason === "max_tokens") return { ok: false, error: "claude output truncated", costUsd6: cost };
+      // A `fallback` block marks where one model's output gives way to the next: the declining model's text (possibly
+      // a partial JSON fragment) precedes it, so only the text after the last marker is the answer.
+      const lastFallback = res.content.map((b) => b.type).lastIndexOf("fallback");
       const text = res.content
+        .slice(lastFallback + 1)
         .filter((b) => b.type === "text")
         .map((b) => b.text ?? "")
         .join("");

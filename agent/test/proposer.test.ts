@@ -44,6 +44,22 @@ describe("ClaudeProposer", () => {
     });
   });
 
+  it("uses only the text after the last fallback block", async () => {
+    const batch = '{"summary":"buy NVDAc","intents":[{"action":"BUY","symbol":"NVDAc","amountUsd":20,"rationale":"underweight"}]}';
+    const create: CreateMessage = async () => ({
+      model: "claude-sonnet-5-5",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: '{"summ' }, { type: "fallback" }, { type: "text", text: batch }],
+      usage,
+    });
+    const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
+    expect(out).toMatchObject({
+      ok: true,
+      summary: "buy NVDAc",
+      proposals: [{ action: "BUY", symbol: "NVDAc", amountUsd: 20, rationale: "underweight" }],
+    });
+  });
+
   it("skips invalid JSON but still bills it", async () => {
     const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create: reply("not json") }).propose(await input());
     expect(out.ok).toBe(false);
