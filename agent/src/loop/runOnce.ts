@@ -1,23 +1,36 @@
 import { randomUUID } from "node:crypto";
-import { getAddress, parseEventLogs, zeroAddress, type Address, type Hex, type PublicClient, type TransactionReceipt } from "viem";
+import {
+  getAbiItem,
+  getAddress,
+  parseEventLogs,
+  TransactionNotFoundError,
+  zeroAddress,
+  type Address,
+  type Hex,
+  type Log,
+  type PublicClient,
+  type TransactionReceipt,
+} from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
 import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
-import type { TxSender } from "../exec/sender.js";
+import { SendRefused, type GuardedSender } from "../exec/sender.js";
 import { buildIntent, type Proposal } from "../intent.js";
 import type { Journal } from "../ledger/journal.js";
-import type { Store } from "../ledger/store.js";
+import type { PendingTx, Store } from "../ledger/store.js";
 import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
 import { gate } from "../refusals.js";
 import { REASONS, type ReasonName } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
-/** What runOnce needs from the chain around a send. */
-export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas">;
+/** What runOnce needs from the chain around a send: gas estimates, receipts, and pending-tx reconciliation. */
+export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "readContract">;
 export const BILL_MIN_USD6 = 100_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
+/** A pending send with no onchain trace is given up after this many blocks (controller ruling: 300, ~10 min on Base). */
+export const PENDING_WINDOW_BLOCKS = 300n;
 
 export interface RunDeps {
   vault: Address;
@@ -30,7 +43,8 @@ export interface RunDeps {
   previewClient: PreviewClient;
   txClient: TxClient;
   proposer: Proposer;
-  sender: TxSender | null;
+  /** Required in live mode. Only a GuardedSender: the vault-only, gas-bounded, Builder-Code path. */
+  sender: GuardedSender | null;
   store: Store;
   journal: Pick<Journal, "append">;
   policy?: PolicyParams;
@@ -39,7 +53,7 @@ export interface RunDeps {
 
 export interface RunReport {
   runId: string;
-  status: "no-state" | "wrong-executor" | "done" | "halted";
+  status: "no-state" | "wrong-executor" | "pending-tx" | "done" | "halted";
   block?: bigint;
   marketOpen?: boolean | null;
   sent: Hex[];
@@ -48,11 +62,16 @@ export interface RunReport {
   haltReason?: string;
 }
 
+type Decision = { allowed: boolean; reason: string };
+
 class Halt extends Error {}
 
-function decisionOf(receipt: TransactionReceipt, vault: Address, id: Hex): { allowed: boolean; reason: string } | undefined {
-  const logs = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: receipt.logs });
-  const l = logs.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId === id);
+const DECISION_EVENT = getAbiItem({ abi: mandateVaultAbi, name: "Decision" });
+const firstLine = (e: unknown) => (e as Error).message.split("\n")[0];
+
+function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
+  const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
+  const l = parsed.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId.toLowerCase() === id.toLowerCase());
   return l && { allowed: l.args.allowed, reason: REASONS[Number(l.args.reason)] ?? `REASON_${l.args.reason}` };
 }
 
@@ -63,6 +82,7 @@ function multiplierSynced(receipt: TransactionReceipt, vault: Address, token: Ad
 }
 
 export async function runOnce(d: RunDeps): Promise<RunReport> {
+  if (d.mode === "live" && d.sender === null) throw new Error("live mode needs a sender");
   const runId = d.runId ?? `${Date.now()}-${randomUUID().slice(0, 8)}`;
   const report: RunReport = { runId, status: "done", sent: [], skipped: 0, proposals: 0 };
   const j = d.journal;
@@ -82,7 +102,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     return { ...report, status: "wrong-executor" };
   }
   const day = s.day;
-  const live = d.mode === "live" && d.sender !== null;
+  const sender = d.mode === "live" ? d.sender : null;
 
   const reread = async () => {
     try {
@@ -92,38 +112,110 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
   };
 
+  const checkCap = () => {
+    if (d.store.txCount(day) >= d.maxTxPerDay) throw new Halt(`daily tx cap ${d.maxTxPerDay} reached`);
+  };
+
   // The estimate goes through the public client as the executor; a failed estimate halts (no fallback limit).
   const gasFor = async (fn: GasFunction, data: Hex): Promise<bigint> => {
     try {
       return gasLimit(fn, await d.txClient.estimateGas({ account: d.executor, to: d.vault, data }));
     } catch (e) {
-      throw new Halt(`gas estimate failed for ${fn}: ${(e as Error).message.split("\n")[0]}`);
+      throw new Halt(`gas estimate failed for ${fn}: ${firstLine(e)}`);
     }
   };
 
-  const sendAndWait = async (fn: GasFunction, data: Hex, key: string): Promise<TransactionReceipt> => {
-    if (d.store.txCount(day) >= d.maxTxPerDay) throw new Halt(`daily tx cap ${d.maxTxPerDay} reached`);
-    const gas = await gasFor(fn, data);
-    const hash = await d.sender!.send({ to: d.vault, data, idempotencyKey: key, gas });
-    d.store.recordTx(day);
-    report.sent.push(hash);
-    const receipt = await d.txClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
-    if (receipt.status !== "success") throw new Halt(`tx ${hash} reverted`);
-    return receipt;
+  const receiptOf = async (hash: Hex): Promise<TransactionReceipt> => {
+    try {
+      return await d.txClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+    } catch (e) {
+      throw new Halt(`no receipt for ${hash}: ${firstLine(e)}`);
+    }
+  };
+
+  /** Applies a mined execute()'s Decision to the store, clears the pending entry, and checks it against the preview. */
+  const settle = async (p: PendingTx, decision: Decision): Promise<void> => {
+    if (p.action === "PAY_EXPENSE" && decision.allowed) d.store.recordPaid(BigInt(p.amount));
+    if (p.gateKind === "log-refusal") d.store.recordRefusalLog(BigInt(p.day), p.preview as ReasonName);
+    d.store.clearPending(p.intentId);
+    await d.store.save();
+    if (decision.reason !== p.preview) {
+      const message = `mismatch: preview ${p.preview}, vault ${decision.reason}`;
+      await j.append({ kind: "mismatch", runId, intentId: p.intentId, preview: p.preview, decision, message });
+      // The guard and the vault disagree about an action we meant to take: stop and let a human look.
+      if (p.gateKind === "execute") throw new Halt(message);
+    }
+  };
+
+  /** Settles a send left over from an earlier round. "pending" means it may still land: do nothing this round. */
+  const reconcile = async (p: PendingTx): Promise<"settled" | "pending"> => {
+    const base = { kind: "reconcile" as const, runId, intentId: p.intentId, action: p.action, ...(p.txHash ? { txHash: p.txHash } : {}) };
+    const drop = async (note: string) => {
+      await j.append({ ...base, outcome: "dropped", note });
+      d.store.clearPending(p.intentId);
+      await d.store.save();
+      return "settled" as const;
+    };
+    const wait = async (note: string) => {
+      await j.append({ ...base, outcome: "pending", note });
+      return "pending" as const;
+    };
+
+    // A known transaction is looked up first, so it cannot be mined between the usedIntent read and this one.
+    let tx: { blockNumber: bigint | null } | null = null;
+    if (p.txHash) {
+      try {
+        tx = await d.txClient.getTransaction({ hash: p.txHash });
+      } catch (e) {
+        if (!(e instanceof TransactionNotFoundError)) throw e;
+      }
+    }
+    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
+    if (used) {
+      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });
+      const decision = decisionIn(logs, d.vault, p.intentId);
+      if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block}`);
+      await j.append({ ...base, outcome: "applied", decision });
+      await settle(p, decision);
+      return "settled";
+    }
+    if (tx && tx.blockNumber !== null) {
+      const r = await receiptOf(p.txHash!);
+      if (r.status === "reverted") return drop("tx reverted; the intent was not used");
+      return wait("tx mined but usedIntent is still false; the RPC may lag");
+    }
+    if (tx) return wait("tx is still in the mempool");
+    const age = s.blockNumber - BigInt(p.block);
+    if (age < PENDING_WINDOW_BLOCKS) return wait(`no onchain trace yet (${age} of ${PENDING_WINDOW_BLOCKS} blocks)`);
+    return drop(`intent not used and no tx found after ${age} blocks`);
   };
 
   try {
+    for (const p of [...d.store.pending()]) {
+      if ((await reconcile(p)) === "pending") {
+        report.status = "pending-tx";
+        return report;
+      }
+    }
+
     // Housekeeping: record multiplier changes the vault would otherwise only see on a trade of that token.
     for (const t of s.tokens) {
       const hasMarket = t.config.feed !== zeroAddress || t.config.pool !== zeroAddress;
-      if (!hasMarket || t.uiMultiplier === null || t.uiMultiplier === t.lastMultiplier) continue;
-      if (!live) {
+      if (!hasMarket || t.uiMultiplier === null || t.lastMultiplier === null || t.uiMultiplier === t.lastMultiplier) continue;
+      if (!sender) {
         await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, note: "dry-run" });
         continue;
       }
-      const r = await sendAndWait("syncMultiplier", encodeSyncMultiplier(t.address), `sync:${runId}:${t.address}`);
-      await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, txHash: r.transactionHash, gasUsed: r.gasUsed });
-      if (!multiplierSynced(r, d.vault, t.address)) throw new Halt(`syncMultiplier ${t.address}: no MultiplierChangeDetected in ${r.transactionHash}`);
+      checkCap();
+      const data = encodeSyncMultiplier(t.address);
+      const gas = await gasFor("syncMultiplier", data);
+      d.store.recordTx(day);
+      const hash = await sender.send({ to: d.vault, data, idempotencyKey: `sync:${runId}:${t.address}`, gas });
+      report.sent.push(hash);
+      const r = await receiptOf(hash);
+      if (r.status !== "success") throw new Halt(`tx ${hash} reverted`);
+      await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, txHash: hash, gas, gasUsed: r.gasUsed });
+      if (!multiplierSynced(r, d.vault, t.address)) throw new Halt(`syncMultiplier ${t.address}: no MultiplierChangeDetected in ${hash}`);
     }
     let dirty = report.sent.length > 0;
     if (dirty) {
@@ -172,7 +264,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         report.skipped++;
         continue;
       }
-      const preview = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
+      const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
+      const preview = pv.result;
       const logged = preview !== "OK" && preview !== "UNKNOWN" && d.store.hasLoggedRefusal(day, preview);
       const g = gate(preview, logged);
       const row = {
@@ -186,18 +279,53 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         rationale: p.rationale,
         rationaleHash: b.intent.rationaleHash,
         preview,
+        ...(pv.error === undefined ? {} : { previewError: pv.error }),
       };
-      if (!g.send || !live) {
+      if (!g.send || !sender) {
         await j.append({ ...row, gate: g.send ? `dry-run: would ${g.kind}` : g.why });
         report.skipped++;
         continue;
       }
-      const receipt = await sendAndWait("execute", encodeExecute(b.intent), b.intent.id);
+
+      // Persist the intent as pending before it can leave the process, so a crash, a receipt timeout or a send that
+      // fails after broadcast is reconciled next round instead of being billed or logged twice.
+      checkCap();
+      const data = encodeExecute(b.intent);
+      const gas = await gasFor("execute", data);
+      const entry: PendingTx = {
+        intentId: b.intent.id,
+        action: p.action,
+        amount: b.intent.amount.toString(),
+        gateKind: g.kind,
+        preview,
+        day: day.toString(),
+        block: s.blockNumber.toString(),
+      };
+      d.store.addPending(entry);
+      d.store.recordTx(day);
+      await d.store.save();
+      let hash: Hex;
+      try {
+        hash = await sender.send({ to: d.vault, data, idempotencyKey: b.intent.id, gas });
+      } catch (e) {
+        if (e instanceof SendRefused) d.store.clearPending(entry.intentId); // refused before anything was broadcast
+        throw e;
+      }
+      report.sent.push(hash);
+      d.store.setPendingHash(entry.intentId, hash);
+      await d.store.save();
+      await j.append({ ...row, kind: "sent", gate: g.kind, txHash: hash, gas });
+
+      const receipt = await receiptOf(hash);
       dirty = true;
-      const decision = decisionOf(receipt, d.vault, b.intent.id);
-      if (g.kind === "log-refusal") d.store.recordRefusalLog(day, preview as ReasonName);
-      if (p.action === "PAY_EXPENSE" && decision?.allowed) d.store.recordPaid(b.intent.amount);
-      await j.append({ ...row, gate: g.kind, txHash: receipt.transactionHash, ...(decision ? { decision } : {}) });
+      if (receipt.status !== "success") {
+        d.store.clearPending(entry.intentId); // a reverted execute() leaves the intent unused
+        throw new Halt(`tx ${hash} reverted`);
+      }
+      const decision = decisionIn(receipt.logs, d.vault, b.intent.id);
+      if (!decision) throw new Halt(`no Decision for intent ${b.intent.id} in tx ${hash}`);
+      await j.append({ ...row, gate: g.kind, txHash: hash, gasUsed: receipt.gasUsed, decision });
+      await settle(entry, decision);
     }
   } catch (e) {
     report.status = "halted";

@@ -23,7 +23,8 @@ export interface TokenState {
   price8: bigint | null;
   feedAge: bigint | null;
   uiMultiplier: bigint | null;
-  lastMultiplier: bigint;
+  /** null when the vault read failed: housekeeping then skips the token rather than syncing against a fake 0. */
+  lastMultiplier: bigint | null;
   valueUsd6: bigint;
 }
 
@@ -173,7 +174,7 @@ export async function readVaultState(client: StateClient, vault: Address): Promi
       price8,
       feedAge,
       uiMultiplier: opt<bigint>(at(o + 4)),
-      lastMultiplier: opt<bigint>(at(o + 1)) ?? 0n,
+      lastMultiplier: opt<bigint>(at(o + 1)),
       valueUsd6: price8 === null || decimals === 0 ? 0n : valueUsd6(balance + supplied[i]!, price8, decimals),
     };
   });

@@ -1,6 +1,21 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import type { Hex } from "viem";
 import type { ReasonName } from "../types.js";
+
+/** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
+export interface PendingTx {
+  intentId: Hex;
+  txHash?: Hex;
+  action: string;
+  amount: string;
+  gateKind: "execute" | "log-refusal";
+  /** The preview verdict at send time; a log-refusal records this reason as logged. */
+  preview: string;
+  day: string;
+  /** The state block the round read before sending: the age origin and the getLogs lower bound. */
+  block: string;
+}
 
 interface Data {
   version: 1;
@@ -8,11 +23,12 @@ interface Data {
   paidUsd6: string;
   refusals: Record<string, ReasonName[]>; // day -> reasons logged onchain
   txByDay: Record<string, number>;
+  pending: PendingTx[];
 }
 
-const empty = (): Data => ({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {} });
+const empty = (): Data => ({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {}, pending: [] });
 
-/** Agent memory that must survive restarts: compute bill, refusal-log rate limit, daily tx count. */
+/** Agent memory that must survive restarts: compute bill, refusal-log rate limit, daily tx count, unsettled sends. */
 export class Store {
   private constructor(
     private readonly file: string,
@@ -74,6 +90,22 @@ export class Store {
   recordTx(day: bigint): void {
     const k = day.toString();
     this.data.txByDay[k] = (this.data.txByDay[k] ?? 0) + 1;
+  }
+
+  pending(): readonly PendingTx[] {
+    return this.data.pending;
+  }
+
+  addPending(p: PendingTx): void {
+    this.data.pending = [...this.data.pending.filter((x) => x.intentId !== p.intentId), p];
+  }
+
+  setPendingHash(intentId: Hex, txHash: Hex): void {
+    this.data.pending = this.data.pending.map((x) => (x.intentId === intentId ? { ...x, txHash } : x));
+  }
+
+  clearPending(intentId: Hex): void {
+    this.data.pending = this.data.pending.filter((x) => x.intentId !== intentId);
   }
 
   async save(): Promise<void> {

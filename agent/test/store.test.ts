@@ -63,4 +63,25 @@ describe("Store", () => {
     await writeFile(join(d, "state.json"), JSON.stringify({ version: 2 }));
     await expect(Store.open(d)).rejects.toThrow(/unsupported state version/);
   });
+
+  it("keeps pending transactions across reopen until cleared", async () => {
+    const d = await dir();
+    const s = await Store.open(d);
+    const id = `0x${"aa".repeat(32)}` as const;
+    s.addPending({ intentId: id, action: "PAY_EXPENSE", amount: "300000", gateKind: "execute", preview: "OK", day: "100", block: "5" });
+    await s.save();
+    const again = await Store.open(d);
+    expect(again.pending()).toEqual([{ intentId: id, action: "PAY_EXPENSE", amount: "300000", gateKind: "execute", preview: "OK", day: "100", block: "5" }]);
+    again.setPendingHash(id, `0x${"bb".repeat(32)}`);
+    expect(again.pending()[0]?.txHash).toBe(`0x${"bb".repeat(32)}`);
+    again.clearPending(id);
+    expect(again.pending()).toEqual([]);
+  });
+
+  it("opens a state file written before the pending list existed", async () => {
+    const d = await dir();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(d, "state.json"), JSON.stringify({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {} }));
+    expect((await Store.open(d)).pending()).toEqual([]);
+  });
 });

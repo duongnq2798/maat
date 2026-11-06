@@ -70,6 +70,11 @@ describe("readVaultState", () => {
     expect(s.tokens.every((t) => t.supplied === 0n)).toBe(true);
   });
 
+  it("reports an unreadable lastMultiplier as null, not 0", async () => {
+    const s = await readVaultState(standardScene().fail(VAULT, "lastMultiplier").client(), VAULT);
+    expect(s.tokens.every((t) => t.lastMultiplier === null)).toBe(true);
+  });
+
   it("treats an unreadable calendar as unknown", async () => {
     const s = await readVaultState(standardScene().fail(CALENDAR, "isOpen").client(), VAULT);
     expect(s.marketOpen).toBeNull();

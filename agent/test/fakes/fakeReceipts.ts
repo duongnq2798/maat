@@ -7,6 +7,8 @@ import {
   slice,
   type Address,
   type Hex,
+  TransactionNotFoundError,
+  WaitForTransactionReceiptTimeoutError,
   type TransactionReceipt,
 } from "viem";
 import { mandateVaultAbi } from "../../src/abi/index.js";
@@ -16,10 +18,19 @@ import type { FakeSender } from "./fakeSender.js";
 
 const ZERO32: Hex = `0x${"00".repeat(32)}`;
 
-/** The chain side of a send: gas estimates and receipts for what the FakeSender broadcast. */
+/**
+ * The chain side of a send. Everything the FakeSender broadcast is mined (unless listed in `mempool`) with
+ * `status`, so receipts, usedIntent and Decision logs agree with what was sent.
+ */
 export class FakeReceipts {
   status: "success" | "reverted" = "success";
-  verdict: (i: OnchainIntent) => { allowed: boolean; reason: number } = () => ({ allowed: true, reason: 0 });
+  /** The vault's Decision for an execute; null: the receipt carries no Decision for it. */
+  verdict: (i: OnchainIntent) => { allowed: boolean; reason: number } | null = () => ({ allowed: true, reason: 0 });
+  /** waitForTransactionReceipt times out although the transaction is mined. */
+  timeout = false;
+  /** Broadcast but not mined: no receipt, getTransaction has blockNumber null. */
+  mempool = new Set<Hex>();
+  logQueries: { fromBlock: unknown; intentId: unknown }[] = [];
   estimate: (data: Hex) => bigint | Promise<bigint> = () => 200_000n;
   estimates: { account: unknown; to: unknown; data: Hex }[] = [];
   /** syncMultiplier emits MultiplierChangeDetected (false: the vault's try uiMultiplier() failed silently). */
@@ -43,9 +54,9 @@ export class FakeReceipts {
   receipt(hash: Hex): TransactionReceipt {
     const call = this.calls()[Number(hash) - 1]!;
     const logs = [];
-    if (call.functionName === "execute") {
+    const v = call.functionName === "execute" ? this.verdict(call.args[0] as OnchainIntent) : null;
+    if (call.functionName === "execute" && v && this.status === "success") {
       const i = call.args[0] as OnchainIntent;
-      const v = this.verdict(i);
       logs.push(
         this.log(
           hash,
@@ -67,10 +78,37 @@ export class FakeReceipts {
     return { status: this.status, transactionHash: hash, blockNumber: 1n, gasUsed: 150_000n, logs } as unknown as TransactionReceipt;
   }
 
+  private hashOf(i: number): Hex {
+    return `0x${(i + 1).toString(16).padStart(64, "0")}`;
+  }
+
+  private mined(): { hash: Hex; id?: Hex }[] {
+    return this.calls()
+      .map((c, i) => ({ hash: this.hashOf(i), id: c.functionName === "execute" ? (c.args[0] as OnchainIntent).id : undefined }))
+      .filter((x) => !this.mempool.has(x.hash));
+  }
+
   client(): TxClient {
     return {
+      readContract: (async ({ functionName, args }: { functionName: string; args: readonly [Hex] }) => {
+        if (functionName !== "usedIntent") throw new Error(`fake: no ${functionName}`);
+        return this.status === "success" && this.mined().some((x) => x.id === args[0]);
+      }) as never,
+      getLogs: (async ({ args, fromBlock }: { args: { intentId: Hex }; fromBlock: unknown }) => {
+        this.logQueries.push({ fromBlock, intentId: args.intentId });
+        return this.mined()
+          .filter((x) => x.id === args.intentId)
+          .flatMap((x) => this.receipt(x.hash).logs);
+      }) as never,
+      getTransaction: (async ({ hash }: { hash: Hex }) => {
+        if (Number(hash) < 1 || Number(hash) > this.sender.sent.length) throw new TransactionNotFoundError({ hash });
+        return { hash, blockNumber: this.mempool.has(hash) ? null : 1n };
+      }) as never,
       estimateGas: (async (a: { account: unknown; to: unknown; data: Hex }) => (this.estimates.push(a), this.estimate(a.data))) as never,
-      waitForTransactionReceipt: (async ({ hash }: { hash: Hex }) => this.receipt(hash)) as TxClient["waitForTransactionReceipt"],
+      waitForTransactionReceipt: (async ({ hash }: { hash: Hex }) => {
+        if (this.timeout || this.mempool.has(hash)) throw new WaitForTransactionReceiptTimeoutError({ hash });
+        return this.receipt(hash);
+      }) as TxClient["waitForTransactionReceipt"],
     } as TxClient;
   }
 }

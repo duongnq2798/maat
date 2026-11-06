@@ -21,7 +21,7 @@ export async function buildRuntime(
   const mode = o.forceDryRun ? "dry-run" : cfg.mode;
   // The Base chain keeps its multicall3 address; the cast only erases the OP-stack deposit-tx types the narrow client interfaces do not model.
   const client = createPublicClient({ chain: base, transport: http(cfg.rpcUrl) }) as PublicClient;
-  let sender: TxSender | null = null;
+  let sender: GuardedSender | null = null;
   if (mode === "live") {
     const suffix = builderSuffix(cfg.builderCode ?? ""); // validates before any CDP call
     const connect = o.connectCdp ?? ((opts) => CdpSender.connect(opts));

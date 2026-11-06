@@ -4,6 +4,11 @@ import { REASONS, type OnchainIntent, type ReasonName } from "../types.js";
 
 export type PreviewClient = Pick<PublicClient, "readContract">;
 export type PreviewResult = ReasonName | "UNKNOWN";
+/** `error` is set only for UNKNOWN: why the verdict could not be read, for the journal. */
+export interface Preview {
+  result: PreviewResult;
+  error?: string;
+}
 
 /** eth_call previewIntent with from = executor, so GuardLib's tx.origin policy check matches execute(). */
 export async function previewIntent(
@@ -12,9 +17,10 @@ export async function previewIntent(
   executor: Address,
   intent: OnchainIntent,
   blockNumber?: bigint,
-): Promise<PreviewResult> {
+): Promise<Preview> {
+  let r: unknown;
   try {
-    const r = await client.readContract({
+    r = await client.readContract({
       address: vault,
       abi: mandateVaultAbi,
       functionName: "previewIntent",
@@ -22,8 +28,9 @@ export async function previewIntent(
       account: executor,
       ...(blockNumber === undefined ? {} : { blockNumber }),
     });
-    return REASONS[Number(r)] ?? "UNKNOWN";
-  } catch {
-    return "UNKNOWN";
+  } catch (e) {
+    return { result: "UNKNOWN", error: (e as Error).message.split("\n")[0] ?? "preview call failed" };
   }
+  const reason = REASONS[Number(r)];
+  return reason === undefined ? { result: "UNKNOWN", error: `unknown reason id ${String(r)}` } : { result: reason };
 }

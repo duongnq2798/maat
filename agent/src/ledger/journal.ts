@@ -3,10 +3,17 @@ import { join } from "node:path";
 import type { Address, Hex } from "viem";
 import type { PreviewResult } from "../chain/preview.js";
 
+export type Decision = { allowed: boolean; reason: string };
+
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
-  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; gate: string; txHash?: Hex; decision?: { allowed: boolean; reason: string } }
-  | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gasUsed?: bigint; note?: string }
+  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
+  /** Written right after the send returns, before the receipt: with `intent` it brackets the pending window. */
+  | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash: Hex; gas: bigint }
+  /** A send from an earlier round, settled (applied / dropped) or still pending at round start. */
+  | { kind: "reconcile"; runId: string; intentId: Hex; action: string; txHash?: Hex; outcome: "applied" | "pending" | "dropped"; decision?: Decision; note?: string }
+  | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
+  | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
   | { kind: "error"; runId: string; message: string };
 
