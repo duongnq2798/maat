@@ -25,6 +25,8 @@ contract MockCreditAdapter is ICreditAdapter {
     bool public mutationsRevert;
     bytes internal _revertData;
     bool public viewsRevert;
+    /// When set, withdraw/repay succeed but return 0 bytes despite declaring `returns (uint256)`.
+    bool public emptyReturns;
 
     error ViewReverted();
 
@@ -99,6 +101,10 @@ contract MockCreditAdapter is ICreditAdapter {
         viewsRevert = on;
     }
 
+    function setEmptyReturns(bool on) external {
+        emptyReturns = on;
+    }
+
     // ---------------------------------------------------------------- mutations
 
     function supply(address token, uint256 amount) external onlyVault mayRevert {
@@ -119,6 +125,7 @@ contract MockCreditAdapter is ICreditAdapter {
         _supplied[token] -= amount;
         _totalSupplied -= amount;
         IERC20Minimal(token).transfer(vault, amount);
+        if (emptyReturns) _returnNothing();
         return amount;
     }
 
@@ -133,6 +140,13 @@ contract MockCreditAdapter is ICreditAdapter {
         repaid = amount < _debt ? amount : _debt;
         if (repaid != 0) IERC20Minimal(usdc).transferFrom(vault, address(this), repaid);
         _debt -= repaid;
+        if (emptyReturns) _returnNothing();
+    }
+
+    function _returnNothing() internal pure {
+        assembly ("memory-safe") {
+            return(0, 0)
+        }
     }
 
     // ---------------------------------------------------------------- views

@@ -3,8 +3,9 @@ pragma solidity 0.8.28;
 
 /// @notice One lending position owned by one MandateVault. Stock amounts are raw units, USDC has 6 decimals,
 /// health factors are WAD (1e18 = 1.00; type(uint256).max with no debt).
-/// @dev The vault trusts the adapter's return data (the adapter is allowlisted in the mandate and checked to be
-/// bound to the vault); reverts are contained by the vault's try/catch.
+/// @dev The vault trusts the adapter's view return data (the adapter is allowlisted in the mandate and checked to
+/// be bound to the vault). Mutations are low-level calls whose return data is ignored, so neither a revert nor
+/// malformed return data can revert the vault's execute().
 interface ICreditAdapter {
     error NotVault();
     error UnsupportedToken(address token);

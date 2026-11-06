@@ -10,6 +10,7 @@ import {IB20Asset} from "./interfaces/IB20Asset.sol";
 import {IERC20Minimal, ICLPool, IAggregatorV3} from "./interfaces/IExternal.sol";
 import {ISwapAdapter} from "./adapters/ISwapAdapter.sol";
 import {ICreditAdapter} from "./adapters/ICreditAdapter.sol";
+import {MarketCalendar} from "./MarketCalendar.sol";
 
 /// @title MandateVault — "LLM proposes, contract decides."
 /// @notice Holds an agent's USDC + tokenized-stock treasury. The executor submits intents; the vault applies
@@ -23,6 +24,8 @@ contract MandateVault is IMandateVaultEvents {
     uint256 internal constant BPS = 10_000;
     uint256 internal constant WAD = 1e18;
     uint256 internal constant MAX_DERISK_WINDOW = 12 hours;
+    uint256 internal constant FRIDAY = 5; // DateLib.weekday: 0 = Sunday
+    uint256 internal constant FEED_FREEZE_MINUTE = 20 * 60; // Fri 20:00 ET: Chainlink equity feeds stop
 
     address public immutable owner;
     address public immutable usdc;
@@ -299,7 +302,12 @@ contract MandateVault is IMandateVaultEvents {
             return Reason.OK;
         }
         if (a == Action.SUPPLY) return _checkCollateralMove(ca, intent, true);
-        return Reason.ACTION_NOT_SUPPORTED; // BORROW and WITHDRAW_COLLATERAL: Task 4
+        if (a == Action.BORROW) {
+            if (intent.token != usdc) return Reason.TOKEN_NOT_ALLOWED;
+            if (intent.amount == 0) return Reason.INSUFFICIENT_BALANCE;
+            return _checkBorrow(ca, intent.amount);
+        }
+        return _checkCollateralMove(ca, intent, false);
     }
 
     /// @dev SUPPLY needs an allowed token; WITHDRAW_COLLATERAL only a listed one, so collateral can always
@@ -326,7 +334,89 @@ contract MandateVault is IMandateVaultEvents {
             }
             return Reason.OK;
         }
-        return Reason.ACTION_NOT_SUPPORTED; // WITHDRAW_COLLATERAL: Task 4
+        (bool ok, uint256 supplied) = _supplied(ca, token);
+        if (!ok) return Reason.CREDIT_FAILED;
+        if (intent.amount == 0 || intent.amount > supplied) return Reason.INSUFFICIENT_BALANCE;
+        // Without debt, withdrawing collateral is risk-free and allowed at any hour.
+        try ca.debt() returns (uint256 d) {
+            if (d == 0) return Reason.OK;
+        } catch {
+            return Reason.CREDIT_FAILED;
+        }
+        // Against debt it adds risk: checks 4-6 here, the health factor in the adapter after the withdrawal.
+        return _checkCollateralMarket(ca);
+    }
+
+    /// @dev Spec §3.1: borrowing adds risk, so checks 4-6 apply to every supplied collateral, then the projected
+    /// health factor must clear minHealthFactor (targetHealthFactor inside the Friday derisk window).
+    function _checkBorrow(ICreditAdapter ca, uint256 amount) internal view returns (Reason) {
+        Reason r = _checkCollateralMarket(ca);
+        if (r != Reason.OK) return r;
+        try ca.projectedHealthFactorAfterBorrow(amount) returns (uint256 hf) {
+            return _healthReason(hf);
+        } catch {
+            return Reason.CREDIT_FAILED;
+        }
+    }
+
+    /// @dev Market open (check 4), then for each supplied collateral: not paused, live feed, no multiplier change.
+    function _checkCollateralMarket(ICreditAdapter ca) internal view returns (Reason) {
+        Mandate memory m = _mandate;
+        if (!GuardLib.marketOpen(m.calendar, m.sessionMode)) return Reason.MARKET_CLOSED;
+        for (uint256 i; i < _tokens.length; ++i) {
+            address t = _tokens[i];
+            (bool ok, uint256 supplied) = _supplied(ca, t);
+            if (!ok) return Reason.CREDIT_FAILED;
+            if (supplied == 0) continue;
+            Reason r = GuardLib.collateralHealthy(
+                GuardLib.CollateralCheck({
+                    token: t,
+                    feed: tokenConfig[t].feed,
+                    maxStaleness: m.maxStaleness,
+                    multiplierCooldown: m.multiplierCooldown,
+                    lastMultiplier: lastMultiplier[t],
+                    multiplierChangedAt: multiplierChangedAt[t]
+                })
+            );
+            if (r != Reason.OK) return r;
+        }
+        return Reason.OK;
+    }
+
+    function _healthReason(uint256 hf) internal view returns (Reason) {
+        if (hf < _mandate.minHealthFactor) return Reason.HEALTH_FACTOR_LOW;
+        if (hf < _mandate.targetHealthFactor && _inDeriskWindow()) return Reason.DERISK_WINDOW;
+        return Reason.OK;
+    }
+
+    function _requiredHealthFactor() internal view returns (uint256) {
+        return _inDeriskWindow() ? _mandate.targetHealthFactor : _mandate.minHealthFactor;
+    }
+
+    /// @dev The last `deriskWindow` seconds before Fri 20:00 ET, when Chainlink equity feeds stop and prices
+    /// freeze for the weekend. Fail-closed: an unreadable calendar counts as inside the window.
+    function _inDeriskWindow() internal view returns (bool) {
+        uint256 w = _mandate.deriskWindow;
+        if (w == 0) return false;
+        try MarketCalendar(_mandate.calendar).localTime(block.timestamp) returns (uint256, uint256 wd, uint256 minute) {
+            return wd == FRIDAY && minute < FEED_FREEZE_MINUTE && minute + w / 60 >= FEED_FREEZE_MINUTE;
+        } catch {
+            return true;
+        }
+    }
+
+    /// @dev Maps an adapter revert to a Reason. Only a well-formed HealthFactorTooLow(hf, min) becomes a health
+    /// reason; anything else (empty data, Panic, venue errors) is CREDIT_FAILED.
+    function _creditFailure(bytes memory err) internal view returns (Reason) {
+        if (err.length == 68 && bytes4(err) == ICreditAdapter.HealthFactorTooLow.selector) {
+            uint256 hf;
+            assembly ("memory-safe") {
+                hf := mload(add(err, 36))
+            }
+            Reason r = _healthReason(hf);
+            return r == Reason.OK ? Reason.CREDIT_FAILED : r;
+        }
+        return Reason.CREDIT_FAILED;
     }
 
     /// @dev SUPPLY: vault -> adapter -> custodian, pulled by the adapter, then by the operator.
@@ -483,31 +573,35 @@ contract MandateVault is IMandateVaultEvents {
     }
 
     /// @dev Credit actions are neither trades nor expenses: spentOnDay is untouched, and recordedUsdc is reset so
-    /// borrowed USDC is never reported as revenue (nor repaid USDC as a loss). Adapter calls omit `returns` so
-    /// malformed return data cannot revert execute().
+    /// borrowed USDC is never reported as revenue (nor repaid USDC as a loss). Mutating adapter calls are
+    /// low-level: a typed call, even inside try with its `returns` clause omitted, still ABI-decodes the declared
+    /// return values in the caller, so empty or short return data would revert execute(). Return data is
+    /// ignored; balances are the source of truth.
     function _performCredit(Intent calldata intent) internal returns (Reason reason) {
-        ICreditAdapter ca = ICreditAdapter(_mandate.creditAdapter);
+        address ca = _mandate.creditAdapter;
         Action a = intent.action;
+        uint256 amount = intent.amount;
         if (a == Action.SUPPLY || a == Action.REPAY) {
             address token = a == Action.SUPPLY ? intent.token : usdc;
-            if (!token.tryApprove(address(ca), intent.amount)) {
-                token.tryApprove(address(ca), 0);
+            if (!token.tryApprove(ca, amount)) {
+                token.tryApprove(ca, 0);
                 return Reason.TRANSFER_FAILED;
             }
-            if (a == Action.SUPPLY) {
-                try ca.supply(token, intent.amount) {}
-                catch {
-                    reason = Reason.CREDIT_FAILED;
-                }
-            } else {
-                try ca.repay(intent.amount) {}
-                catch {
-                    reason = Reason.CREDIT_FAILED;
-                }
-            }
-            token.tryApprove(address(ca), 0);
+            (bool ok,) = ca.call(
+                a == Action.SUPPLY
+                    ? abi.encodeCall(ICreditAdapter.supply, (token, amount))
+                    : abi.encodeCall(ICreditAdapter.repay, (amount))
+            );
+            if (!ok) reason = Reason.CREDIT_FAILED;
+            token.tryApprove(ca, 0);
         } else {
-            reason = Reason.ACTION_NOT_SUPPORTED; // BORROW / WITHDRAW_COLLATERAL: Task 4
+            uint256 minHf = _requiredHealthFactor();
+            (bool ok, bytes memory err) = ca.call(
+                a == Action.BORROW
+                    ? abi.encodeCall(ICreditAdapter.borrow, (amount, minHf))
+                    : abi.encodeCall(ICreditAdapter.withdraw, (intent.token, amount, minHf))
+            );
+            if (!ok) reason = _creditFailure(err);
         }
         recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this));
     }
