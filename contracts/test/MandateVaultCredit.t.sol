@@ -120,6 +120,103 @@ contract MandateVaultCreditTest is CreditFixture {
         assertEq(vault.mandate().targetHealthFactor, 2.5e18);
     }
 
+    // ------------------------------------------------------------------ SUPPLY / REPAY (Task 3)
+
+    function test_supplyMovesCollateralToAdapter() public {
+        _supplyAll();
+        assertEq(nvda.balanceOf(address(vault)), 0);
+        assertEq(nvda.balanceOf(address(credit)), 1e8);
+        assertEq(credit.suppliedOf(address(nvda)), 1e8);
+        assertEq(nvda.allowance(address(vault), address(credit)), 0);
+        assertEq(vault.spentOnDay(vault.today()), 0);
+    }
+
+    function test_supplyIsAllowedWhileMarketClosed() public {
+        vm.warp(SAT_1300_ET);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.OK);
+    }
+
+    function test_supplyRefusals() public {
+        _assertReason(_execCredit(Action.SUPPLY, address(usdc), 1e6), Reason.TOKEN_NOT_ALLOWED);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 0), Reason.INSUFFICIENT_BALANCE);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8 + 1), Reason.INSUFFICIENT_BALANCE);
+        credit.setSupported(address(nvda), false);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.TOKEN_NOT_ALLOWED);
+    }
+
+    function test_supplyOfPausedTokenIsRefused() public {
+        nvda.setPaused(B20Constants.FEATURE_TRANSFER, true);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.TOKEN_PAUSED);
+    }
+
+    function test_supplyChecksCustodianPolicy() public {
+        address hub = makeAddr("hub");
+        credit.setCustodian(hub);
+        nvda.setPolicyId(B20Constants.TRANSFER_RECEIVER_POLICY, 9);
+        registry.setAuthorized(9, address(credit), true); // the adapter may receive, the hub may not
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.POLICY_BLOCKED);
+        registry.setAuthorized(9, hub, true);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.OK);
+    }
+
+    function test_supplyAdapterFailureIsLogged() public {
+        credit.setMutationsRevert(true, "");
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.CREDIT_FAILED);
+        assertEq(nvda.balanceOf(address(vault)), 1e8);
+        assertEq(nvda.allowance(address(vault), address(credit)), 0);
+    }
+
+    function test_unreadableAdapterIsCreditFailed() public {
+        credit.setViewsRevert(true);
+        _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.CREDIT_FAILED);
+    }
+
+    function test_repayPullsOnlyTheDebt() public {
+        credit.setDebt(5e6);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 10e6), Reason.OK);
+        assertEq(usdc.balanceOf(address(vault)), 195e6);
+        assertEq(credit.debt(), 0);
+        assertEq(usdc.allowance(address(vault), address(credit)), 0);
+        assertEq(vault.spentOnDay(vault.today()), 0);
+        assertEq(vault.notifyRevenue(), 0);
+    }
+
+    function test_repayIsAllowedWhileMarketClosed() public {
+        credit.setDebt(5e6);
+        vm.warp(SAT_1300_ET);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 5e6), Reason.OK);
+        assertEq(credit.debt(), 0);
+    }
+
+    function test_repayRefusals() public {
+        credit.setDebt(5e6);
+        _assertReason(_execCredit(Action.REPAY, address(nvda), 5e6), Reason.TOKEN_NOT_ALLOWED);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 0), Reason.INSUFFICIENT_BALANCE);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 200e6 + 1), Reason.INSUFFICIENT_BALANCE);
+        vm.prank(owner);
+        vault.setPaused(true);
+        _assertReason(_execCredit(Action.REPAY, address(usdc), 5e6), Reason.VAULT_PAUSED);
+    }
+
+    function test_concentrationCountsSuppliedCollateral() public {
+        _supplyAll();
+        // $200 supplied NVDAc + $20 buy over $400 total = 55% > 40%. Ignoring collateral it would be 10%.
+        (, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.CONCENTRATION);
+        credit.setSupplied(address(nvda), 0); // control: without the collateral the same buy passes
+        adapter.setNextOut(0.1e8);
+        (, r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.OK);
+    }
+
+    function test_unreadableCollateralFailsConcentrationClosed() public {
+        _supplyAll();
+        credit.setSupplied(address(nvda), 0);
+        credit.setViewsRevert(true);
+        (, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.CONCENTRATION);
+    }
+
     /// @dev Binds a fresh adapter to the address the next vault deployment gets, so only `m`'s bounds can fail.
     function _expectCreditConfigRevert(Mandate memory m) internal {
         m.creditAdapter = address(_adapterForExternalDeploy(address(usdc)));

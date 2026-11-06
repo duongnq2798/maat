@@ -109,7 +109,8 @@ contract MandateVault is IMandateVaultEvents {
         emit Decision(intent.id, intent.action, intent.token, intent.amount, allowed, reason, intent.rationaleHash);
     }
 
-    /// @notice Same verdict execute() would reach before trading. Cannot predict SWAP_FAILED / TRANSFER_FAILED.
+    /// @notice Same verdict execute() would reach before acting. Cannot predict SWAP_FAILED / TRANSFER_FAILED /
+    /// CREDIT_FAILED, nor the adapter's own post-action health check on WITHDRAW_COLLATERAL against debt.
     /// @dev Does not check usedIntent: a reused id previews normally but execute() reverts IntentAlreadyUsed.
     function previewIntent(Intent calldata intent) external view returns (Reason reason) {
         (reason,) = _check(intent);
@@ -253,7 +254,7 @@ contract MandateVault is IMandateVaultEvents {
     function _check(Intent calldata intent) internal view returns (Reason, uint256) {
         if (paused) return (Reason.VAULT_PAUSED, 0);
         if (intent.action == Action.PAY_EXPENSE) return (_checkExpense(intent), 0);
-        if (intent.action != Action.BUY && intent.action != Action.SELL) return (Reason.ACTION_NOT_SUPPORTED, 0);
+        if (intent.action != Action.BUY && intent.action != Action.SELL) return (_checkCredit(intent), 0);
 
         TokenConfig memory cfg = tokenConfig[intent.token];
         if (!cfg.allowed) return (Reason.TOKEN_NOT_ALLOWED, 0);
@@ -282,6 +283,92 @@ contract MandateVault is IMandateVaultEvents {
         }
         if (!_withinCaps(intent.amount)) return Reason.SIZE_LIMIT;
         return Reason.OK;
+    }
+
+    /// @dev Spec §3.1: SUPPLY (adding collateral) and REPAY reduce risk, so only checks 1-3 apply and they are
+    /// allowed while the market is closed. Credit actions are not capped by perTradeCapUsd / dailyCapUsd.
+    function _checkCredit(Intent calldata intent) internal view returns (Reason) {
+        ICreditAdapter ca = ICreditAdapter(_mandate.creditAdapter);
+        if (address(ca) == address(0)) return Reason.ACTION_NOT_SUPPORTED;
+        Action a = intent.action;
+        if (a == Action.REPAY) {
+            if (intent.token != usdc) return Reason.TOKEN_NOT_ALLOWED;
+            if (intent.amount == 0 || intent.amount > IERC20Minimal(usdc).balanceOf(address(this))) {
+                return Reason.INSUFFICIENT_BALANCE;
+            }
+            return Reason.OK;
+        }
+        if (a == Action.SUPPLY) return _checkCollateralMove(ca, intent, true);
+        return Reason.ACTION_NOT_SUPPORTED; // BORROW and WITHDRAW_COLLATERAL: Task 4
+    }
+
+    /// @dev SUPPLY needs an allowed token; WITHDRAW_COLLATERAL only a listed one, so collateral can always
+    /// come home after a delisting.
+    function _checkCollateralMove(ICreditAdapter ca, Intent calldata intent, bool isSupply)
+        internal
+        view
+        returns (Reason)
+    {
+        address token = intent.token;
+        if (isSupply ? !tokenConfig[token].allowed : !_listed[token]) return Reason.TOKEN_NOT_ALLOWED;
+        try ca.supportsToken(token) returns (bool s) {
+            if (!s) return Reason.TOKEN_NOT_ALLOWED;
+        } catch {
+            return Reason.CREDIT_FAILED;
+        }
+        if (GuardLib.tokenPaused(token)) return Reason.TOKEN_PAUSED;
+        (bool readable, bool authorized) = _creditPathAuthorized(ca, token, isSupply);
+        if (!readable) return Reason.CREDIT_FAILED;
+        if (!authorized) return Reason.POLICY_BLOCKED;
+        if (isSupply) {
+            if (intent.amount == 0 || intent.amount > IB20Asset(token).balanceOf(address(this))) {
+                return Reason.INSUFFICIENT_BALANCE;
+            }
+            return Reason.OK;
+        }
+        return Reason.ACTION_NOT_SUPPORTED; // WITHDRAW_COLLATERAL: Task 4
+    }
+
+    /// @dev SUPPLY: vault -> adapter -> custodian, pulled by the adapter, then by the operator.
+    /// WITHDRAW_COLLATERAL: custodian -> adapter -> vault, sent by the custodian, then by the adapter.
+    /// @return readable false when the adapter's custodian/operator views revert.
+    function _creditPathAuthorized(ICreditAdapter ca, address token, bool isSupply)
+        internal
+        view
+        returns (bool readable, bool authorized)
+    {
+        address custodian;
+        address operator;
+        try ca.collateralCustodian(token) returns (address c) {
+            custodian = c;
+        } catch {
+            return (false, false);
+        }
+        try ca.collateralOperator() returns (address o) {
+            operator = o;
+        } catch {
+            return (false, false);
+        }
+        address self = address(this);
+        address a = address(ca);
+        authorized = isSupply
+            ? GuardLib.transferable(token, policyRegistry, _pair(self, a), _pair(a, custodian), _pair(a, operator))
+            : GuardLib.transferable(token, policyRegistry, _pair(custodian, a), _pair(a, self), _pair(custodian, a));
+        readable = true;
+    }
+
+    function _supplied(ICreditAdapter ca, address token) internal view returns (bool ok, uint256 amount) {
+        try ca.suppliedOf(token) returns (uint256 s) {
+            return (true, s);
+        } catch {
+            return (false, 0);
+        }
+    }
+
+    function _pair(address a, address b) internal pure returns (address[] memory r) {
+        r = new address[](2);
+        r[0] = a;
+        r[1] = b;
     }
 
     function _marketCheck(address token, TokenConfig memory cfg, bool isBuy)
@@ -316,12 +403,20 @@ contract MandateVault is IMandateVaultEvents {
         return raw * price8 / 10 ** (uint256(IB20Asset(token).decimals()) + 2);
     }
 
+    /// @dev Weight counts tokens held by the vault plus collateral supplied through the credit adapter (gross:
+    /// debt is not netted). Fail-closed: unreadable collateral returns a weight above any cap (CONCENTRATION).
     function _weightAfterBuyBps(address token, uint256 usdIn, uint256 price8) internal view returns (uint256) {
         uint256 total = IERC20Minimal(usdc).balanceOf(address(this));
         uint256 tokenValue;
+        ICreditAdapter ca = ICreditAdapter(_mandate.creditAdapter);
         for (uint256 i; i < _tokens.length; ++i) {
             address t = _tokens[i];
             uint256 bal = IB20Asset(t).balanceOf(address(this));
+            if (address(ca) != address(0)) {
+                (bool ok, uint256 supplied) = _supplied(ca, t);
+                if (!ok) return type(uint256).max;
+                bal += supplied;
+            }
             if (bal == 0) continue;
             uint256 p = t == token ? price8 : _latestPrice(t);
             uint256 v = _valueUsd(t, bal, p);
@@ -347,6 +442,7 @@ contract MandateVault is IMandateVaultEvents {
 
     function _perform(Intent calldata intent, uint256 price) internal returns (Reason) {
         notifyRevenue();
+        if (_isCredit(intent.action)) return _performCredit(intent);
         uint256 notional = intent.amount;
         if (intent.action == Action.PAY_EXPENSE) {
             // nothing is recorded on failure: spentOnDay unchanged, recordedUsdc already equals the balance
@@ -380,6 +476,40 @@ contract MandateVault is IMandateVaultEvents {
         spentOnDay[today()] += notional;
         recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this));
         return Reason.OK;
+    }
+
+    function _isCredit(Action a) internal pure returns (bool) {
+        return a == Action.SUPPLY || a == Action.WITHDRAW_COLLATERAL || a == Action.BORROW || a == Action.REPAY;
+    }
+
+    /// @dev Credit actions are neither trades nor expenses: spentOnDay is untouched, and recordedUsdc is reset so
+    /// borrowed USDC is never reported as revenue (nor repaid USDC as a loss). Adapter calls omit `returns` so
+    /// malformed return data cannot revert execute().
+    function _performCredit(Intent calldata intent) internal returns (Reason reason) {
+        ICreditAdapter ca = ICreditAdapter(_mandate.creditAdapter);
+        Action a = intent.action;
+        if (a == Action.SUPPLY || a == Action.REPAY) {
+            address token = a == Action.SUPPLY ? intent.token : usdc;
+            if (!token.tryApprove(address(ca), intent.amount)) {
+                token.tryApprove(address(ca), 0);
+                return Reason.TRANSFER_FAILED;
+            }
+            if (a == Action.SUPPLY) {
+                try ca.supply(token, intent.amount) {}
+                catch {
+                    reason = Reason.CREDIT_FAILED;
+                }
+            } else {
+                try ca.repay(intent.amount) {}
+                catch {
+                    reason = Reason.CREDIT_FAILED;
+                }
+            }
+            token.tryApprove(address(ca), 0);
+        } else {
+            reason = Reason.ACTION_NOT_SUPPORTED; // BORROW / WITHDRAW_COLLATERAL: Task 4
+        }
+        recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this));
     }
 
     function _syncMultiplier(address token) internal {
