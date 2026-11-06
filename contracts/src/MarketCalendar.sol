@@ -20,6 +20,7 @@ contract MarketCalendar {
 
     error NotOwner();
     error InvalidClose();
+    error ZeroAddress();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert NotOwner();
@@ -27,6 +28,7 @@ contract MarketCalendar {
     }
 
     constructor(address owner_) {
+        if (owner_ == address(0)) revert ZeroAddress();
         owner = owner_;
         _addHoliday(2026, 11, 26); // Thanksgiving
         _addHoliday(2026, 12, 25); // Christmas

@@ -34,6 +34,10 @@ contract Deploy is Script {
         );
         vm.stopBroadcast();
 
+        // Check these before broadcasting: owner is immutable on the vault and the calendar.
+        console2.log("owner (immutable)   ", owner);
+        console2.log("executor            ", executor);
+        console2.log("expense payee       ", payee);
         console2.log("MarketCalendar      ", address(calendar));
         console2.log("AerodromeSwapAdapter", address(adapter));
         console2.log("MandateVault        ", address(vault));

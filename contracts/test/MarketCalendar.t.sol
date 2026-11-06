@@ -99,4 +99,9 @@ contract MarketCalendarTest is Test {
         cal.addHoliday(2026, 12, 1);
         assertFalse(cal.isOpen(TUE_DEC1_1530_UTC, SessionMode.REGULAR));
     }
+
+    function test_constructorRejectsZeroOwner() public {
+        vm.expectRevert(MarketCalendar.ZeroAddress.selector);
+        new MarketCalendar(address(0));
+    }
 }
