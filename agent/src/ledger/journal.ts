@@ -10,9 +10,16 @@ export type JournalEntry =
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
   | { kind: "error"; runId: string; message: string };
 
+type Stringified<T> = {
+  [K in keyof T]: T[K] extends bigint ? string : T[K] extends bigint | undefined ? string | undefined : T[K];
+};
+
+/** A journal line as read back from disk: every bigint is a decimal string and `ts` is present. */
+export type JournalRow = JournalEntry extends infer E ? (E extends unknown ? Stringified<E> & { ts: string } : never) : never;
+
 const replacer = (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v);
 
-/** Append-only JSONL. Rows read back keep bigints as strings. */
+/** Append-only JSONL. Rows are written from `JournalEntry` and read back as `JournalRow` (bigints as strings). */
 export class Journal {
   private readonly file: string;
 
@@ -25,13 +32,13 @@ export class Journal {
     await appendFile(this.file, JSON.stringify({ ts: new Date().toISOString(), ...e }, replacer) + "\n");
   }
 
-  async read(): Promise<JournalEntry[]> {
+  async read(): Promise<JournalRow[]> {
     try {
       const text = await readFile(this.file, "utf8");
       return text
         .split("\n")
         .filter((l) => l.trim().length > 0)
-        .map((l) => JSON.parse(l) as JournalEntry);
+        .map((l) => JSON.parse(l) as JournalRow);
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
       throw e;
