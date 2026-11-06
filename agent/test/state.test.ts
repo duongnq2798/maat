@@ -80,6 +80,16 @@ describe("readVaultState", () => {
     await expect(readVaultState(standardScene().fail(USDC, "balanceOf").client(), VAULT)).rejects.toBeInstanceOf(StateUnavailable);
   });
 
+  it("throws StateUnavailable when a token balanceOf read fails", async () => {
+    const f = standardScene().fail(BASKET[0]!.address, "balanceOf");
+    await expect(readVaultState(f.client(), VAULT)).rejects.toBeInstanceOf(StateUnavailable);
+  });
+
+  it("throws StateUnavailable when a token decimals read fails", async () => {
+    const f = standardScene().fail(BASKET[0]!.address, "decimals");
+    await expect(readVaultState(f.client(), VAULT)).rejects.toBeInstanceOf(StateUnavailable);
+  });
+
   it("throws StateUnavailable when getBlock fails", async () => {
     const client = standardScene().client();
     client.getBlock = (async () => {

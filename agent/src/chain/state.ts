@@ -155,8 +155,9 @@ export async function readVaultState(client: StateClient, vault: Address): Promi
 
   const tokens: TokenState[] = tokenList.map((address, i) => {
     const o = i * PER_TOKEN;
-    const decimals = Number(opt<number>(at(o + 3)) ?? 0);
-    const balance = opt<bigint>(at(o + 2)) ?? 0n;
+    // A failed balance or decimals read must not look like a true zero: fail closed.
+    const decimals = Number(must<number>(at(o + 3), `${address}.decimals()`));
+    const balance = must<bigint>(at(o + 2), `${address}.balanceOf(vault)`);
     const round = configs[i]!.feed === zeroAddress ? null : opt<readonly [bigint, bigint, bigint, bigint, bigint]>(r3[i]);
     // Same validity rule as PriceLib.readFeed: positive answer, updatedAt in (0, now].
     const good = round !== null && round[1] > 0n && round[3] > 0n && round[3] <= timestamp;
