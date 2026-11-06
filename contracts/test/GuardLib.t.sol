@@ -11,6 +11,7 @@ import {MockERC20} from "./mocks/MockERC20.sol";
 import {MockFeed} from "./mocks/MockFeed.sol";
 import {MockPool} from "./mocks/MockPool.sol";
 import {MockPolicyRegistry} from "./mocks/MockPolicyRegistry.sol";
+import {MockReverter} from "./mocks/MockReverter.sol";
 
 contract GuardHarness {
     function check(GuardLib.MarketCheck memory c) external view returns (Reason, uint256) {
@@ -22,6 +23,9 @@ contract GuardLibTest is Test {
     uint256 internal constant THU_1030_ET = 1793892600;
     address internal constant VAULT = address(0xA11CE);
     address internal constant ADAPTER = address(0xADA);
+    address internal constant ORIGIN = address(0x0816);
+
+    uint64 internal nextPolicyId = 100;
 
     GuardHarness internal h;
     MockB20 internal nvda;
@@ -137,5 +141,123 @@ contract GuardLibTest is Test {
         pool.setTick(-7932, 1800); // ~ $221 vs $200 oracle
         _expect(_c(), Reason.PREMIUM_TOO_HIGH);
     }
-}
 
+    // ---------------------------------------------------------------- fail-closed on reverting deps
+
+    function test_revertingIsPausedFailsClosed() public {
+        nvda.setReverts(true, false, false, false);
+        _expect(_c(), Reason.TOKEN_PAUSED);
+    }
+
+    function test_revertingPolicyIdFailsClosed() public {
+        nvda.setReverts(false, true, false, false);
+        _expect(_c(), Reason.POLICY_BLOCKED);
+        GuardLib.MarketCheck memory c = _c();
+        c.isBuy = false;
+        _expect(c, Reason.POLICY_BLOCKED);
+    }
+
+    function test_revertingIsAuthorizedFailsClosed() public {
+        nvda.setPolicyId(B20Constants.TRANSFER_RECEIVER_POLICY, 7);
+        registry.setAuthorized(7, VAULT, true);
+        _expect(_c(), Reason.OK);
+        registry.setRevertIsAuthorized(true);
+        _expect(_c(), Reason.POLICY_BLOCKED);
+    }
+
+    function test_revertingCalendarFailsClosed() public {
+        GuardLib.MarketCheck memory c = _c();
+        c.calendar = address(new MockReverter());
+        _expect(c, Reason.MARKET_CLOSED);
+    }
+
+    function test_revertingUiMultiplierFailsClosed() public {
+        nvda.setReverts(false, false, true, false);
+        _expect(_c(), Reason.MULTIPLIER_COOLDOWN);
+    }
+
+    function test_revertingEffectiveAtFailsClosed() public {
+        nvda.setReverts(false, false, false, true);
+        _expect(_c(), Reason.MULTIPLIER_COOLDOWN);
+    }
+
+    // ---------------------------------------------------------------- policy scope legs
+    // For each leg: authorize every other leg of the scope, expect POLICY_BLOCKED, then authorize the
+    // leg under test and expect OK. Removing any leg from transferPathAuthorized fails the matching test.
+
+    function _leg(bool isBuy, bytes32 scope, address[] memory legs, uint256 missing) internal {
+        GuardLib.MarketCheck memory c = _c();
+        c.isBuy = isBuy;
+        uint64 id = ++nextPolicyId;
+        nvda.setPolicyId(scope, id);
+        for (uint256 i; i < legs.length; i++) {
+            if (i != missing) registry.setAuthorized(id, legs[i], true);
+        }
+        vm.startPrank(address(this), ORIGIN);
+        _expect(c, Reason.POLICY_BLOCKED);
+        vm.stopPrank();
+        registry.setAuthorized(id, legs[missing], true);
+        vm.startPrank(address(this), ORIGIN);
+        _expect(c, Reason.OK);
+        vm.stopPrank();
+    }
+
+    function _two(address a, address b) internal pure returns (address[] memory l) {
+        l = new address[](2);
+        l[0] = a;
+        l[1] = b;
+    }
+
+    function _one(address a) internal pure returns (address[] memory l) {
+        l = new address[](1);
+        l[0] = a;
+    }
+
+    function test_buySenderPool() public {
+        _leg(true, B20Constants.TRANSFER_SENDER_POLICY, _one(address(pool)), 0);
+    }
+
+    function test_buyReceiverVault() public {
+        _leg(true, B20Constants.TRANSFER_RECEIVER_POLICY, _one(VAULT), 0);
+    }
+
+    function test_buyExecutorPool() public {
+        _leg(true, B20Constants.TRANSFER_EXECUTOR_POLICY, _two(address(pool), ORIGIN), 0);
+    }
+
+    function test_buyExecutorTxOrigin() public {
+        _leg(true, B20Constants.TRANSFER_EXECUTOR_POLICY, _two(address(pool), ORIGIN), 1);
+    }
+
+    function test_sellSenderVault() public {
+        _leg(false, B20Constants.TRANSFER_SENDER_POLICY, _two(VAULT, ADAPTER), 0);
+    }
+
+    function test_sellSenderAdapter() public {
+        _leg(false, B20Constants.TRANSFER_SENDER_POLICY, _two(VAULT, ADAPTER), 1);
+    }
+
+    function test_sellReceiverAdapter() public {
+        _leg(false, B20Constants.TRANSFER_RECEIVER_POLICY, _two(ADAPTER, address(pool)), 0);
+    }
+
+    function test_sellReceiverPool() public {
+        _leg(false, B20Constants.TRANSFER_RECEIVER_POLICY, _two(ADAPTER, address(pool)), 1);
+    }
+
+    function test_sellExecutorAdapter() public {
+        _leg(false, B20Constants.TRANSFER_EXECUTOR_POLICY, _two(ADAPTER, ORIGIN), 0);
+    }
+
+    function test_sellExecutorTxOrigin() public {
+        _leg(false, B20Constants.TRANSFER_EXECUTOR_POLICY, _two(ADAPTER, ORIGIN), 1);
+    }
+
+    function test_policyIdZeroIsAlwaysAllowed() public view {
+        // all scopes default to policyId 0 and nobody is authorized in the registry
+        _expect(_c(), Reason.OK);
+        GuardLib.MarketCheck memory c = _c();
+        c.isBuy = false;
+        _expect(c, Reason.OK);
+    }
+}

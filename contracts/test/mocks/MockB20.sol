@@ -6,10 +6,15 @@ contract MockB20 {
     uint8 public constant decimals = 8;
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
-    mapping(uint8 => bool) public isPaused;
-    mapping(bytes32 => uint64) public policyId;
-    uint256 public uiMultiplier = 1e18;
-    uint256 public effectiveAt;
+    mapping(uint8 => bool) internal _paused;
+    mapping(bytes32 => uint64) internal _policyId;
+    uint256 internal _uiMultiplier = 1e18;
+    uint256 internal _effectiveAt;
+
+    bool public revertIsPaused;
+    bool public revertPolicyId;
+    bool public revertUiMultiplier;
+    bool public revertEffectiveAt;
 
     error ContractPaused(uint8 feature);
 
@@ -22,23 +27,50 @@ contract MockB20 {
     }
 
     function setPaused(uint8 feature, bool p) external {
-        isPaused[feature] = p;
+        _paused[feature] = p;
     }
 
     function setPolicyId(bytes32 scope, uint64 id) external {
-        policyId[scope] = id;
+        _policyId[scope] = id;
     }
 
     function setUiMultiplier(uint256 m) external {
-        uiMultiplier = m;
+        _uiMultiplier = m;
     }
 
     function setEffectiveAt(uint256 t) external {
-        effectiveAt = t;
+        _effectiveAt = t;
+    }
+
+    function setReverts(bool isPaused_, bool policyId_, bool uiMultiplier_, bool effectiveAt_) external {
+        revertIsPaused = isPaused_;
+        revertPolicyId = policyId_;
+        revertUiMultiplier = uiMultiplier_;
+        revertEffectiveAt = effectiveAt_;
+    }
+
+    function isPaused(uint8 feature) external view returns (bool) {
+        if (revertIsPaused) revert("isPaused");
+        return _paused[feature];
+    }
+
+    function policyId(bytes32 scope) external view returns (uint64) {
+        if (revertPolicyId) revert("policyId");
+        return _policyId[scope];
+    }
+
+    function uiMultiplier() external view returns (uint256) {
+        if (revertUiMultiplier) revert("uiMultiplier");
+        return _uiMultiplier;
+    }
+
+    function effectiveAt() external view returns (uint256) {
+        if (revertEffectiveAt) revert("effectiveAt");
+        return _effectiveAt;
     }
 
     function balanceOfUI(address account) external view returns (uint256) {
-        return balanceOf[account] * uiMultiplier / 1e18;
+        return balanceOf[account] * _uiMultiplier / 1e18;
     }
 
     function approve(address spender, uint256 amount) external returns (bool) {
@@ -58,7 +90,7 @@ contract MockB20 {
     }
 
     function _move(address from, address to, uint256 amount) internal {
-        if (isPaused[0]) revert ContractPaused(0);
+        if (_paused[0]) revert ContractPaused(0);
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
     }

@@ -8,6 +8,10 @@ import {IB20Asset, IPolicyRegistry, B20Constants} from "./interfaces/IB20Asset.s
 
 /// @notice Market-safety checks for one B20 trade. Pure function of onchain state plus the caller's
 /// multiplier bookkeeping, so the vault and the off-chain Guard Service agree on every verdict.
+/// @dev Fail-closed: a dependency that reverts (token, policy registry, calendar) yields a rejecting
+/// Reason instead of bubbling the revert. try/catch does not cover calls to addresses without code
+/// (Solidity's extcodesize check reverts in the caller), so token/registry/calendar/feed/pool must be
+/// validated as contracts at config time (vault task), not here.
 library GuardLib {
     struct MarketCheck {
         address token;
@@ -29,9 +33,17 @@ library GuardLib {
 
     function checkMarket(MarketCheck memory c) internal view returns (Reason, uint256) {
         IB20Asset t = IB20Asset(c.token);
-        if (t.isPaused(B20Constants.FEATURE_TRANSFER)) return (Reason.TOKEN_PAUSED, 0);
+        try t.isPaused(B20Constants.FEATURE_TRANSFER) returns (bool paused) {
+            if (paused) return (Reason.TOKEN_PAUSED, 0);
+        } catch {
+            return (Reason.TOKEN_PAUSED, 0);
+        }
         if (!transferPathAuthorized(c)) return (Reason.POLICY_BLOCKED, 0);
-        if (!MarketCalendar(c.calendar).isOpen(block.timestamp, c.sessionMode)) return (Reason.MARKET_CLOSED, 0);
+        try MarketCalendar(c.calendar).isOpen(block.timestamp, c.sessionMode) returns (bool open) {
+            if (!open) return (Reason.MARKET_CLOSED, 0);
+        } catch {
+            return (Reason.MARKET_CLOSED, 0);
+        }
 
         (bool ok, uint256 oracle, uint256 age) = PriceLib.readFeed(c.feed);
         if (!ok) return (Reason.BAD_PRICE, 0);
@@ -47,15 +59,30 @@ library GuardLib {
         return (Reason.OK, oracle);
     }
 
+    /// @dev Fail-closed: a reverting uiMultiplier()/effectiveAt() counts as blocked.
     function multiplierBlocked(IB20Asset t, uint256 last, uint256 changedAt, uint32 cooldown)
         internal
         view
         returns (bool)
     {
-        if (last != 0 && t.uiMultiplier() != last) return true;
+        if (last != 0) {
+            try t.uiMultiplier() returns (uint256 m) {
+                if (m != last) return true;
+            } catch {
+                return true;
+            }
+        }
+        // forge-lint: disable-next-line(block-timestamp)
         if (changedAt != 0 && block.timestamp < changedAt + cooldown) return true;
-        uint256 eff = t.effectiveAt();
+        uint256 eff = 0;
+        try t.effectiveAt() returns (uint256 e) {
+            eff = e;
+        } catch {
+            return true;
+        }
+        // forge-lint: disable-next-line(block-timestamp)
         if (eff > block.timestamp) return true; // scheduled update pending
+        // forge-lint: disable-next-line(block-timestamp)
         return eff != 0 && block.timestamp < eff + cooldown;
     }
 
@@ -73,13 +100,21 @@ library GuardLib {
             && authorized(c.token, c.registry, e, c.adapter) && authorized(c.token, c.registry, e, tx.origin);
     }
 
+    /// @dev Fail-closed: a reverting policyId()/isAuthorized() counts as not authorized.
     function authorized(address token, address registry, bytes32 scope, address account)
         internal
         view
         returns (bool)
     {
-        uint64 id = IB20Asset(token).policyId(scope);
-        if (id == 0) return true; // ALWAYS_ALLOW
-        return IPolicyRegistry(registry).isAuthorized(id, account);
+        try IB20Asset(token).policyId(scope) returns (uint64 id) {
+            if (id == 0) return true; // ALWAYS_ALLOW
+            try IPolicyRegistry(registry).isAuthorized(id, account) returns (bool ok) {
+                return ok;
+            } catch {
+                return false;
+            }
+        } catch {
+            return false;
+        }
     }
 }
