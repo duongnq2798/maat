@@ -75,6 +75,17 @@ describe("buildIntent", async () => {
     expect(buildIntent(p({ amountUsd: 0.0000001 }), state, ctx)).toMatchObject({ ok: false, error: "amount rounds to zero" });
   });
 
+  it("flags clamped for stock actions only when the cap lowered the amount", () => {
+    const sell = buildIntent(p({ action: "SELL", amountUsd: 10 }), state, ctx);
+    expect(sell.ok && sell.clamped).toBe(false);
+    const sellAll = buildIntent(p({ action: "SELL", amountUsd: 999 }), state, ctx);
+    expect(sellAll.ok && sellAll.clamped).toBe(true);
+    const wd = buildIntent(p({ action: "WITHDRAW_COLLATERAL", amountUsd: 5 }), state, ctx);
+    expect(wd.ok && wd.clamped).toBe(false);
+    const wdAll = buildIntent(p({ action: "WITHDRAW_COLLATERAL", amountUsd: 999 }), state, ctx);
+    expect(wdAll.ok && wdAll.clamped).toBe(true);
+  });
+
   it("gives every index of a run its own id", () => {
     expect(intentId("run-1", 0)).not.toBe(intentId("run-1", 1));
     expect(intentId("run-1", 0)).not.toBe(intentId("run-2", 0));

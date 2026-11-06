@@ -44,6 +44,7 @@ export function buildIntent(
   let token: Address;
   let amount: bigint;
   let amountUsd6: bigint;
+  let wanted: bigint = usd6; // the amount before any balance/debt/supplied cap, in the units of `amount`
   if (wantsUsdc) {
     token = s.usdc;
     const debt = s.credit?.readable && s.credit.debt > 0n ? s.credit.debt : null;
@@ -61,13 +62,13 @@ export function buildIntent(
     if (!t) return fail(`${p.symbol} is not listed in the vault`);
     if (t.price8 === null) return fail(`no price for ${p.symbol}`);
     const cap = p.action === "WITHDRAW_COLLATERAL" ? t.supplied : t.balance;
-    amount = minBig(rawForUsd6(usd6, t.price8, t.decimals), cap);
+    wanted = rawForUsd6(usd6, t.price8, t.decimals);
+    amount = minBig(wanted, cap);
     amountUsd6 = valueUsd6(amount, t.price8, t.decimals);
   }
   if (amount === 0n) return fail("amount rounds to zero");
 
-  const requested = wantsUsdc || p.action === "BUY" ? usd6 : null;
-  const clamped = requested !== null ? amount < requested : amountUsd6 + 1n < usd6;
+  const clamped = amount < wanted;
   return {
     ok: true,
     proposal: p,
