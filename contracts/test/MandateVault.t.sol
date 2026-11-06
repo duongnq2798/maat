@@ -612,4 +612,85 @@ contract MandateVaultTest is VaultFixture {
         vm.expectRevert(MandateVault.InvalidConfig.selector);
         this.deployTokenExternal(bad, c);
     }
+
+    // ------------------------------------------------------------------ final review: M11 coverage
+
+    function _payIntent(uint256 amount) internal returns (Intent memory i) {
+        i = _intent(Action.PAY_EXPENSE, amount);
+        i.payee = payee;
+    }
+
+    function test_payExpenseCountsAgainstDailyCap() public {
+        uint256 day = vault.today();
+        Intent memory i = _payIntent(50e6);
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit Decision(i.id, Action.PAY_EXPENSE, address(nvda), 50e6, true, Reason.OK, i.rationaleHash);
+        (bool allowed, Reason r) = _exec(i);
+        assertTrue(allowed);
+        _assertReason(r, Reason.OK);
+        assertEq(vault.spentOnDay(day), 50e6);
+
+        (, r) = _exec(_payIntent(50e6));
+        _assertReason(r, Reason.OK);
+        assertEq(vault.spentOnDay(day), 100e6);
+
+        (allowed, r) = _exec(_payIntent(1e6)); // 101 > dailyCap 100
+        assertFalse(allowed);
+        _assertReason(r, Reason.SIZE_LIMIT);
+        assertEq(vault.spentOnDay(day), 100e6);
+        assertEq(usdc.balanceOf(payee), 100e6);
+    }
+
+    function test_payExpenseSharesDailyCapWithTrades() public {
+        adapter.setNextOut(0.2e8);
+        (, Reason r) = _exec(_intent(Action.BUY, 40e6));
+        _assertReason(r, Reason.OK);
+        (, r) = _exec(_payIntent(50e6));
+        _assertReason(r, Reason.OK);
+        (, r) = _exec(_payIntent(20e6)); // 40 + 50 + 20 > 100
+        _assertReason(r, Reason.SIZE_LIMIT);
+        assertEq(vault.spentOnDay(vault.today()), 90e6);
+    }
+
+    function test_dailyCapResetsOnUtcDayRollover() public {
+        uint256 day = vault.today();
+        _exec(_payIntent(50e6));
+        _exec(_payIntent(50e6));
+        (, Reason r) = _exec(_payIntent(10e6));
+        _assertReason(r, Reason.SIZE_LIMIT);
+
+        vm.warp(THU_1030_ET + 1 days); // Fri 2026-11-06 15:30 UTC, next UTC day
+        assertEq(vault.today(), day + 1);
+        (, r) = _exec(_payIntent(10e6));
+        _assertReason(r, Reason.OK);
+        assertEq(vault.spentOnDay(day + 1), 10e6);
+        assertEq(vault.spentOnDay(day), 100e6);
+
+        feed.set(200e8, THU_1030_ET + 1 days);
+        adapter.setNextOut(0.15e8); // $30 at $200; 30 of 90 USDC left stays under maxWeight 40%
+        (, r) = _exec(_intent(Action.BUY, 30e6));
+        _assertReason(r, Reason.OK);
+        assertEq(vault.spentOnDay(day + 1), 40e6);
+    }
+
+    function test_thanksgivingIsMarketClosedAtVaultLevel() public {
+        uint256 thanksgiving1030Est = 1795707000; // Thu 2026-11-26 15:30 UTC
+        vm.warp(thanksgiving1030Est);
+        feed.set(200e8, thanksgiving1030Est);
+        Intent memory i = _intent(Action.BUY, 20e6);
+        _assertReason(vault.previewIntent(i), Reason.MARKET_CLOSED);
+        vm.expectEmit(true, true, false, true, address(vault));
+        emit Decision(i.id, Action.BUY, address(nvda), 20e6, false, Reason.MARKET_CLOSED, i.rationaleHash);
+        (bool allowed, Reason r) = _exec(i);
+        assertFalse(allowed);
+        _assertReason(r, Reason.MARKET_CLOSED);
+        assertEq(usdc.balanceOf(address(vault)), 200e6);
+
+        // control: same time next day (early close 13:00) trades
+        vm.warp(thanksgiving1030Est + 1 days);
+        feed.set(200e8, thanksgiving1030Est + 1 days);
+        adapter.setNextOut(0.1e8);
+        (, r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.OK);
+    }
 }
