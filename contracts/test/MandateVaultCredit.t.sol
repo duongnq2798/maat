@@ -217,6 +217,39 @@ contract MandateVaultCreditTest is CreditFixture {
         _assertReason(r, Reason.CONCENTRATION);
     }
 
+    /// @dev Borrowed USDC is not equity: concentration is measured against holdings + collateral - debt.
+    function test_concentrationNetsCreditDebt() public {
+        _supplyAll();
+        credit.setSupplied(address(nvda), 0.5e8); // $100 of collateral counted, $200 USDC held
+        // ($100 + $30) / $300 = 43% > 40%
+        (, Reason r) = _exec(_intent(Action.BUY, 30e6));
+        _assertReason(r, Reason.CONCENTRATION);
+        _assertReason(_execCredit(Action.BORROW, address(usdc), 100e6), Reason.OK);
+        // gross it would be $130 / $400 = 32.5%; net of the $100 debt it is still 43%
+        (, r) = _exec(_intent(Action.BUY, 30e6));
+        _assertReason(r, Reason.CONCENTRATION);
+        // a buy that fits net equity still passes: ($100 + $20) / $300 = 40%
+        adapter.setNextOut(0.1e8);
+        (, r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.OK);
+    }
+
+    function test_concentrationFailsClosedOnDebt() public {
+        _supplyAll();
+        credit.setSupplied(address(nvda), 0); // $20 / $200 = 10%: passes on its own (control below)
+        credit.setDebtReverts(true);
+        (, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.CONCENTRATION);
+        credit.setDebtReverts(false);
+        credit.setDebt(200e6); // debt >= everything held: no equity left to weigh against
+        (, r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.CONCENTRATION);
+        credit.setDebt(0);
+        adapter.setNextOut(0.1e8);
+        (, r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.OK);
+    }
+
     // ------------------------------------------------------------------ BORROW / WITHDRAW (Task 4)
 
     function test_borrowSendsUsdcToVault() public {

@@ -494,8 +494,9 @@ contract MandateVault is IMandateVaultEvents {
         return raw * price8 / 10 ** (uint256(IB20Asset(token).decimals()) + 2);
     }
 
-    /// @dev Weight counts tokens held by the vault plus collateral supplied through the credit adapter (gross:
-    /// debt is not netted). Fail-closed: unreadable collateral returns a weight above any cap (CONCENTRATION).
+    /// @dev Weight is measured against net equity: tokens held by the vault plus collateral supplied through the
+    /// credit adapter, minus credit debt (USDC, 6 decimals like the rest of the sum), so borrowing cannot loosen
+    /// the cap. Fail-closed: unreadable collateral or debt, or debt >= assets, returns a weight above any cap.
     function _weightAfterBuyBps(address token, uint256 usdIn, uint256 price8) internal view returns (uint256) {
         uint256 total = IERC20Minimal(usdc).balanceOf(address(this));
         uint256 tokenValue;
@@ -513,6 +514,16 @@ contract MandateVault is IMandateVaultEvents {
             uint256 v = _valueUsd(t, bal, p);
             total += v;
             if (t == token) tokenValue = v;
+        }
+        if (address(ca) != address(0)) {
+            try ca.debt() returns (uint256 d) {
+                if (d != 0) {
+                    if (d >= total) return type(uint256).max;
+                    total -= d;
+                }
+            } catch {
+                return type(uint256).max;
+            }
         }
         if (total == 0) return BPS;
         return (tokenValue + usdIn) * BPS / total;

@@ -25,6 +25,8 @@ contract MockCreditAdapter is ICreditAdapter {
     bool public mutationsRevert;
     bytes internal _revertData;
     bool public viewsRevert;
+    /// When set, only debt() reverts (the other views keep working).
+    bool public debtReverts;
     /// When set, withdraw/repay succeed but return 0 bytes despite declaring `returns (uint256)`.
     bool public emptyReturns;
 
@@ -101,6 +103,10 @@ contract MockCreditAdapter is ICreditAdapter {
         viewsRevert = on;
     }
 
+    function setDebtReverts(bool on) external {
+        debtReverts = on;
+    }
+
     function setEmptyReturns(bool on) external {
         emptyReturns = on;
     }
@@ -160,6 +166,7 @@ contract MockCreditAdapter is ICreditAdapter {
     }
 
     function debt() external view viewGuard returns (uint256) {
+        if (debtReverts) revert ViewReverted();
         return _debt;
     }
 
