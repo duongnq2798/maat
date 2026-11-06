@@ -79,6 +79,7 @@ contract MandateVault is IMandateVaultEvents {
             _setToken(tokens_[i], configs_[i]);
         }
         for (uint256 i; i < payees_.length; ++i) {
+            if (payees_[i] == address(0)) revert ZeroAddress();
             allowedPayee[payees_[i]] = true;
             emit PayeeApplied(payees_[i], true);
         }
@@ -162,6 +163,7 @@ contract MandateVault is IMandateVaultEvents {
     }
 
     function applyPayee(address payee, bool allowed) external onlyOwner {
+        if (allowed && payee == address(0)) revert ZeroAddress();
         _consume(payeeChangeHash(payee, allowed));
         allowedPayee[payee] = allowed;
         emit PayeeApplied(payee, allowed);
@@ -280,8 +282,15 @@ contract MandateVault is IMandateVaultEvents {
         return (tokenValue + usdIn) * BPS / total;
     }
 
-    function _latestPrice(address token) internal view returns (uint256 price) {
-        (, price,) = PriceLib.readFeed(tokenConfig[token].feed);
+    /// @dev Valuation price for a holding other than the one being traded. Returns 0 (valued at zero, which is
+    /// conservative for concentration) when the token is delisted, its feed is not a contract, or the read is
+    /// bad or stale, so a stray holding can never make execute() revert.
+    function _latestPrice(address token) internal view returns (uint256) {
+        TokenConfig memory cfg = tokenConfig[token];
+        if (!cfg.allowed || cfg.feed.code.length == 0) return 0;
+        (bool ok, uint256 price, uint256 age) = PriceLib.readFeed(cfg.feed);
+        if (!ok || age > _mandate.maxStaleness) return 0;
+        return price;
     }
 
     // ------------------------------------------------------------------ internal: effects
@@ -318,7 +327,13 @@ contract MandateVault is IMandateVaultEvents {
     }
 
     function _syncMultiplier(address token) internal {
-        uint256 cur = IB20Asset(token).uiMultiplier();
+        // A reverting uiMultiplier() must not revert execute(); GuardLib then fails closed with MULTIPLIER_COOLDOWN.
+        try IB20Asset(token).uiMultiplier() returns (uint256 cur) {
+            _recordMultiplier(token, cur);
+        } catch {}
+    }
+
+    function _recordMultiplier(address token, uint256 cur) internal {
         uint256 last = lastMultiplier[token];
         if (cur == last) return;
         multiplierChangedAt[token] = block.timestamp;
@@ -330,6 +345,7 @@ contract MandateVault is IMandateVaultEvents {
     /// GuardLib's try/catch cannot cover calls to addresses without code, so contracts are checked here.
     function _requireValidMandate(Mandate memory m) internal view {
         if (m.calendar.code.length == 0 || m.swapAdapter.code.length == 0) revert InvalidConfig();
+        if (m.maxSlippageBps > BPS) revert InvalidConfig();
     }
 
     function _setToken(address token, TokenConfig memory c) internal {
@@ -340,7 +356,12 @@ contract MandateVault is IMandateVaultEvents {
             _tokens.push(token);
         }
         tokenConfig[token] = c;
-        if (c.allowed) lastMultiplier[token] = IB20Asset(token).uiMultiplier();
+        if (c.allowed) {
+            uint256 cur = IB20Asset(token).uiMultiplier();
+            // First snapshot (last == 0) starts no cooldown; re-applying must not silently absorb a later change.
+            if (lastMultiplier[token] == 0) lastMultiplier[token] = cur;
+            else _recordMultiplier(token, cur);
+        }
         emit TokenConfigApplied(token, c);
     }
 

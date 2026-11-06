@@ -6,6 +6,8 @@ import {MandateVault} from "../src/MandateVault.sol";
 import {Action, Reason, Intent, Mandate, TokenConfig} from "../src/Types.sol";
 import {B20Constants} from "../src/interfaces/IB20Asset.sol";
 import {MockPool} from "./mocks/MockPool.sol";
+import {MockB20} from "./mocks/MockB20.sol";
+import {MockFeed} from "./mocks/MockFeed.sol";
 
 contract MandateVaultTest is VaultFixture {
     function test_buyInSessionIsAllowed() public {
@@ -141,6 +143,7 @@ contract MandateVaultTest is VaultFixture {
         assertEq(nvda.balanceOf(address(vault)), 0);
         assertEq(usdc.balanceOf(address(vault)), 199.9e6);
         assertEq(vault.spentOnDay(vault.today()), 40e6);
+        assertEq(nvda.allowance(address(vault), address(adapter)), 0);
     }
 
     function test_payExpenseWorksWhenMarketClosed() public {
@@ -327,5 +330,135 @@ contract MandateVaultTest is VaultFixture {
         vault.applyTokenConfig(address(nvda), c);
         (bool allowed,,,) = vault.tokenConfig(address(nvda));
         assertFalse(allowed);
+    }
+
+    // ------------------------------------------------------------------ fix round 1
+
+    function _addSecondToken() internal returns (MockB20 aapl, MockFeed feedB) {
+        aapl = new MockB20("AAPLc");
+        feedB = new MockFeed(100e8);
+        MockPool poolB = new MockPool(address(usdc), address(aapl));
+        TokenConfig memory c =
+            TokenConfig({allowed: true, feed: address(feedB), pool: address(poolB), maxWeightBps: 4000});
+        _queueAndWait(vault.tokenChangeHash(address(aapl), c));
+        vm.prank(owner);
+        vault.applyTokenConfig(address(aapl), c);
+    }
+
+    function test_delistedHoldingDoesNotRevertBuy() public {
+        // queue add + delist together so a single 24h wait keeps us inside the Friday session
+        MockB20 aapl = new MockB20("AAPLc");
+        MockPool poolB = new MockPool(address(usdc), address(aapl));
+        TokenConfig memory add = TokenConfig({
+            allowed: true, feed: address(new MockFeed(100e8)), pool: address(poolB), maxWeightBps: 4000
+        });
+        TokenConfig memory del = TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0});
+        vm.startPrank(owner);
+        vault.queueChange(vault.tokenChangeHash(address(aapl), add));
+        vault.queueChange(vault.tokenChangeHash(address(aapl), del));
+        vm.stopPrank();
+        vm.warp(block.timestamp + 24 hours);
+        vm.startPrank(owner);
+        vault.applyTokenConfig(address(aapl), add);
+        aapl.mint(address(vault), 5e8);
+        vault.applyTokenConfig(address(aapl), del);
+        vm.stopPrank();
+        feed.set(200e8, block.timestamp);
+        adapter.setNextOut(0.1e8);
+        Intent memory i = _intent(Action.BUY, 20e6);
+        _assertReason(vault.previewIntent(i), Reason.OK);
+        (bool allowed, Reason r) = _exec(i);
+        assertTrue(allowed);
+        _assertReason(r, Reason.OK);
+    }
+
+    function test_staleOtherTokenPriceDoesNotRevertBuy() public {
+        (MockB20 aapl, MockFeed feedB) = _addSecondToken();
+        aapl.mint(address(vault), 5e8);
+        feed.set(200e8, block.timestamp);
+        feedB.set(100e8, block.timestamp - 2 days); // stale vs maxStaleness 3600
+        adapter.setNextOut(0.1e8);
+        (bool allowed, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        assertTrue(allowed);
+        _assertReason(r, Reason.OK);
+
+        feedB.set(0, block.timestamp); // bad price
+        (allowed, r) = _exec(_intent(Action.BUY, 20e6));
+        assertTrue(allowed);
+        _assertReason(r, Reason.OK);
+    }
+
+    function test_revertingUiMultiplierFailsClosedWithoutReverting() public {
+        nvda.setReverts(false, false, true, false);
+        Intent memory i = _intent(Action.BUY, 20e6);
+        _assertReason(vault.previewIntent(i), Reason.MULTIPLIER_COOLDOWN);
+        (bool allowed, Reason r) = _exec(i);
+        assertFalse(allowed);
+        _assertReason(r, Reason.MULTIPLIER_COOLDOWN);
+        assertTrue(vault.usedIntent(i.id));
+        vault.syncMultiplier(address(nvda)); // also non-reverting
+    }
+
+    function test_maxSlippageAbove100PercentIsInvalid() public {
+        Mandate memory m = defaultMandate();
+        m.maxSlippageBps = 10_001;
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        this.deployExternal(m, _goodConfig());
+
+        _queueAndWait(vault.mandateChangeHash(m));
+        vm.prank(owner);
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        vault.applyMandate(m);
+
+        m.maxSlippageBps = 10_000; // boundary is accepted
+        _queueAndWait(vault.mandateChangeHash(m));
+        vm.prank(owner);
+        vault.applyMandate(m);
+    }
+
+    function test_zeroPayeeRejected() public {
+        address[] memory toks = new address[](0);
+        TokenConfig[] memory cfgs = new TokenConfig[](0);
+        address[] memory payees = new address[](1);
+        Mandate memory m = defaultMandate();
+        vm.expectRevert(MandateVault.ZeroAddress.selector);
+        new MandateVault(owner, executor, address(usdc), address(registry), m, toks, cfgs, payees);
+
+        _queueAndWait(vault.payeeChangeHash(address(0), true));
+        vm.prank(owner);
+        vm.expectRevert(MandateVault.ZeroAddress.selector);
+        vault.applyPayee(address(0), true);
+    }
+
+    function test_reapplyingTokenConfigDoesNotAbsorbMultiplierChange() public {
+        nvda.setUiMultiplier(1.05e18); // changed, but never synced into the vault
+        TokenConfig memory c = _goodConfig();
+        _queueAndWait(vault.tokenChangeHash(address(nvda), c));
+        vm.prank(owner);
+        vault.applyTokenConfig(address(nvda), c);
+        assertEq(vault.lastMultiplier(address(nvda)), 1.05e18);
+        assertEq(vault.multiplierChangedAt(address(nvda)), block.timestamp);
+        feed.set(200e8, block.timestamp);
+        (, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(r, Reason.MULTIPLIER_COOLDOWN);
+    }
+
+    function test_firstSnapshotStartsNoCooldown() public view {
+        assertEq(vault.multiplierChangedAt(address(nvda)), 0);
+    }
+
+    function test_sellSwapFailureLeavesBalancesAndAllowanceClean() public {
+        adapter.setNextOut(0.1e8);
+        _exec(_intent(Action.BUY, 20e6));
+        adapter.setNextOut(19.7e6); // below the 19.8e6 floor
+        Intent memory i = _intent(Action.SELL, 0.1e8);
+        (bool allowed, Reason r) = _exec(i);
+        assertFalse(allowed);
+        _assertReason(r, Reason.SWAP_FAILED);
+        assertEq(nvda.balanceOf(address(vault)), 0.1e8);
+        assertEq(usdc.balanceOf(address(vault)), 180e6);
+        assertEq(nvda.allowance(address(vault), address(adapter)), 0);
+        assertEq(vault.spentOnDay(vault.today()), 20e6);
+        assertTrue(vault.usedIntent(i.id));
     }
 }
