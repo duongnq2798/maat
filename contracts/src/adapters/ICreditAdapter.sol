@@ -25,6 +25,7 @@ interface ICreditAdapter {
     function repay(uint256 amount) external returns (uint256 repaid);
 
     function supportsToken(address token) external view returns (bool);
+    /// @notice Returns 0 (never reverts) for tokens the adapter does not support; the vault reads it for every listed token.
     function suppliedOf(address token) external view returns (uint256);
     function debt() external view returns (uint256);
     function healthFactor() external view returns (uint256);
