@@ -6,6 +6,7 @@ import { size } from "viem";
 import { describe, expect, it } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
+import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
 import { Journal } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
@@ -45,7 +46,7 @@ async function setup(o: { mode?: "dry-run" | "live"; batch?: Batch; proposer?: P
     previewClient: {
       readContract: (async (p: { args: readonly [OnchainIntent] }) => (previews.push(p.args[0]), (o.preview ?? (() => 0))(p.args[0]))) as never,
     },
-    receipts: receipts.client(),
+    txClient: receipts.client(),
     proposer: o.proposer ?? new FixedProposer(o.batch ?? { summary: "hold", intents: [] }),
     sender: (o.mode ?? "live") === "live" ? new GuardedSender(inner, { vault: VAULT, suffix: SUFFIX }) : null,
     store,
@@ -178,5 +179,37 @@ describe("runOnce", () => {
     const r = await runOnce(t.deps);
     expect(r.sent).toHaveLength(1);
     expect((await t.journal.read()).find((e) => e.kind === "skip")).toMatchObject({ error: "symbol NVDAc does not fit BORROW" });
+  });
+
+  it("sends every transaction with an explicit gas limit at or above its floor", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "maat-run-"));
+    const store = await Store.open(dir);
+    store.recordCompute(DAY - 1n, 300_000n);
+    const t = await setup({ batch: BUY20, store, scene: standardScene().set(addressOf("NVDAc"), "uiMultiplier", 2n * 10n ** 18n) });
+    t.receipts.estimate = () => 100_000n; // a starved-path estimate: the floor must win
+    expect((await runOnce(t.deps)).status).toBe("done");
+    const fns = t.receipts.calls().map((c) => c.functionName as keyof typeof GAS_FLOOR);
+    expect(fns).toEqual(["syncMultiplier", "execute", "execute"]);
+    t.inner.sent.forEach((tx, i) => expect(tx.gas).toBe(GAS_FLOOR[fns[i]!]));
+    expect(t.receipts.estimates).toHaveLength(3);
+    expect(t.receipts.estimates.every((e) => e.account === EXECUTOR && e.to === VAULT)).toBe(true);
+  });
+
+  it("halts without sending when the gas estimate fails", async () => {
+    const t = await setup({ batch: BUY20 });
+    t.receipts.estimate = () => Promise.reject(new Error("execution reverted"));
+    const r = await runOnce(t.deps);
+    expect(r).toMatchObject({ status: "halted", sent: [] });
+    expect(r.haltReason).toMatch(/gas estimate failed for execute: execution reverted/);
+    expect(t.inner.sent).toEqual([]);
+  });
+
+  it("halts when a syncMultiplier receipt carries no MultiplierChangeDetected", async () => {
+    const t = await setup({ batch: BUY20, scene: standardScene().set(addressOf("NVDAc"), "uiMultiplier", 2n * 10n ** 18n) });
+    t.receipts.syncEvent = false;
+    const r = await runOnce(t.deps);
+    expect(r.status).toBe("halted");
+    expect(r.haltReason).toMatch(/no MultiplierChangeDetected/);
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["syncMultiplier"]);
   });
 });

@@ -8,7 +8,7 @@ export interface CdpLike {
     sendTransaction(o: {
       address: Address;
       network: "base";
-      transaction: { to: Address; data: Hex; value: bigint };
+      transaction: { to: Address; data: Hex; value: bigint; gas: bigint };
       idempotencyKey?: string;
     }): Promise<{ transactionHash: Hex }>;
   };
@@ -48,7 +48,7 @@ export class CdpSender implements TxSender {
     const { transactionHash } = await this.cdp.evm.sendTransaction({
       address: this.address,
       network: "base",
-      transaction: { to: tx.to, data: tx.data, value: 0n },
+      transaction: { to: tx.to, data: tx.data, value: 0n, gas: tx.gas },
       idempotencyKey: uuidFromKey(tx.idempotencyKey),
     });
     return transactionHash;

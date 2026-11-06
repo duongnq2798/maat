@@ -37,7 +37,7 @@ export async function buildRuntime(
     maxTxPerDay: cfg.maxTxPerDay,
     stateClient: client,
     previewClient: client,
-    receipts: client,
+    txClient: client,
     proposer: o.proposer ?? new ClaudeProposer({ model: cfg.loopModel }),
     sender,
     store: await Store.open(cfg.dataDir),

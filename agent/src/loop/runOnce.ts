@@ -3,7 +3,7 @@ import { getAddress, parseEventLogs, zeroAddress, type Address, type Hex, type P
 import { mandateVaultAbi } from "../abi/index.js";
 import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
-import { encodeExecute, encodeSyncMultiplier } from "../exec/calls.js";
+import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
 import type { TxSender } from "../exec/sender.js";
 import { buildIntent, type Proposal } from "../intent.js";
 import type { Journal } from "../ledger/journal.js";
@@ -14,7 +14,8 @@ import { gate } from "../refusals.js";
 import { REASONS, type ReasonName } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
-export type ReceiptClient = Pick<PublicClient, "waitForTransactionReceipt">;
+/** What runOnce needs from the chain around a send. */
+export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas">;
 export const BILL_MIN_USD6 = 100_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
 
@@ -27,7 +28,7 @@ export interface RunDeps {
   maxTxPerDay: number;
   stateClient: StateClient;
   previewClient: PreviewClient;
-  receipts: ReceiptClient;
+  txClient: TxClient;
   proposer: Proposer;
   sender: TxSender | null;
   store: Store;
@@ -53,6 +54,12 @@ function decisionOf(receipt: TransactionReceipt, vault: Address, id: Hex): { all
   const logs = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: receipt.logs });
   const l = logs.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId === id);
   return l && { allowed: l.args.allowed, reason: REASONS[Number(l.args.reason)] ?? `REASON_${l.args.reason}` };
+}
+
+/** syncMultiplier is only sent when uiMultiplier != lastMultiplier, so a missing event means the vault's read failed. */
+function multiplierSynced(receipt: TransactionReceipt, vault: Address, token: Address): boolean {
+  const logs = parseEventLogs({ abi: mandateVaultAbi, eventName: "MultiplierChangeDetected", logs: receipt.logs });
+  return logs.some((x) => getAddress(x.address) === getAddress(vault) && getAddress(x.args.token) === getAddress(token));
 }
 
 export async function runOnce(d: RunDeps): Promise<RunReport> {
@@ -85,12 +92,22 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
   };
 
-  const sendAndWait = async (data: Hex, key: string): Promise<TransactionReceipt> => {
+  // The estimate goes through the public client as the executor; a failed estimate halts (no fallback limit).
+  const gasFor = async (fn: GasFunction, data: Hex): Promise<bigint> => {
+    try {
+      return gasLimit(fn, await d.txClient.estimateGas({ account: d.executor, to: d.vault, data }));
+    } catch (e) {
+      throw new Halt(`gas estimate failed for ${fn}: ${(e as Error).message.split("\n")[0]}`);
+    }
+  };
+
+  const sendAndWait = async (fn: GasFunction, data: Hex, key: string): Promise<TransactionReceipt> => {
     if (d.store.txCount(day) >= d.maxTxPerDay) throw new Halt(`daily tx cap ${d.maxTxPerDay} reached`);
-    const hash = await d.sender!.send({ to: d.vault, data, idempotencyKey: key });
+    const gas = await gasFor(fn, data);
+    const hash = await d.sender!.send({ to: d.vault, data, idempotencyKey: key, gas });
     d.store.recordTx(day);
     report.sent.push(hash);
-    const receipt = await d.receipts.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
+    const receipt = await d.txClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
     if (receipt.status !== "success") throw new Halt(`tx ${hash} reverted`);
     return receipt;
   };
@@ -104,8 +121,9 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, note: "dry-run" });
         continue;
       }
-      const r = await sendAndWait(encodeSyncMultiplier(t.address), `sync:${runId}:${t.address}`);
-      await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, txHash: r.transactionHash });
+      const r = await sendAndWait("syncMultiplier", encodeSyncMultiplier(t.address), `sync:${runId}:${t.address}`);
+      await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, txHash: r.transactionHash, gasUsed: r.gasUsed });
+      if (!multiplierSynced(r, d.vault, t.address)) throw new Halt(`syncMultiplier ${t.address}: no MultiplierChangeDetected in ${r.transactionHash}`);
     }
     let dirty = report.sent.length > 0;
     if (dirty) {
@@ -174,7 +192,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         report.skipped++;
         continue;
       }
-      const receipt = await sendAndWait(encodeExecute(b.intent), b.intent.id);
+      const receipt = await sendAndWait("execute", encodeExecute(b.intent), b.intent.id);
       dirty = true;
       const decision = decisionOf(receipt, d.vault, b.intent.id);
       if (g.kind === "log-refusal") d.store.recordRefusalLog(day, preview as ReasonName);

@@ -1,11 +1,14 @@
 import { decodeFunctionData, getAddress, type Address, type Hex, type WalletClient } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
 import { withSuffix } from "./builderCode.js";
+import { MAX_GAS } from "./calls.js";
 
 export interface TxRequest {
   to: Address;
   data: Hex;
   idempotencyKey: string;
+  /** Explicit gas limit; see calls.ts for why an estimate alone is unsafe. */
+  gas: bigint;
 }
 
 export interface TxSender {
@@ -22,7 +25,7 @@ export class SendRefused extends Error {
 
 export const ALLOWED_FUNCTIONS = ["execute", "syncMultiplier", "notifyRevenue"] as const;
 
-/** The only path to a sender: vault-only, allowlisted functions, Builder Code on every transaction. */
+/** The only path to a sender: vault-only, allowlisted functions, explicit bounded gas, Builder Code on every transaction. */
 export class GuardedSender implements TxSender {
   constructor(
     private readonly inner: TxSender,
@@ -42,6 +45,9 @@ export class GuardedSender implements TxSender {
       throw new SendRefused("calldata does not decode against the MandateVault ABI");
     }
     if (!(ALLOWED_FUNCTIONS as readonly string[]).includes(fn)) throw new SendRefused(`function ${fn} is not allowed`);
+    if (typeof tx.gas !== "bigint") throw new SendRefused("gas limit is missing");
+    if (tx.gas <= 0n) throw new SendRefused(`gas limit ${tx.gas} is not positive`);
+    if (tx.gas > MAX_GAS) throw new SendRefused(`gas limit ${tx.gas} is above the cap ${MAX_GAS}`);
     return this.inner.send({ ...tx, data: withSuffix(tx.data, this.opts.suffix) });
   }
 }
@@ -54,6 +60,6 @@ export class RpcSender implements TxSender {
   ) {}
 
   async send(tx: TxRequest): Promise<Hex> {
-    return this.wallet.sendTransaction({ account: this.address, chain: this.wallet.chain ?? null, to: tx.to, data: tx.data, value: 0n });
+    return this.wallet.sendTransaction({ account: this.address, chain: this.wallet.chain ?? null, to: tx.to, data: tx.data, value: 0n, gas: tx.gas });
   }
 }
