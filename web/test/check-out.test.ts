@@ -72,10 +72,15 @@ describe("checkDocsPage", () => {
     ["a third-party script", DOC.replace("/_next/static/chunks/docs.js", "https://cdn.example/x.js"), /third-party script/],
     ["Google Fonts", DOC.replace("</head>", '<link href="https://fonts.gstatic.com/x"/></head>'), /Google Fonts/],
     ["a block inside a paragraph", DOC.replace("</body>", "<p><div>x</div></p></body>"), /inside a paragraph/],
+    ["a block after text inside a paragraph", DOC.replace("</body>", "<p>Intro\n<div>x</div></p></body>"), /inside a paragraph/],
     ["an in-page link without a target", DOC.replace('href="#why"', 'href="#nowhere"'), /#nowhere/],
     ["a link to a docs page that was not exported", DOC.replace('href="/docs"', 'href="/docs/concepts/gone"'), /\/docs\/concepts\/gone/],
   ])("flags %s", (_name, html, problem) => {
     expect(checkDocsPage(html, PATH, KNOWN).join("\n")).toMatch(problem);
+  });
+
+  it("does not flag a closed paragraph followed by a block", () => {
+    expect(checkDocsPage(DOC.replace("</body>", "<p>a</p><div>b</div></body>"), PATH, KNOWN)).toEqual([]);
   });
 
   it("names the page in every problem", () => {

@@ -11,6 +11,7 @@ import {
   frontmatterOf,
   handTypedFacts,
   headingIds,
+  malformedExcerptTitles,
   repoPaths,
 } from "@/lib/docs/content-checks";
 import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
@@ -30,9 +31,17 @@ const ia = new Map(DOCS_IA.flatMap((s) => s.pages).map((p) => [p.slug, p]));
 const at = (slug: string, f: { line: number; text: string }) => `content/docs/${slug}.mdx:${f.line} ${f.text}`;
 
 describe.each(pages.map((p) => [p.slug, p.source] as const))("content/docs/%s.mdx", (slug, source) => {
-  const fm = (parse(frontmatterOf(source)) ?? {}) as Record<string, unknown>;
+  // A page whose frontmatter cannot be parsed must fail its own test, not abort the collection of every page.
+  let fm: Record<string, unknown> = {};
+  let yamlError: string | undefined;
+  try {
+    fm = (parse(frontmatterOf(source)) ?? {}) as Record<string, unknown>;
+  } catch (e) {
+    yamlError = `content/docs/${slug}.mdx frontmatter: ${e instanceof Error ? e.message : String(e)}`;
+  }
 
   it("has valid frontmatter with the IA's title and description (gate 1)", () => {
+    expect(yamlError).toBeUndefined();
     const r = docsFrontmatter.safeParse(fm);
     expect(r.success ? [] : r.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`)).toEqual([]);
     const want = ia.get(slug);
@@ -71,6 +80,7 @@ describe.each(pages.map((p) => [p.slug, p.source] as const))("content/docs/%s.md
   });
 
   it("quotes code exactly (excerpt gate)", () => {
+    expect(malformedExcerptTitles(source).map((f) => at(slug, f))).toEqual([]);
     for (const e of excerpts(source)) {
       const lines = readRepo(e.file).replace(/\r\n/g, "\n").split("\n").slice(e.from - 1, e.to).join("\n");
       expect(e.body, `content/docs/${slug}.mdx:${e.line} ${e.file}#L${e.from}-L${e.to}`).toBe(lines);

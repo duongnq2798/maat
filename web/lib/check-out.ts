@@ -63,7 +63,7 @@ export function checkDocsPage(html: string, path: string, known: ReadonlySet<str
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
   // MDX puts a block component written without blank lines around it inside a <p>, which breaks hydration.
-  need(!/<p(?:\s[^>]*)?>\s*<(?:div|figure|table|ul|ol|pre)[\s>]/.test(html), "a block element is inside a paragraph (add blank lines around the MDX component)");
+  need(!/<p(?:\s[^>]*)?>(?:(?!<\/p>)[\s\S])*?<(?:div|figure|table|ul|ol|pre)[\s>]/.test(html), "a block element is inside a paragraph (add blank lines around the MDX component)");
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
     need(html.includes(` id="${id}"`), `link #${id} has no target`);
   }

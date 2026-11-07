@@ -128,3 +128,15 @@ export function excerpts(source: string): Excerpt[] {
   }
   return out;
 }
+
+/** Fences that look like an excerpt (a title with `#L`) but that `excerpts` skipped, so no gate would compare them with the code. */
+export function malformedExcerptTitles(source: string): Finding[] {
+  const parsed = new Set(excerpts(source).map((e) => e.line));
+  const out: Finding[] = [];
+  source.split("\n").forEach((l, i) => {
+    if (/^\s*(```|~~~).*title=["'][^"']*#L/i.test(l) && !parsed.has(i + 1)) {
+      out.push({ line: i + 1, text: "excerpt title must read path#L<from>-L<to>, with the fence at the start of the line" });
+    }
+  });
+  return out;
+}

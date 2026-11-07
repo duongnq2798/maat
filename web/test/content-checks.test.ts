@@ -8,6 +8,7 @@ import {
   handTypedFacts,
   headingIds,
   isDistinctive,
+  malformedExcerptTitles,
   prose,
   repoPaths,
 } from "@/lib/docs/content-checks";
@@ -105,5 +106,26 @@ describe("page parts", () => {
   it("excerpts reads the file, the line range and the body", () => {
     const src = 'Intro\n\n```solidity title="contracts/src/GuardLib.sol#L44-L45"\n    a;\n    b;\n```\n';
     expect(excerpts(src)).toEqual([{ line: 3, file: "contracts/src/GuardLib.sol", from: 44, to: 45, body: "    a;\n    b;" }]);
+  });
+
+  it("malformedExcerptTitles flags every excerpt title that excerpts() would skip", () => {
+    const src = [
+      '```solidity title="contracts/src/GuardLib.sol#L44-L45"',
+      "    a;",
+      "```",
+      '```solidity title="contracts/src/GuardLib.sol#L44"',
+      "```",
+      '```solidity title="contracts/src/GuardLib.sol#L44-62"',
+      "```",
+      '```solidity title="contracts/src/GuardLib.sol#l44-l45"',
+      "```",
+      "```solidity title='contracts/src/GuardLib.sol#L44-L45'",
+      "```",
+      '  ```solidity title="contracts/src/GuardLib.sol#L44-L45"',
+      "  ```",
+    ].join("\n");
+    const text = "excerpt title must read path#L<from>-L<to>, with the fence at the start of the line";
+    expect(excerpts(src).map((e) => e.line)).toEqual([1]);
+    expect(malformedExcerptTitles(src)).toEqual([4, 6, 8, 10, 12].map((line) => ({ line, text })));
   });
 });
