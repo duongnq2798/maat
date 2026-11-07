@@ -208,6 +208,29 @@ describe("Simulator", () => {
     expect(ui.reason()).toBe("MARKET_CLOSED");
   });
 
+  it("reads the clock again when Now is clicked", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T20:00:00Z")); // Sat 15:00 ET
+    const ui = setup();
+    const now = await screen.findByRole("button", { name: "Now" });
+    vi.setSystemTime(new Date("2026-11-07T20:05:00Z"));
+    await ui.user.click(now);
+    expect(screen.getByText("15:05 ET")).toBeInTheDocument();
+    expect(ui.button("Now")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("hides Now, and stays put, when the clock has left the dates the calendar lists by the click", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T20:00:00Z"));
+    const ui = setup();
+    const now = await screen.findByRole("button", { name: "Now" });
+    vi.setSystemTime(new Date("2027-03-01T15:00:00Z"));
+    await ui.user.click(now);
+    expect(screen.queryByRole("button", { name: "Now" })).toBeNull();
+    expect(screen.getByText("10:30 ET")).toBeInTheDocument();
+    expect(ui.button("Thu 5 Nov · 10:30")).toHaveAttribute("aria-pressed", "true");
+  });
+
   it("hides Now outside the dates the calendar lists", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2027-03-01T15:00:00Z"));

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { isoOfDay, parseIsoDay, WINDOW } from "@/content/calendar";
 import { getDecisions } from "@/content/decisions";
 import { CHECK_LABELS, MOMENTS } from "@/content/engine";
@@ -230,6 +230,14 @@ describe("simulator: presets and copy", () => {
     for (const bad of ["", "abc", "-5", "1e5", "0.001", "1234567890", ".5"]) expect(parseUsd(bad), bad).toBeUndefined();
   });
 
+  it("reads thousands commas, a leading dollar sign and a decimal comma, and nothing looser", () => {
+    const good = ["12,50", "12,5", "1,00", "1,000.50", "12,345,678.5", "$ 20", " $20 ", "$1,000", "1,000", "12,505"];
+    expect(good.map((t) => parseUsd(t))).toEqual([12.5e6, 12.5e6, 1e6, 1000.5e6, 12_345_678.5e6, 20e6, 20e6, 1000e6, 1000e6, 12_505e6]);
+    for (const bad of ["5 0", "1,0,0", "20$", "1,00,000", "$$20", "12,50.5", "1,", "1,000,", "1,234,567,890", "$"]) {
+      expect(parseUsd(bad), bad).toBeUndefined();
+    }
+  });
+
   it("formats dollars like the rest of the page", () => {
     expect([formatUsd(50e6), formatUsd(12.5e6), formatUsd(1000e6), formatUsd(0)]).toEqual(["$50", "$12.50", "$1,000", "$0"]);
     expect([amountText(50e6), amountText(12.5e6)]).toEqual(["50", "12.50"]);
@@ -253,6 +261,25 @@ describe("simulator: presets and copy", () => {
       "https://x.com/intent/post?text=a%20b&url=https%3A%2F%2Fmaat.example%2F%3Fday%3D2026-11-07%23try",
     );
     expect(postUrl("a b", "?day=2026-11-07#try")).toBe("https://x.com/intent/post?text=a%20b");
+  });
+});
+
+describe("simulator: the mandate it models", () => {
+  it("refuses to load for a mandate that is not REGULAR", async () => {
+    vi.resetModules();
+    vi.doMock("@/content/facts", async (importOriginal) => {
+      const real = await importOriginal<typeof import("@/content/facts")>();
+      const mandate = { ...real.FACTS.mandate, value: { ...real.FACTS.mandate.value, sessionMode: "FEED_24_5" as const } };
+      return { ...real, FACTS: { ...real.FACTS, mandate } };
+    });
+    try {
+      await expect(import("@/content/simulator")).rejects.toThrow(
+        "the simulator models REGULAR sessions only; FACTS.mandate.sessionMode is FEED_24_5",
+      );
+    } finally {
+      vi.doUnmock("@/content/facts");
+      vi.resetModules();
+    }
   });
 });
 

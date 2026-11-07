@@ -94,6 +94,12 @@ function Row({ n, label, detail, mark, check, fixed = false }: RowProps) {
   );
 }
 
+/** The visitor's clock in New York, when it falls on a day the calendar lists. */
+function clockNow(): { etDay: number; minute: number } | undefined {
+  const t = localTime(Math.floor(Date.now() / 1000));
+  return t.etDay >= WINDOW.first && t.etDay <= WINDOW.last ? { etDay: t.etDay, minute: t.minuteOfDay } : undefined;
+}
+
 type Copy = "idle" | "copied" | "manual";
 
 const COPIED = "Link copied.";
@@ -118,8 +124,7 @@ export function Simulator() {
     setS(shared);
     setAmount(amountText(shared.intent.usd6));
     setOrigin(`${window.location.origin}${window.location.pathname}`);
-    const t = localTime(Math.floor(Date.now() / 1000));
-    if (t.etDay >= WINDOW.first && t.etDay <= WINDOW.last) setNow({ etDay: t.etDay, minute: t.minuteOfDay });
+    setNow(clockNow());
   }, []);
 
   const day = useMemo(() => replay(s.etDay, s.tape), [s.etDay, s.tape]);
@@ -143,6 +148,12 @@ export function Simulator() {
     setDayDraft(undefined);
     if (etDay !== s.etDay) setNotice("");
     setS((p) => ({ ...p, etDay, tape: etDay === p.etDay ? p.tape : [], intent: { ...p.intent, minute } }));
+  };
+  // The chip is offered from the clock at mount; a click reads the clock again, so Now is now, not then.
+  const goNow = () => {
+    const fresh = clockNow();
+    setNow(fresh);
+    if (fresh) setMoment(fresh.etDay, fresh.minute);
   };
   const onAmount = (text: string) => {
     setAmount(text);
@@ -239,7 +250,7 @@ export function Simulator() {
             {now ? (
               <Chip
                 on={s.etDay === now.etDay && s.intent.minute === now.minute}
-                onClick={() => setMoment(now.etDay, now.minute)}
+                onClick={goNow}
               >
                 Now
               </Chip>

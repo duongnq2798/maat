@@ -15,7 +15,7 @@ export function TryIt() {
       title: "Simulated",
       body: `The market session (NYSE ${clockLabel(session.open)}–${clockLabel(session.close)} ET, weekends, and the holidays the calendar lists: ${andList(
         holidays.map((h) => `${h.name} on ${dayLabel(h.date)}`),
-      )}; early closes at ${andList(earlyCloses.map((e) => `${clockLabel(e.closeMin)} on ${dayLabel(e.date)}`))}), the token list, the per-trade and daily caps, and the weight.`,
+      )}; early closes at ${andList(earlyCloses.map((e) => `${clockLabel(e.closeMin)} on ${dayLabel(e.date)}`))}), the token list, the per-trade and daily caps, the weight and the vault's USDC balance.`,
     },
     {
       title: "Fixed at fork values",

@@ -74,6 +74,10 @@ export interface SimResult {
 }
 
 const m = FACTS.mandate.value;
+// regularSession() is the only market window the simulator has; a FEED_24_5 mandate would need its own.
+if (m.sessionMode !== "REGULAR") {
+  throw new Error(`the simulator models REGULAR sessions only; FACTS.mandate.sessionMode is ${m.sessionMode}`);
+}
 const USD6 = 1_000_000;
 const BPS = 10_000;
 const START6 = FACTS.forkVaultUsd.value * USD6;
@@ -97,11 +101,18 @@ export function amountText(usd6: number): string {
   return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
 }
 
-/** An amount as people type it ("50", "$1,000", "12.5", "50.") in USDC with 6 decimals, or undefined. */
+/**
+ * An amount as people type it, in USDC with 6 decimals, or undefined. Spaces around it, one leading "$" ("$ 20"),
+ * commas only as thousands groups ("1,000", "12,345,678.5") and, when there is no period, one decimal comma with
+ * one or two digits ("12,50", "12,5") for keypads in comma-decimal locales. Anything else is not an amount.
+ */
 export function parseUsd(text: string): number | undefined {
-  const match = /^(\d{1,9})(?:\.(\d{0,2}))?$/.exec(text.replace(/[$,\s]/g, ""));
+  const amount = text.trim().replace(/^\$\s*/, "");
+  const match = /^(\d+|\d{1,3}(?:,\d{3})+)(?:\.(\d{0,2}))?$/.exec(amount) ?? /^(\d+),(\d{1,2})$/.exec(amount);
   if (!match) return undefined;
-  return Number(match[1]) * USD6 + Number((match[2] ?? "").padEnd(2, "0")) * 10_000;
+  const whole = (match[1] ?? "").replace(/,/g, "");
+  if (whole.length > 9) return undefined;
+  return Number(whole) * USD6 + Number((match[2] ?? "").padEnd(2, "0")) * 10_000;
 }
 
 const pct = (bps: number) => `${bps / 100}%`;

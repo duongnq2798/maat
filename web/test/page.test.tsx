@@ -54,6 +54,7 @@ describe("landing page", () => {
     expect(section).toHaveTextContent(
       "an NVDAc feed answer 14 s old (the GOOGLc and AAPLc feeds are assumed fresh), multiplier unchanged",
     );
+    expect(section).toHaveTextContent("the token list, the per-trade and daily caps, the weight and the vault's USDC balance.");
     expect(section).toHaveTextContent("Each day starts with $200 USDC and no stock");
     expect(within(section).getByRole("link", { name: "MarketCalendar.sol" })).toHaveAttribute(
       "href",
