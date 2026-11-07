@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clockLabel, dayLabel, formatInt, numberWord } from "@/content/format";
+import { andList, clockLabel, dayLabel, formatInt, minuteOfClock, numberWord } from "@/content/format";
 
 describe("format", () => {
   it("groups thousands like the comp", () => {
@@ -31,5 +31,19 @@ describe("format", () => {
     expect(() => clockLabel(1440)).toThrow();
     expect(() => clockLabel(9.5)).toThrow();
     expect(() => clockLabel(-1)).toThrow();
+  });
+
+  it("reads a 24 h clock back into minutes", () => {
+    expect([minuteOfClock("10:30"), minuteOfClock("00:00"), minuteOfClock("23:59")]).toEqual([630, 0, 1439]);
+    for (const bad of ["24:00", "9:30", "10:60", ""]) expect(() => minuteOfClock(bad), bad).toThrow();
+  });
+
+  it("joins a list the way the copy reads", () => {
+    expect([andList([]), andList(["a"]), andList(["a", "b"]), andList(["a", "b", "c"])]).toEqual([
+      "",
+      "a",
+      "a and b",
+      "a, b and c",
+    ]);
   });
 });

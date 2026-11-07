@@ -1,0 +1,277 @@
+import { describe, expect, it } from "vitest";
+import { isoOfDay, parseIsoDay, WINDOW } from "@/content/calendar";
+import { getDecisions } from "@/content/decisions";
+import { CHECK_LABELS, MOMENTS } from "@/content/engine";
+import { FACTS } from "@/content/facts";
+import { minuteOfClock } from "@/content/format";
+import {
+  AMOUNT_CHIPS_USD,
+  amountText,
+  DEFAULT_SCENARIO,
+  daySummary,
+  dayNote,
+  decodeScenario,
+  encodeScenario,
+  evaluate,
+  execute,
+  formatUsd,
+  MAX_TAPE,
+  momentLabel,
+  PRESETS,
+  parseUsd,
+  postText,
+  postUrl,
+  replay,
+  type SimIntent,
+  type SimResult,
+  type SimToken,
+  simIntentLabel,
+} from "@/content/simulator";
+
+const THU = "2026-11-05";
+const day = (iso: string): number => {
+  const d = parseIsoDay(iso);
+  if (d === undefined) throw new Error(`bad test date ${iso}`);
+  return d;
+};
+const buy = (token: SimToken, usd: number, at = "10:30"): SimIntent => ({
+  token,
+  usd6: Math.round(usd * 100) * 10_000,
+  minute: minuteOfClock(at),
+});
+const on = (iso: string, before: SimIntent[] = []) => replay(day(iso), before);
+const marks = (r: SimResult) => r.checks.map((c) => c.mark);
+const failAt = (r: SimResult) => r.checks.findIndex((c) => c.mark === "FAIL");
+
+describe("simulator: one BUY against the default mandate", () => {
+  it("allows the fork's BUY at the fork moment, all nine checks passing", () => {
+    const r = evaluate(on(THU), buy("NVDAc", 20));
+    expect([r.allowed, r.reason, r.balance]).toEqual([true, "OK", undefined]);
+    expect(r.checks.map((c) => c.label)).toEqual([...CHECK_LABELS]);
+    expect(r.checks.map((c) => [c.mark, c.detail])).toEqual([
+      ["PASS", "NVDAc in mandate"],
+      ["PASS", "transfers active"],
+      ["PASS", "authorized"],
+      ["PASS", "Thursday · open until 16:00"],
+      ["PASS", "14s ≤ 3600s"],
+      ["PASS", "no change 24h"],
+      ["PASS", "53 ≤ 100 bps"],
+      ["PASS", "$20 ≤ $50 · $20 of $100 today"],
+      ["PASS", "NVDAc 10% ≤ 40%"],
+    ]);
+    expect(r.checks.map((c) => c.fixed)).toEqual([false, true, true, false, true, true, true, false, false]);
+  });
+
+  it("refuses a token outside the mandate at check 1", () => {
+    const r = evaluate(on(THU), buy("OTHER", 20));
+    expect([r.allowed, r.reason]).toEqual([false, "TOKEN_NOT_ALLOWED"]);
+    expect(marks(r)).toEqual(["FAIL", ...Array(8).fill("SKIP")]);
+    expect(r.checks[0]?.detail).toBe("not in the mandate");
+    expect(r.checks.slice(1).every((c) => c.detail === "not reached")).toBe(true);
+  });
+
+  it.each([
+    ["Saturday", "2026-11-07", "10:30", "Saturday · NYSE closed"],
+    ["Sunday", "2026-11-08", "10:30", "Sunday · NYSE closed"],
+    ["Thanksgiving", "2026-11-26", "10:30", "Thanksgiving · NYSE closed"],
+    ["Christmas", "2026-12-25", "10:30", "Christmas · NYSE closed"],
+    ["before the open", THU, "09:29", "09:29 · opens 09:30"],
+    ["at the close", THU, "16:00", "16:00 · closed at 16:00"],
+    ["Friday evening", "2026-11-06", "19:00", "19:00 · closed at 16:00"],
+    ["at an early close", "2026-11-27", "13:00", "13:00 · early close 13:00"],
+  ])("refuses at check 4 when the market is closed: %s", (_name, iso, at, detail) => {
+    const r = evaluate(on(iso), buy("NVDAc", 20, at));
+    expect([r.allowed, r.reason, failAt(r)]).toEqual([false, "MARKET_CLOSED", 3]);
+    expect(r.checks[3]?.detail).toBe(detail);
+    expect(marks(r).slice(4)).toEqual(Array(5).fill("SKIP"));
+  });
+
+  it.each([
+    [THU, "09:30", "Thursday · open until 16:00"],
+    [THU, "15:59", "Thursday · open until 16:00"],
+    ["2026-11-27", "12:59", "Friday · open until 13:00"],
+  ])("is open on %s at %s", (iso, at, detail) => {
+    const r = evaluate(on(iso), buy("GOOGLc", 10, at));
+    expect(r.reason).toBe("OK");
+    expect(r.checks[3]?.detail).toBe(detail);
+  });
+
+  it("shows each token's measured premium", () => {
+    expect(evaluate(on(THU), buy("GOOGLc", 10)).checks[6]?.detail).toBe("49 ≤ 100 bps");
+    expect(evaluate(on(THU), buy("AAPLc", 10)).checks[6]?.detail).toBe("29 ≤ 100 bps");
+  });
+
+  it.each([
+    ["a zero amount", 0, "amount is zero"],
+    ["more than the vault holds", 250, "$250 > $200 USDC"],
+  ])("checks the balance between checks 7 and 8: %s", (_name, usd, balance) => {
+    const r = evaluate(on(THU), buy("NVDAc", usd));
+    expect([r.allowed, r.reason, r.balance]).toEqual([false, "INSUFFICIENT_BALANCE", balance]);
+    expect(marks(r)).toEqual([...Array(7).fill("PASS"), "SKIP", "SKIP"]);
+  });
+
+  it("refuses past the per-trade cap at check 8, to the cent", () => {
+    const r = evaluate(on(THU), buy("NVDAc", 51));
+    expect([r.reason, failAt(r), r.checks[7]?.detail]).toEqual(["SIZE_LIMIT", 7, "$51 > $50 per trade"]);
+    expect(evaluate(on(THU), buy("NVDAc", 50.01)).reason).toBe("SIZE_LIMIT");
+    expect(evaluate(on(THU), buy("NVDAc", 50)).reason).toBe("OK");
+  });
+});
+
+describe("simulator: one day of trades", () => {
+  it("refuses past the daily cap once allowed buys add up", () => {
+    const r = evaluate(on(THU, [buy("NVDAc", 50), buy("GOOGLc", 50)]), buy("AAPLc", 1));
+    expect([r.reason, failAt(r), r.checks[7]?.detail]).toEqual(["SIZE_LIMIT", 7, "$101 > $100 today"]);
+  });
+
+  it("refuses a buy that would push one stock past 40%", () => {
+    const r = evaluate(on(THU, [buy("NVDAc", 50)]), buy("NVDAc", 50));
+    expect([r.reason, failAt(r)]).toEqual(["CONCENTRATION", 8]);
+    expect(r.checks[7]?.detail).toBe("$50 ≤ $50 · $100 of $100 today");
+    expect(r.checks[8]?.detail).toBe("NVDAc 50% > 40%");
+  });
+
+  it("allows a weight of exactly 40%", () => {
+    const r = evaluate(on(THU, [buy("NVDAc", 50)]), buy("NVDAc", 30));
+    expect([r.reason, r.checks[8]?.detail]).toEqual(["OK", "NVDAc 40% ≤ 40%"]);
+  });
+
+  it("logs refusals without moving money", () => {
+    const d = on(THU, [buy("OTHER", 50), buy("NVDAc", 51), buy("NVDAc", 20, "17:00")]);
+    expect(d.tape.map((e) => e.reason)).toEqual(["TOKEN_NOT_ALLOWED", "SIZE_LIMIT", "MARKET_CLOSED"]);
+    expect(daySummary(d).spent6).toBe(0);
+    expect(evaluate(d, buy("NVDAc", 50)).checks[7]?.detail).toBe("$50 ≤ $50 · $50 of $100 today");
+  });
+
+  it("recomputes every verdict when it rebuilds a day", () => {
+    const d = on(THU, [buy("NVDAc", 50), buy("NVDAc", 50), buy("GOOGLc", 50)]);
+    expect(d.tape.map((e) => [e.allowed, e.reason])).toEqual([
+      [true, "OK"],
+      [false, "CONCENTRATION"],
+      [true, "OK"],
+    ]);
+    expect(daySummary(d)).toEqual({ spent6: 100_000_000, weightBps: { NVDAc: 2500, GOOGLc: 2500, AAPLc: 0 } });
+  });
+
+  it(`keeps at most ${MAX_TAPE} entries`, () => {
+    const full = on(THU, Array.from({ length: MAX_TAPE }, () => buy("OTHER", 1)));
+    expect(full.tape).toHaveLength(MAX_TAPE);
+    expect(execute(full, buy("NVDAc", 1))).toBe(full);
+  });
+});
+
+describe("simulator: parity with the Decision engine replay", () => {
+  const fork = day(FACTS.forkDay.value);
+  const minute = minuteOfClock(FACTS.forkTimeEt.value);
+  const forkBuy = (allowed: boolean): SimIntent => {
+    const r = getDecisions().find((d) => d.source === "base-fork" && d.action === "BUY" && d.allowed === allowed);
+    if (!r) throw new Error(`the fork ledger has no ${allowed ? "allowed" : "refused"} BUY`);
+    return { token: r.symbol as SimToken, usd6: r.amountUsd * 1_000_000, minute };
+  };
+
+  it("gives the Thursday moment for the fork's allowed BUY", () => {
+    const r = evaluate(replay(fork, []), forkBuy(true));
+    expect([marks(r), r.reason]).toEqual([MOMENTS.thu.checks.map((c) => c.mark), MOMENTS.thu.reason]);
+  });
+
+  it("gives the Saturday moment for the refused BUY two days later", () => {
+    const r = evaluate(replay(fork + FACTS.weekendOffsetDays.value, []), forkBuy(false));
+    expect([marks(r), r.reason]).toEqual([MOMENTS.sat.checks.map((c) => c.mark), MOMENTS.sat.reason]);
+    expect(r.checks[3]?.detail).toBe(MOMENTS.sat.checks[3]?.detail);
+  });
+
+  it("opens on the Thursday moment", () => {
+    expect(DEFAULT_SCENARIO).toEqual({ etDay: fork, intent: forkBuy(true), tape: [] });
+  });
+});
+
+describe("simulator: presets and copy", () => {
+  it("offers the moments of the brief, all inside the window", () => {
+    expect(PRESETS.map((p) => [p.label, isoOfDay(p.etDay), p.minute])).toEqual([
+      ["Thu 5 Nov · 10:30", "2026-11-05", 630],
+      ["Sat 7 Nov", "2026-11-07", 630],
+      ["Fri 6 Nov · 19:00", "2026-11-06", 1140],
+      ["Thanksgiving", "2026-11-26", 630],
+      ["Fri 27 Nov · 13:30", "2026-11-27", 810],
+    ]);
+    for (const p of PRESETS) expect(p.etDay >= WINDOW.first && p.etDay <= WINDOW.last, p.id).toBe(true);
+  });
+
+  it("offers amounts on either side of the caps", () => {
+    expect(AMOUNT_CHIPS_USD).toEqual([10, 20, 50, 51, 100]);
+  });
+
+  it("labels an intent, a moment and a day", () => {
+    expect(simIntentLabel(buy("OTHER", 12.5))).toBe("BUY Other token · $12.50");
+    expect(momentLabel(day(THU), 630)).toBe("Thu 5 Nov · 10:30 ET");
+    expect(dayNote(day(THU))).toBe("Thursday");
+    expect(dayNote(day("2026-11-07"))).toBe("Saturday · closed all day");
+    expect(dayNote(day("2026-11-26"))).toBe("Thursday · Thanksgiving, closed all day");
+    expect(dayNote(day("2026-11-27"))).toBe("Friday · closes 13:00");
+  });
+
+  it("reads amounts the way people type them", () => {
+    expect(["50", "$1,000", " 20 ", "12.5", "50.", "0", "999999999.99"].map((t) => parseUsd(t))).toEqual([
+      50e6, 1000e6, 20e6, 12.5e6, 50e6, 0, 999_999_999.99e6,
+    ]);
+    for (const bad of ["", "abc", "-5", "1e5", "0.001", "1234567890", ".5"]) expect(parseUsd(bad), bad).toBeUndefined();
+  });
+
+  it("formats dollars like the rest of the page", () => {
+    expect([formatUsd(50e6), formatUsd(12.5e6), formatUsd(1000e6), formatUsd(0)]).toEqual(["$50", "$12.50", "$1,000", "$0"]);
+    expect([amountText(50e6), amountText(12.5e6)]).toEqual(["50", "12.50"]);
+  });
+
+  it("writes the post for a refusal and for a yes", () => {
+    const sat = { ...DEFAULT_SCENARIO, etDay: day("2026-11-07"), intent: buy("NVDAc", 50) };
+    expect(postText(sat, evaluate(replay(sat.etDay, []), sat.intent))).toBe(
+      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat said no: MARKET_CLOSED.",
+    );
+    expect(postText(DEFAULT_SCENARIO, { allowed: true, reason: "OK" })).toBe(
+      "I asked Maat to buy $20 of NVDAc on Thu 5 Nov at 10:30 ET. All nine checks passed. Can you make it say no?",
+    );
+    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toContain(
+      "$5 of a token outside the mandate",
+    );
+  });
+
+  it("links to X's post intent, adding the share link once it is absolute", () => {
+    expect(postUrl("a b", "https://maat.example/?day=2026-11-07#try")).toBe(
+      "https://x.com/intent/post?text=a%20b&url=https%3A%2F%2Fmaat.example%2F%3Fday%3D2026-11-07%23try",
+    );
+    expect(postUrl("a b", "?day=2026-11-07#try")).toBe("https://x.com/intent/post?text=a%20b");
+  });
+});
+
+describe("simulator: share links", () => {
+  it("writes the default scenario", () => {
+    expect(encodeScenario(DEFAULT_SCENARIO)).toBe("?day=2026-11-05&at=1030&buy=NVDAc-20");
+  });
+
+  it("round-trips a day with a tape", () => {
+    const s = {
+      etDay: day("2026-11-27"),
+      intent: buy("OTHER", 12.5, "13:30"),
+      tape: [buy("NVDAc", 50, "09:30"), buy("AAPLc", 0.99, "12:59")],
+    };
+    expect(encodeScenario(s)).toBe("?day=2026-11-27&at=1330&buy=other-12.50&tape=0930-NVDAc-50,1259-AAPLc-0.99");
+    expect(decodeScenario(encodeScenario(s))).toEqual(s);
+  });
+
+  it("falls back to the default, field by field", () => {
+    expect(decodeScenario("")).toEqual(DEFAULT_SCENARIO);
+    expect(decodeScenario("?day=2031-01-01&at=2400&buy=TSLA-5")).toEqual(DEFAULT_SCENARIO);
+    expect(decodeScenario("?day=2026-11-04")).toEqual(DEFAULT_SCENARIO);
+    expect(decodeScenario("?day=2026-11-07&buy=NVDAc-abc")).toEqual({ ...DEFAULT_SCENARIO, etDay: day("2026-11-07") });
+    expect(decodeScenario("?tape=1030-NVDAc-50,junk,0960-NVDAc-5,1031-AAPLc-1").tape).toEqual([
+      buy("NVDAc", 50),
+      buy("AAPLc", 1, "10:31"),
+    ]);
+  });
+
+  it(`keeps the first ${MAX_TAPE} entries of a long tape, and reads encoded commas`, () => {
+    const tape = Array.from({ length: MAX_TAPE + 2 }, (_, i) => `1030-NVDAc-${i + 1}`).join(",");
+    expect(decodeScenario(`?tape=${tape}`).tape).toHaveLength(MAX_TAPE);
+    expect(decodeScenario("?tape=1030-NVDAc-50%2C1031-AAPLc-1").tape).toHaveLength(2);
+  });
+});
