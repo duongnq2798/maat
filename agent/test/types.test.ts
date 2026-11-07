@@ -9,7 +9,7 @@ function solEnum(name: string): string[] {
   const m = typesSol.match(new RegExp(`enum ${name} \\{([\\s\\S]*?)\\}`));
   if (!m?.[1]) throw new Error(`enum ${name} not found`);
   return m[1]
-    .split("\n")
+    .split(/\r?\n/)
     .map((l) => l.replace(/\/\/.*$/, "").trim().replace(/,$/, ""))
     .filter((l) => l.length > 0);
 }
