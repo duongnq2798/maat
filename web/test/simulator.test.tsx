@@ -26,6 +26,13 @@ afterEach(() => {
 });
 
 describe("Simulator", () => {
+  it("keeps the verdict the only status in the section, and says it previews an execution", () => {
+    setup();
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("IF EXECUTED NOW · SIMULATED");
+    expect(screen.queryByText("VAULT DECISION · SIMULATED")).toBeNull();
+  });
+
   it("opens on a yes: the fork's BUY at the fork moment", () => {
     const ui = setup();
     expect(ui.verdict()).toHaveAttribute("data-verdict", "allowed");
@@ -60,6 +67,37 @@ describe("Simulator", () => {
     await ui.user.click(ui.button("Reset day"));
     expect(ui.tape()).toBeNull();
     expect(ui.reason()).toBe("OK");
+  });
+
+  it("says what an Execute did, while the verdict previews the next one", async () => {
+    const ui = setup();
+    await ui.user.click(ui.button("$50"));
+    await ui.user.click(ui.button("Execute"));
+    const notice = screen.getByText("Executed 10:30 BUY NVDAc · $50: Allowed");
+    expect(notice).toHaveAttribute("aria-live", "polite");
+    expect(notice).toHaveAttribute("aria-atomic", "true");
+    expect(notice).not.toHaveAttribute("role");
+    expect(ui.reason()).toBe("CONCENTRATION");
+    await ui.user.click(ui.button("Execute"));
+    // The same element: the live region never remounts, only its text changes.
+    expect(notice).toHaveTextContent("Executed 10:30 BUY NVDAc · $50: Refused · CONCENTRATION");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    await ui.user.click(ui.button("Reset day"));
+    expect(notice).toBeEmptyDOMElement();
+  });
+
+  it("clears the Execute notice when the date changes or the amount stops parsing", async () => {
+    const ui = setup();
+    await ui.user.click(ui.button("Execute"));
+    const notice = screen.getByText("Executed 10:30 BUY NVDAc · $20: Allowed");
+    await ui.user.click(ui.button("Fri 6 Nov · 19:00"));
+    expect(notice).toBeEmptyDOMElement();
+    await ui.user.click(ui.button("Thu 5 Nov · 10:30"));
+    await ui.user.click(ui.button("Execute"));
+    expect(notice).toHaveTextContent("Executed 10:30 BUY NVDAc · $20: Allowed");
+    await ui.user.type(screen.getByRole("textbox", { name: "Amount in US dollars" }), "x");
+    expect(ui.button("Execute")).toBeDisabled();
+    expect(notice).toBeEmptyDOMElement();
   });
 
   it("starts a new day when the date changes", async () => {
@@ -148,9 +186,17 @@ describe("Simulator", () => {
     await ui.user.click(ui.button("Copy link"));
     const link = "http://localhost:3000/?day=2026-11-07&at=1030&buy=NVDAc-20#try";
     expect(await navigator.clipboard.readText()).toBe(link);
+    const notice = screen.getByText("Link copied.");
+    expect(notice).toHaveAttribute("aria-live", "polite");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
     vi.spyOn(navigator.clipboard, "writeText").mockRejectedValueOnce(new Error("denied"));
     await ui.user.click(ui.button("Link copied"));
     expect(screen.getByRole("textbox", { name: "Copy this link:" })).toHaveValue(link);
+    expect(notice).toHaveTextContent("Copy the link below.");
+    // A new link ends both the copy state and its notice.
+    await ui.user.click(ui.button("Fri 6 Nov · 19:00"));
+    expect(screen.queryByRole("textbox", { name: "Copy this link:" })).toBeNull();
+    expect(notice).toBeEmptyDOMElement();
   });
 
   it("offers Now in New York time, whatever the visitor's time zone", async () => {

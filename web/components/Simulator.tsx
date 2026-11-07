@@ -96,12 +96,18 @@ function Row({ n, label, detail, mark, check, fixed = false }: RowProps) {
 
 type Copy = "idle" | "copied" | "manual";
 
+const COPIED = "Link copied.";
+const COPY_BY_HAND = "Copy the link below.";
+
 export function Simulator() {
   const [s, setS] = useState<Scenario>(DEFAULT_SCENARIO);
   const [amount, setAmount] = useState(amountText(DEFAULT_SCENARIO.intent.usd6));
   const [origin, setOrigin] = useState("");
   const [now, setNow] = useState<{ etDay: number; minute: number }>();
   const [copy, setCopy] = useState<Copy>("idle");
+  // What the last Execute or Copy link did, in a live region of its own. The verdict box above previews the next
+  // Execute, so a visitor needs this line to tell the click they just made from the preview.
+  const [notice, setNotice] = useState("");
   // What the date field holds while a typed date is not (yet) a day in the window; undefined shows the committed day.
   const [dayDraft, setDayDraft] = useState<string>();
 
@@ -125,18 +131,24 @@ export function Simulator() {
   const session = sessionWindow(s.etDay);
   const dayInvalid = dayDraft !== undefined && dayDraft !== isoOfDay(s.etDay);
 
-  useEffect(() => setCopy("idle"), [link]);
+  // A new link ends the copy state, and the notice that went with it.
+  useEffect(() => {
+    setCopy("idle");
+    setNotice((n) => (n === COPIED || n === COPY_BY_HAND ? "" : n));
+  }, [link]);
 
   const setIntent = (patch: Partial<SimIntent>) => setS((p) => ({ ...p, intent: { ...p.intent, ...patch } }));
   // Another date is another day: the tape starts over.
   const setMoment = (etDay: number, minute: number) => {
     setDayDraft(undefined);
+    if (etDay !== s.etDay) setNotice("");
     setS((p) => ({ ...p, etDay, tape: etDay === p.etDay ? p.tape : [], intent: { ...p.intent, minute } }));
   };
   const onAmount = (text: string) => {
     setAmount(text);
     const usd6 = parseUsd(text);
-    if (usd6 !== undefined) setIntent({ usd6 });
+    if (usd6 === undefined) setNotice("");
+    else setIntent({ usd6 });
   };
   // A date field fires onChange on every keystroke, often with a date outside the window (typing a month "1" gives
   // January). Such a date stays in the field as a draft, so the next keystroke can finish it, and does not move the day.
@@ -145,13 +157,22 @@ export function Simulator() {
     const d = parseIsoDay(iso);
     if (d !== undefined && d >= WINDOW.first && d <= WINDOW.last) setMoment(d, s.intent.minute);
   };
-  const run = () => setS((p) => (p.tape.length >= MAX_TAPE ? p : { ...p, tape: [...p.tape, p.intent] }));
+  // The entry gets the verdict the box shows now, so the notice reports it.
+  const run = () => {
+    if (invalid || full) return;
+    setS((p) => (p.tape.length >= MAX_TAPE ? p : { ...p, tape: [...p.tape, p.intent] }));
+    setNotice(
+      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${result.reason}`}`,
+    );
+  };
   async function copyLink() {
     try {
       await navigator.clipboard.writeText(link);
       setCopy("copied");
+      setNotice(COPIED);
     } catch {
       setCopy("manual");
+      setNotice(COPY_BY_HAND);
     }
   }
 
@@ -324,7 +345,7 @@ export function Simulator() {
           >
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex flex-col gap-0.5">
-                <span className="font-mono text-[11px] opacity-80">VAULT DECISION · SIMULATED</span>
+                <span className="font-mono text-[11px] opacity-80">IF EXECUTED NOW · SIMULATED</span>
                 <span className="text-[26px] font-semibold tracking-[-0.03em]">{result.allowed ? "Allowed" : "Refused"}</span>
               </div>
               <span className="font-mono text-[13px] font-semibold [overflow-wrap:anywhere]">{result.reason}</span>
@@ -351,6 +372,9 @@ export function Simulator() {
             {copy === "copied" ? "Link copied" : "Copy link"}
           </button>
         </div>
+        <p aria-live="polite" aria-atomic="true" className={`m-0 px-5 font-mono text-xs text-ink-2${notice ? " pb-4" : ""}`}>
+          {notice}
+        </p>
         {copy === "manual" ? (
           <div className="flex flex-col gap-1.5 px-5 pb-5">
             <label htmlFor="sim-link" className="text-[13px] text-ink-2">
@@ -371,7 +395,10 @@ export function Simulator() {
             <span className="font-mono text-[11px] text-ink-2">TODAY · {dayLabel(isoOfDay(s.etDay)).toUpperCase()}</span>
             <button
               type="button"
-              onClick={() => setS((p) => ({ ...p, tape: [] }))}
+              onClick={() => {
+                setS((p) => ({ ...p, tape: [] }));
+                setNotice("");
+              }}
               disabled={s.tape.length === 0}
               className="min-h-9 cursor-pointer rounded-full border border-line-strong bg-white px-3.5 text-xs font-medium text-ink hover:border-ink disabled:cursor-not-allowed disabled:opacity-50"
             >
