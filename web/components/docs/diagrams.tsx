@@ -11,23 +11,45 @@ export interface FlowStep {
   readonly detail: string;
 }
 
-/** Numbered steps left to right (top to bottom on small screens), with arrows between them. */
+// Each variant is a complete literal class string, so Tailwind's scanner sees every class.
+const FLOW_CLASSES = {
+  // Up to 4 steps go side by side once the diagram itself is 42rem wide.
+  narrow: {
+    list: "grid gap-4 @2xl:auto-cols-fr @2xl:grid-flow-col",
+    arrow:
+      "absolute -bottom-4 left-1/2 z-10 -translate-x-1/2 text-fd-primary @2xl:-right-4 @2xl:bottom-auto @2xl:left-auto @2xl:top-1/2 @2xl:-translate-y-1/2 @2xl:translate-x-0",
+    down: "@2xl:hidden",
+    right: "hidden @2xl:inline",
+  },
+  // 5 or more steps need 48rem.
+  wide: {
+    list: "grid gap-4 @3xl:auto-cols-fr @3xl:grid-flow-col",
+    arrow:
+      "absolute -bottom-4 left-1/2 z-10 -translate-x-1/2 text-fd-primary @3xl:-right-4 @3xl:bottom-auto @3xl:left-auto @3xl:top-1/2 @3xl:-translate-y-1/2 @3xl:translate-x-0",
+    down: "@3xl:hidden",
+    right: "hidden @3xl:inline",
+  },
+} as const;
+
+/**
+ * Numbered steps with arrows between them: top to bottom, and side by side once the diagram itself is wide
+ * enough (a container query on the figure, not the viewport, because the docs sidebar and table of contents
+ * narrow the article well below the viewport width).
+ */
 export function Flow({ label, steps, caption }: { label: string; steps: readonly FlowStep[]; caption?: string }) {
+  const classes = steps.length > 4 ? FLOW_CLASSES.wide : FLOW_CLASSES.narrow;
   return (
-    <figure className="not-prose my-8">
-      <ol aria-label={label} className="grid gap-4 md:auto-cols-fr md:grid-flow-col">
+    <figure className="@container not-prose my-8">
+      <ol aria-label={label} className={classes.list}>
         {steps.map((s, i) => (
-          <li key={s.title} className="relative rounded-xl border border-fd-border bg-fd-card p-4">
+          <li key={s.title} className="relative min-w-0 rounded-xl border border-fd-border bg-fd-card p-4">
             <span className="font-mono text-xs text-fd-muted-foreground">{String(i + 1).padStart(2, "0")}</span>
-            <p className="mt-1 font-medium text-fd-card-foreground">{s.title}</p>
-            <p className="mt-1 text-sm leading-6 text-fd-muted-foreground">{s.detail}</p>
+            <p className="mt-1 wrap-break-word font-medium text-fd-card-foreground">{s.title}</p>
+            <p className="mt-1 wrap-break-word text-sm leading-6 text-fd-muted-foreground">{s.detail}</p>
             {i < steps.length - 1 ? (
-              <span
-                aria-hidden="true"
-                className="absolute -bottom-4 left-1/2 z-10 -translate-x-1/2 text-fd-primary md:-right-4 md:bottom-auto md:left-auto md:top-1/2 md:-translate-y-1/2 md:translate-x-0"
-              >
-                <span className="md:hidden">↓</span>
-                <span className="hidden md:inline">→</span>
+              <span aria-hidden="true" className={classes.arrow}>
+                <span className={classes.down}>↓</span>
+                <span className={classes.right}>→</span>
               </span>
             ) : null}
           </li>

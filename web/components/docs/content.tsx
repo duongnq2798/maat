@@ -124,7 +124,7 @@ export interface ReaderPath {
   readonly cta: string;
 }
 
-/** One path per reader in the docs spec §1, each naming its first page. */
+/** One path per reader in the docs spec section 1, each naming its first page. */
 export const READER_PATHS: readonly ReaderPath[] = [
   { reader: "New to Maat", want: "Know what it is and why it matters.", slug: "get-started/what-is-maat", cta: "What is Maat" },
   { reader: "Watching the agent", want: "Understand a decision you saw on X or on the site.", slug: "get-started/read-a-decision", cta: "Read a decision" },
@@ -139,8 +139,12 @@ export function RouterCards({ exists }: { exists: (slug: string) => boolean }) {
     <ul aria-label="Where to start" className="not-prose my-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
       {READER_PATHS.map((p) => {
         const live = exists(p.slug);
+        // Hover feedback only on a card that is a link; each variant is a complete literal class string.
+        const card = live
+          ? "relative rounded-xl border border-fd-border bg-fd-card p-4 transition-colors hover:bg-fd-accent"
+          : "relative rounded-xl border border-fd-border bg-fd-card p-4";
         return (
-          <li key={p.slug} className="relative rounded-xl border border-fd-border bg-fd-card p-4 transition-colors hover:bg-fd-accent">
+          <li key={p.slug} className={card}>
             <p className="text-xs font-medium uppercase tracking-wide text-fd-muted-foreground">{p.reader}</p>
             <p className="mt-1 text-sm text-fd-card-foreground">{p.want}</p>
             {live ? (
