@@ -5,9 +5,9 @@ import { z } from "zod";
 const blank = (v: unknown) => (v === "" ? undefined : v);
 
 /** Every field goes through `blank` first, so an empty value behaves like an absent one. */
-const field = <T extends z.ZodType>(schema: T) => z.preprocess(blank, schema);
+export const field = <T extends z.ZodType>(schema: T) => z.preprocess(blank, schema);
 
-const address = (name: string) =>
+export const address = (name: string) =>
   field(
     z
       .string({ error: `${name} is required` })
