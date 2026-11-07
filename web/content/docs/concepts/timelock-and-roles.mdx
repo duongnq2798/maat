@@ -12,7 +12,7 @@ sources:
 next: [guides/change-a-rule, security/threat-model]
 ---
 
-The vault splits its power between two addresses and a small public surface. This page shows who may call what, which owner actions take effect at once and which must wait, how a rule change moves through the [timelock](/docs/help/glossary#timelock), and what an attacker gets if a key leaks. All of it is built and has been tested. One fork test runs an executor against Base state, with the vault's credit switched off: it pays an address that is not on the allowlist, buys more than the per-trade cap and calls `withdraw`. Nothing is deployed, so no key has been set for a real vault yet.
+The vault splits its power between two addresses and a small public surface. This page shows who may call what, which owner actions take effect at once and which must wait, how a rule change moves through the [timelock](/docs/help/glossary#timelock), and what an attacker gets if a key leaks. All of it is built and has been tested. The leaked-executor fork test runs against Base state with the vault's credit switched off: it pays an address that is not on the allowlist, buys more than the per-trade cap and calls `withdraw`. Nothing is deployed, so no key has been set for a real vault yet.
 
 ## Three roles
 

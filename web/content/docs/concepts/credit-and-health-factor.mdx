@@ -30,7 +30,7 @@ Credit is one lending position, held by a credit adapter that the [mandate](/doc
 What the vault checks for each action:
 
 - **`SUPPLY`.** The stock is allowed, and the adapter supports it. The stock is not paused. Every leg of the move passes its transfer policy. The amount is non-zero and within the vault's balance.
-- **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. It is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a live feed, no pause and a stable multiplier. The adapter then checks the health factor after the withdrawal.
+- **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. The stock is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a live feed, no pause and a stable multiplier. The adapter then checks the health factor after the withdrawal.
 - **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a live feed and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the de-risk window. The adapter checks again after the borrow.
 - **`REPAY`.** The token is USDC, and the amount is non-zero and within the vault's USDC balance.
 

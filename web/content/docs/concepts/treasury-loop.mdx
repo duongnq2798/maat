@@ -63,7 +63,7 @@ export const DEFAULT_POLICY: PolicyParams = { cashReserveBps: 3000, driftBps: 50
 
 The cash reserve is not a separate rule. It is what is left when the stocks sit at their targets. A stock's weight is its value, in the vault and supplied, as a share of net equity. The policy then looks at each stock:
 
-- **Overweight.** The weight is more than the drift above its target. The policy suggests a `SELL` of the excess, capped by the mandate's per-trade cap. If the vault does not hold enough of the stock outside Aave, it suggests a `WITHDRAW_COLLATERAL` instead, so that the stock is back in the vault before it is sold.
+- **Overweight.** The weight is more than the drift above its target. The policy suggests a `SELL` of the excess, capped by the mandate's per-trade cap. If the vault does not hold enough of the stock outside Aave, and some of it is supplied and the credit position can be read, it suggests a `WITHDRAW_COLLATERAL` instead, so that the stock is back in the vault before it is sold. Otherwise the policy suggests nothing for that stock.
 - **Underweight.** The weight is more than the drift below its target. The policy suggests a `BUY` of the shortfall, capped by the per-trade cap and by spendable cash.
 - **Idle stock.** Stock in the vault that is not overweight gets a `SUPPLY` suggestion, when the credit position can be read.
 
