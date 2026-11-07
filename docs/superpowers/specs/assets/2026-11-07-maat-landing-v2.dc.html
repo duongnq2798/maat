@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Maat · The agent that knows when not to trade</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF}
+a{color:#1F3BFF;text-decoration:none}
+.m{font-family:'Geist Mono',ui-monospace,monospace}
+.wrap{max-width:1240px;margin:0 auto;padding:0 32px;box-sizing:border-box}
+.eyebrow{font-family:'Geist Mono',ui-monospace,monospace;font-size:12px;font-weight:500;letter-spacing:0.08em;text-transform:uppercase;color:#1F3BFF}
+.h2{margin:0;font-size:clamp(40px,4.6vw,64px);line-height:1.02;letter-spacing:-0.04em;font-weight:600}
+.lead{margin:0;font-size:19px;line-height:1.6;color:#5A6170}
+.card{background:#FFFFFF;border:1px solid #E6E8EC;border-radius:20px}
+.soft{background:#F6F7F9}
+.pill-dark{display:inline-flex;align-items:center;gap:8px;background:#0B0D12;color:#FFFFFF;padding:14px 22px;border-radius:999px;font-weight:500;font-size:15px}
+.pill-dark:hover{background:#1F3BFF;color:#FFFFFF}
+.pill-line{display:inline-flex;align-items:center;gap:8px;color:#0B0D12;padding:14px 22px;border-radius:999px;font-weight:500;font-size:15px;border:1px solid #D5D8DF}
+.pill-line:hover{border-color:#0B0D12}
+.navlink{color:#0B0D12;padding:10px 14px;border-radius:999px;font-size:15px}
+.navlink:hover{background:#F1F2F5}
+.seg:hover{color:#0B0D12}
+.chip:hover{border-color:#0B0D12}
+.grid-bg{background-image:linear-gradient(#EEF0F4 1px,transparent 1px),linear-gradient(90deg,#EEF0F4 1px,transparent 1px);background-size:56px 56px;-webkit-mask-image:radial-gradient(ellipse 70% 60% at 60% 40%,#000 30%,transparent 75%);mask-image:radial-gradient(ellipse 70% 60% at 60% 40%,#000 30%,transparent 75%)}
+@keyframes rowA{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes rowB{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes stampA{0%{opacity:0;transform:scale(0.96)}60%{opacity:1;transform:scale(1.01)}100%{opacity:1;transform:none}}
+@keyframes stampB{0%{opacity:0;transform:scale(0.96)}60%{opacity:1;transform:scale(1.01)}100%{opacity:1;transform:none}}
+@keyframes live{0%,100%{opacity:1}50%{opacity:0.35}}
+@media (prefers-reduced-motion:reduce){*{animation:none !important}}
+@media (max-width:720px){.wrap{padding:0 16px}.hide-sm{display:none}}
+</style>
+</helmet>
+
+<div style="font-family:'Geist',system-ui,sans-serif;color:#0B0D12;background:#FFFFFF;min-height:100%;-webkit-font-smoothing:antialiased">
+
+<div style="border-bottom:1px solid #E6E8EC;background:#F6F7F9">
+  <div class="wrap" style="display:flex;flex-wrap:wrap;gap:6px 16px;justify-content:center;align-items:center;padding-top:10px;padding-bottom:10px;font-size:13px;color:#5A6170">
+    <span style="display:inline-flex;align-items:center;gap:8px;color:#0B0D12;font-weight:500"><span style="width:7px;height:7px;border-radius:50%;background:#1F3BFF;animation:live 2s ease-in-out infinite"></span>Tested on a Base mainnet fork</span>
+    <span>Mainnet launch is next. Every decision below was recorded on that fork.</span>
+    <a href="https://x.com/maatonbase" style="font-weight:500">Follow the build</a>
+  </div>
+</div>
+
+<nav aria-label="Main" class="wrap" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding-top:18px;padding-bottom:18px">
+  <a href="#top" aria-label="Maat home" style="display:flex;align-items:center;gap:10px;color:#0B0D12">
+    <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="9" fill="#0B0D12"></rect><path d="M15 7v15M11 22h8M7 10h16" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round"></path><path d="M9 11.5c-2 2.6-2 5.4 0 7.5 2-2.1 2-4.9 0-7.5z" fill="#6E83FF"></path><rect x="19" y="12.5" width="5" height="5" rx="1" fill="#FFFFFF"></rect></svg>
+    <span style="font-size:21px;font-weight:600;letter-spacing:-0.03em">maat</span>
+  </a>
+  <div style="display:flex;flex-wrap:wrap;align-items:center;gap:4px">
+    <a class="navlink hide-sm" href="#how">How it works</a>
+    <a class="navlink hide-sm" href="#reasons">Refusals</a>
+    <a class="navlink hide-sm" href="#ledger">Ledger</a>
+    <a class="navlink hide-sm" href="#mandate">Mandate</a>
+    <a class="pill-dark" href="#ledger" style="padding:11px 18px;margin-left:8px">Watch it decide</a>
+  </div>
+</nav>
+
+<header id="top" style="position:relative;overflow:hidden">
+  <div class="grid-bg" aria-hidden="true" style="position:absolute;inset:0"></div>
+  <div aria-hidden="true" style="position:absolute;right:-10%;top:-10%;width:60%;height:120%;background:radial-gradient(closest-side,rgba(31,59,255,0.10),transparent)"></div>
+  <div class="wrap" style="position:relative;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,500px),1fr));gap:56px;align-items:center;padding-top:72px;padding-bottom:104px">
+    <div style="display:flex;flex-direction:column;gap:28px">
+      <span style="align-self:flex-start;display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 8px;border-radius:999px;border:1px solid #E6E8EC;background:#FFFFFF;font-size:13px;color:#5A6170"><span class="m" style="background:#EEF1FF;color:#1F3BFF;padding:3px 8px;border-radius:999px;font-size:11px;font-weight:600">AGENTIC</span>An AI treasury for tokenized stocks on Base</span>
+      <h1 style="margin:0;font-size:clamp(52px,6.2vw,86px);line-height:0.98;letter-spacing:-0.05em;font-weight:600">The AI agent that knows <span style="color:#1F3BFF">when not to trade.</span></h1>
+      <p class="lead" style="font-size:20px;max-width:31em">Claude proposes every move. An onchain mandate weighs it against market hours, live prices and hard limits. One failed check and the vault says no, on the record.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px">
+        <a class="pill-dark" href="#ledger">See every decision</a>
+        <a class="pill-line" href="#how">How it weighs a trade</a>
+      </div>
+      <dl style="margin:8px 0 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:0;border-top:1px solid #E6E8EC;max-width:560px">
+        <div style="padding:18px 16px 0 0"><dt class="m" style="font-size:12px;color:#5A6170">CHECKS PER TRADE</dt><dd style="margin:6px 0 0;font-size:36px;font-weight:600;letter-spacing:-0.04em">9</dd></div>
+        <div style="padding:18px 16px 0;border-left:1px solid #E6E8EC"><dt class="m" style="font-size:12px;color:#5A6170">TYPED REFUSALS</dt><dd style="margin:6px 0 0;font-size:36px;font-weight:600;letter-spacing:-0.04em">19</dd></div>
+        <div style="padding:18px 0 0 16px;border-left:1px solid #E6E8EC"><dt class="m" style="font-size:12px;color:#5A6170">RULE TIMELOCK</dt><dd style="margin:6px 0 0;font-size:36px;font-weight:600;letter-spacing:-0.04em">24h</dd></div>
+      </dl>
+    </div>
+
+    <div class="card" style="box-shadow:0 1px 0 #E6E8EC,0 30px 80px -30px rgba(11,13,18,0.28);overflow:hidden">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;padding:16px 20px;border-bottom:1px solid #E6E8EC;background:#FBFBFC">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span class="m" style="font-size:12px;font-weight:600">DECISION ENGINE</span>
+          <span class="m" style="font-size:11px;color:#5A6170">replay · Base fork · block 53,551,627</span>
+        </div>
+        <div role="group" aria-label="Choose a moment" style="display:flex;padding:3px;border-radius:999px;background:#F1F2F5">
+          <sc-for list="{{days}}" as="d" hint-placeholder-count="2">
+            <button type="button" class="seg" onClick="{{d.pick}}" aria-pressed="{{d.pressed}}" style="{{d.style}}">{{d.label}}</button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="padding:20px 20px 8px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:12px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <span class="m" style="font-size:11px;color:#5A6170">INTENT · PROPOSED BY CLAUDE</span>
+          <span style="font-size:30px;font-weight:600;letter-spacing:-0.035em">{{intent}}</span>
+        </div>
+        <span class="m" style="font-size:12px;color:#5A6170">{{when}}</span>
+      </div>
+
+      <ol style="list-style:none;margin:0;padding:8px 12px 12px">
+        <sc-for list="{{checks}}" as="c" hint-placeholder-count="9">
+          <li style="{{c.rowStyle}}">
+            <span class="m" style="font-size:11px;color:#8A90A0">{{c.n}}</span>
+            <span style="font-size:14px;font-weight:500">{{c.label}}</span>
+            <span class="m" style="font-size:12px;color:#5A6170;text-align:right">{{c.detail}}</span>
+            <span class="m" style="{{c.markStyle}}">{{c.mark}}</span>
+          </li>
+        </sc-for>
+      </ol>
+
+      <div style="{{verdictStyle}}">
+        <div style="display:flex;flex-direction:column;gap:2px">
+          <span class="m" style="font-size:11px;opacity:0.8">VAULT DECISION</span>
+          <span style="font-size:26px;font-weight:600;letter-spacing:-0.03em">{{verdict}}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:2px;text-align:right">
+          <span class="m" style="font-size:13px;font-weight:600">{{reason}}</span>
+          <span class="m" style="font-size:11px;opacity:0.8">{{gas}}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section aria-label="Built with" style="border-top:1px solid #E6E8EC;border-bottom:1px solid #E6E8EC">
+  <div class="wrap" style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:16px 32px;padding-top:26px;padding-bottom:26px">
+    <span class="m" style="font-size:12px;color:#5A6170">BUILT ON</span>
+    <sc-for list="{{stack}}" as="s" hint-placeholder-count="7">
+      <span style="font-size:17px;font-weight:600;letter-spacing:-0.02em;color:#3D4350">{{s}}</span>
+    </sc-for>
+  </div>
+</section>
+
+<section class="wrap" style="padding-top:128px;padding-bottom:128px;display:flex;flex-direction:column;gap:56px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:24px 64px;align-items:end">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <span class="eyebrow">The problem</span>
+      <h2 class="h2">Tokenized stocks trade 24/7. Their prices don&#39;t.</h2>
+    </div>
+    <p class="lead">An agent that only reads a DEX price will buy on a Saturday, chase a pool that drifted from fair value, or trade through a stock split. Maat turns each trap into a rule the contract enforces.</p>
+  </div>
+
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:20px">
+    <article class="card" style="padding:28px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="m" style="font-size:12px;color:#5A6170">01 · MARKET HOURS</span><span class="m" style="font-size:11px;color:#C2410C">MARKET_CLOSED</span></div>
+      <h3 style="margin:0;font-size:24px;line-height:1.15;letter-spacing:-0.03em;font-weight:600">The price feed sleeps every weekend.</h3>
+      <svg viewBox="0 0 320 112" style="width:100%;height:auto" role="img" aria-label="Weekly chart: Chainlink equity feed live from Sunday 20:00 to Friday 20:00 ET, frozen over the weekend; NYSE regular session 9:30 to 16:00 on weekdays">
+        <defs><pattern id="hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="6" height="6" fill="#FFF1EA"></rect><line x1="0" y1="0" x2="0" y2="6" stroke="#F3B79A" stroke-width="2"></line></pattern></defs>
+        <rect x="10" y="22" width="207.1" height="16" rx="3" fill="#DCE2FF"></rect>
+        <rect x="217.1" y="22" width="85.8" height="16" fill="url(#hatch)"></rect>
+        <rect x="302.9" y="22" width="7.1" height="16" rx="2" fill="#DCE2FF"></rect>
+        <rect x="27" y="50" width="11.6" height="16" rx="2" fill="#1F3BFF"></rect>
+        <rect x="69.8" y="50" width="11.6" height="16" rx="2" fill="#1F3BFF"></rect>
+        <rect x="112.7" y="50" width="11.6" height="16" rx="2" fill="#1F3BFF"></rect>
+        <rect x="155.5" y="50" width="11.6" height="16" rx="2" fill="#1F3BFF"></rect>
+        <rect x="198.4" y="50" width="11.6" height="16" rx="2" fill="#1F3BFF"></rect>
+        <g font-family="Geist Mono, monospace" font-size="9" fill="#5A6170" text-anchor="middle">
+          <text x="31.4" y="90">Mon</text><text x="74.3" y="90">Tue</text><text x="117.1" y="90">Wed</text><text x="160" y="90">Thu</text><text x="202.9" y="90">Fri</text><text x="245.7" y="90">Sat</text><text x="288.6" y="90">Sun</text>
+        </g>
+        <text x="260" y="15" font-family="Geist Mono, monospace" font-size="9" fill="#C2410C" text-anchor="middle">frozen</text>
+        <text x="10" y="15" font-family="Geist Mono, monospace" font-size="9" fill="#5A6170">feed live</text>
+        <text x="10" y="108" font-family="Geist Mono, monospace" font-size="9" fill="#1F3BFF">NYSE 09:30–16:00 ET</text>
+      </svg>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5A6170">The vault reads the NYSE calendar onchain, holidays and early closes included. No session, no trade.</p>
+    </article>
+
+    <article class="card" style="padding:28px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="m" style="font-size:12px;color:#5A6170">02 · PREMIUM</span><span class="m" style="font-size:11px;color:#C2410C">PREMIUM_TOO_HIGH</span></div>
+      <h3 style="margin:0;font-size:24px;line-height:1.15;letter-spacing:-0.03em;font-weight:600">The pool can drift from fair value.</h3>
+      <svg viewBox="0 0 320 112" style="width:100%;height:auto" role="img" aria-label="Measured premiums of the DEX TWAP over the Chainlink price in session: AAPLc 29, GOOGLc 49, NVDAc 53 basis points, against a 100 basis point limit">
+        <g font-family="Geist Mono, monospace" font-size="10" fill="#0B0D12">
+          <text x="0" y="24">AAPLc</text><text x="0" y="54">GOOGLc</text><text x="0" y="84">NVDAc</text>
+        </g>
+        <rect x="58" y="13" width="53.2" height="15" rx="3" fill="#1F3BFF"></rect>
+        <rect x="58" y="43" width="89.8" height="15" rx="3" fill="#1F3BFF"></rect>
+        <rect x="58" y="73" width="97.2" height="15" rx="3" fill="#1F3BFF"></rect>
+        <g font-family="Geist Mono, monospace" font-size="10" fill="#5A6170">
+          <text x="117" y="24">29 bps</text><text x="153.8" y="54">49 bps</text><text x="161.2" y="84">53 bps</text>
+        </g>
+        <line x1="241.3" y1="6" x2="241.3" y2="96" stroke="#C2410C" stroke-width="1.5" stroke-dasharray="4 3"></line>
+        <text x="241.3" y="108" font-family="Geist Mono, monospace" font-size="9" fill="#C2410C" text-anchor="middle">limit 100 bps</text>
+      </svg>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5A6170">Each buy compares a 30-minute Aerodrome TWAP with Chainlink. We measured these premiums in session before setting the limit.</p>
+    </article>
+
+    <article class="card" style="padding:28px;display:flex;flex-direction:column;gap:18px">
+      <div style="display:flex;justify-content:space-between;align-items:center"><span class="m" style="font-size:12px;color:#5A6170">03 · CORPORATE ACTIONS</span><span class="m" style="font-size:11px;color:#C2410C">MULTIPLIER_COOLDOWN</span></div>
+      <h3 style="margin:0;font-size:24px;line-height:1.15;letter-spacing:-0.03em;font-weight:600">A split quietly changes the math.</h3>
+      <div class="soft" style="border-radius:14px;padding:18px;display:flex;flex-direction:column;gap:10px">
+        <span class="m" style="font-size:11px;color:#5A6170">NVDAc · uiMultiplier</span>
+        <span class="m" style="font-size:clamp(18px,1.8vw,22px);font-weight:500;letter-spacing:-0.02em;word-break:break-all">1.000537939576369481</span>
+        <div style="display:flex;align-items:center;gap:8px;font-size:12px" class="m">
+          <span style="padding:3px 8px;border-radius:6px;background:#FFF1EA;color:#C2410C">change detected</span>
+          <span style="flex:1;height:1px;background:#D5D8DF"></span>
+          <span style="color:#5A6170">24h pause</span>
+        </div>
+      </div>
+      <p style="margin:0;font-size:15px;line-height:1.6;color:#5A6170">When the B20 multiplier moves, the vault records it and pauses that token for 24 hours while prices settle.</p>
+    </article>
+  </div>
+</section>
+
+<section id="how" class="soft" style="border-top:1px solid #E6E8EC;border-bottom:1px solid #E6E8EC">
+  <div class="wrap" style="padding-top:128px;padding-bottom:128px;display:flex;flex-direction:column;gap:56px">
+    <div style="display:flex;flex-direction:column;gap:18px;max-width:820px">
+      <span class="eyebrow">How it works</span>
+      <h2 class="h2">The model may advise. The contract decides.</h2>
+      <p class="lead">Claude never holds the keys to the rules. It writes intents. The vault checks them against a mandate it cannot change, then emits a Decision either way.</p>
+    </div>
+
+    <ol style="list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,250px),1fr));gap:16px">
+      <sc-for list="{{steps}}" as="s" hint-placeholder-count="4">
+        <li class="card" style="padding:24px;display:flex;flex-direction:column;gap:14px;min-height:220px">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <span class="m" style="font-size:12px;color:#1F3BFF;font-weight:600">{{s.n}}</span>
+            <span class="m" style="font-size:11px;color:#5A6170;background:#F1F2F5;padding:4px 8px;border-radius:6px">{{s.code}}</span>
+          </div>
+          <h3 style="margin:0;font-size:22px;letter-spacing:-0.03em;font-weight:600">{{s.title}}</h3>
+          <p style="margin:0;font-size:15px;line-height:1.6;color:#5A6170">{{s.body}}</p>
+        </li>
+      </sc-for>
+    </ol>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px">
+      <div style="background:#0B0D12;color:#E6E8EC;border-radius:20px;padding:28px;overflow-x:auto">
+        <div style="display:flex;justify-content:space-between;margin-bottom:18px"><span class="m" style="font-size:12px;color:#8A90A0">IMandateVaultEvents.sol</span><span class="m" style="font-size:12px;color:#8A90A0">solidity 0.8.28</span></div>
+<pre class="m" style="margin:0;font-size:14px;line-height:1.75;white-space:pre"><span style="color:#8EA2FF">event</span> <span style="color:#FFFFFF">Decision</span>(
+    <span style="color:#7DD3C0">bytes32</span> <span style="color:#8EA2FF">indexed</span> intentId,
+    <span style="color:#7DD3C0">Action</span>  action,
+    <span style="color:#7DD3C0">address</span> <span style="color:#8EA2FF">indexed</span> token,
+    <span style="color:#7DD3C0">uint256</span> amount,
+    <span style="color:#7DD3C0">bool</span>    allowed,
+    <span style="color:#7DD3C0">Reason</span>  reason,
+    <span style="color:#7DD3C0">bytes32</span> rationaleHash
+);</pre>
+      </div>
+      <div class="card" style="padding:28px;display:flex;flex-direction:column;gap:16px">
+        <span class="m" style="font-size:12px;color:#5A6170">DECODED · SAT 7 NOV · BASE FORK</span>
+        <dl class="m" style="margin:0;display:grid;grid-template-columns:auto 1fr;gap:12px 24px;font-size:14px">
+          <dt style="color:#5A6170">action</dt><dd style="margin:0">BUY</dd>
+          <dt style="color:#5A6170">token</dt><dd style="margin:0">GOOGLc</dd>
+          <dt style="color:#5A6170">amount</dt><dd style="margin:0">10.00 USDC</dd>
+          <dt style="color:#5A6170">allowed</dt><dd style="margin:0;color:#C2410C;font-weight:600">false</dd>
+          <dt style="color:#5A6170">reason</dt><dd style="margin:0;color:#C2410C;font-weight:600">MARKET_CLOSED</dd>
+          <dt style="color:#5A6170">rationaleHash</dt><dd style="margin:0;color:#5A6170">[from mainnet tx]</dd>
+        </dl>
+        <p style="margin:auto 0 0;font-size:14px;line-height:1.6;color:#5A6170">Every transaction carries a Base Builder Code (ERC-8021), so each decision is attributable to Maat onchain.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="reasons" class="wrap" style="padding-top:128px;padding-bottom:128px;display:flex;flex-direction:column;gap:48px">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:24px 64px;align-items:end">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <span class="eyebrow">Refusals</span>
+      <h2 class="h2">Nineteen typed ways to say no.</h2>
+    </div>
+    <p class="lead">A refusal is not an error log. It is a reason code inside the Decision event, readable by anyone, from a dashboard or another agent.</p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,210px),1fr));gap:16px">
+    <sc-for list="{{reasonGroups}}" as="g" hint-placeholder-count="5">
+      <div class="card" style="padding:22px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline">
+          <span style="font-size:16px;font-weight:600;letter-spacing:-0.02em">{{g.title}}</span>
+          <span class="m" style="font-size:12px;color:#5A6170">{{g.count}}</span>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px">
+          <sc-for list="{{g.codes}}" as="r" hint-placeholder-count="4">
+            <span class="m" style="{{r.style}}">{{r.code}}</span>
+          </sc-for>
+        </div>
+      </div>
+    </sc-for>
+  </div>
+</section>
+
+<section id="ledger" style="border-top:1px solid #E6E8EC">
+  <div class="wrap" style="padding-top:128px;padding-bottom:128px;display:flex;flex-direction:column;gap:32px">
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:end;gap:24px">
+      <div style="display:flex;flex-direction:column;gap:18px;max-width:720px">
+        <span class="eyebrow">The decision ledger</span>
+        <h2 class="h2">Every answer is public. Especially no.</h2>
+      </div>
+      <div role="group" aria-label="Filter decisions" style="display:flex;gap:8px;flex-wrap:wrap">
+        <sc-for list="{{filters}}" as="f" hint-placeholder-count="3">
+          <button type="button" class="chip" onClick="{{f.pick}}" aria-pressed="{{f.pressed}}" style="{{f.style}}">{{f.label}}</button>
+        </sc-for>
+      </div>
+    </div>
+
+    <div class="card" style="overflow-x:auto">
+      <div style="min-width:820px">
+        <div class="m" style="display:grid;grid-template-columns:150px 1.1fr 1.2fr 1.5fr 130px;gap:16px;padding:14px 24px;font-size:11px;letter-spacing:0.06em;color:#5A6170;border-bottom:1px solid #E6E8EC;background:#FBFBFC">
+          <span>TIME (ET)</span><span>INTENT</span><span>DECISION</span><span>NOTE</span><span>GAS USED</span>
+        </div>
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+          <div style="display:grid;grid-template-columns:150px 1.1fr 1.2fr 1.5fr 130px;gap:16px;padding:18px 24px;align-items:center;border-bottom:1px solid #F1F2F5">
+            <span class="m" style="font-size:13px;color:#5A6170">{{r.when}}</span>
+            <span style="font-size:16px;font-weight:500">{{r.intent}}</span>
+            <span class="m" style="{{r.badgeStyle}}">{{r.decision}}</span>
+            <span style="font-size:14px;line-height:1.5;color:#5A6170">{{r.note}}</span>
+            <span class="m" style="font-size:13px">{{r.gas}}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+    <span class="m" style="font-size:12px;color:#5A6170">Recorded by the agent loop on a fork of Base mainnet at block 53,551,627, against the real B20 tokens, Aerodrome pools and the Aave V4 Equities Hub. Mainnet rows will link to Basescan.</span>
+  </div>
+</section>
+
+<section id="mandate" class="soft" style="border-top:1px solid #E6E8EC;border-bottom:1px solid #E6E8EC">
+  <div class="wrap" style="padding-top:128px;padding-bottom:128px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,440px),1fr));gap:56px;align-items:center">
+    <div style="display:flex;flex-direction:column;gap:20px">
+      <span class="eyebrow">The mandate</span>
+      <h2 class="h2">Rules the agent can&#39;t loosen.</h2>
+      <p class="lead">The owner commits the mandate onchain. Any change is queued in public with its full contents and waits 24 hours, so neither the agent nor a stolen key can relax a limit in the moment.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:10px">
+        <span class="m" style="font-size:12px;padding:8px 12px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC">timelock 24h</span>
+        <span class="m" style="font-size:12px;padding:8px 12px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC">executor can only call execute()</span>
+        <span class="m" style="font-size:12px;padding:8px 12px;border-radius:999px;background:#FFFFFF;border:1px solid #E6E8EC">mandateHash [after deploy]</span>
+      </div>
+    </div>
+    <div class="card" style="overflow:hidden">
+      <div style="display:flex;justify-content:space-between;padding:14px 22px;border-bottom:1px solid #E6E8EC;background:#FBFBFC"><span class="m" style="font-size:12px;font-weight:600">mandate · Maat #1</span><span class="m" style="font-size:12px;color:#5A6170">Base mainnet</span></div>
+      <dl style="margin:0;padding:8px 22px 14px">
+        <sc-for list="{{params}}" as="p" hint-placeholder-count="12">
+          <div class="m" style="display:grid;grid-template-columns:1fr auto;gap:16px;padding:11px 0;border-bottom:1px solid #F1F2F5;font-size:14px">
+            <dt style="color:#5A6170">{{p.k}}</dt>
+            <dd style="margin:0;font-weight:500;text-align:right">{{p.v}}</dd>
+          </div>
+        </sc-for>
+      </dl>
+    </div>
+  </div>
+</section>
+
+<section class="wrap" style="padding-top:128px;padding-bottom:128px;display:flex;flex-direction:column;gap:48px">
+  <div style="display:flex;flex-direction:column;gap:18px;max-width:820px">
+    <span class="eyebrow">The treasury loop</span>
+    <h2 class="h2">An agent that pays its own way.</h2>
+  </div>
+  <ol style="list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,200px),1fr));gap:12px">
+    <sc-for list="{{loop}}" as="l" hint-placeholder-count="5">
+      <li class="card" style="padding:22px;display:flex;flex-direction:column;gap:10px;min-height:190px">
+        <span class="m" style="font-size:12px;color:#1F3BFF;font-weight:600">{{l.n}}</span>
+        <span style="font-size:20px;font-weight:600;letter-spacing:-0.03em">{{l.title}}</span>
+        <span style="font-size:14px;line-height:1.55;color:#5A6170">{{l.body}}</span>
+      </li>
+    </sc-for>
+  </ol>
+</section>
+
+<footer style="border-top:1px solid #E6E8EC;position:relative;overflow:hidden">
+  <div class="grid-bg" aria-hidden="true" style="position:absolute;inset:0"></div>
+  <div class="wrap" style="position:relative;padding-top:128px;padding-bottom:48px;display:flex;flex-direction:column;gap:72px">
+    <div style="display:flex;flex-direction:column;align-items:center;text-align:center;gap:28px">
+      <h2 style="margin:0;font-size:clamp(56px,8vw,120px);line-height:0.95;letter-spacing:-0.055em;font-weight:600">Watch it <span style="color:#1F3BFF">say no.</span></h2>
+      <p class="lead" style="max-width:34em">Mainnet goes live with a small treasury. The first weekend and Thanksgiving refusals will be posted as they happen.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:12px;justify-content:center">
+        <a class="pill-dark" href="https://x.com/maatonbase">Follow @maatonbase</a>
+        <a class="pill-line" href="#ledger">Open the ledger</a>
+      </div>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;padding-top:24px;border-top:1px solid #E6E8EC;font-size:13px;color:#5A6170">
+      <span>Maat is an experiment built for Base Stocks Maxxing. It holds only its own treasury, gives no investment advice, confers no shareholder rights and is not offered to US persons.</span>
+      <span class="m">Every trade is weighed.</span>
+    </div>
+  </div>
+</footer>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":6900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { day: 'sat', run: 0, filter: 'all' };
+  }
+  renderVals() {
+    const s = this.state;
+    const sat = s.day === 'sat';
+    const anim = s.run % 2 ? 'rowA' : 'rowB';
+    const stamp = s.run % 2 ? 'stampA' : 'stampB';
+
+    const segBase = 'font-family:inherit;font-size:12px;font-weight:500;padding:8px 14px;border-radius:999px;border:0;cursor:pointer;min-height:36px;';
+    const days = [['sat', 'Sat 7 Nov'], ['thu', 'Thu 5 Nov · 10:30']].map(([id, label]) => ({
+      label,
+      pressed: s.day === id ? 'true' : 'false',
+      style: segBase + (s.day === id ? 'background:#FFFFFF;color:#0B0D12;box-shadow:0 1px 2px rgba(11,13,18,0.12)' : 'background:transparent;color:#5A6170'),
+      pick: () => this.setState({ day: id, run: s.run + 1 })
+    }));
+
+    const thu = [
+      ['Token allowed', 'NVDAc in mandate'],
+      ['Token not paused', 'transfers active'],
+      ['Vault policy', 'authorized'],
+      ['Market session', 'REGULAR · open'],
+      ['Feed freshness', '14s ≤ 3600s'],
+      ['Multiplier stable', 'no change 24h'],
+      ['DEX premium', '53 ≤ 100 bps'],
+      ['Size limits', '$20 ≤ $50 · $100/day'],
+      ['Concentration', 'weight ≤ 40%']
+    ];
+    const satRows = [
+      ['Token allowed', 'GOOGLc in mandate'],
+      ['Token not paused', 'transfers active'],
+      ['Vault policy', 'authorized'],
+      ['Market session', 'Saturday · NYSE closed'],
+      ['Feed freshness', 'not reached'],
+      ['Multiplier stable', 'not reached'],
+      ['DEX premium', 'not reached'],
+      ['Size limits', 'not reached'],
+      ['Concentration', 'not reached']
+    ];
+    const rowsSrc = sat ? satRows : thu;
+    const rowBase = 'display:grid;grid-template-columns:28px 1fr auto 52px;gap:12px;align-items:center;padding:9px 10px;border-radius:10px;';
+    const checks = rowsSrc.map(([label, detail], i) => {
+      const fail = sat && i === 3;
+      const skip = sat && i > 3;
+      const delay = (0.12 + i * 0.16).toFixed(2);
+      return {
+        n: String(i + 1).padStart(2, '0'),
+        label,
+        detail,
+        mark: fail ? 'FAIL' : skip ? 'SKIP' : 'PASS',
+        markStyle: 'font-size:11px;font-weight:600;text-align:center;padding:4px 0;border-radius:6px;' + (fail ? 'background:#C2410C;color:#FFFFFF' : skip ? 'background:#F1F2F5;color:#5A6170' : 'background:#EEF1FF;color:#1F3BFF'),
+        rowStyle: rowBase + (fail ? 'background:#FFF1EA;' : '') + (skip ? 'opacity:0.55;' : '') + 'animation:' + anim + ' .42s cubic-bezier(.2,.7,.2,1) both;animation-delay:' + delay + 's'
+      };
+    });
+    const verdictBase = 'display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px;margin:0 12px 12px;padding:16px 18px;border-radius:14px;animation:' + stamp + ' .5s cubic-bezier(.2,.7,.2,1) both;animation-delay:1.65s;';
+
+    const pill = 'font-size:12px;font-weight:600;padding:6px 10px;border-radius:8px;justify-self:start;';
+    const ok = pill + 'background:#EEF1FF;color:#1F3BFF';
+    const no = pill + 'background:#FFF1EA;color:#C2410C';
+    const all = [
+      { kind: 'allowed', when: 'Thu 5 Nov 10:30', intent: 'BUY NVDAc · $20', decision: 'ALLOWED · OK', badgeStyle: ok, note: 'NVDAc under its 33% target weight.', gas: '761,488' },
+      { kind: 'allowed', when: 'Thu 5 Nov 10:30', intent: 'SUPPLY NVDAc · $15', decision: 'ALLOWED · OK', badgeStyle: ok, note: 'Posted as collateral on Aave V4.', gas: '286,707' },
+      { kind: 'allowed', when: 'Thu 5 Nov 10:30', intent: 'BORROW USDC · $5', decision: 'ALLOWED · OK', badgeStyle: ok, note: 'Compute runway, health factor above 2.0.', gas: '484,173' },
+      { kind: 'refused', when: 'Sat 7 Nov', intent: 'BUY GOOGLc · $10', decision: 'REFUSED · MARKET_CLOSED', badgeStyle: no, note: 'Weekend. Refused and logged once.', gas: '111,116' }
+    ];
+    const rows = all.filter((r) => s.filter === 'all' || r.kind === s.filter);
+    const chipBase = 'font-family:inherit;font-size:14px;font-weight:500;padding:10px 18px;border-radius:999px;cursor:pointer;min-height:44px;';
+    const filters = [['all', 'All'], ['allowed', 'Allowed'], ['refused', 'Refused']].map(([id, label]) => ({
+      label,
+      pressed: s.filter === id ? 'true' : 'false',
+      style: chipBase + (s.filter === id ? 'background:#0B0D12;color:#FFFFFF;border:1px solid #0B0D12' : 'background:#FFFFFF;color:#0B0D12;border:1px solid #D5D8DF'),
+      pick: () => this.setState({ filter: id })
+    }));
+
+    const code = (c, hot) => ({ code: c, style: 'font-size:11px;padding:5px 8px;border-radius:6px;' + (hot ? 'background:#C2410C;color:#FFFFFF' : 'background:#F6F7F9;color:#3D4350;border:1px solid #E6E8EC') });
+    const groups = [
+      ['Market', ['MARKET_CLOSED', 'FEED_STALE', 'BAD_PRICE', 'PREMIUM_TOO_HIGH', 'MULTIPLIER_COOLDOWN']],
+      ['Token and policy', ['VAULT_PAUSED', 'ACTION_NOT_SUPPORTED', 'TOKEN_NOT_ALLOWED', 'TOKEN_PAUSED', 'POLICY_BLOCKED']],
+      ['Limits', ['SIZE_LIMIT', 'CONCENTRATION', 'INSUFFICIENT_BALANCE', 'PAYEE_NOT_ALLOWED']],
+      ['Credit', ['HEALTH_FACTOR_LOW', 'DERISK_WINDOW', 'CREDIT_FAILED']],
+      ['Execution', ['SWAP_FAILED', 'TRANSFER_FAILED']]
+    ];
+    const reasonGroups = groups.map(([title, list]) => ({ title, count: String(list.length), codes: list.map((c) => code(c, c === 'MARKET_CLOSED')) }));
+
+    const steps = [
+      { n: '01', code: 'Intent[]', title: 'Claude proposes', body: 'Every 15 minutes in session, Claude reads the vault, the market and the mandate, and returns intents with a rationale.' },
+      { n: '02', code: 'eth_call', title: 'Preview as executor', body: 'Each intent is simulated against the live contract from the executor address, under the exact rules that will apply.' },
+      { n: '03', code: 'execute()', title: 'The vault weighs it', body: 'Nine checks in order, from market session and feed age to premium, caps and weight. Credit moves also check health factor. One fails, it stops.' },
+      { n: '04', code: 'Decision', title: 'Recorded either way', body: 'Allowed or refused, the Decision event lands onchain with its reason code, the rationale hash and a Builder Code.' }
+    ];
+    const params = [
+      { k: 'sessionMode', v: 'REGULAR' },
+      { k: 'maxStaleness', v: '3600 s' },
+      { k: 'maxPremiumBps', v: '100' },
+      { k: 'maxSlippageBps', v: '100' },
+      { k: 'twapWindow', v: '1800 s' },
+      { k: 'multiplierCooldown', v: '24 h' },
+      { k: 'perTradeCapUsd', v: '$50' },
+      { k: 'dailyCapUsd', v: '$100' },
+      { k: 'maxWeightBps (per token)', v: '4000' },
+      { k: 'minHealthFactor', v: '1.5' },
+      { k: 'targetHealthFactor', v: '2.0' },
+      { k: 'deriskWindow', v: '8 h before Fri 20:00 ET' }
+    ];
+    const loop = [
+      { n: '01 · EARN', title: 'x402 revenue', body: 'Other agents pay about one cent to ask whether a stock trade is safe right now. USDC lands in the vault.' },
+      { n: '02 · BUY', title: 'B20 stocks', body: 'Equal-weight NVDAc, GOOGLc and AAPLc, rebalanced past a 5% drift, only in session.' },
+      { n: '03 · SUPPLY', title: 'Aave V4', body: 'Stocks become collateral on the Equities Hub.' },
+      { n: '04 · BORROW', title: 'USDC runway', body: 'A small loan covers compute, never below the target health factor.' },
+      { n: '05 · PAY', title: 'Its own bill', body: 'Claude usage is paid onchain to an allowlisted payee.' }
+    ];
+    const stack = ['Base', 'B20 stocks', 'Chainlink', 'Aerodrome', 'Aave V4', 'Coinbase CDP', 'Claude'];
+
+    return {
+      days, checks, stack, steps, reasonGroups, filters, rows, params, loop,
+      intent: sat ? 'BUY GOOGLc · $10' : 'BUY NVDAc · $20',
+      when: sat ? 'Sat 7 Nov · weekend' : 'Thu 5 Nov · 10:30 ET',
+      verdict: sat ? 'Refused' : 'Allowed',
+      reason: sat ? 'MARKET_CLOSED' : 'OK',
+      gas: sat ? 'Decision logged · gas 111,116' : 'Swap executed · gas 761,488',
+      verdictStyle: verdictBase + (sat ? 'background:#0B0D12;color:#FFFFFF' : 'background:#1F3BFF;color:#FFFFFF')
+    };
+  }
+}
+</script>
+</body>
+</html>
