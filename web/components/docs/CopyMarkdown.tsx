@@ -35,8 +35,14 @@ export function CopyMarkdown({ href, className }: { href: string; className?: st
   }
 
   return (
-    <button type="button" onClick={copy} disabled={state === "copying"} data-state={state} className={className}>
-      <span aria-live="polite">{LABEL[state]}</span>
-    </button>
+    <>
+      <button type="button" onClick={copy} disabled={state === "copying"} data-state={state} className={className}>
+        {LABEL[state]}
+      </button>
+      {/* Button children are presentational in ARIA, so the result is announced from a status region beside it. */}
+      <span role="status" className="sr-only">
+        {state === "idle" ? "" : LABEL[state]}
+      </span>
+    </>
   );
 }
