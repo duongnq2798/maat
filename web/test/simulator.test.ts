@@ -14,6 +14,7 @@ import {
   encodeScenario,
   evaluate,
   execute,
+  FEED_AGE_TOKEN,
   formatUsd,
   MAX_TAPE,
   momentLabel,
@@ -99,6 +100,18 @@ describe("simulator: one BUY against the default mandate", () => {
   it("shows each token's measured premium", () => {
     expect(evaluate(on(THU), buy("GOOGLc", 10)).checks[6]?.detail).toBe("49 ≤ 100 bps");
     expect(evaluate(on(THU), buy("AAPLc", 10)).checks[6]?.detail).toBe("29 ≤ 100 bps");
+  });
+
+  it("shows the feed age only for the feed it was measured on", () => {
+    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 3600s");
+    for (const token of ["GOOGLc", "AAPLc"] as const) {
+      const check = evaluate(on(THU), buy(token, 10)).checks[4];
+      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 3600s", "PASS", true]);
+    }
+  });
+
+  it("names the measured token in the fact that holds the feed age", () => {
+    expect(FACTS.feedAgeSec.source).toContain(FEED_AGE_TOKEN);
   });
 
   it.each([

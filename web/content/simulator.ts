@@ -27,6 +27,9 @@ import type { ReasonCode, RefusalCode } from "./reasons";
 export type BasketToken = (typeof FACTS.basket.value)[number];
 export type SimToken = BasketToken | "OTHER";
 
+/** FACTS.feedAgeSec is the age of this token's Chainlink answer at the fork block; no age was measured for the others. */
+export const FEED_AGE_TOKEN: BasketToken = "NVDAc";
+
 export const TOKENS: readonly SimToken[] = [...FACTS.basket.value, "OTHER"];
 
 export function tokenLabel(t: SimToken): string {
@@ -191,7 +194,11 @@ export function evaluate(day: SimDay, intent: SimIntent): SimResult {
   check(true, "authorized", true);
   const session = regularSession(ts);
   if (!check(session.open, sessionDetail(session, localTime(ts)))) return stop("MARKET_CLOSED");
-  check(true, `${FACTS.feedAgeSec.value}s ≤ ${m.maxStalenessSec}s`, true);
+  check(
+    true,
+    token === FEED_AGE_TOKEN ? `${FACTS.feedAgeSec.value}s ≤ ${m.maxStalenessSec}s` : `assumed fresh · max ${m.maxStalenessSec}s`,
+    true,
+  );
   check(true, `no change ${m.multiplierCooldownSec / 3600}h`, true);
   check(true, `${FACTS.premiumsBps.value[token]} ≤ ${m.maxPremiumBps} bps`, true);
 

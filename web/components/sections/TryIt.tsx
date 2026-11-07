@@ -2,12 +2,14 @@ import { Simulator } from "@/components/Simulator";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FACTS } from "@/content/facts";
 import { andList, clockLabel, dayLabel, formatInt } from "@/content/format";
+import { FEED_AGE_TOKEN } from "@/content/simulator";
 import { repoFileUrl } from "@/lib/site";
 
 export function TryIt() {
   const { holidays, earlyCloses } = FACTS.calendar.value;
   const session = FACTS.nyseSessionMin.value;
   const premiums = FACTS.premiumsBps.value;
+  const unmeasured = andList(FACTS.basket.value.filter((t) => t !== FEED_AGE_TOKEN));
   const notes = [
     {
       title: "Simulated",
@@ -17,7 +19,7 @@ export function TryIt() {
     },
     {
       title: "Fixed at fork values",
-      body: `Measured on Base at block ${formatInt(FACTS.forkBlock.value)}: token not paused, transfer path authorized, feed age ${FACTS.feedAgeSec.value} s, multiplier unchanged, and a pool premium of ${andList(
+      body: `Measured on Base at block ${formatInt(FACTS.forkBlock.value)}: token not paused, transfer path authorized, an ${FEED_AGE_TOKEN} feed answer ${FACTS.feedAgeSec.value} s old (the ${unmeasured} feeds are assumed fresh), multiplier unchanged, and a pool premium of ${andList(
         FACTS.basket.value.map((t) => `${premiums[t]} bps for ${t}`),
       )}.`,
     },
