@@ -1,3 +1,5 @@
+const REPO = "https://github.com/duongnq2798/maat";
+
 /** Site-wide strings shared by the page, its metadata and the export check. */
 export const SITE = {
   name: "Maat",
@@ -6,6 +8,11 @@ export const SITE = {
     "Claude proposes every move. An onchain mandate weighs it against market hours, live prices and hard limits. One failed check and the vault says no, on the record.",
   xHandle: "@maatonbase",
   xUrl: "https://x.com/maatonbase",
+  repoUrl: REPO,
+  /** README anchors: the offline five-minute check, and the fork run behind the ledger rows. */
+  evaluateUrl: `${REPO}#how-to-evaluate-maat-in-5-minutes`,
+  forkEvidenceUrl: `${REPO}#base-mainnet-fork-evidence`,
+  licenseUrl: `${REPO}/blob/main/LICENSE`,
   disclaimer:
     "Maat is an experiment built for Base Stocks Maxxing. It holds only its own treasury, gives no investment advice, confers no shareholder rights and is not offered to US persons.",
   tagline: "Every trade is weighed.",

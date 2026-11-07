@@ -47,7 +47,7 @@ export function HowItWorks() {
 
   return (
     <section id="how" aria-labelledby="how-title" className="border-y border-line bg-surface-soft">
-      <div className="wrap flex flex-col gap-14 py-32">
+      <div className="wrap flex flex-col gap-14 py-20 md:py-32">
         <SectionHeading
           id="how-title"
           eyebrow="How it works"

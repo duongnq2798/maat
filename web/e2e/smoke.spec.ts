@@ -1,6 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
 
-const WIDTHS = [360, 768, 1440, 1920] as const;
+// 1024: the narrowest width that keeps the hero in two columns, so the engine card shares its row.
+const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];

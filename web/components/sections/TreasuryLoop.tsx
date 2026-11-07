@@ -19,7 +19,7 @@ const STEPS = [
 
 export function TreasuryLoop() {
   return (
-    <section aria-labelledby="loop-title" className="wrap flex flex-col gap-12 py-32">
+    <section aria-labelledby="loop-title" className="wrap flex flex-col gap-12 py-20 md:py-32">
       <SectionHeading id="loop-title" eyebrow="The treasury loop" title="An agent that pays its own way." />
       <ol className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,200px),1fr))] gap-3 p-0">
         {STEPS.map((s) => (

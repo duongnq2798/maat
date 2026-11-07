@@ -11,6 +11,8 @@ describe("announcement bar", () => {
     render(<AnnouncementBar />);
     expect(screen.getByText("Tested on a Base mainnet fork")).toBeInTheDocument();
     expect(screen.getByText("Mainnet launch is next. Every decision below was recorded on that fork.")).toBeInTheDocument();
+    // The short form phones see in place of the sentence above.
+    expect(screen.getByText("Mainnet is next.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Follow the build" })).toHaveAttribute("href", "https://x.com/maatonbase");
   });
 });
@@ -28,7 +30,7 @@ describe("nav", () => {
       ["Refusals", "#reasons"],
       ["Ledger", "#ledger"],
       ["Mandate", "#mandate"],
-      ["Watch it decide", "#ledger"],
+      ["View on GitHub ↗", SITE.repoUrl],
     ]);
     expect(within(nav).getByRole("link", { name: "Maat home" })).toBeInTheDocument();
     expect(nav.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
@@ -44,7 +46,7 @@ describe("hero", () => {
     expect(stat("CHECKS PER TRADE")).toBe("9");
     expect(stat("TYPED REFUSALS")).toBe("19");
     expect(stat("RULE TIMELOCK")).toBe("24h");
-    expect(screen.getByRole("link", { name: "See every decision" })).toHaveAttribute("href", "#ledger");
+    expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.evaluateUrl);
     expect(screen.getByRole("link", { name: "How it weighs a trade" })).toHaveAttribute("href", "#how");
     expect(screen.getByRole("group", { name: "Choose a moment" })).toBeInTheDocument();
     expect(document.getElementById("top")).not.toBeNull();

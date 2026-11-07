@@ -1,4 +1,5 @@
 import { Mark } from "@/components/ui/Mark";
+import { SITE } from "@/lib/site";
 
 const LINKS = [
   { href: "#how", label: "How it works" },
@@ -20,8 +21,9 @@ export function Nav() {
             {l.label}
           </a>
         ))}
-        <a href="#ledger" className="pill-dark ml-2 px-[18px] py-[11px]">
-          Watch it decide
+        <a href={SITE.repoUrl} className="pill-dark ml-2 px-[18px] py-[11px]">
+          View on GitHub
+          <span aria-hidden="true"> ↗</span>
         </a>
       </div>
     </nav>

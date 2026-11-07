@@ -6,7 +6,7 @@ export function Mandate() {
   const chips = [`timelock ${hours}h`, "executor can only call execute()", "mandateHash [after deploy]"];
   return (
     <section id="mandate" aria-labelledby="mandate-title" className="border-y border-line bg-surface-soft">
-      <div className="wrap grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-center gap-14 py-32">
+      <div className="wrap grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-center gap-14 py-20 md:py-32">
         <div className="flex flex-col gap-5">
           <span className="eyebrow">The mandate</span>
           <h2 id="mandate-title" className="h2">
@@ -27,13 +27,16 @@ export function Mandate() {
         <div className="card overflow-hidden">
           <div className="flex justify-between gap-4 border-b border-line bg-surface-head px-[22px] py-3.5 font-mono text-xs">
             <span className="font-semibold">mandate · Maat #1</span>
-            <span className="text-ink-2">Base mainnet</span>
+            <span className="text-ink-2">default · not deployed yet</span>
           </div>
           <dl className="m-0 px-[22px] pb-3.5 pt-2">
             {mandateRows(FACTS.mandate.value).map((r) => (
-              <div key={r.k} className="grid grid-cols-[auto_minmax(0,1fr)] gap-4 border-b border-line-soft py-[11px] font-mono text-sm">
-                <dt className="text-ink-2">{r.k}</dt>
-                <dd className="m-0 text-right font-medium [overflow-wrap:anywhere]">{r.v}</dd>
+              <div key={r.k} className="grid grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)] items-baseline gap-4 border-b border-line-soft py-[11px]">
+                <dt className="flex flex-col gap-0.5">
+                  <span className="text-sm font-medium text-ink">{r.label}</span>
+                  <span className="font-mono text-[11px] text-ink-2">{r.k}</span>
+                </dt>
+                <dd className="m-0 text-right font-mono text-sm font-medium [overflow-wrap:anywhere]">{r.v}</dd>
               </div>
             ))}
           </dl>

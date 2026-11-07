@@ -56,7 +56,8 @@
     width: 100%;
     max-width: 1240px;
     margin-inline: auto;
-    padding-inline: 32px;
+    /* 20px gutters on phones, 32px from about 640px up. */
+    padding-inline: clamp(20px, 5vw, 32px);
   }
   .eyebrow {
     font-family: var(--font-mono);
