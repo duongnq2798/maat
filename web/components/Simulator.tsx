@@ -102,6 +102,8 @@ export function Simulator() {
   const [origin, setOrigin] = useState("");
   const [now, setNow] = useState<{ etDay: number; minute: number }>();
   const [copy, setCopy] = useState<Copy>("idle");
+  // What the date field holds while a typed date is not (yet) a day in the window; undefined shows the committed day.
+  const [dayDraft, setDayDraft] = useState<string>();
 
   // After hydration, so the static HTML always holds the default: a share link's scenario, this page's
   // address, and the visitor's clock read in New York time through the calendar port.
@@ -121,19 +123,25 @@ export function Simulator() {
   const invalid = parseUsd(amount) === undefined;
   const full = s.tape.length >= MAX_TAPE;
   const session = sessionWindow(s.etDay);
+  const dayInvalid = dayDraft !== undefined && dayDraft !== isoOfDay(s.etDay);
 
   useEffect(() => setCopy("idle"), [link]);
 
   const setIntent = (patch: Partial<SimIntent>) => setS((p) => ({ ...p, intent: { ...p.intent, ...patch } }));
   // Another date is another day: the tape starts over.
-  const setMoment = (etDay: number, minute: number) =>
+  const setMoment = (etDay: number, minute: number) => {
+    setDayDraft(undefined);
     setS((p) => ({ ...p, etDay, tape: etDay === p.etDay ? p.tape : [], intent: { ...p.intent, minute } }));
+  };
   const onAmount = (text: string) => {
     setAmount(text);
     const usd6 = parseUsd(text);
     if (usd6 !== undefined) setIntent({ usd6 });
   };
+  // A date field fires onChange on every keystroke, often with a date outside the window (typing a month "1" gives
+  // January). Such a date stays in the field as a draft, so the next keystroke can finish it, and does not move the day.
   const onDay = (iso: string) => {
+    setDayDraft(iso);
     const d = parseIsoDay(iso);
     if (d !== undefined && d >= WINDOW.first && d <= WINDOW.last) setMoment(d, s.intent.minute);
   };
@@ -225,12 +233,20 @@ export function Simulator() {
               type="date"
               min={isoOfDay(WINDOW.first)}
               max={isoOfDay(WINDOW.last)}
-              value={isoOfDay(s.etDay)}
+              value={dayDraft ?? isoOfDay(s.etDay)}
               onChange={(e) => onDay(e.target.value)}
+              onBlur={() => setDayDraft(undefined)}
+              aria-invalid={dayInvalid || undefined}
+              aria-describedby={dayInvalid ? "sim-day-hint" : undefined}
               className="min-h-10 rounded-full border border-line-strong bg-white px-3.5 font-mono text-sm text-ink"
             />
             <span className="font-mono text-xs text-ink-2">{dayNote(s.etDay)}</span>
           </div>
+          {dayInvalid ? (
+            <p id="sim-day-hint" className="m-0 mt-2 text-[13px] text-refuse">
+              Pick a date from {dayLabel(isoOfDay(WINDOW.first))} to {dayLabel(isoOfDay(WINDOW.last))}.
+            </p>
+          ) : null}
           <div className="mt-5 flex flex-col gap-2">
             <div className="flex items-baseline justify-between gap-3">
               <label htmlFor="sim-time" className="text-sm font-medium">

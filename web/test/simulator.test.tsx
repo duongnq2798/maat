@@ -102,8 +102,26 @@ describe("Simulator", () => {
     fireEvent.change(dayInput, { target: { value: "2026-11-26" } });
     expect(ui.reason()).toBe("MARKET_CLOSED");
     expect(screen.getByText("Thursday · Thanksgiving, closed all day")).toBeInTheDocument();
+    // A typed date outside the window stays in the field as a draft, with a hint; the day does not move.
     fireEvent.change(dayInput, { target: { value: "2027-02-01" } });
+    expect(dayInput).toHaveValue("2027-02-01");
+    expect(screen.getByText("Pick a date from Thu 5 Nov to Fri 1 Jan.")).toBeInTheDocument();
+    expect(dayInput).toHaveAttribute("aria-invalid", "true");
+    expect(ui.reason()).toBe("MARKET_CLOSED");
+    expect(screen.getByText("Thursday · Thanksgiving, closed all day")).toBeInTheDocument();
+    fireEvent.blur(dayInput);
     expect(dayInput).toHaveValue("2026-11-26");
+    expect(screen.queryByText("Pick a date from Thu 5 Nov to Fri 1 Jan.")).toBeNull();
+    expect(dayInput).not.toHaveAttribute("aria-invalid");
+  });
+
+  it("shows a preset's day in the field after an out-of-window draft", async () => {
+    const ui = setup();
+    const dayInput = screen.getByLabelText("Day");
+    fireEvent.change(dayInput, { target: { value: "2027-02-01" } });
+    await ui.user.click(ui.button("Sat 7 Nov"));
+    expect(dayInput).toHaveValue("2026-11-07");
+    expect(screen.queryByText("Pick a date from Thu 5 Nov to Fri 1 Jan.")).toBeNull();
   });
 
   it("opens a share link on its own scenario, recomputing every verdict", () => {
