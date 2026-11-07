@@ -73,7 +73,7 @@ export function DecisionLoop() {
           detail: `${f("checksPerTrade")} checks run in the contract. A Decision event records the verdict.`,
         },
       ]}
-      caption={`The agent runs this every ${f("loopMinutes")} in session and every ${f("offSessionMinutes")} outside. Only the vault's checks are trusted.`}
+      caption={`The agent is built to run this every ${f("loopMinutes")} in session and every ${f("offSessionMinutes")} outside. Only the vault's checks are trusted.`}
     />
   );
 }
@@ -85,7 +85,7 @@ export function Architecture() {
       steps={[
         { title: "Claude", detail: "Proposes intents as JSON that must match a schema." },
         { title: "Agent", detail: "Validates, previews and sends only vault calls, with the Builder Code." },
-        { title: "CDP wallet", detail: "Signs only zero-value transactions to the vault, on Base." },
+        { title: "CDP wallet", detail: "Live-mode signer: only zero-value transactions to the vault, on Base." },
         { title: "MandateVault", detail: "Runs the checks and records every decision." },
         { title: "Base protocols", detail: "Aerodrome swaps, Aave V4 credit, Chainlink prices." },
       ]}
