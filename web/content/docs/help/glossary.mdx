@@ -11,7 +11,7 @@ sources:
 next: [get-started/what-is-maat, help/faq]
 ---
 
-Every term the docs use is defined here in one to three sentences, with a link to the page that explains it in full. The entries are in alphabetical order, one section per letter. If you would rather start from a subject, the table below groups the terms by topic. Nothing is deployed yet, so each definition says how the contracts and the agent are built and fork-tested, not how a running system behaves.
+This page defines terms used across the docs, each in one to three sentences, with a link to the page that explains it in full. The entries are in alphabetical order, one section per letter. If you would rather start from a subject, the table below groups the terms by topic. Nothing is deployed yet, so the entries about the vault and the agent say how they are built and fork-tested, not how a running system behaves.
 
 | Topic | Terms |
 | --- | --- |
@@ -30,7 +30,7 @@ The lending market on Base where the vault can supply a stock as collateral and 
 
 ### Action
 
-What an [intent](/docs/help/glossary#intent) asks the vault to do: `BUY`, `SELL`, `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW`, `REPAY` or `PAY_EXPENSE`. The <Fact name="checksPerTrade" /> checks apply to `BUY` and `SELL`, and each other action has its own checks. See [Read a decision](/docs/get-started/read-a-decision#field-by-field) for the ids and [The nine checks](/docs/concepts/nine-checks#other-actions) for the checks.
+What an [intent](/docs/help/glossary#intent) asks the vault to do: `BUY`, `SELL`, `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW`, `REPAY` or `PAY_EXPENSE`. The <Fact name="checksPerTrade" /> checks apply to `BUY` and `SELL` (check 9 is for a `BUY` only), and each other action has its own checks. See [Read a decision](/docs/get-started/read-a-decision#field-by-field) for the ids and [The nine checks](/docs/concepts/nine-checks#other-actions) for the checks.
 
 ### Aerodrome Slipstream
 
@@ -44,7 +44,7 @@ The token type behind the tokenized stocks Maat trades on Base (NVDAc, GOOGLc an
 
 ### Basis point (bps)
 
-One hundredth of a percent. The mandate states its price tolerances and weight caps in basis points, for example the largest [premium](/docs/help/glossary#premium) and the slippage tolerance. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
+One hundredth of a percent. The mandate and the per-stock settings state their price tolerances and weight caps in basis points, for example the largest [premium](/docs/help/glossary#premium) and the slippage tolerance. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
 
 ### Builder Code (ERC-8021)
 
@@ -58,7 +58,7 @@ The Coinbase CDP wallet service that the agent is meant to use as the vault's [e
 
 ### Chainlink equity feed
 
-The oracle that publishes a stock's price on Base. It updates from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />, and the vault reads its answer as the price of one raw token with the [uiMultiplier](/docs/help/glossary#uimultiplier) already applied. See [Prices and premium](/docs/concepts/prices-and-premium#two-prices).
+The oracle that publishes a stock's price on Base. It updates from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />, and the vault assumes its answer is the price of one raw token with the [uiMultiplier](/docs/help/glossary#uimultiplier) already applied, which has not been observed across a real split. See [Prices and premium](/docs/concepts/prices-and-premium#two-prices) and its [assumptions](/docs/concepts/prices-and-premium#assumptions).
 
 ## D
 
@@ -72,7 +72,7 @@ The last stretch before the [feed edge](/docs/help/glossary#feed-edge) on every 
 
 ### Dry run
 
-The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude, previews every [intent](/docs/help/glossary#intent) and writes its journal, but sends no transaction. It still calls Claude, so it costs API fees ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)).
+The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude, previews every [intent](/docs/help/glossary#intent) and writes its journal, but sends no transaction ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). It still calls Claude, so the cost of that usage still accrues ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)).
 
 ## E
 
@@ -114,7 +114,7 @@ The rule set the vault enforces on every action: the trading session, the price 
 
 ### Mandate hash
 
-The `keccak256` of the encoded `Mandate` struct, returned by `mandateHash()`. It covers the mandate only: the stock settings and the payee list are in the [policy hash](/docs/help/glossary#policy-hash), and the hash of a queued change is a different value again. See [The mandate](/docs/concepts/mandate#what-the-mandate-is) and [change hashes](/docs/concepts/timelock-and-roles#change-hashes).
+The `keccak256` of the encoded `Mandate` struct, which `MandateVault.mandateHash()` returns as `keccak256(abi.encode(_mandate))`. It covers the mandate only: the stock settings and the payee list are in the [policy hash](/docs/help/glossary#policy-hash), and the hash of a queued change is a different value again. See [change hashes](/docs/concepts/timelock-and-roles#change-hashes) for what a change hash is not, and [The mandate](/docs/concepts/mandate#what-the-mandate-is) for the policy hash.
 
 ## N
 
@@ -184,7 +184,7 @@ The time-weighted average price: the pool's price averaged over the mandate's `t
 
 ### uiMultiplier
 
-A number, published as a [WAD](/docs/help/glossary#wad), that a [B20](/docs/help/glossary#b20) stock token changes on a split or a dividend. The vault does not use it to value anything, but it blocks trading in that stock for a cooldown after a change, <Fact name="mandate.multiplierCooldownSec" /> by default, and while a change is scheduled. See [Splits and the multiplier](/docs/concepts/splits-and-multiplier).
+A number, published as a [WAD](/docs/help/glossary#wad), that a [B20](/docs/help/glossary#b20) stock token changes on a split or a dividend. The vault does not use it to value anything, but a multiplier that differs from the vault's last snapshot, that cannot be read or that has a change scheduled blocks the stock at once, and after a recorded change the block lasts for a cooldown, <Fact name="mandate.multiplierCooldownSec" /> by default. The block covers `BUY`, `SELL`, and `BORROW` and `WITHDRAW_COLLATERAL` against debt ([Splits and the multiplier](/docs/concepts/splits-and-multiplier)).
 
 ## W
 

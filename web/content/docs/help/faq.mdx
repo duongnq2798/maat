@@ -23,7 +23,7 @@ These are the questions people ask about Maat, with a short answer to each and a
 
 ### What is Maat?
 
-Maat is an AI agent built to trade tokenized stocks on Base from its own treasury. Claude proposes every move, an onchain vault checks it against a mandate, and the vault records every verdict, so the agent proposes and the mandate decides. It is built and fork-tested, not live. See [What is Maat](/docs/get-started/what-is-maat).
+Maat is an AI agent built to trade tokenized stocks on Base from its own treasury. Claude proposes the trades, and an onchain vault checks every call to `execute` against a mandate and records the verdict, so the agent proposes and the mandate decides. It is built and fork-tested, not live. See [What is Maat](/docs/get-started/what-is-maat).
 
 ### Is Maat live?
 
@@ -35,13 +35,13 @@ Only its own. Agent #1 is one agent with one vault, owned by the team, and it is
 
 ### Can Claude move funds on its own?
 
-No. Claude only proposes, and it cannot choose the verdict, set the slippage or pay a bill. `execute` is the executor's only way to move anything, and the vault runs its own checks on every call, so a confused Claude, a bug in the agent or a stolen executor key meets the same rules. See [What none of the agent's steps can do](/docs/get-started/how-a-decision-is-made#what-none-of-the-agents-steps-can-do).
+No: Claude only proposes, and it cannot choose the verdict, set the slippage or pay a bill. `execute` is the executor's only way to move anything, and the vault runs its own checks on every call, so a confused Claude, a bug in the agent or a stolen executor key meets the same rules. No human signs off each trade: once live, the agent is built to send any proposal that passes its own validation and a preview of `OK`, so the vault is the only gate. See [What none of the agent's steps can do](/docs/get-started/how-a-decision-is-made#what-none-of-the-agents-steps-can-do).
 
 ## Watching the agent
 
 ### What happens on a Saturday?
 
-On a Saturday the calendar contract reports the market closed in both session modes, so the vault refuses a `BUY` or a `SELL` with `MARKET_CLOSED`, unless an earlier check, such as a pause, fails first. The refusal is recorded as a `Decision` and no funds move. In the fork run, with the clock moved ahead to a Saturday, the agent's buy of GOOGLc was refused this way, and the transaction that recorded it used <Fact name="gas.refusalLog" /> gas. See [Worked example: the Saturday buy](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy).
+On a Saturday the calendar contract reports the market closed in both session modes, so the vault refuses a `BUY` or a `SELL` with `MARKET_CLOSED` (unless an earlier check, such as a pause, fails first), while `SUPPLY`, `REPAY` and `PAY_EXPENSE` do not need an open market and `BORROW` is refused. A refusal moves no funds, and it is recorded as a `Decision` only when the agent sends the intent, which it is built to do at most once per reason per UTC day. In the fork run, with the clock moved ahead to a Saturday, the agent's buy of GOOGLc was refused this way, and the transaction that recorded it used <Fact name="gas.refusalLog" /> gas. See [Worked example: the Saturday buy](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy).
 
 ### Why refuse instead of revert?
 
@@ -63,7 +63,7 @@ The calendar ships with <Fact name="calendarPreload.holidays" /> holidays and <F
 
 ### How do I check Maat's claims myself?
 
-Clone the repository and run the tests. The refusal test, the contract suites, the agent tests and the site build all run offline, with no wallet, RPC URL or API key, and the whole path takes about five minutes on a fresh clone. The fork tests are optional and need a Base archive RPC. See the [Quickstart](/docs/get-started/quickstart).
+Clone the repository and run the tests. The refusal test, the contract suites, the agent tests and the site build need no wallet, RPC URL or API key and touch no chain, though you need network access to clone the repository and install packages, and the whole path takes about five minutes on a fresh clone. The fork tests are optional and need a Base archive RPC. See the [Quickstart](/docs/get-started/quickstart).
 
 ### How is Maat tested?
 
@@ -85,7 +85,7 @@ No. Maat has no API or SDK to integrate with today, and anything not built yet i
 
 ### Can I run my own vault?
 
-Yes. The contracts are MIT-licensed, and the deploy script reads the deployer, owner, executor and expense payee addresses from environment variables and builds the vault from `MaatConfig`, with the default mandate and the three-stock basket. You sign every transaction from your own wallet, and the owner address cannot be changed afterwards, so check it character for character before you broadcast. See [Deploy your own vault](/docs/guides/deploy-your-own-vault) for the commands and the checklist in [Next: mainnet](/docs/get-started/status#next-mainnet).
+Yes, with a caveat: the contracts are MIT-licensed but unaudited. The deploy script reads the deployer, owner, executor and expense payee addresses from environment variables and builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you would edit `MaatConfig.sol` first. You sign every transaction from your own wallet, and the owner address cannot be changed afterwards, so check it character for character before you broadcast. See [Deploy your own vault](/docs/guides/deploy-your-own-vault) for the commands and the checklist in [Next: mainnet](/docs/get-started/status#next-mainnet).
 
 ### What can I set in a mandate?
 
@@ -123,4 +123,4 @@ No. There is no third-party audit, so treat the contracts as unaudited, and noth
 
 ### How do I know the numbers on the site are real?
 
-Every number lives in a facts file with its source, and the tests check most of them against the contracts, the agent and the committed fork-run gas log. A few cite the design spec instead, because nothing in the code can prove them: the planned x402 price and the treasury size. Every code excerpt in these docs is compared with the file it quotes. See [How this page stays honest](/docs/get-started/status#how-this-page-stays-honest).
+Every figure taken from the code or the spec is rendered from a facts file with its source, and the tests check most of them against the contracts, the agent and the committed fork-run gas log. A few cite the design spec instead, because nothing in the code can prove them: the planned x402 price and the treasury size. Every code excerpt in these docs is compared with the file it quotes. See [How this page stays honest](/docs/get-started/status#how-this-page-stays-honest).
