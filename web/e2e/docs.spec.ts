@@ -3,7 +3,7 @@ import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8 and 13). */
-const PAGES: string[] = ["/docs", "/docs/concepts/nine-checks"];
+const PAGES: string[] = ["/docs", "/docs/concepts/nine-checks", "/docs/reference/mandate-vault"];
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -215,5 +215,24 @@ test.describe("concept pages", () => {
       const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
       expect(text.trim()).toMatch(/^function checkMarket\(MarketCheck memory c\)/);
     });
+  });
+});
+
+test.describe("contract reference", () => {
+  test("a function name finds its entry first", async ({ page }) => {
+    await page.goto("/docs");
+    const dialog = await openSearch(page);
+    await dialog.getByRole("combobox").fill("queueMandate");
+    await expect(dialog.getByRole("option").first()).toContainText(/MandateVault|queueMandate/);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/docs\/reference\/mandate-vault(#queuemandate)?$/);
+  });
+
+  test("a deep link to a function, loaded cold, scrolls to it", async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto("/docs/reference/mandate-vault#queuemandate");
+    await expect(page.locator("#queuemandate")).toBeInViewport();
+    await context.close();
   });
 });

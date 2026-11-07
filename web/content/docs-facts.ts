@@ -27,6 +27,10 @@ export const DOCS_FACTS = {
     6,
     "contracts/src/lib/PriceLib.sol USDC_DECIMALS = 6; the MandateVault constructor reverts BadUsdcDecimals for any other value",
   ),
+  maxTokenDecimals: fact(
+    18,
+    "contracts/src/MandateVault.sol _requireValidTokenConfig: a stock token whose decimals() is above 18 is InvalidConfig",
+  ),
   healthFactorBound: fact(
     1,
     "contracts/src/MandateVault.sol _requireValidCredit: a minHealthFactor below WAD (1e18, a health factor of 1.0) is InvalidConfig",

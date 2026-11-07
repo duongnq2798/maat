@@ -22,6 +22,12 @@ const SHIPPED: readonly string[] = [
   "concepts/credit-and-health-factor",
   "concepts/timelock-and-roles",
   "concepts/treasury-loop",
+  "reference/mandate-vault",
+  "reference/events",
+  "reference/errors",
+  "reference/types",
+  "reference/market-calendar",
+  "reference/adapters",
   "help/faq",
   "help/glossary",
 ];

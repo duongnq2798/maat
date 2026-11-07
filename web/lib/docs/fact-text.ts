@@ -66,6 +66,7 @@ export const FACT_TEXT = {
   "etOffsetHours.standard": t(`${F.etOffsetHours.value.standard} hours`, "etOffsetHours"),
   priceDecimals: t(`${F.priceDecimals.value} decimals`, "priceDecimals"),
   usdcDecimals: t(`${F.usdcDecimals.value} decimals`, "usdcDecimals"),
+  maxTokenDecimals: t(`${F.maxTokenDecimals.value} decimals`, "maxTokenDecimals"),
   healthFactorBound: t(F.healthFactorBound.value.toFixed(1), "healthFactorBound"),
   "calendarPreload.holidays": t(String(F.calendarPreload.value.holidays), "calendarPreload"),
   "calendarPreload.earlyCloses": t(String(F.calendarPreload.value.earlyCloses), "calendarPreload"),

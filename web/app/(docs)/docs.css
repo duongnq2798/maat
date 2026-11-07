@@ -53,6 +53,12 @@
   --color-fd-ring: #6e83ff;
 }
 
+/* Reference entries are headed by identifiers such as projectedHealthFactorAfterBorrow (ICreditAdapter). At 360px one
+   word is wider than the column, so a heading may break inside a word instead of widening the page. */
+#nd-page .prose :is(h2, h3, h4) {
+  overflow-wrap: anywhere;
+}
+
 /* neutral.css tints the dark sidebar with grey; keep it on the Signal dark scale. */
 .dark #nd-sidebar {
   --color-fd-muted: #151821;

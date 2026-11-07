@@ -43,6 +43,10 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(vault).toMatch(new RegExp(`decimals\\(\\) != ${DOCS_FACTS.usdcDecimals.value}\\)`));
   });
 
+  it("the most decimals a stock token may report", () => {
+    expect(vault).toMatch(new RegExp(`if \\(d > ${DOCS_FACTS.maxTokenDecimals.value}\\) revert InvalidConfig\\(\\);`));
+  });
+
   it("the lowest health factor floor the vault accepts is one WAD", () => {
     expect(solidityNumber(constantValue(vault, "WAD"))).toBe(DOCS_FACTS.healthFactorBound.value * 1e18);
     expect(vault).toMatch(/m\.minHealthFactor < WAD\b/);

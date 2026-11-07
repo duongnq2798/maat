@@ -1,0 +1,318 @@
+---
+title: MandateVault
+description: "Every external and public function of MandateVault: its signature, who may call it, what it changes, and how it reverts or refuses."
+type: reference
+audience: [developer, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MandateVault.sol
+  - contracts/src/IMandateVaultEvents.sol
+  - contracts/test/MandateVault.t.sol
+  - contracts/test/MandateVaultAdmin.t.sol
+next: [reference/events, concepts/timelock-and-roles]
+---
+
+`MandateVault` holds the treasury and checks every intent against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it reverts or refuses. The contract is built and fork-tested, and nothing is deployed yet, so there is no address to give.
+
+<Callout type="note" title="Refusals are not reverts">
+
+`execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks an action is a refusal: `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The owner functions revert with the errors named under each entry, and [Errors](/docs/reference/errors) lists them all.
+
+</Callout>
+
+<FunctionIndex contract="MandateVault" />
+
+## Executor only
+
+The executor is the one address that can send intents. [Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do) explains what a leaked executor key can and cannot do.
+
+### execute
+
+<Fn contract="MandateVault" name="execute" />
+
+Only the current `executor` may call it: any other caller reverts with `NotExecutor`, and an [intent](/docs/help/glossary#intent) `id` that was used before reverts with `IntentAlreadyUsed`, with nothing recorded. Otherwise the vault marks the id used, refreshes its multiplier snapshot of the intent's token when the token has a market (`MultiplierChangeDetected` if the value changed), and runs the checks for the action: [the nine checks](/docs/concepts/nine-checks) for a `BUY` or a `SELL` (check 9 is for a `BUY` only), and [their own checks](/docs/concepts/nine-checks#other-actions) for each other action. If they pass, the vault records any USDC that arrived since its last count (`RevenueReceived`) and acts: a swap, a transfer to the payee, or a call to the credit adapter. Every call that does not revert emits one `Decision`: a refusal comes back as `allowed = false` with a `Reason`, moves no funds and still uses up the id, and a swap, token call or credit call that fails after the checks is recorded the same way, as `SWAP_FAILED`, `TRANSFER_FAILED` or `CREDIT_FAILED`.
+
+### previewIntent
+
+<Fn contract="MandateVault" name="previewIntent" />
+
+Anyone may call this read-only function. It returns the `Reason` that `execute` would reach for the same intent before acting, and `OK` means the checks pass: it is the check verdict, not the execution result. It cannot see a failure that happens while the vault acts (`SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED` from the adapter call itself) or the adapter's own health check after a `WITHDRAW_COLLATERAL` against debt, but it does return `CREDIT_FAILED` when a credit view that the checks read is unreadable. It does not look at `usedIntent`, so a reused id previews normally while `execute` reverts with `IntentAlreadyUsed`. The transfer-policy check reads `tx.origin`, so preview from the executor's address to get the verdict the executor would get.
+
+## Anyone
+
+### notifyRevenue
+
+<Fn contract="MandateVault" name="notifyRevenue" />
+
+Anyone may call it, and it moves no funds. If the vault's USDC balance is above `recordedUsdc`, it emits `RevenueReceived` with the difference, and it sets `recordedUsdc` to the balance either way. It returns the amount it counted, which is zero when nothing new arrived. `execute` calls it before acting on any intent that passes the checks, and `withdraw` calls it first when the token is USDC, so USDC sent to the vault is counted as revenue without anyone calling it.
+
+### syncMultiplier
+
+<Fn contract="MandateVault" name="syncMultiplier" />
+
+Anyone may call it for any token address. When the token has a market in the vault (it is allowed, or has a feed or a pool set), the vault reads its [uiMultiplier](/docs/help/glossary#uimultiplier) and, if the value differs from `lastMultiplier`, stores it, sets `multiplierChangedAt` to now and emits `MultiplierChangeDetected`, which starts the cooldown. For a token with no market it does nothing, and a token whose `uiMultiplier()` reverts is skipped without reverting, so the checks fail closed with `MULTIPLIER_COOLDOWN` instead. `execute` runs the same sync for the intent's token before it checks anything ([Splits and the multiplier](/docs/concepts/splits-and-multiplier#anyone-can-sync)).
+
+## Owner, instant
+
+These four functions take effect in the same transaction. They do not wait for the [timelock](/docs/help/glossary#timelock), and none of them looks at the pause flag. Every one reverts with `NotOwner` for any other caller.
+
+### setExecutor
+
+<Fn contract="MandateVault" name="setExecutor" />
+
+Replaces the executor and emits `ExecutorSet`. The old executor can no longer call `execute` from that transaction on. The zero address reverts with `ZeroAddress`, and the vault checks nothing else about the new address.
+
+### setPaused
+
+<Fn contract="MandateVault" name="setPaused" />
+
+Sets the `paused` flag to `p` and emits `PausedSet`, even when the value does not change. While the flag is set, `execute` refuses every action except `REPAY` with `VAULT_PAUSED`, and records the refusal as a `Decision` instead of reverting. Pausing does not block any owner function.
+
+### withdraw
+
+<Fn contract="MandateVault" name="withdraw" />
+
+Sends `amount` of `token` from the vault to the owner address, and only to the owner, then emits `Withdrawn`. For USDC it first runs `notifyRevenue` and afterwards sets `recordedUsdc` to the new balance, so a withdrawal is not counted as revenue or as a loss. A token that returns `false` makes it revert with `TransferFailed`, and a token that reverts passes its own revert up. It does not check that `token` is a contract, so an address without code makes the call do nothing and `Withdrawn` is still emitted. It moves only tokens the vault holds: collateral supplied to the credit adapter stays there until a `WITHDRAW_COLLATERAL` brings it home.
+
+### fund
+
+<Fn contract="MandateVault" name="fund" />
+
+Only the owner may call it, and the vault takes the USDC from the owner with `transferFrom`, so the owner approves the vault for `amount` first. After the transfer it raises `recordedUsdc` by `amount` and emits `Funded`. A failed transfer reverts with `TransferFailed`, or with the token's own revert.
+
+## Owner, timelocked
+
+A change to the mandate, to a token's settings or to the payee list takes two calls: a `queue` call that starts the clock, and an `apply` call with exactly the same values once the wait is over. The wait is <Fact name="timelockHours" />, and the owner has <Fact name="gracePeriodDays" /> after it to apply. Every function here reverts with `NotOwner` for any other caller. [Timelock and roles](/docs/concepts/timelock-and-roles#the-timelock) walks through the steps, and [Change hashes](/docs/concepts/timelock-and-roles#change-hashes) explains the keys.
+
+### queueMandate
+
+<Fn contract="MandateVault" name="queueMandate" />
+
+Computes the change hash of the proposed mandate, stores the current time against it in `queuedAt`, and emits `MandateChangeQueued` with the hash, the earliest apply time (`eta`) and the whole mandate. It returns the hash. The live mandate does not change, and the new values are not validated yet: that happens in `applyMandate`, so a bad mandate can be queued and then fail with `InvalidConfig`. Queueing the same mandate again restarts its clock.
+
+### queueTokenConfig
+
+<Fn contract="MandateVault" name="queueTokenConfig" />
+
+Records a new `TokenConfig` for one token in the same way: it stores the time against the change hash and emits `TokenConfigChangeQueued` with the hash, `eta`, the token and the config, and it returns the hash. Nothing about the token changes, and the config is validated only when it is applied. Queueing the same config again restarts its clock.
+
+### queuePayee
+
+<Fn contract="MandateVault" name="queuePayee" />
+
+Records that `payee` will be added to the allowlist (`allowed = true`) or removed from it (`allowed = false`), and emits `PayeeChangeQueued` with the hash, `eta`, the payee and the flag. It returns the hash and changes nothing yet. The zero address is not refused here: `applyPayee` refuses it when the flag is true.
+
+### cancelChange
+
+<Fn contract="MandateVault" name="cancelChange" />
+
+Deletes the queue entry for `changeHash` and emits `ChangeCancelled`. It does not check that the hash was queued, so cancelling an unknown hash is a no-op that still emits the event. The owner can cancel at any time, before or after the wait, and a cancelled change reverts with `ChangeNotQueued` if the owner tries to apply it.
+
+### applyMandate
+
+<Fn contract="MandateVault" name="applyMandate" />
+
+Applies a queued mandate, and the values must be exactly the queued ones. The queue entry is checked first: `ChangeNotQueued` when this exact change is not queued (never queued, cancelled, already applied, or queued with other values), `ChangeNotReady` before `eta`, and `ChangeExpired` after `eta` plus the grace period. Then the vault validates the new mandate and reverts with `InvalidConfig` if it fails (the rules are under [`InvalidConfig`](/docs/reference/errors#invalidconfig)), and with `CreditPositionOpen` if the change switches or removes a credit adapter that still holds debt or collateral, or whose position cannot be read. On success it replaces the mandate, deletes the queue entry and emits `MandateApplied` and `PolicyHashUpdated`; any revert leaves the queue entry as it was.
+
+### applyTokenConfig
+
+<Fn contract="MandateVault" name="applyTokenConfig" />
+
+Applies a queued `TokenConfig` with the same three queue errors as `applyMandate`. It then reverts with `ZeroAddress` for the zero address and with `InvalidConfig` when the token has no code or, for a token that has a market, when its feed or pool fails validation. It lists the token if it is new, stores the config, and emits `TokenConfigApplied` and `PolicyHashUpdated`. For a token with a market it also reads `uiMultiplier()`, and a revert there reverts the apply. The first snapshot starts no cooldown, and a later one records any change that was never synced (`MultiplierChangeDetected`), so re-applying cannot hide a split.
+
+### applyPayee
+
+<Fn contract="MandateVault" name="applyPayee" />
+
+Applies a queued allowlist change with the same three queue errors as `applyMandate`. With `allowed = true` it adds the payee, and adding one that is already on the list changes nothing. With `allowed = false` it removes the payee, and removing one that is absent changes nothing. Allowing the zero address reverts with `ZeroAddress`, before the queue is read. It emits `PayeeApplied` even when the list did not change, and then `PolicyHashUpdated`.
+
+## Views
+
+These functions change nothing and anyone may call them.
+
+### mandate
+
+<Fn contract="MandateVault" name="mandate" />
+
+Returns the current `Mandate` struct as stored. Only `applyMandate` replaces it, and the constructor sets the first one. [Types](/docs/reference/types#mandate) gives each field's unit, and [The mandate](/docs/concepts/mandate) explains what each limit does.
+
+### mandateHash
+
+<Fn contract="MandateVault" name="mandateHash" />
+
+Returns `keccak256(abi.encode(mandate))`, the same value `MandateApplied` carries. It covers the mandate only, so payee and token changes do not move it. Use `policyHash` for the whole policy.
+
+### tokens
+
+<Fn contract="MandateVault" name="tokens" />
+
+Returns the stock tokens the vault has listed, in the order they were first listed. A delisted token stays in the list with `allowed` set to false, so the list only grows. The policy hash covers the tokens in this order, delisted ones included.
+
+### payees
+
+<Fn contract="MandateVault" name="payees" />
+
+Returns the current payee allowlist as an array. Removing a payee moves the last entry into its place, so the order can change, and the policy hash uses the order this function returns.
+
+### policyHash
+
+<Fn contract="MandateVault" name="policyHash" />
+
+Computes the [policy hash](/docs/help/glossary#policy-hash) from the vault's current state on each call, so it changes with every apply. The value in the latest `PolicyHashUpdated` event equals what this function returns, which lets anyone watching the events check the policy they read against the vault. It is a different value from a change hash, which commits to a change that has not happened yet.
+
+### today
+
+<Fn contract="MandateVault" name="today" />
+
+Returns the current UTC day number, which is `block.timestamp` divided by one day. It is the key of `spentOnDay`, and the daily cap starts over when it changes at midnight UTC.
+
+### mandateChangeHash
+
+<Fn contract="MandateVault" name="mandateChangeHash" />
+
+Computes the key under which `queueMandate` stores a mandate change: the hash of the text `MANDATE` and the encoded mandate. It is a pure function, so it works on any mandate you give it, before you queue it. Use it to find the entry in `queuedAt` or to cancel the change.
+
+### tokenChangeHash
+
+<Fn contract="MandateVault" name="tokenChangeHash" />
+
+Computes the key for a token-config change: the hash of the text `TOKEN`, the token address and the encoded config. `queueTokenConfig` stores the queue time under it and `applyTokenConfig` looks it up. Because the config is part of the hash, a different config is a different change.
+
+### payeeChangeHash
+
+<Fn contract="MandateVault" name="payeeChangeHash" />
+
+Computes the key for a payee change: the hash of the text `PAYEE`, the address and the `allowed` flag. Adding a payee and removing the same payee have different hashes, so each needs its own queue entry.
+
+## Public state
+
+Solidity generates these getters for `public` variables and constants. A getter takes the mapping key, if there is one, and changes nothing.
+
+### owner
+
+<Fn contract="MandateVault" name="owner" />
+
+The owner address. It is set when the vault is created and cannot be changed: no function transfers it. Any owner function called by another address reverts with `NotOwner`.
+
+### usdc
+
+<Fn contract="MandateVault" name="usdc" />
+
+The USDC token the vault holds, spends and pays out. It is set when the vault is created and cannot be changed. The constructor reverts with `BadUsdcDecimals` unless the token reports <Fact name="usdcDecimals" />.
+
+### policyRegistry
+
+<Fn contract="MandateVault" name="policyRegistry" />
+
+The [B20](/docs/help/glossary#b20) policy registry that the transfer-policy check asks whether an address may send, receive or execute a transfer of a stock. It is set when the vault is created and cannot be changed.
+
+### executor
+
+<Fn contract="MandateVault" name="executor" />
+
+The one address that may call `execute`. The constructor sets it, and `setExecutor` replaces it. Any other caller of `execute` reverts with `NotExecutor`.
+
+### paused
+
+<Fn contract="MandateVault" name="paused" />
+
+True while the owner has paused the vault. It starts false, and only `setPaused` changes it. While it is true, every action except `REPAY` is refused with `VAULT_PAUSED`.
+
+### tokenConfig
+
+<Fn contract="MandateVault" name="tokenConfig" />
+
+Returns the four members of a token's `TokenConfig`: `allowed`, `feed`, `pool` and `maxWeightBps`. A token that was never listed returns false for `allowed` and zeros for the rest. A token with `allowed` set to false but a feed or a pool still set is exit-only: the vault can sell it but not buy it. [Types](/docs/reference/types#tokenconfig) describes the fields.
+
+### allowedPayee
+
+<Fn contract="MandateVault" name="allowedPayee" />
+
+True for an address on the payee allowlist. A `PAY_EXPENSE` to any other address is refused with `PAYEE_NOT_ALLOWED`. The constructor and `applyPayee` change the list, and `payees()` returns it as an array.
+
+### usedIntent
+
+<Fn contract="MandateVault" name="usedIntent" />
+
+True once `execute` has seen the intent id, whether the intent was allowed or refused. A second `execute` with the same id reverts with `IntentAlreadyUsed`. `previewIntent` does not read it.
+
+### spentOnDay
+
+<Fn contract="MandateVault" name="spentOnDay" />
+
+The USDC that allowed trades and bill payments counted against the daily cap on one UTC day, keyed by the day number `today()` returns. A `BUY` adds the USDC it spends, a `SELL` adds the stock amount valued at the oracle price, and a `PAY_EXPENSE` adds the payment. Credit actions are not counted, and neither is a refused or failed action.
+
+### lastMultiplier
+
+<Fn contract="MandateVault" name="lastMultiplier" />
+
+The [uiMultiplier](/docs/help/glossary#uimultiplier) the vault last recorded for a token, as a [WAD](/docs/help/glossary#wad), or zero for a token it never gave a market. The multiplier check compares it with the live value, and a mismatch blocks the token. `syncMultiplier`, `execute` and a re-applied token config update it.
+
+### multiplierChangedAt
+
+<Fn contract="MandateVault" name="multiplierChangedAt" />
+
+The time at which the vault last recorded a multiplier change for a token, or zero if it never has. The first snapshot, taken when a token gets a market, does not set it, so listing a token starts no cooldown. The cooldown lasts until this time plus the mandate's `multiplierCooldown`.
+
+### queuedAt
+
+<Fn contract="MandateVault" name="queuedAt" />
+
+The time a change hash was queued, or zero when it is not queued, which covers a change that was never queued, was cancelled or was applied. Add `TIMELOCK` to get the earliest apply time and `GRACE_PERIOD` after that to get the last.
+
+### recordedUsdc
+
+<Fn contract="MandateVault" name="recordedUsdc" />
+
+The USDC balance the vault has accounted for. `notifyRevenue` reports any balance above it as revenue. `fund` raises it by the amount funded, and an allowed trade, an allowed bill payment and every credit action set it to the real balance afterwards, so swap proceeds and borrowed USDC are not counted as revenue.
+
+### TIMELOCK
+
+<Fn contract="MandateVault" name="TIMELOCK" />
+
+A constant: <Fact name="timelockHours" />. It is the wait between queueing a change and the earliest time it can be applied, so `eta` is `queuedAt` plus `TIMELOCK`. Every change to the mandate, a token's settings or the payee list waits this long, including a change that only tightens a limit.
+
+### GRACE_PERIOD
+
+<Fn contract="MandateVault" name="GRACE_PERIOD" />
+
+A constant: <Fact name="gracePeriodDays" />. The apply window runs from `eta` until `eta` plus this period, and that last moment is still inside it. After it, the `apply` call reverts with `ChangeExpired` and the change must be queued again.
+
+## Constructor
+
+The constructor is not a function you can call later, so it has no entry above. This excerpt shows its parameters and its first checks:
+
+```solidity title="contracts/src/MandateVault.sol#L68-L87"
+    constructor(
+        address owner_,
+        address executor_,
+        address usdc_,
+        address policyRegistry_,
+        Mandate memory mandate_,
+        address[] memory tokens_,
+        TokenConfig[] memory configs_,
+        address[] memory payees_
+    ) {
+        if (owner_ == address(0) || executor_ == address(0) || usdc_ == address(0) || policyRegistry_ == address(0)) {
+            revert ZeroAddress();
+        }
+        if (tokens_.length != configs_.length) revert LengthMismatch();
+        if (IERC20Minimal(usdc_).decimals() != 6) revert BadUsdcDecimals();
+        owner = owner_;
+        executor = executor_;
+        usdc = usdc_;
+        policyRegistry = policyRegistry_;
+        _requireValidMandate(mandate_);
+```
+
+It reverts with `ZeroAddress` if the owner, executor, USDC or policy registry is the zero address, with `LengthMismatch` if `tokens_` and `configs_` differ in length, and with `BadUsdcDecimals` if USDC does not report <Fact name="usdcDecimals" />. It then validates the mandate with the rules under [`InvalidConfig`](/docs/reference/errors#invalidconfig), so a mandate with a credit adapter needs an adapter that is already bound to this vault. Each token is stored the way `applyTokenConfig` stores it, and each payee is added, with a zero payee reverting `ZeroAddress` and a repeated payee counted once. The constructor emits `MandateApplied`, then a `TokenConfigApplied` for each token and a `PayeeApplied` for each payee, and `PolicyHashUpdated` last. It does not emit `ExecutorSet`: that event marks later changes, and the first executor is readable from `executor()`.
+
+## Related
+
+- [The nine checks](/docs/concepts/nine-checks): what `execute` and `previewIntent` check for a `BUY` and a `SELL`.
+- [Refusal codes](/docs/concepts/refusal-codes): every `Reason` the vault can record.
+- [Timelock and roles](/docs/concepts/timelock-and-roles): who may call what, and how a rule change moves through the queue.
+- [The mandate](/docs/concepts/mandate): what each mandate field limits.
+- [Splits and the multiplier](/docs/concepts/splits-and-multiplier): why a changed multiplier blocks a stock.
+- [Events](/docs/reference/events), [Errors](/docs/reference/errors) and [Types](/docs/reference/types): the other contract reference pages.
