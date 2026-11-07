@@ -55,7 +55,7 @@ export function markSvg(variant: "dark" | "light" = "dark"): string {
 /** Full-bleed tile for the X avatar and Apple touch icon; those platforms crop or round it themselves. */
 export function avatarSvg(): string {
   return svgDoc(
-    `<rect width="30" height="30" fill="${PALETTE.ink}"/><g transform="translate(15 15) scale(0.8) translate(-15.5 -14.5)">${glyph(PALETTE.paper, PALETTE.feather)}</g>`,
+    `<rect width="30" height="30" fill="${PALETTE.ink}"/><g transform="translate(15 15) scale(0.8) translate(-15 -14.5)">${glyph(PALETTE.paper, PALETTE.feather)}</g>`,
   );
 }
 
