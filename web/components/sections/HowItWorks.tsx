@@ -43,7 +43,7 @@ export function HowItWorks() {
     // Exists only once the decision is a mainnet tx (spec §3): a placeholder, never a made-up hash.
     { k: "rationaleHash", v: "[from mainnet tx]", tone: "muted" },
   ];
-  const toneClass = { hot: "font-semibold text-refuse", muted: "text-ink-2 [overflow-wrap:anywhere]" } as const;
+  const toneClass = { hot: "font-semibold text-refuse", muted: "text-ink-2" } as const;
 
   return (
     <section id="how" aria-labelledby="how-title" className="border-y border-line bg-surface-soft">
@@ -77,7 +77,7 @@ export function HowItWorks() {
               {decoded.map((d) => (
                 <div key={d.k} className="contents">
                   <dt className="text-ink-2">{d.k}</dt>
-                  <dd className={`m-0 ${d.tone ? toneClass[d.tone] : ""}`}>{d.v}</dd>
+                  <dd className={`m-0 [overflow-wrap:anywhere] ${d.tone ? toneClass[d.tone] : ""}`}>{d.v}</dd>
                 </div>
               ))}
             </dl>

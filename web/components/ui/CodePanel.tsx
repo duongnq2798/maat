@@ -12,9 +12,9 @@ export function CodePanel() {
       data-scroll-x
       className="overflow-x-auto rounded-[20px] bg-ink p-7 text-line"
     >
-      <div className="mb-[18px] flex justify-between gap-4 font-mono text-xs text-ink-3">
+      <div className="mb-[18px] flex flex-wrap justify-between gap-x-4 gap-y-1 font-mono text-xs text-ink-3">
         <span>IMandateVaultEvents.sol</span>
-        <span>solidity {FACTS.solidityVersion.value}</span>
+        <span className="whitespace-nowrap">solidity {FACTS.solidityVersion.value}</span>
       </div>
       <pre className="m-0 whitespace-pre font-mono text-sm leading-[1.75]">
         <span className="text-code-key">event</span> <span className="text-white">Decision</span>(

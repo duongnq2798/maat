@@ -51,7 +51,7 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
         </div>
       </div>
 
-      <div role="region" aria-label="Decision ledger" tabIndex={0} data-scroll-x className="card overflow-x-auto">
+      <div role="region" aria-label="Decision ledger" tabIndex={0} data-scroll-x className="card scroll-x-cue overflow-x-auto">
         <table className="w-full min-w-[820px] table-fixed border-collapse text-left">
           <colgroup>
             <col className="w-[150px]" />
@@ -80,8 +80,8 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
               shown.map((r) => (
                 <tr key={rowKey(r)} className="border-b border-line-soft">
                   <td className="py-[18px] pl-6 pr-2 font-mono text-[13px] text-ink-2">{r.timeLabel}</td>
-                  <td className="px-2 text-base font-medium">{intentLabel(r)}</td>
-                  <td className="px-2">
+                  <td className="px-2 py-[18px] text-base font-medium">{intentLabel(r)}</td>
+                  <td className="px-2 py-[18px]">
                     <span
                       className={`inline-block rounded-lg px-2.5 py-1.5 font-mono text-xs font-semibold ${
                         r.allowed ? "bg-accent-tint text-accent" : "bg-refuse-tint text-refuse"
@@ -90,7 +90,7 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
                       {decisionLabel(r)}
                     </span>
                   </td>
-                  <td className="px-2 text-sm leading-normal text-ink-2">{r.note}</td>
+                  <td className="px-2 py-[18px] text-sm leading-normal text-ink-2">{r.note}</td>
                   <td className="py-[18px] pl-2 pr-6 font-mono text-[13px]">{gasLabel(r)}</td>
                 </tr>
               ))

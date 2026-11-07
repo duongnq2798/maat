@@ -84,6 +84,29 @@
     border: 1px solid var(--color-line);
     border-radius: 20px;
   }
+  /* Scroll shadows, CSS only: a soft edge shadow shows on a side only while more content is hidden there.
+     The two `local` cover layers scroll with the content and hide the fixed shadows at either end; when the
+     table fits, the covers sit on both edges and nothing shows. Must stay after .card (that shorthand resets these). */
+  .scroll-x-cue {
+    background-color: var(--color-bg);
+    background-image:
+      linear-gradient(to right, var(--color-bg) 50%, transparent),
+      linear-gradient(to left, var(--color-bg) 50%, transparent),
+      linear-gradient(to right, color-mix(in srgb, var(--color-ink) 12%, transparent), transparent),
+      linear-gradient(to left, color-mix(in srgb, var(--color-ink) 12%, transparent), transparent);
+    background-position:
+      left center,
+      right center,
+      left center,
+      right center;
+    background-size:
+      40px 100%,
+      40px 100%,
+      16px 100%,
+      16px 100%;
+    background-repeat: no-repeat;
+    background-attachment: local, local, scroll, scroll;
+  }
   .pill-dark,
   .pill-line {
     box-sizing: border-box;
