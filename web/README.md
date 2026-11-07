@@ -13,11 +13,16 @@ Spec: `docs/superpowers/specs/2026-11-07-maat-web-design.md`. Approved comp: `do
 | `npm run typecheck` | Next route types + `tsc --noEmit` |
 | `npm run build` | static export into `out/` |
 | `npm run check:out` | checks `out/`: metadata, link targets, no third-party scripts, Saturday state in the HTML |
-| `npm run verify` | typecheck + test + build + check:out |
+| `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
-| `npm run e2e` | Playwright smoke on `out/` (once per machine: `npx playwright install chromium`) |
+| `npm run e2e` | Playwright smoke on `out/`. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
 
-Prefix builds with `NEXT_TELEMETRY_DISABLED=1` to keep Next's anonymous telemetry off.
+Keep Next's anonymous telemetry off when you build:
+
+- Git Bash: `NEXT_TELEMETRY_DISABLED=1 npm run build`
+- PowerShell: `$env:NEXT_TELEMETRY_DISABLED=1; npm run build`
+
+Full local check: `npm run verify`, then `npm run e2e` (the build inside `verify` leaves the `out/` that e2e serves).
 
 ## Where the numbers come from
 
@@ -27,6 +32,9 @@ W1 shows only the labeled Base fork run. Values that exist only after the mainne
 
 ## Deploy (owner)
 
+0. **Get `web/` onto the branch Vercel builds.** `web/` exists only on `feat/web`, which sits on top of the plan-1, plan-2a and plan-2b branches. The default branch `main` has no `web/` today, so "Root Directory: `web`" fails there. Either:
+   - push `feat/web` and merge it into the repo's default branch, or
+   - set `feat/web` as the Production Branch in the Vercel project settings.
 1. **Vercel:** Add New → Project → import this GitHub repo.
    - Root Directory: `web`.
    - Framework preset: Next.js.
