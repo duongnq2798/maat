@@ -51,6 +51,19 @@ test.describe("search", () => {
     await dialog.getByRole("button", { name: "Try again" }).click();
     await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
   });
+
+  test("the search index loads on the first search, not with the page", async ({ page }) => {
+    const requested: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/search")) requested.push(request.url());
+    });
+    await page.goto("/docs", { waitUntil: "networkidle" });
+    expect(requested).toEqual([]);
+    const dialog = await openSearch(page);
+    await dialog.getByRole("combobox").fill("maat");
+    await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
+    expect(requested.length).toBeGreaterThan(0);
+  });
 });
 
 test("the 404 page offers search and the docs sections", async ({ page }) => {

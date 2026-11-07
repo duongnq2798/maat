@@ -4,7 +4,7 @@ import { RootProvider } from "fumadocs-ui/provider/next";
 import dynamic from "next/dynamic";
 import type { ReactNode } from "react";
 
-// Loaded on first use, so the search code stays out of the docs first load.
+// Kept out of the first-load bundle: the dialog code loads after hydration so Ctrl+K opens at once, and the search index (/api/search) loads on the first query.
 const SearchDialog = dynamic(() => import("./SearchDialog"), { ssr: false });
 
 /**
