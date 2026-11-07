@@ -39,8 +39,8 @@ export const FACTS = {
   refusalCount: fact(REASONS.length, "contracts/src/Types.sol enum Reason, every member except OK"),
   timelockHours: fact(24, "contracts/src/MandateVault.sol TIMELOCK = 24 hours"),
   forkBlock: fact(53_551_627, `${FORK_TEST} BLOCK_SESSION`),
-  forkDay: fact("2026-11-05", "UTC date of Base block 53,551,627, the fork point"),
-  forkTimeEt: fact("10:30", "time of Base block 53,551,627 in New York"),
+  forkDay: fact("2026-11-05", "UTC and ET date of Base block 53,551,627, the fork point: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (Thu 2026-11-05 15:30 UTC, 10:30 ET)"),
+  forkTimeEt: fact("10:30", "time of Base block 53,551,627 in New York (ET): contracts/script/BaseAddresses.sol BLOCK_SESSION comment"),
   weekendOffsetDays: fact(2, `${FORK_TEST}: setNextBlockTimestamp(now + 2n * 86_400n) before the weekend BUY`),
   nvdaUiMultiplier: fact(
     "1.000537939576369481",
@@ -69,9 +69,9 @@ export const FACTS = {
   ),
   gas: fact(
     { buy: 761_488, supply: 286_707, borrow: 484_173, refusalLog: 111_116 },
-    `gasUsed of each tx in the Plan 2B fork run (${FORK_TEST}) at BLOCK_SESSION`,
+    `gasUsed per tx written by MAAT_GAS_LOG during the Plan 2B fork run of ${FORK_TEST} at BLOCK_SESSION (log file not committed)`,
   ),
-  feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork"),
+  feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (age 14 s)"),
   loopMinutes: fact(15, `${SPEC} §3.5, agent loop cadence in session`),
   rebalanceDriftPct: fact(5, `${SPEC} §3.5, rebalance past a 5% drift`),
   targetWeightPct: fact(33, `${SPEC} §3.5, equal weight across three tokens`),

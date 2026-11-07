@@ -20,6 +20,7 @@ const config = readRepo("contracts/script/MaatConfig.sol");
 const deploy = readRepo("contracts/script/Deploy.s.sol");
 const forkTest = readRepo("agent/test/integration/agent.fork.test.ts");
 const anvil = readRepo("agent/test/integration/anvil.ts");
+const addresses = readRepo("contracts/script/BaseAddresses.sol");
 
 describe("every fact names its source", () => {
   it.each(Object.entries(FACTS))("%s", (_name, f) => {
@@ -89,6 +90,20 @@ describe("parity with the contracts and the fork run (spec §5.4)", () => {
     expect(solidityNumber(constantValue(forkTest, "BLOCK_SESSION"))).toBe(FACTS.forkBlock.value);
     const days = /timestamp:\s*now\s*\+\s*(\d+)n\s*\*\s*86_400n/.exec(forkTest)?.[1];
     expect(Number(days)).toBe(FACTS.weekendOffsetDays.value);
+  });
+
+  it("fork day, ET time and feed age: the doc comment on BLOCK_SESSION in BaseAddresses.sol", () => {
+    const lines = addresses.split(/\r?\n/);
+    const at = lines.findIndex((l) => /\bBLOCK_SESSION\s*=/.test(l));
+    if (at < 1) throw new Error("BLOCK_SESSION is not declared in contracts/script/BaseAddresses.sol");
+    const doc = lines[at - 1] ?? "";
+    // e.g. "/// Thu 2026-11-05 15:30 UTC (10:30 ET). NVDA feed = 186.67486580, age 14 s."
+    const m = /^\s*\/\/\/\s*\w{3} (\d{4}-\d{2}-\d{2}) \d{2}:\d{2} UTC \((\d{2}:\d{2}) ET\)\..*\bage (\d+) s\./.exec(doc);
+    if (!m) throw new Error(`the line above BLOCK_SESSION is not the expected doc comment: ${JSON.stringify(doc)}`);
+    expect(solidityNumber(constantValue(addresses, "BLOCK_SESSION"))).toBe(FACTS.forkBlock.value);
+    expect(m[1]).toBe(FACTS.forkDay.value);
+    expect(m[2]).toBe(FACTS.forkTimeEt.value);
+    expect(Number(m[3])).toBe(FACTS.feedAgeSec.value);
   });
 
   it("NVDAc uiMultiplier at the fork block", () => {
