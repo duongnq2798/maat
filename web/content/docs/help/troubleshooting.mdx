@@ -46,7 +46,7 @@ cd maat
 git submodule update --init
 ```
 
-**Check the fix.** `git submodule status` prints two lines, one for `contracts/lib/forge-std` and one for `contracts/lib/v4-core`, and neither starts with `-`, which is how Git marks a submodule that was not initialized. Then run the refusal test from step 2 of the [Quickstart](/docs/get-started/quickstart#the-five-steps). It passes when the contracts build and the test ends with `[PASS] test_refusalIsLoggedNotReverted()`.
+**Check the fix.** `git submodule status` prints two lines, one for `contracts/lib/forge-std` and one for `contracts/lib/v4-core`, and neither starts with `-`, which is how Git marks a submodule that was not initialized. Then run the refusal test from step 2 of the [Quickstart](/docs/get-started/quickstart#the-five-steps). It passes when the contracts build and the output shows `[PASS] test_refusalIsLoggedNotReverted()`.
 
 ## Windows line endings break two agent tests
 
@@ -56,23 +56,25 @@ git submodule update --init
 
 **Fix.** Use a checkout that contains `159158d`, which is on `main`. It added a [`.gitattributes`](https://github.com/duongnq2798/maat/blob/main/.gitattributes) whose rule `* text=auto eol=lf` checks text files out with LF on every OS, and it changed the test to split on `\r?\n`, so the test passes with either ending. A fresh clone of `main` has both. In an existing clone, `git pull` brings in both too, but it does not rewrite files that are already on disk. The fixed test passes with either ending anyway, and a fresh clone gives you LF files.
 
-**Check the fix.** `git ls-files --eol` shows the line endings Git sees. For `Types.sol` the second field must read `w/lf`, which is the working tree. An affected checkout reads `w/crlf` there. Spacing differs between Git versions.
+**Check the fix.** `git ls-files --eol` shows the line endings Git sees. In a fresh clone the second field for `Types.sol`, which is the working tree, reads `w/lf`. In a clone you updated with `git pull` it can still read `w/crlf`, because Git does not rewrite files that are already on disk. The fixed test passes with either ending. Spacing differs between Git versions.
 
 ```bash
 git ls-files --eol contracts/src/Types.sol
 ```
 
+In a fresh clone the output looks like this:
+
 ```text
 i/lf    w/lf    attr/text=auto eol=lf   contracts/src/Types.sol
 ```
 
-Then `npm test` in `agent/` prints only `passed` counts, as in step 4 of the [Quickstart](/docs/get-started/quickstart#the-five-steps).
+The check that matters in both cases is `npm test` in `agent/`, which prints only `passed` counts, as in step 4 of the [Quickstart](/docs/get-started/quickstart#the-five-steps).
 
 ## Foundry is too old for the B20 hardfork
 
 **Symptom.** A test that calls a [B20](/docs/help/glossary#b20) token fails on a Foundry older than 1.8.4. Plan 1 names two errors to expect when a test calls a B20 token address, which starts with `0xb2000`: `EvmError: Revert` and `call to non-contract`. No output from an old Foundry is committed, so those two phrases are the plan's words, not a captured log.
 
-**Cause.** A B20 token is a precompile. Its code on Base is only the byte `0xef`, and Foundry before 1.8.4 cannot run it ([Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` so that Foundry runs the B20 precompiles, and the README and the Quickstart name 1.8.4 or newer as the minimum. The README's numbers were measured on Foundry 1.9.0. This is about `forge`. The agent's fork test also needs a particular build of Anvil, which has [its own section](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil).
+**Cause.** A B20 token is a precompile. Its code on Base is only the byte `0xef`, and Foundry before 1.8.4 cannot run it ([Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` so that Foundry runs the B20 precompiles, and the README and the Quickstart name 1.8.4 or newer as the minimum. The README's numbers were measured on Foundry 1.9.0. This is about `forge`. The agent's [fork test](/docs/help/glossary#fork-test) also needs a particular build of Anvil, which has [its own section](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil).
 
 **Fix.** Update Foundry and read the version it reports.
 
@@ -173,7 +175,7 @@ For the port message, stop the node that holds port 8547 and run the test again.
 gas limit = min(cap, max(floor, estimate * 1.3))
 ```
 
-The floor for `execute` is <Fact name="executeGasFloor" />, there is a separate, lower floor for `syncMultiplier`, and the cap is <Fact name="maxGas" />. The same applies if you send `execute` yourself as the executor, because the vault swallows the same failures however the transaction is sent. The `cast send` lines for `execute` in the [deployments runbook](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) set no gas limit, so give such a transaction a limit at or above the floor. An intent spends its id as soon as it reaches `execute`, even when the swap fails, so send the retry with a new intent id.
+The floor for `execute` is <Fact name="executeGasFloor" />, there is a separate, lower floor for `syncMultiplier`, and the cap is <Fact name="maxGas" />. The vault swallows the same failures however the transaction is sent, so a hand-sent `execute` is exposed too. The repository records the problem only for the agent's own sends. The `cast send` lines for `execute` in the [deployments runbook](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) set no gas limit, so give such a transaction a limit at or above the floor. An [intent](/docs/help/glossary#intent) spends its id as soon as it reaches `execute`, even when the swap fails, so send the retry with a new intent id.
 
 **Check the fix.** The transaction's gas limit is at or above the floor and its `gasUsed` is below the limit. The fork test asserts this for every transaction it sends, and the committed fork-run gas log shows it. A retried intent no longer records `SWAP_FAILED` for a swap that the market allows. Two unit tests cover the rule: `gasLimit` in [`agent/test/calls.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/calls.test.ts), and "sends every transaction with an explicit gas limit at or above its floor" in [`agent/test/runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts).
 
