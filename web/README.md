@@ -32,9 +32,6 @@ W1 shows only the labeled Base fork run. Values that exist only after the mainne
 
 ## Deploy (owner)
 
-0. **Get `web/` onto the branch Vercel builds.** `web/` exists only on `feat/web`, which sits on top of the plan-1, plan-2a and plan-2b branches. The default branch `main` has no `web/` today, so "Root Directory: `web`" fails there. Either:
-   - push `feat/web` and merge it into the repo's default branch, or
-   - set `feat/web` as the Production Branch in the Vercel project settings.
 1. **Vercel:** Add New → Project → import this GitHub repo.
    - Root Directory: `web`.
    - Framework preset: Next.js.
