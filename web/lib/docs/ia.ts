@@ -264,7 +264,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "help/glossary",
         "Glossary",
-        "Plain definitions of every term the docs use, from B20 and uiMultiplier to TWAP, health factor, Builder Code and the feed edge.",
+        "Plain definitions of the terms used across the docs, from B20 and uiMultiplier to TWAP, health factor, Builder Code and the feed edge.",
       ),
       page(
         "help/changelog",
