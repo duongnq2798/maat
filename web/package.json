@@ -11,7 +11,9 @@
     "build": "next build",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
-    "brand": "tsx scripts/brand.ts"
+    "brand": "tsx scripts/brand.ts",
+    "check:out": "tsx scripts/check-out.ts",
+    "verify": "npm run typecheck && npm test && npm run build && npm run check:out"
   },
   "dependencies": {
     "geist": "1.9.2",
