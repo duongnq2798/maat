@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { FACT_TEXT } from "../lib/docs/fact-text";
 
 /** Opens search the way a reader does. Playwright sends "K" for "Control+K"; a real Ctrl+K sends "k", which Fumadocs matches. */
 async function openSearch(page: Page) {
@@ -77,4 +78,27 @@ test("the 404 page offers search and the docs sections", async ({ page }) => {
   const dialog = page.getByRole("dialog");
   await dialog.getByRole("combobox").fill("maat");
   await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
+});
+
+test.describe("copy", () => {
+  test.use({ permissions: ["clipboard-read", "clipboard-write"] });
+
+  test("Copy page as Markdown copies the page with its facts filled in", async ({ page }) => {
+    // networkidle: the button only works once the page has hydrated.
+    await page.goto("/docs", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Copy page as Markdown" }).click();
+    await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+    // The Windows clipboard stores line breaks as CRLF.
+    const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
+    expect(text).toMatch(/^# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/);
+    expect(text).toContain(`passes ${FACT_TEXT.checksPerTrade.text} checks`);
+    expect(text).not.toContain("<Fact");
+  });
+
+  test("Copy page as Markdown says so when the file cannot load", async ({ page }) => {
+    await page.route("**/md/**", (route) => route.abort());
+    await page.goto("/docs", { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Copy page as Markdown" }).click();
+    await expect(page.getByRole("button", { name: "Copy failed. Try again" })).toBeVisible();
+  });
 });

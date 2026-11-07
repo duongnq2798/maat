@@ -1,9 +1,14 @@
-import { DocsBody, DocsDescription, DocsPage, DocsTitle } from "fumadocs-ui/layouts/docs/page";
+import { DocsBody, DocsPage } from "fumadocs-ui/layouts/docs/page";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/docs/mdx";
+import { NextLinks } from "@/components/docs/NextLinks";
+import { PageFooter } from "@/components/docs/PageFooter";
+import { PageHeader } from "@/components/docs/PageHeader";
+import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
 import { source } from "@/lib/docs-source";
-import { SITE } from "@/lib/site";
+import { markdownUrl, readingMinutes } from "@/lib/docs/markdown";
+import { SITE, siteUrl } from "@/lib/site";
 
 // Static export: every docs URL comes from generateStaticParams, nothing is rendered on request.
 export const dynamicParams = false;
@@ -13,14 +18,40 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
   const page = source.getPage(slug);
   if (!page) notFound();
 
-  const { body: MDX, toc, full, title, description } = page.data;
+  const { body: MDX, toc, full, title, description, status, audience, lastReviewed, sources, next } = page.data;
+  const markdown = await page.data.getText("processed");
   return (
-    <DocsPage toc={toc} full={full}>
-      <DocsTitle>{title}</DocsTitle>
-      <DocsDescription>{description}</DocsDescription>
+    <DocsPage
+      toc={toc}
+      full={full}
+      // PageHeader renders the breadcrumb with a Docs root and nav semantics.
+      breadcrumb={{ enabled: false }}
+      // Fumadocs' previous/next by sidebar order, then the feedback, edit and copy row.
+      footer={{
+        children: (
+          <PageFooter
+            title={title}
+            pageUrl={new URL(page.url, siteUrl()).href}
+            filePath={page.path}
+            markdownHref={markdownUrl(page.url)}
+          />
+        ),
+      }}
+    >
+      <PageHeader
+        url={page.url}
+        title={title}
+        description={description}
+        status={status}
+        audience={audience}
+        readingMinutes={readingMinutes(markdown)}
+        lastReviewed={lastReviewed}
+      />
       <DocsBody>
         <MDX components={getMDXComponents()} />
       </DocsBody>
+      <SourceOfTruth sources={sources} />
+      <NextLinks slugs={next} />
     </DocsPage>
   );
 }
