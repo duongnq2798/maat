@@ -10,6 +10,10 @@ export function encodeSyncMultiplier(token: Address): Hex {
   return encodeFunctionData({ abi: mandateVaultAbi, functionName: "syncMultiplier", args: [token] });
 }
 
+export function encodeNotifyRevenue(): Hex {
+  return encodeFunctionData({ abi: mandateVaultAbi, functionName: "notifyRevenue" });
+}
+
 /**
  * eth_estimateGas cannot be trusted for the vault: execute() and syncMultiplier() swallow inner failures (swap
  * try/catch, tryTransfer, the low-level credit call, try uiMultiplier()), so the estimate converges on a limit that
@@ -18,8 +22,10 @@ export function encodeSyncMultiplier(token: Address): Hex {
  */
 export const EXECUTE_GAS_FLOOR = 2_500_000n;
 export const SYNC_GAS_FLOOR = 300_000n;
+/** notifyRevenue swallows nothing (one balanceOf, one SSTORE, one event); the floor is headroom, checked on the fork. */
+export const NOTIFY_GAS_FLOOR = 100_000n;
 export const MAX_GAS = 3_000_000n;
-export const GAS_FLOOR = { execute: EXECUTE_GAS_FLOOR, syncMultiplier: SYNC_GAS_FLOOR } as const;
+export const GAS_FLOOR = { execute: EXECUTE_GAS_FLOOR, syncMultiplier: SYNC_GAS_FLOOR, notifyRevenue: NOTIFY_GAS_FLOOR } as const;
 export type GasFunction = keyof typeof GAS_FLOOR;
 
 /** min(MAX_GAS, max(floor, estimate * 1.3)). */

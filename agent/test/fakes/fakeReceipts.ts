@@ -35,6 +35,8 @@ export class FakeReceipts {
   estimates: { account: unknown; to: unknown; data: Hex }[] = [];
   /** syncMultiplier emits MultiplierChangeDetected (false: the vault's try uiMultiplier() failed silently). */
   syncEvent = true;
+  /** notifyRevenue emits RevenueReceived(revenue); null: nothing new by then (another caller recorded it first). */
+  revenue: bigint | null = null;
 
   constructor(
     private readonly sender: FakeSender,
@@ -72,6 +74,15 @@ export class FakeReceipts {
           hash,
           encodeEventTopics({ abi: mandateVaultAbi, eventName: "MultiplierChangeDetected", args: { token } }) as Hex[],
           encodeAbiParameters(parseAbiParameters("uint256, uint256"), [10n ** 18n, 2n * 10n ** 18n]),
+        ),
+      );
+    }
+    if (call.functionName === "notifyRevenue" && this.revenue !== null) {
+      logs.push(
+        this.log(
+          hash,
+          encodeEventTopics({ abi: mandateVaultAbi, eventName: "RevenueReceived" }) as Hex[],
+          encodeAbiParameters(parseAbiParameters("uint256"), [this.revenue]),
         ),
       );
     }

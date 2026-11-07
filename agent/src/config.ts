@@ -27,6 +27,7 @@ const schema = z
     MAAT_DATA_DIR: field(z.string().default("./data")),
     MAAT_MAX_TX_PER_DAY: field(z.coerce.number().int().positive().default(40)),
     MAAT_DEFAULT_DAILY_COMPUTE_USD: field(z.coerce.number().positive().default(0.5)),
+    MAAT_REVENUE_MIN_USD: field(z.coerce.number().nonnegative().default(0.05)),
     CDP_ACCOUNT_NAME: field(z.string().default("maat-executor")),
   })
   .superRefine((v, ctx) => {
@@ -46,6 +47,8 @@ export interface AgentConfig {
   dataDir: string;
   maxTxPerDay: number;
   defaultDailyComputeUsd: number;
+  /** New USDC at or above this is recorded as revenue with notifyRevenue. */
+  revenueMinUsd: number;
   cdpAccountName: string;
 }
 
@@ -67,6 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     dataDir: v.MAAT_DATA_DIR,
     maxTxPerDay: v.MAAT_MAX_TX_PER_DAY,
     defaultDailyComputeUsd: v.MAAT_DEFAULT_DAILY_COMPUTE_USD,
+    revenueMinUsd: v.MAAT_REVENUE_MIN_USD,
     cdpAccountName: v.CDP_ACCOUNT_NAME,
   };
 }

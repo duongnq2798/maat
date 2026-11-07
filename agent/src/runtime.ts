@@ -34,6 +34,7 @@ export async function buildRuntime(
     expensePayee: cfg.expensePayee,
     mode,
     defaultDailyComputeUsd6: usdToUsdc6(cfg.defaultDailyComputeUsd),
+    revenueMinUsd6: usdToUsdc6(cfg.revenueMinUsd),
     maxTxPerDay: cfg.maxTxPerDay,
     stateClient: client,
     previewClient: client,

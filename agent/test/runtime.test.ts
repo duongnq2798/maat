@@ -33,6 +33,7 @@ describe("buildRuntime", () => {
     expect(deps.sender).toBeInstanceOf(GuardedSender);
     expect(seen).toEqual({ accountName: "maat-executor", expectedAddress: "0x2222222222222222222222222222222222222222" });
     expect(deps.defaultDailyComputeUsd6).toBe(500_000n);
+    expect(deps.revenueMinUsd6).toBe(50_000n);
   });
   it("--dry-run overrides live", async () => {
     const cfg = loadConfig(await env({ MAAT_MODE: "live", MAAT_BUILDER_CODE: "bc_maattest" }));

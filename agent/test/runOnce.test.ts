@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { size } from "viem";
 import { describe, expect, it } from "vitest";
-import { addressOf } from "../src/addresses.js";
+import { addressOf, USDC } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
 import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
@@ -141,6 +141,39 @@ describe("runOnce", () => {
     await runOnce(t.deps);
     expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["syncMultiplier", "execute"]);
     expect(codesIn(t.inner.sent[0]!.data)).toEqual(["bc_maattest"]);
+  });
+
+  it("records new USDC as revenue with notifyRevenue before trading", async () => {
+    const t = await setup({ batch: BUY20, scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    t.receipts.revenue = 30_000_000n;
+    await runOnce(t.deps);
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["notifyRevenue", "execute"]);
+    expect(codesIn(t.inner.sent[0]!.data)).toEqual(["bc_maattest"]);
+    const row = (await t.journal.read()).find((e) => e.kind === "housekeeping");
+    expect(row).toMatchObject({ call: "notifyRevenue", amount: "30000000", txHash: `0x${"1".padStart(64, "0")}` });
+    expect(t.store.txCount(DAY)).toBe(2);
+  });
+
+  it("leaves revenue below the threshold for later", async () => {
+    const t = await setup({ scene: standardScene().set(USDC, "balanceOf", 100_049_999n) });
+    expect((await runOnce(t.deps)).sent).toEqual([]);
+    const t2 = await setup({ scene: standardScene().set(USDC, "balanceOf", 100_049_999n) });
+    t2.deps.revenueMinUsd6 = 49_999n;
+    expect((await runOnce(t2.deps)).sent).toHaveLength(1);
+  });
+
+  it("journals revenue in dry-run without sending", async () => {
+    const t = await setup({ mode: "dry-run", scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    await runOnce(t.deps);
+    expect(t.inner.sent).toEqual([]);
+    expect((await t.journal.read()).find((e) => e.kind === "housekeeping")).toMatchObject({ call: "notifyRevenue", amount: "30000000", note: "dry-run" });
+  });
+
+  it("does not halt when someone else recorded the revenue first", async () => {
+    const t = await setup({ scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    const r = await runOnce(t.deps); // receipts.revenue stays null: the receipt carries no RevenueReceived
+    expect(r.status).toBe("done");
+    expect((await t.journal.read()).find((e) => e.kind === "housekeeping")).toMatchObject({ amount: "0", note: "already recorded by another caller" });
   });
 
   it("skips housekeeping for a token whose lastMultiplier is unreadable", async () => {
