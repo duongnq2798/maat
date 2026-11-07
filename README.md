@@ -10,6 +10,7 @@
 [![Tested on a Base mainnet fork](https://img.shields.io/badge/Base-mainnet%20fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
 [![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#built-for-stocks-maxxing-season)
 [![Tests: 535, 511 offline](https://img.shields.io/badge/tests-535%20(511%20offline)-15803d?style=flat-square)](#development)
+[![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
 **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
 
@@ -607,5 +608,5 @@ offered to US persons.
 
 ## License
 
-The Solidity sources carry `SPDX-License-Identifier: MIT`. A repository-wide `LICENSE` file is not
-included yet.
+Maat is released under the [MIT License](LICENSE). The Solidity sources carry the matching
+`SPDX-License-Identifier: MIT` header.
