@@ -42,6 +42,24 @@ describe("buildSurface", () => {
     expect(c.functions.find((f) => f.name === "setPaused")?.notice).toBe("Pauses it.");
   });
 
+  it("reads a guard that also rejects address(0) as one caller, and never reads `&&` as a single role", () => {
+    const c = one(
+      `contract P {
+    function callback() external {
+        if (msg.sender != _activePool || msg.sender == address(0)) revert BadCallback();
+    }
+    function either() external {
+        if (msg.sender != a && msg.sender != b) revert NotAllowed();
+    }
+}`,
+      "P",
+    );
+    expect(c.functions.map((f) => [f.name, f.access])).toEqual([
+      ["callback", "activePool"],
+      ["either", "anyone"],
+    ]);
+  });
+
   it("turns public mappings, arrays and constants into getters, and reads `=>` as a type, not an initializer", () => {
     const c = one(
       `contract S {
@@ -194,13 +212,15 @@ describe("parseAgentEnv", () => {
 });
 
 describe("parseBaseAddresses", () => {
-  it("reads every constant with the note above it", () => {
+  it("applies a note to every constant in its group", () => {
     const parsed = parseBaseAddresses(
-      "library B {\n    /// Pools, token0 = USDC.\n    address internal constant POOL = 0xAbC;\n    uint256 internal constant BLOCK = 53_551_627;\n}",
+      "library B {\n    /// Pools, token0 = USDC.\n    address internal constant POOL_A = 0xAbC;\n    address internal constant POOL_B = 0xDeF;\n\n    uint256 internal constant BLOCK = 53_551_627;\n    /// Weekend block.\n    uint256 internal constant WEEKEND = 1;\n}",
     );
     expect(parsed).toEqual([
-      { name: "POOL", type: "address", value: "0xAbC", note: "Pools, token0 = USDC." },
+      { name: "POOL_A", type: "address", value: "0xAbC", note: "Pools, token0 = USDC." },
+      { name: "POOL_B", type: "address", value: "0xDeF", note: "Pools, token0 = USDC." },
       { name: "BLOCK", type: "uint256", value: "53_551_627", note: "" },
+      { name: "WEEKEND", type: "uint256", value: "1", note: "Weekend block." },
     ]);
   });
 });

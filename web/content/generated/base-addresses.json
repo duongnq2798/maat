@@ -57,13 +57,13 @@
     "name": "GOOGLC_USDC_POOL",
     "type": "address",
     "value": "0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3",
-    "note": ""
+    "note": "Aerodrome Slipstream pools, token0 = USDC for all three."
   },
   {
     "name": "AAPLC_USDC_POOL",
     "type": "address",
     "value": "0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6",
-    "note": ""
+    "note": "Aerodrome Slipstream pools, token0 = USDC for all three."
   },
   {
     "name": "AAVE_MAG7_SPOKE",
@@ -75,37 +75,37 @@
     "name": "AAVE_EQUITIES_HUB",
     "type": "address",
     "value": "0xa4d5947Eb727A052bae69C593FfC84247EC9864E",
-    "note": ""
+    "note": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
   },
   {
     "name": "AAVE_MAG7_ORACLE",
     "type": "address",
     "value": "0xaBaf048fD7675Ea34a84332371ffd5D55E322A47",
-    "note": ""
+    "note": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
   },
   {
     "name": "AAVE_RESERVE_AAPLC",
     "type": "uint256",
     "value": "0",
-    "note": ""
+    "note": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
   },
   {
     "name": "AAVE_RESERVE_GOOGLC",
     "type": "uint256",
     "value": "2",
-    "note": ""
+    "note": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
   },
   {
     "name": "AAVE_RESERVE_NVDAC",
     "type": "uint256",
     "value": "5",
-    "note": ""
+    "note": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
   },
   {
     "name": "AAVE_RESERVE_USDC",
     "type": "uint256",
     "value": "7",
-    "note": ""
+    "note": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
   },
   {
     "name": "BLOCK_SESSION",

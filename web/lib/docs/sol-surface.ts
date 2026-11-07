@@ -79,7 +79,10 @@ function blankComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, (m) => m.replace(/[^\n]/g, " "));
 }
 
-/** The `///` lines (and the single-line text of `/** *\/` blocks) directly above `offset`, without NatSpec tags. */
+/**
+ * The `///` lines directly above `offset`, joined with spaces. `@dev`, `@param` and `@return` lines are dropped
+ * and the `@notice` and `@title` tags are stripped. Block comments are not read: this repo's sources have none.
+ */
 function natspecAbove(original: string, offset: number): string {
   const lines = original.slice(0, offset).split("\n");
   lines.pop(); // the declaration's own line
@@ -170,12 +173,17 @@ const VISIBILITY = new Set(["external", "public", "internal", "private"]);
 const MUTABILITY = new Set(["view", "pure", "payable"]);
 const NOT_MODIFIERS = new Set([...VISIBILITY, ...MUTABILITY, "virtual", "override", "returns"]);
 
-/** Role named by a modifier such as onlyOwner, or by a first statement `if (msg.sender != owner) revert ...`. */
+/**
+ * Role named by a modifier such as onlyOwner, or by a first statement `if (msg.sender != owner) revert ...`.
+ * The guard may also reject the zero address (`|| msg.sender == address(0)`), which still means one caller;
+ * `&&` would mean any of several callers, so it is never read as a role. One leading underscore is dropped
+ * from the name (`_activePool` is the role `activePool`).
+ */
 function accessOf(modifiers: readonly string[], body: string | undefined): string {
   const only = modifiers.find((m) => /^only[A-Z]/.test(m));
   if (only) return only.slice(4, 5).toLowerCase() + only.slice(5);
-  const first = /^\s*if\s*\(\s*msg\.sender\s*!=\s*(\w+)\s*\)\s*revert/.exec(body ?? "");
-  return first?.[1] ?? "anyone";
+  const first = /^\s*if\s*\(\s*msg\.sender\s*!=\s*(\w+)\s*(?:\)|\|\|)/.exec(body ?? "");
+  return first?.[1]?.replace(/^_/, "") ?? "anyone";
 }
 
 function parseFunction(d: Decl, notice: string): SolFunction | undefined {
@@ -273,7 +281,9 @@ function parseFile(src: SolSource, enums: SolEnum[], structs: SolStruct[]): RawC
       }
       const s = /^struct (\w+)$/.exec(d.head);
       if (s?.[1] && d.body !== undefined) {
-        const fields = declarations(d.body, 0, d.body.length).map((f) => params(f.head)[0]!);
+        const fields = declarations(d.body, 0, d.body.length)
+          .map((f) => params(f.head)[0])
+          .filter((p): p is SolParam => p !== undefined);
         structs.push({ name: s[1], file: src.file, fields, notice: natspecAbove(src.text, d.offset) });
       }
     }
@@ -316,7 +326,7 @@ function parseFile(src: SolSource, enums: SolEnum[], structs: SolStruct[]): RawC
   return out;
 }
 
-const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name);
+const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, "en");
 
 /**
  * Parse every source, then give each contract what the ABI would show: the events, errors and functions of

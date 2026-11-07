@@ -448,7 +448,7 @@
           ],
           "returns": [],
           "mutability": "nonpayable",
-          "access": "anyone",
+          "access": "activePool",
           "notice": ""
         }
       ],

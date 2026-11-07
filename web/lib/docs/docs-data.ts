@@ -92,21 +92,31 @@ function solFiles(root: string, dir: string): SolSource[] {
   });
 }
 
-/** `/// note` lines directly above each `address|uint256 internal constant NAME = value;`. */
+/**
+ * Every `address|uint256 internal constant NAME = value;`, with the `///` block above it. One block describes
+ * the whole run of constants below it, so each of them carries the note. A note ends at a blank line, at any
+ * other line (the `library` line, `}`), or when a new `///` block starts after a constant.
+ */
 export function parseBaseAddresses(text: string): BaseConstant[] {
   const out: BaseConstant[] = [];
   let note: string[] = [];
+  let afterConstant = false;
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (line.startsWith("///")) {
+      if (afterConstant) note = [];
+      afterConstant = false;
       note.push(line.slice(3).replace(/^\s*@notice\s+/, "").trim());
       continue;
     }
     const m = /^(address|uint256) internal constant (\w+) = ([^;]+);/.exec(line);
     if (m?.[1] && m[2] && m[3]) {
       out.push({ name: m[2], type: m[1] as BaseConstant["type"], value: m[3].trim(), note: note.join(" ") });
+      afterConstant = true;
+      continue;
     }
     note = [];
+    afterConstant = false;
   }
   return out;
 }
