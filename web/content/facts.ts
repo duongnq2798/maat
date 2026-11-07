@@ -68,8 +68,8 @@ export const FACTS = {
     "contracts/script/MaatConfig.sol defaultMandate(), MIN/TARGET_HEALTH_FACTOR, DERISK_WINDOW, basket(); sessionMode from contracts/script/Deploy.s.sol",
   ),
   gas: fact(
-    { buy: 761_488, supply: 286_707, borrow: 484_173, refusalLog: 111_116 },
-    `gasUsed per tx written by MAAT_GAS_LOG during the Plan 2B fork run of ${FORK_TEST} at BLOCK_SESSION (log file not committed)`,
+    { buy: 758_192, supply: 286_707, borrow: 484_173, refusalLog: 111_116 },
+    `gasUsed per tx in agent/test/integration/fork-gas.json, written by MAAT_GAS_LOG from ${FORK_TEST} at BLOCK_SESSION (BUY varies a little between runs, the other three do not)`,
   ),
   feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (age 14 s)"),
   loopMinutes: fact(15, `${SPEC} §3.5, agent loop cadence in session`),

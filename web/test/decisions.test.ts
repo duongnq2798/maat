@@ -30,7 +30,7 @@ describe("decision rows", () => {
   it("formats like the comp", () => {
     const rows = getDecisions();
     expect(rows.map((r) => [r.timeLabel, intentLabel(r), decisionLabel(r), gasLabel(r)])).toEqual([
-      ["Thu 5 Nov 10:30", "BUY NVDAc · $20", "ALLOWED · OK", "761,488"],
+      ["Thu 5 Nov 10:30", "BUY NVDAc · $20", "ALLOWED · OK", "758,192"],
       ["Thu 5 Nov 10:30", "SUPPLY NVDAc · $15", "ALLOWED · OK", "286,707"],
       ["Thu 5 Nov 10:30", "BORROW USDC · $5", "ALLOWED · OK", "484,173"],
       ["Sat 7 Nov", "BUY GOOGLc · $10", "REFUSED · MARKET_CLOSED", "111,116"],

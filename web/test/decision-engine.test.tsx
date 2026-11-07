@@ -38,7 +38,7 @@ describe("DecisionEngine", () => {
     expect(ui.sat()).toHaveAttribute("aria-pressed", "false");
     expect(ui.marks()).toEqual(Array(9).fill("PASS"));
     expect(ui.verdict()).toHaveTextContent("Allowed");
-    expect(ui.verdict()).toHaveTextContent("Swap executed · gas 761,488");
+    expect(ui.verdict()).toHaveTextContent("Swap executed · gas 758,192");
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-verdict", "allowed");
   });
 

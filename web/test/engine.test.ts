@@ -42,6 +42,6 @@ describe("engine moments (spec §3)", () => {
       ["Size limits", "$20 ≤ $50 · $100/day"],
       ["Concentration", "weight ≤ 40%"],
     ]);
-    expect([t.allowed, t.reason, t.outcome]).toEqual([true, "OK", "Swap executed · gas 761,488"]);
+    expect([t.allowed, t.reason, t.outcome]).toEqual([true, "OK", "Swap executed · gas 758,192"]);
   });
 });

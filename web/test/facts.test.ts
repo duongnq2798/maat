@@ -119,4 +119,22 @@ describe("parity with the contracts and the fork run (spec §5.4)", () => {
     );
     expect(found).toEqual(FACTS.premiumsBps.value);
   });
+
+  it("gas: gasUsed per tx in the committed MAAT_GAS_LOG output of the fork run", () => {
+    type Row = { runId: string; fn: string; action?: string; gasUsed: string };
+    const rows = JSON.parse(readRepo("agent/test/integration/fork-gas.json")) as Row[];
+    const used = (runId: string, action: string) => {
+      const hit = rows.filter((r) => r.runId === runId && r.fn === "execute" && r.action === action);
+      if (hit.length !== 1) throw new Error(`expected one ${runId} ${action} execute row in fork-gas.json, found ${hit.length}`);
+      return Number(hit[0]!.gasUsed);
+    };
+    // fork-1 is the allowed BUY/SUPPLY/BORROW round; fork-2 is the market-closed BUY the vault refuses and logs.
+    expect(forkTest).toMatch(/it\("logs a market-closed refusal[\s\S]*?"fork-2"/);
+    expect({
+      buy: used("fork-1", "BUY"),
+      supply: used("fork-1", "SUPPLY"),
+      borrow: used("fork-1", "BORROW"),
+      refusalLog: used("fork-2", "BUY"),
+    }).toEqual(FACTS.gas.value);
+  });
 });
