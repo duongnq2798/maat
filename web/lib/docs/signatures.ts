@@ -31,14 +31,16 @@ export function findContract(surface: SolSurface, name: string): SolContract {
   return c;
 }
 
-/** One item of a contract by name; throws so a typo in an MDX entry fails the build. */
+/** One item of a contract by name; throws so a typo in an MDX entry fails the build, and so does a name that matches two. */
 export function findItem<K extends "functions" | "events" | "errors">(
   surface: SolSurface,
   contract: string,
   kind: K,
   name: string,
 ): SolContract[K][number] {
-  const item = findContract(surface, contract)[kind].find((x) => x.name === name);
+  const items = findContract(surface, contract)[kind].filter((x) => x.name === name);
+  const [item] = items;
   if (!item) throw new Error(`${contract} has no ${kind.slice(0, -1)} named ${name}`);
+  if (items.length > 1) throw new Error(`${contract} has more than one ${kind.slice(0, -1)} named ${name}`);
   return item as SolContract[K][number];
 }

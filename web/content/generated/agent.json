@@ -6,7 +6,8 @@
       "note": "RPC for Base mainnet (archive not required for the agent itself).",
       "readBy": "agent",
       "default": null,
-      "required": true
+      "required": true,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_VAULT",
@@ -14,7 +15,8 @@
       "note": "From the deploy logs (deployments/README.md).",
       "readBy": "agent",
       "default": null,
-      "required": true
+      "required": true,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_EXECUTOR",
@@ -22,7 +24,8 @@
       "note": "The CDP Server Wallet account address; the vault owner must setExecutor() to it.",
       "readBy": "agent",
       "default": null,
-      "required": true
+      "required": true,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_EXPENSE_PAYEE",
@@ -30,7 +33,8 @@
       "note": "",
       "readBy": "agent",
       "default": null,
-      "required": true
+      "required": true,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_MODE",
@@ -38,7 +42,8 @@
       "note": "dry-run (default): read, ask Claude, preview, journal; never send. live: also send through CDP.",
       "readBy": "agent",
       "default": "dry-run",
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_BUILDER_CODE",
@@ -46,7 +51,8 @@
       "note": "Builder Code from base.dev (required in live mode).",
       "readBy": "agent",
       "default": null,
-      "required": false
+      "required": false,
+      "requiredInLive": true
     },
     {
       "name": "MAAT_LOOP_MODEL",
@@ -54,7 +60,8 @@
       "note": "",
       "readBy": "agent",
       "default": "claude-sonnet-5-5",
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_DATA_DIR",
@@ -62,7 +69,8 @@
       "note": "",
       "readBy": "agent",
       "default": "./data",
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_MAX_TX_PER_DAY",
@@ -70,7 +78,8 @@
       "note": "",
       "readBy": "agent",
       "default": "40",
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "MAAT_DEFAULT_DAILY_COMPUTE_USD",
@@ -78,7 +87,8 @@
       "note": "",
       "readBy": "agent",
       "default": "0.5",
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "ANTHROPIC_API_KEY",
@@ -86,7 +96,8 @@
       "note": "Anthropic API key (the SDK reads it).",
       "readBy": "sdk",
       "default": null,
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "CDP_ACCOUNT_NAME",
@@ -94,7 +105,8 @@
       "note": "CDP Server Wallet (see agent/README.md)",
       "readBy": "agent",
       "default": "maat-executor",
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "CDP_API_KEY_ID",
@@ -102,7 +114,8 @@
       "note": "",
       "readBy": "sdk",
       "default": null,
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "CDP_API_KEY_SECRET",
@@ -110,7 +123,8 @@
       "note": "",
       "readBy": "sdk",
       "default": null,
-      "required": false
+      "required": false,
+      "requiredInLive": false
     },
     {
       "name": "CDP_WALLET_SECRET",
@@ -118,7 +132,8 @@
       "note": "",
       "readBy": "sdk",
       "default": null,
-      "required": false
+      "required": false,
+      "requiredInLive": false
     }
   ],
   "scripts": [

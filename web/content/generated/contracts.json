@@ -1703,8 +1703,20 @@
           ],
           "returns": [
             {
-              "type": "TokenConfig",
-              "name": ""
+              "type": "bool",
+              "name": "allowed"
+            },
+            {
+              "type": "address",
+              "name": "feed"
+            },
+            {
+              "type": "address",
+              "name": "pool"
+            },
+            {
+              "type": "uint16",
+              "name": "maxWeightBps"
             }
           ],
           "mutability": "view",

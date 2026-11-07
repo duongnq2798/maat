@@ -3,7 +3,7 @@ import { type FactName, factFor } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
 import { headingId } from "@/lib/docs/links";
 import { accessLabel, errorSignature, eventSignature, findContract, findItem, functionSignature } from "@/lib/docs/signatures";
-import type { Mutability, SolParam } from "@/lib/docs/sol-surface";
+import type { Mutability, SolFunction, SolParam } from "@/lib/docs/sol-surface";
 import { SITE } from "@/lib/site";
 
 // Reference entries for the MDX pages under content/docs/reference. Each reads the committed output of
@@ -18,9 +18,18 @@ const MUTABILITY_LABEL: Readonly<Record<Mutability, string>> = {
   payable: "Changes state, takes ETH",
 };
 
+/** What a function does to state, then "Public state" for a getter: the words <Fn> and <FunctionIndex> both use. */
+function kindLabels(f: SolFunction): string[] {
+  return f.kind === "getter" ? [MUTABILITY_LABEL[f.mutability], "Public state"] : [MUTABILITY_LABEL[f.mutability]];
+}
+
 function Signature({ children }: { children: string }) {
   return (
-    <pre className="not-prose my-3 overflow-x-auto rounded-lg border border-fd-border bg-fd-muted px-4 py-3 font-mono text-[13px] leading-6 text-fd-foreground">
+    // tabIndex: a scrollable region must be reachable by keyboard (axe rule scrollable-region-focusable).
+    <pre
+      className="not-prose my-3 overflow-x-auto rounded-lg border border-fd-border bg-fd-muted px-4 py-3 font-mono text-[13px] leading-6 text-fd-foreground"
+      tabIndex={0}
+    >
       <code>{children}</code>
     </pre>
   );
@@ -60,8 +69,8 @@ function ParamTable({ label, params, indexed = false }: { label: string; params:
         </tr>
       </thead>
       <tbody>
-        {params.map((p) => (
-          <tr key={p.name}>
+        {params.map((p, i) => (
+          <tr key={`${i}-${p.name}`}>
             <td><code>{p.name}</code></td>
             <td><code>{p.type}</code></td>
             {indexed ? <td>{p.indexed ? "Yes" : "No"}</td> : null}
@@ -85,13 +94,13 @@ export function FunctionIndex({ contract, qualify = false }: { contract: string;
         </tr>
       </thead>
       <tbody>
-        {c.functions.map((f) => (
-          <tr key={f.name}>
+        {c.functions.map((f, i) => (
+          <tr key={`${i}-${f.name}`}>
             <td>
               <a href={`#${headingId(qualify ? `${f.name} (${contract})` : f.name)}`}><code>{f.name}</code></a>
             </td>
             <td>{accessLabel(f.access)}</td>
-            <td>{f.kind === "getter" ? "Public state" : MUTABILITY_LABEL[f.mutability]}</td>
+            <td>{kindLabels(f).join(", ")}</td>
           </tr>
         ))}
       </tbody>
@@ -106,8 +115,9 @@ export function Fn({ contract, name }: { contract: string; name: string }) {
       <Signature>{functionSignature(f)}</Signature>
       <div className="not-prose flex flex-wrap gap-2">
         <Chip>{accessLabel(f.access)}</Chip>
-        <Chip>{MUTABILITY_LABEL[f.mutability]}</Chip>
-        {f.kind === "getter" ? <Chip>Public state</Chip> : null}
+        {kindLabels(f).map((label) => (
+          <Chip key={label}>{label}</Chip>
+        ))}
       </div>
       <Notice text={f.notice} />
     </div>
@@ -120,7 +130,7 @@ export function EventEntry({ contract, name }: { contract: string; name: string 
     <div data-entry="event">
       <Signature>{eventSignature(e)}</Signature>
       <Notice text={e.notice} />
-      <ParamTable label={`${name} parameters`} params={e.params} indexed />
+      <ParamTable label={`${name} parameters (${contract})`} params={e.params} indexed />
     </div>
   );
 }
@@ -131,7 +141,7 @@ export function ErrorEntry({ contract, name }: { contract: string; name: string 
     <div data-entry="error">
       <Signature>{errorSignature(e)}</Signature>
       <Notice text={e.notice} />
-      <ParamTable label={`${name} parameters`} params={e.params} />
+      <ParamTable label={`${name} parameters (${contract})`} params={e.params} />
     </div>
   );
 }
@@ -194,7 +204,7 @@ export function EnvTable() {
           <tr key={v.name}>
             <td><a href={`#${headingId(v.name)}`}><code>{v.name}</code></a></td>
             <td>{READ_BY[v.readBy]}</td>
-            <td>{v.required ? "Yes" : "No"}</td>
+            <td>{v.required ? "Yes" : v.requiredInLive ? "In live mode" : "No"}</td>
             <td>{v.default === null ? "None" : <code>{v.default}</code>}</td>
           </tr>
         ))}
@@ -211,7 +221,7 @@ export function EnvVar({ name }: { name: string }) {
         <dt className="text-fd-muted-foreground">Read by</dt>
         <dd>{v.readBy === "agent" ? "agent/src/config.ts" : "the SDK that uses it, not agent/src/config.ts"}</dd>
         <dt className="text-fd-muted-foreground">Required</dt>
-        <dd>{v.required ? "Yes, in every mode" : "No"}</dd>
+        <dd>{v.required ? "Yes, in every mode" : v.requiredInLive ? "In live mode" : "No"}</dd>
         <dt className="text-fd-muted-foreground">Default</dt>
         <dd>{v.default === null ? "None" : <code>{v.default}</code>}</dd>
         <dt className="text-fd-muted-foreground">In .env.example</dt>

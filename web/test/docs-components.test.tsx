@@ -26,8 +26,10 @@ describe("data tables", () => {
   });
 
   it("EventSignature prints the Decision event and refuses any other", () => {
-    render(<EventSignature name="Decision" />);
+    const { container } = render(<EventSignature name="Decision" />);
     expect(screen.getByText(/bytes32 indexed intentId,/)).toBeInTheDocument();
+    // The block scrolls sideways, so a keyboard user must be able to focus it (axe scrollable-region-focusable).
+    expect(container.querySelector("pre")).toHaveAttribute("tabindex", "0");
     expect(() => EventSignature({ name: "Paused" })).toThrow("only Decision is in FACTS");
   });
 

@@ -362,9 +362,21 @@ export function buildSurface(sources: readonly SolSource[]): SolSurface {
     };
   };
 
+  // Solidity's getter for a struct-valued variable returns the struct's members, not the struct, and leaves out
+  // the members that are arrays or mappings. A declared function that returns a struct keeps returning the struct.
+  const isOmitted = (p: SolParam) => p.type.includes("[") || p.type.startsWith("mapping");
+  const expandGetter = (f: SolFunction): SolFunction => {
+    const only = f.returns.length === 1 ? f.returns[0] : undefined;
+    const struct = f.kind === "getter" && only ? structs.find((s) => s.name === only.type) : undefined;
+    return struct ? { ...f, returns: struct.fields.filter((p) => !isOmitted(p)) } : f;
+  };
+
   const contracts = raw
     .filter((c) => c.kind !== "library")
-    .map((c) => ({ name: c.name, kind: c.kind, file: c.file, notice: c.notice, ...resolve(c) }))
+    .map((c) => {
+      const r = resolve(c);
+      return { name: c.name, kind: c.kind, file: c.file, notice: c.notice, ...r, functions: r.functions.map(expandGetter) };
+    })
     .sort(byName);
   return { contracts, enums: enums.sort(byName), structs: structs.sort(byName) };
 }

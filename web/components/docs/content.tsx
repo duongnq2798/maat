@@ -79,7 +79,11 @@ export function EventSignature({ name }: { name: string }) {
   if (name !== "Decision") throw new Error(`<EventSignature name="${name}" />: only Decision is in FACTS; use <EventEntry> on reference pages`);
   const params = FACTS.decisionEvent.value.map((p) => [p.type, p.indexed ? "indexed" : "", p.name].filter(Boolean).join(" "));
   return (
-    <pre className="not-prose my-4 overflow-x-auto rounded-lg border border-fd-border bg-fd-muted px-4 py-3 font-mono text-[13px] leading-6 text-fd-foreground">
+    // tabIndex: a scrollable region must be reachable by keyboard (axe rule scrollable-region-focusable).
+    <pre
+      className="not-prose my-4 overflow-x-auto rounded-lg border border-fd-border bg-fd-muted px-4 py-3 font-mono text-[13px] leading-6 text-fd-foreground"
+      tabIndex={0}
+    >
       <code>{`event Decision(\n  ${params.join(",\n  ")}\n)`}</code>
     </pre>
   );

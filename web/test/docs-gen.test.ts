@@ -79,6 +79,32 @@ describe("buildSurface", () => {
     ]);
   });
 
+  it("returns a struct's members from a getter of a struct, leaving out arrays and mappings, but not from a declared function", () => {
+    const s = buildSurface([
+      {
+        file: "contracts/src/X.sol",
+        text: [
+          "struct S {",
+          "    uint a;",
+          "    address b;",
+          "    uint[] list;",
+          "    mapping(address => bool) seen;",
+          "}",
+          "contract G {",
+          "    mapping(address => S) public m;",
+          "    function whole(address k) external view returns (S memory) {}",
+          "}",
+        ].join("\n"),
+      },
+    ]);
+    const g = s.contracts.find((c) => c.name === "G");
+    expect(g?.functions.find((f) => f.name === "m")?.returns).toEqual([
+      { type: "uint", name: "a" },
+      { type: "address", name: "b" },
+    ]);
+    expect(g?.functions.find((f) => f.name === "whole")?.returns).toEqual([{ type: "S", name: "" }]);
+  });
+
   it("gives a contract the events of the interfaces it inherits and the errors of the libraries it uses", () => {
     const s = buildSurface([
       { file: "contracts/src/E.sol", text: "interface IE {\n    event Done(bytes32 indexed id, bool ok);\n}" },
@@ -122,7 +148,13 @@ describe("buildSurface", () => {
 });
 
 /** The ABI the agent compiled from the same sources (agent/src/abi/generated.ts, written by forge). */
-function agentAbi(name: string): { type: string; name?: string; stateMutability?: string; inputs?: { indexed?: boolean }[] }[] {
+function agentAbi(name: string): {
+  type: string;
+  name?: string;
+  stateMutability?: string;
+  inputs?: { indexed?: boolean }[];
+  outputs?: unknown[];
+}[] {
   const src = readRepo("agent/src/abi/generated.ts");
   const start = src.indexOf(`export const ${name} = `);
   if (start < 0) throw new Error(`${name} not in agent/src/abi/generated.ts`);
@@ -141,7 +173,7 @@ describe("parity with the compiled ABI", () => {
     if (!c) throw new Error(`${contract} missing from the generated surface`);
     const flags = (ps: readonly { indexed?: boolean }[]) => ps.map((p) => (p.indexed ? "i" : "-")).join("");
     const ours = [
-      ...c.functions.map((f) => `function ${f.name}/${f.params.length} ${f.mutability}`),
+      ...c.functions.map((f) => `function ${f.name}/${f.params.length}/${f.returns.length} ${f.mutability}`),
       ...c.events.map((e) => `event ${e.name}/${e.params.length} ${flags(e.params)}`),
       ...c.errors.map((e) => `error ${e.name}/${e.params.length}`),
     ].sort();
@@ -149,7 +181,7 @@ describe("parity with the compiled ABI", () => {
       .filter((e) => e.type !== "constructor")
       .map((e) => {
         const n = `${e.type} ${e.name}/${e.inputs?.length ?? 0}`;
-        if (e.type === "function") return `${n} ${e.stateMutability}`;
+        if (e.type === "function") return `function ${e.name}/${e.inputs?.length ?? 0}/${e.outputs?.length ?? 0} ${e.stateMutability}`;
         return e.type === "event" ? `${n} ${flags(e.inputs ?? [])}` : n;
       })
       .sort();
@@ -178,6 +210,11 @@ describe("parseAgentEnv", () => {
     "    MAAT_BUILDER_CODE: field(z.string().min(1).optional()),",
     "    MAAT_MAX_TX_PER_DAY: field(z.coerce.number().int().positive().default(40)),",
     "  })",
+    "  .superRefine((v, ctx) => {",
+    '    if (v.MAAT_MODE === "live" && !v.MAAT_BUILDER_CODE) {',
+    '      ctx.addIssue({ code: "custom", path: ["MAAT_BUILDER_CODE"], message: "MAAT_BUILDER_CODE is required in live mode" });',
+    "    }",
+    "  });",
   ].join("\n");
   const example = [
     "# RPC for Base mainnet.",
@@ -200,6 +237,20 @@ describe("parseAgentEnv", () => {
       ["MAAT_MAX_TX_PER_DAY", "agent", "40", false, ""],
       ["ANTHROPIC_API_KEY", "sdk", null, false, "Anthropic API key (the SDK reads it)."],
     ]);
+  });
+
+  it("marks a setting that the superRefine requires in live mode, and no other", () => {
+    expect(
+      parseAgentEnv(example, config)
+        .filter((v) => v.requiredInLive)
+        .map((v) => v.name),
+    ).toEqual(["MAAT_BUILDER_CODE"]);
+    expect(parseAgentEnv(example, config.replace(/MAAT_MODE === "live" && !v\.MAAT_BUILDER_CODE/, "false")).some((v) => v.requiredInLive)).toBe(false);
+  });
+
+  it("marks MAAT_BUILDER_CODE as required in live mode in the committed agent data", () => {
+    const live = generateDocsData(REPO_ROOT).agent.env.filter((v) => v.requiredInLive);
+    expect(live.map((v) => v.name)).toEqual(["MAAT_BUILDER_CODE"]);
   });
 
   it("every key config.ts validates is in agent/.env.example", () => {

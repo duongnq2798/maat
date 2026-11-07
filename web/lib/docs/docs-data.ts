@@ -35,6 +35,8 @@ export interface AgentEnvVar {
   readonly default: string | null;
   /** config.ts rejects a missing value in every mode. */
   readonly required: boolean;
+  /** config.ts's superRefine rejects a missing value when MAAT_MODE is "live" (it may be unset in dry-run). */
+  readonly requiredInLive: boolean;
 }
 
 export interface AgentScript {
@@ -77,6 +79,7 @@ export function parseAgentEnv(envExample: string, configSource: string): AgentEn
         readBy: decl === undefined ? "sdk" : "agent",
         default: def,
         required: decl !== undefined && def === null && !decl.includes(".optional()"),
+        requiredInLive: new RegExp(`MAAT_MODE === "live" && !v\\.${m[1]}\\b`).test(configSource),
       });
     }
     note = [];

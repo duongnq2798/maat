@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { docsData } from "@/lib/docs/generated";
 import { accessLabel, errorSignature, eventSignature, findItem, functionSignature } from "@/lib/docs/signatures";
+import type { SolFunction, SolSurface } from "@/lib/docs/sol-surface";
 
 const s = docsData.surface;
 
@@ -32,5 +33,24 @@ describe("signatures from the generated surface", () => {
     expect(accessLabel("anyone")).toBe("Anyone");
     expect(() => findItem(s, "MandateVault", "functions", "rugPull")).toThrow("MandateVault has no function named rugPull");
     expect(() => findItem(s, "Nope", "events", "X")).toThrow("contract Nope is not in");
+  });
+
+  it("refuses a name that matches two items, instead of picking the first", () => {
+    const fn: SolFunction = {
+      name: "dup",
+      kind: "function",
+      visibility: "external",
+      params: [],
+      returns: [],
+      mutability: "nonpayable",
+      access: "anyone",
+      notice: "",
+    };
+    const twice: SolSurface = {
+      contracts: [{ name: "C", kind: "contract", file: "contracts/src/C.sol", notice: "", functions: [fn, { ...fn, params: [{ type: "uint256", name: "a" }] }], events: [], errors: [] }],
+      enums: [],
+      structs: [],
+    };
+    expect(() => findItem(twice, "C", "functions", "dup")).toThrow("C has more than one function named dup");
   });
 });

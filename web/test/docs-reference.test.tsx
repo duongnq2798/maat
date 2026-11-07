@@ -32,6 +32,20 @@ describe("contract entries", () => {
     expect(screen.getByText("Read only")).toBeInTheDocument();
   });
 
+  it("a signature block scrolls sideways, so a keyboard user must be able to focus it", () => {
+    const { container } = render(<Fn contract="MandateVault" name="queueMandate" />);
+    const pre = container.querySelector("pre");
+    expect(pre).toHaveClass("overflow-x-auto");
+    expect(pre).toHaveAttribute("tabindex", "0");
+  });
+
+  it("Fn shows what a getter of a struct really returns: its members", () => {
+    render(<Fn contract="MandateVault" name="tokenConfig" />);
+    expect(
+      screen.getByText("function tokenConfig(address) public view returns (bool allowed, address feed, address pool, uint16 maxWeightBps)"),
+    ).toBeInTheDocument();
+  });
+
   it("an unknown name throws, so a typo in a page fails the build", () => {
     expect(() => Fn({ contract: "MandateVault", name: "rugPull" })).toThrow("MandateVault has no function named rugPull");
     expect(() => TypeEntry({ name: "Order" })).toThrow("type Order is not in content/generated/contracts.json");
@@ -42,11 +56,25 @@ describe("contract entries", () => {
 
   it("EventEntry lists the parameters and which are indexed", () => {
     render(<EventEntry contract="MandateVault" name="Decision" />);
-    const table = screen.getByRole("region", { name: "Decision parameters" });
+    const table = screen.getByRole("region", { name: "Decision parameters (MandateVault)" });
     const intent = within(table).getByText("intentId").closest("tr");
     expect(intent).not.toBeNull();
     expect(within(intent as HTMLElement).getByText("Yes")).toBeInTheDocument();
     expect(within(table).getAllByRole("row")).toHaveLength(1 + 7);
+  });
+
+  it("names a parameter table after its contract, because several contracts share event and error names", () => {
+    const { unmount } = render(<ErrorEntry contract="AaveV4CreditAdapter" name="TransferFailed" />);
+    expect(screen.getByRole("region", { name: "TransferFailed parameters (AaveV4CreditAdapter)" })).toBeInTheDocument();
+    unmount();
+    render(
+      <>
+        <EventEntry contract="IMandateVaultEvents" name="Decision" />
+        <EventEntry contract="MandateVault" name="Decision" />
+      </>,
+    );
+    expect(screen.getByRole("region", { name: "Decision parameters (IMandateVaultEvents)" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Decision parameters (MandateVault)" })).toBeInTheDocument();
   });
 
   it("ErrorEntry shows the signature", () => {
@@ -73,6 +101,14 @@ describe("contract entries", () => {
     expect(screen.getByRole("link", { name: "withdraw" })).toHaveAttribute("href", "#withdraw-aavev4creditadapter");
   });
 
+  it("FunctionIndex describes a getter with the same words as Fn", () => {
+    render(<FunctionIndex contract="MandateVault" />);
+    const region = screen.getByRole("region", { name: "MandateVault functions" });
+    const row = (name: string) => within(region).getByRole("link", { name }).closest("tr") as HTMLElement;
+    expect(within(row("GRACE_PERIOD")).getByText("Read only, Public state")).toBeInTheDocument();
+    expect(within(row("queueMandate")).getByText("Changes state")).toBeInTheDocument();
+  });
+
   it("headingId follows the slug rules for the headings the reference uses", () => {
     expect(headingId("queueMandate")).toBe("queuemandate");
     expect(headingId("ZeroAddress (MandateVault)")).toBe("zeroaddress-mandatevault");
@@ -92,6 +128,19 @@ describe("agent, address and fact entries", () => {
     render(<EnvVar name="MAAT_MODE" />);
     expect(screen.getAllByText("dry-run")).toHaveLength(2);
     expect(screen.getByText("agent/src/config.ts")).toBeInTheDocument();
+  });
+
+  it("a setting that is required only in live mode says so, in the table and in its entry", () => {
+    const { unmount } = render(<EnvTable />);
+    const row = screen.getByRole("link", { name: "MAAT_BUILDER_CODE" }).closest("tr") as HTMLElement;
+    expect(within(row).getByText("In live mode")).toBeInTheDocument();
+    expect(within(row).queryByText("No")).toBeNull();
+    const vault = screen.getByRole("link", { name: "MAAT_VAULT" }).closest("tr") as HTMLElement;
+    expect(within(vault).getByText("Yes")).toBeInTheDocument();
+    unmount();
+    render(<EnvVar name="MAAT_BUILDER_CODE" />);
+    expect(screen.getByText("In live mode")).toBeInTheDocument();
+    expect(screen.queryByText("No")).toBeNull();
   });
 
   it("ScriptEntry and ScriptFile name what runs", () => {
