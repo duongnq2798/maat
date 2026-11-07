@@ -1,4 +1,5 @@
 import { loader } from "fumadocs-core/source";
+import { flattenTree } from "fumadocs-core/page-tree";
 import { docs } from "@/.source/server";
 import { pageMarkdown } from "@/lib/docs/markdown";
 import { siteUrl } from "@/lib/site";
@@ -10,6 +11,11 @@ export const source = loader({
 });
 
 export type DocsPage = NonNullable<ReturnType<typeof source.getPage>>;
+
+/** Every docs page in sidebar order, the order a reader pages through them. */
+export function pagesInSidebarOrder(): DocsPage[] {
+  return flattenTree(source.getPageTree().children).flatMap((item) => source.getNodePage(item) ?? []);
+}
 
 /** The page as Markdown with absolute links back to the site, for /md/*.md and llms-full.txt. */
 export async function getPageMarkdown(page: DocsPage): Promise<string> {

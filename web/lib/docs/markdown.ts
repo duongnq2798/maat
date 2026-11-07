@@ -24,3 +24,13 @@ export function pageMarkdown(page: { title: string; url: string; description?: s
   parts.push(page.body.trim());
   return `${parts.join("\n\n")}\n`;
 }
+
+/** /llms.txt (llmstxt.org): the docs title and summary, where all of it is as one file, then every page as an absolute link. */
+export function llmsIndex(
+  docs: { title: string; summary: string; fullUrl: string },
+  pages: readonly { title: string; url: string; description?: string }[],
+): string {
+  const lines = [`# ${docs.title}`, "", `> ${docs.summary}`, "", `Every page as one Markdown file: ${docs.fullUrl}`, "", "## Pages", ""];
+  for (const p of pages) lines.push(`- [${p.title}](${p.url})${p.description ? `: ${p.description}` : ""}`);
+  return `${lines.join("\n")}\n`;
+}

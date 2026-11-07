@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { feedbackHref } from "@/components/docs/PageFooter";
 import { StatusBadge } from "@/components/docs/StatusBadge";
-import { markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath } from "@/lib/docs/markdown";
+import { llmsIndex, markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath } from "@/lib/docs/markdown";
 import { SITE } from "@/lib/site";
 
 describe("docs Markdown helpers", () => {
@@ -45,5 +45,15 @@ describe("StatusBadge", () => {
   it("says the status in words, so it reads the same without color", () => {
     render(<StatusBadge status="fork-tested" />);
     expect(screen.getByText("Fork-tested").closest("[data-status]")).toHaveAttribute("data-status", "fork-tested");
+  });
+});
+
+describe("llmsIndex", () => {
+  it("gives the summary, the full file and every page as an absolute link", () => {
+    const docs = { title: "Maat docs", summary: "S.", fullUrl: "https://x.dev/llms-full.txt" };
+    const pages = [{ title: "A", url: "https://x.dev/docs", description: "D" }, { title: "B", url: "https://x.dev/docs/b" }];
+    expect(llmsIndex(docs, pages)).toBe(
+      "# Maat docs\n\n> S.\n\nEvery page as one Markdown file: https://x.dev/llms-full.txt\n\n## Pages\n\n- [A](https://x.dev/docs): D\n- [B](https://x.dev/docs/b)\n",
+    );
   });
 });

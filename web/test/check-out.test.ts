@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDocsPage, checkExport, checkLandingIsolation } from "@/lib/check-out";
+import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation } from "@/lib/check-out";
 import { SITE } from "@/lib/site";
 
 const GOOD = [
@@ -114,5 +114,26 @@ describe("checkLandingIsolation", () => {
 
   it("flags a landing with no assets to check", () => {
     expect(checkLandingIsolation("<html></html>", () => "")).toEqual([expect.stringMatching(/cannot be checked/)]);
+  });
+});
+
+describe("checkDocsIndexes", () => {
+  const url = "https://maat.example/docs/concepts/nine-checks";
+
+  it("accepts indexes that list every docs page", () => {
+    const files = {
+      llms: `- [The nine checks](${url}): The order of the checks.\n`,
+      llmsFull: `# The nine checks\n\nURL: ${url}\n\nBody\n`,
+      sitemap: `<url><loc>${url}</loc></url>`,
+    };
+    expect(checkDocsIndexes(files, [url])).toEqual([]);
+  });
+
+  it("names each index that misses a page", () => {
+    expect(checkDocsIndexes({ llms: "", llmsFull: "", sitemap: "" }, [url])).toEqual([
+      `llms.txt does not link ${url}`,
+      `llms-full.txt has no page with URL ${url}`,
+      `sitemap.xml does not list ${url}`,
+    ]);
   });
 });

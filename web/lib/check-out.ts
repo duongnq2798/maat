@@ -90,3 +90,14 @@ export function checkLandingIsolation(html: string, read: (url: string) => strin
   }
   return problems;
 }
+
+/** Problems with the machine-readable copies of the docs. `urls` holds the absolute URL of every exported docs page. */
+export function checkDocsIndexes(files: { llms: string; llmsFull: string; sitemap: string }, urls: readonly string[]): string[] {
+  const problems: string[] = [];
+  for (const url of urls) {
+    if (!files.llms.includes(`](${url})`)) problems.push(`llms.txt does not link ${url}`);
+    if (!files.llmsFull.includes(`URL: ${url}\n`)) problems.push(`llms-full.txt has no page with URL ${url}`);
+    if (!files.sitemap.includes(`<loc>${url}</loc>`)) problems.push(`sitemap.xml does not list ${url}`);
+  }
+  return problems;
+}

@@ -1,7 +1,8 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkDocsPage, checkExport, checkLandingIsolation } from "../lib/check-out";
+import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation } from "../lib/check-out";
+import { siteUrl } from "../lib/site";
 
 const OUT = fileURLToPath(new URL("../out/", import.meta.url));
 const REQUIRED = [
@@ -15,6 +16,8 @@ const REQUIRED = [
   "opengraph-image.png",
   "docs.html",
   "api/search",
+  "llms.txt",
+  "llms-full.txt",
   "md/docs.md",
 ];
 
@@ -45,6 +48,13 @@ for (const file of docsFiles) {
 }
 // test/docs-ia.test.ts checks that every written page is in the IA; here, that the export has docs at all.
 if (docsFiles.length === 0) problems.push("found no docs pages in out/");
+
+// The same absolute URLs the routes write (both read siteUrl() from the same environment).
+const INDEXES = ["llms.txt", "llms-full.txt", "sitemap.xml"];
+if (INDEXES.every((f) => existsSync(join(OUT, f)))) {
+  const urls = [...known].map((url) => new URL(url, siteUrl()).href);
+  problems.push(...checkDocsIndexes({ llms: read("llms.txt"), llmsFull: read("llms-full.txt"), sitemap: read("sitemap.xml") }, urls));
+}
 
 if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
