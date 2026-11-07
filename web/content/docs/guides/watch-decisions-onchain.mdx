@@ -44,7 +44,7 @@ The vault declares `Decision` in `contracts/src/IMandateVaultEvents.sol`. Its So
 
 <EventSignature name="Decision" />
 
-`intentId` and `token` are indexed, so they are topics and a filter can use them. The other five fields sit in the log's data. The declaration names the enums `Action` and `Reason`. In the ABI an enum is a `uint8`, and `cast` and viem work from the ABI, so below they appear as `uint8`: the number is the position of the member in the enum in [`Types.sol`](/docs/reference/types#action). [Read a decision](/docs/get-started/read-a-decision#field-by-field) explains each field.
+`intentId` and `token` are indexed, so they are topics and a filter can use them. The other fields sit in the log's data. The declaration names the enums `Action` and `Reason`. In the ABI an enum is a `uint8`, and `cast` and viem work from the ABI, so below they appear as `uint8`: the number is the position of the member in the enum in [`Types.sol`](/docs/reference/types#action). [Read a decision](/docs/get-started/read-a-decision#field-by-field) explains each field.
 
 ## Read and decode the events
 
@@ -63,7 +63,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
   "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)"
 ```
 
-No vault is deployed, so this page shows no output. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, the table in step 3 shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` splits the range into chunks of that many blocks to work around such limits.
+No vault is deployed, so this page shows no output. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, the table in step 3 shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` in Foundry 1.9.0 splits the range into chunks of that many blocks to work around such limits.
 
 To check that you typed the signature right without any network, compute the hash that every `Decision` log carries as its first topic. The plain form without names gives the same hash as the declaration:
 
@@ -77,7 +77,7 @@ cast sig-event "Decision(bytes32,uint8,address,uint256,bool,uint8,bytes32)"
 
 ### Follow one intent
 
-The id of an intent is `intentId`, the first indexed field, so the same command takes it as an extra argument after the declaration and returns only that intent's `Decision`. A second read-only call says whether the vault has used the id at all. `execute` marks an id used before it checks anything, and a call that does not revert emits its `Decision`, so a used id has one.
+The id of an intent is `intentId`, the first indexed field, so the same command takes it as an extra argument after the declaration and returns only that intent's `Decision`. A second read-only call says whether the vault has used the id at all. `execute` marks an id used before it checks the intent, and a call that does not revert emits its `Decision`, so a used id has one.
 
 ```bash
 export INTENT_ID=<INTENT_ID>   # the intentId from a Decision or from the journal
@@ -106,7 +106,7 @@ An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that
 | `0` | `true` | `0` | A `BUY` that passed every check and ran |
 | `0` | `false` | `6` | A `BUY` that was refused with `MARKET_CLOSED` |
 
-The ids come from the order of the enums, which only ever grows, so an id never changes meaning. `amount` is in the token's own raw units, not dollars. A raw log lays the fields out like this:
+The ids come from the order of the enums, which only ever grows, so an id never changes meaning. `amount` is in raw units, not dollars, and the unit depends on the action. For `BUY`, `BORROW`, `REPAY` and `PAY_EXPENSE` it is USDC (<Fact name="usdcDecimals" />), even when `token` is the stock of a `BUY`. For `SELL`, `SUPPLY` and `WITHDRAW_COLLATERAL` it is the raw amount of the stock in `token`. [Types](/docs/reference/types#intent) has the table. A raw log lays the fields out like this:
 
 | Where | Holds | How to read it |
 | --- | --- | --- |
@@ -114,7 +114,7 @@ The ids come from the order of the enums, which only ever grows, so an id never 
 | Topic 1 | `intentId` | A `bytes32`, as it is |
 | Topic 2 | `token` | An address, padded on the left to 32 bytes |
 | Data, word 1 | `action` | A number, the position in `Action` |
-| Data, word 2 | `amount` | An unsigned integer, raw token units |
+| Data, word 2 | `amount` | An unsigned integer in raw units: USDC for a `BUY`, a `BORROW`, a `REPAY` and a `PAY_EXPENSE`, the stock's own units for a `SELL`, a `SUPPLY` and a `WITHDRAW_COLLATERAL` |
 | Data, word 3 | `allowed` | `0` or `1` |
 | Data, word 4 | `reason` | A number, the position in `Reason` |
 | Data, word 5 | `rationaleHash` | A `bytes32` |
@@ -162,7 +162,7 @@ The agent keeps the text of its reasoning in `data/journal.jsonl` and puts only 
 grep -i "<INTENT_ID>" data/journal.jsonl
 ```
 
-A sent intent has a `sent` line and an `intent` line with that id. The `sent` line is written when the send returns, before the receipt arrives. The `intent` line written after the receipt holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result, the `txHash`, the `gasUsed` and the `decision` with `allowed` and the reason as a name. A `reconcile` line with the same id means a later round settled that send. The agent computes the hash like this:
+A sent intent has a `sent` line and an `intent` line with that id. The `sent` line is written when the send returns, before the receipt arrives. The `intent` line written after the receipt holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result, the `txHash`, the `gasUsed` and the `decision` with `allowed` and the reason as a name. A `reconcile` line means a later round looked at that send, and its `outcome` is `applied`, `pending` or `dropped`. If the receipt was lost, the `rationale` and the `rationaleHash` are on the `sent` line. The agent computes the hash like this:
 
 ```typescript title="agent/src/intent.ts#L24-L26"
 export function rationaleHash(text: string): Hex {
@@ -176,7 +176,7 @@ So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` c
 cast keccak "NVDAc underweight"
 ```
 
-Output computed locally with `cast keccak` while this guide was written. It is the same value as viem's `keccak256(toBytes("NVDAc underweight"))` in the agent package:
+Output computed locally with `cast keccak` from Foundry 1.9.0 while this guide was written. It is the same value as viem's `keccak256(toBytes("NVDAc underweight"))` in the agent package:
 
 ```text
 0x962ef37fec826fc1247c0083ffb680a1790ad265a61b6ce4cf117c9320c5a19e
@@ -193,19 +193,19 @@ If the hash of the journal's `rationale` equals the `rationaleHash` in the log, 
 - `cast logs` returns the vault's `Decision` events with the fields decoded, and in every one `allowed` is true exactly when `reason` is `0`.
 - The hash printed by `cast sig-event` equals the first topic of a raw `Decision` log, if you read the raw form.
 - For an intent id you know, `usedIntent` returns `true` exactly when step 2 finds a `Decision` for it.
-- For an intent the agent sent, the journal's `intent` line has the same `intentId` and `rationaleHash` as the log, the `decision` agrees with the log's `allowed` and `reason`, and the hash of the `rationale` equals the `rationaleHash`.
+- For an intent the agent sent, the journal's `intent` line (or its `sent` line, if the receipt was lost) has the same `intentId` and `rationaleHash` as the log, and the hash of the `rationale` equals the `rationaleHash`. The `decision`, which only the `intent` line holds, agrees with the log's `allowed` and `reason`.
 
 ## Common mistakes
 
 - **Writing `Action` and `Reason` in the `cast` declaration.** `cast` works from ABI types, so write `uint8`. The numbers it prints are positions in the enums.
 - **Leaving out the `indexed` markers.** The help text of `cast logs` says that indexed parameters must be marked in the declaration, and a wrong marking decodes the log wrongly.
-- **Reading `amount` as dollars.** It is in the token's own raw units. USDC has <Fact name="usdcDecimals" />, and a stock uses its own decimals.
+- **Reading `amount` as dollars.** It is in raw units. For a `BUY` it is USDC, which has <Fact name="usdcDecimals" />, even though `token` is the stock. For a `SELL` it is in the stock's own decimals.
 - **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per UTC day, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
 - **Expecting a `Decision` from a reverted `execute`.** A call from another address reverts with `NotExecutor`, and a used id reverts with `IntentAlreadyUsed`. Neither emits anything.
 - **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator. Intents the owner sent by hand, such as the runbook's smoke tests, carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke`), and no journal holds text for them.
 - **Hashing altered text.** A trailing newline, a re-typed quote or text that was not decoded from JSON gives another hash.
 - **Treating the match as proof of the reason.** It shows what the intent committed to, nothing more.
-- **Querying too wide a range at once.** A provider may refuse it. Use `--query-size`, or start from the deploy block.
+- **Querying too wide a range at once.** A provider may refuse it. Use `--query-size` (in Foundry 1.9.0), or start from the deploy block.
 - **Looking for mainnet events today.** Nothing is deployed. The ledger on the site shows the decisions of the fork run only.
 
 ## Next steps

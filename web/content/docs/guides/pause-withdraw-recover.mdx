@@ -91,8 +91,8 @@ The tests name `BUY`, `SUPPLY`, `BORROW` and `WITHDRAW_COLLATERAL`. `SELL` and `
 What a pause leaves alone:
 
 - **Every owner function.** `withdraw`, `setExecutor`, `fund`, and the queue, apply and cancel functions never look at the flag, so the owner can still do all of them.
-- **The anyone functions and the reads.** `notifyRevenue`, `syncMultiplier`, `previewIntent` and the views work as before.
-- **The agent's loop.** It keeps running and keeps calling Claude, which is billed. While the vault is paused the agent's policy suggests at most a repay. Any other proposal is previewed, comes back as `VAULT_PAUSED`, and is only written to the journal, because that reason is not on the agent's list of refusals worth recording onchain. Stop the agent as well if the pause will last.
+- **The anyone functions and the reads.** `notifyRevenue`, `syncMultiplier` and the views work as before. `previewIntent` still works, and now reports `VAULT_PAUSED` for everything except `REPAY`.
+- **The agent's loop.** The loop has no pause check of its own, so it is built to keep running and calling Claude, which is billed. The agent's policy does read the flag: while the vault is paused it suggests at most a repay. Any other proposal is previewed, comes back as `VAULT_PAUSED`, and is only written to the journal, because that reason is not on the agent's list of refusals worth recording onchain. Stop the agent as well if the pause will last.
 
 <Callout type="warning" title="Owner only">
 

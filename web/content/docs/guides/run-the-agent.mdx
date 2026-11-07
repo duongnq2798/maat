@@ -29,7 +29,7 @@ This guide takes you from a clone of the repository to one round of the Maat age
 
 <Callout type="fork" title="What has run">
 
-The agent's rounds and its send path ran on a Base mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. No Maat vault is deployed, so the live checklist is untested on mainnet.
+The agent's rounds and its send path ran on a Base mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. The two journal commands in step 4 were written for this guide. No Maat vault is deployed, so the live checklist is untested on mainnet.
 
 </Callout>
 
@@ -56,7 +56,7 @@ Time: not measured. No run of the real Claude API or the CDP wallet is committed
 
 ### Install the agent and copy the settings template
 
-Run this in the `agent/` folder. The template lists every setting, and `.env` is the file the agent reads.
+Start at the repository root. The template lists every setting, and `.env` is the file the agent reads.
 
 ```bash
 cd agent
@@ -145,7 +145,7 @@ A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Cl
 | `kind` | When the agent writes it |
 | --- | --- |
 | `run` | Once per round that reaches the proposal step: the summary, the cost of the Claude call, the number of suggestions and proposals, and `ok`. |
-| `intent` | For each proposal that became an [intent](/docs/help/glossary#intent). It holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result and a `gate` that says what the agent did with it. After a send it is written again with the `txHash`, `gasUsed` and the `decision`. |
+| `intent` | For each proposal that became an [intent](/docs/help/glossary#intent). It holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result and a `gate` that says what the agent did with it. For a proposal that was not sent, it is one line with the `gate`. For a sent one, the line is written after the receipt, with the `txHash`, `gasUsed` and `decision`, and the `sent` line comes before it. |
 | `sent` | Right after a send returns, before the receipt arrives. |
 | `skip` | For a proposal that could not become an intent, for example an amount that rounds to zero. |
 | `housekeeping` | For a `syncMultiplier` call that the vault needs. In dry-run mode the line carries the note `dry-run` and nothing is sent. |
@@ -277,7 +277,7 @@ What the next round does with a pending send:
 
 agent/README.md words the last two rows with "more than". The code in `runOnce.ts` waits only while fewer blocks than the window have passed, so a send is dropped when exactly that many have.
 
-These are the reasons a round can halt with, as `haltReason` and in an `error` line:
+These are the halt reasons the runner writes itself. Any other error thrown after the round has read the vault and checked the executor, such as a refused or failed send, also halts it, and `haltReason` then holds that error's message. Read the journal's `error` line, which holds the halt reason after the words `halted:`.
 
 | `haltReason` begins | What happened |
 | --- | --- |

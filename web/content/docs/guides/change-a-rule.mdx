@@ -16,7 +16,7 @@ next: [concepts/timelock-and-roles, reference/mandate-vault]
 
 The vault's rules never change in a single step. This guide walks the [owner](/docs/help/glossary#owner) through the only way to change them: queue the new values, wait out the [timelock](/docs/help/glossary#timelock), then apply exactly those values or cancel the change, and finally check the new hashes. It covers the three kinds of change: a new [mandate](/docs/help/glossary#mandate), new settings for one stock, and a [payee](/docs/help/glossary#payee) added or removed. It is written for a builder who owns a vault and wants to change its limits after the deploy.
 
-<Callout type="fork" title="What is tested">
+<Callout type="note" title="What is tested">
 
 The queue, wait, apply, cancel and expiry rules are pinned by unit tests in `contracts/test/MandateVaultAdmin.t.sol`, which run against mocks. No [fork test](/docs/help/glossary#fork-test) queues a change, and no Maat vault is deployed. `deployments/README.md` names the queue and apply functions in one line and gives no commands for them, so the `cast` commands on this page were written for this guide. No test sends them and the Maat team has not run them. Treat them as untested, and read the output of each one yourself.
 
@@ -29,7 +29,7 @@ Every step that changes the vault is signed by the owner, the one address that i
 | Need | Detail |
 | --- | --- |
 | The owner wallet | Imported as the Foundry keystore `maat-owner` in the runbook, and passed to `cast send` as `--account`. Only the owner can queue, apply or cancel. |
-| `cast` | From [Foundry](https://getfoundry.sh). The logs commands also need the version noted in [Watch decisions onchain](/docs/guides/watch-decisions-onchain). |
+| `cast` | From [Foundry](https://getfoundry.sh). The logs commands were checked with the Foundry version noted in [Watch decisions onchain](/docs/guides/watch-decisions-onchain); an older `cast` may print raw logs. |
 | A vault and an RPC | Written `<VAULT_ADDRESS>` and `<BASE_RPC_URL>` here. The Maat team has deployed no vault, so there is nothing to read yet. |
 | The new values | The whole new mandate, or the new settings of one stock, or the payee and a flag. Check them against [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects) first. |
 
