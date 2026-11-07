@@ -10,7 +10,8 @@
     "dev": "next dev",
     "build": "next build",
     "typecheck": "next typegen && tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "brand": "tsx scripts/brand.ts"
   },
   "dependencies": {
     "geist": "1.9.2",
