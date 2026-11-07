@@ -53,7 +53,7 @@ export function ReasonTable() {
 /** The default mandate, the same rows the landing page shows. */
 export function MandateTable() {
   return (
-    <ScrollTable label="Default mandate" caption="Set in contracts/script/MaatConfig.sol and deployed by contracts/script/Deploy.s.sol.">
+    <ScrollTable label="Default mandate" caption="Set in contracts/script/MaatConfig.sol; contracts/script/Deploy.s.sol uses these values when the owner deploys.">
       <thead>
         <tr>
           <th>Setting</th>

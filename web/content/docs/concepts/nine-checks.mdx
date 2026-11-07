@@ -14,7 +14,7 @@ sources:
 next: [concepts/refusal-codes, concepts/market-hours, security/model]
 ---
 
-A `BUY` or a `SELL` moves funds only after it passes <Fact name="checksPerTrade" /> checks inside the vault, run in a fixed order.
+A `BUY` or a `SELL` moves funds only after it passes up to <Fact name="checksPerTrade" /> checks inside the vault, run in a fixed order (check 9 applies to a `BUY` only).
 The first one that fails decides the [refusal code](/docs/concepts/refusal-codes), the vault records it
 in a [Decision](/docs/help/glossary#decision) event, and no funds move. Nothing the agent sends can skip a check: the vault runs them
 itself, on every `execute` call for a `BUY` or a `SELL`. This page lists the checks in order, says what each one reads, and names the code it returns.
@@ -93,7 +93,7 @@ Reads the vault's `paused` flag, which only the owner can set. When it is set, e
 
 ### 1. Token allowed
 
-Reads the token's `allowed` flag in the mandate's token settings. A `BUY` needs `allowed` to be true. A `SELL` needs only a market, meaning `allowed` is true or a feed or a pool is still configured, so a stock the owner delisted can still be sold ("exit-only"). A token that is not allowed and has no feed and no pool can be neither bought nor sold. See `test_tokenNotAllowed`, `test_exitOnlyTokenCanBeSoldNotBought` and `test_fullyDelistedTokenCannotBeSold`.
+Reads the token's `allowed` flag in the mandate's token settings, which a `BUY` needs to be true. A `SELL` needs only a market (`allowed` is true, or a feed or a pool is still set), so a stock the owner delisted can still be sold ("exit-only"). A token that is not allowed and has no feed and no pool can be neither bought nor sold. See `test_tokenNotAllowed`, `test_exitOnlyTokenCanBeSoldNotBought` and `test_fullyDelistedTokenCannotBeSold`.
 
 ### 2. Token not paused
 
@@ -101,7 +101,7 @@ Asks the [B20](/docs/help/glossary#b20) token whether its transfers are paused. 
 
 ### 3. Transfer policy
 
-A B20 token can name sender, receiver and executor policies, and the vault asks the policy registry whether each leg of the transfer path is authorized. For a `BUY` the legs are the pool as sender and as executor, the vault as receiver, and `tx.origin` as executor. For a `SELL` they are the vault and the swap adapter as senders, the adapter and the pool as receivers, and the adapter and `tx.origin` as executors. Any leg that is not authorized, or that cannot be read, returns `POLICY_BLOCKED`. Because `tx.origin` is checked, `previewIntent` must be called from the [executor](/docs/help/glossary#executor)'s address. See `test_refusesWhenPolicyBlocksVault`, `test_policyOnSellChecksAdapterAndPool` and `test_revertingPolicyIdFailsClosed`.
+A B20 token can name sender, receiver and executor policies, and the vault asks the policy registry whether each leg of the transfer path is authorized; a leg that is not authorized, or that cannot be read, returns `POLICY_BLOCKED`. For a `BUY` the legs are the pool as sender and as executor, the vault as receiver, and `tx.origin` as executor; for a `SELL` they are the vault and the swap adapter as senders, the adapter and the pool as receivers, and the adapter and `tx.origin` as executors. Because `tx.origin` is checked, `previewIntent` must be called from the [executor](/docs/help/glossary#executor)'s address. See `test_refusesWhenPolicyBlocksVault`, `test_policyOnSellChecksAdapterAndPool` and `test_revertingPolicyIdFailsClosed`.
 
 ### 4. Market open
 
@@ -129,7 +129,7 @@ Takes the trade's notional in USDC: the amount for a `BUY`, the stock amount val
 
 ### 9. Concentration
 
-Applies to a `BUY` only. The vault adds up its net equity: USDC, every listed stock it holds, and every stock supplied as collateral, minus any credit debt. It returns `CONCENTRATION` when the bought stock's weight after the buy would be above its `maxWeightBps` (default <Fact name="mandate.maxWeightBps" />). Borrowed USDC is not equity, so borrowing cannot loosen the cap. An unreadable collateral or debt value, or debt at or above the assets, counts as a weight above any cap. See `test_concentration`, `test_concentrationNetsCreditDebt` and `test_unreadableCollateralFailsConcentrationClosed`; the last two are in [MandateVaultCredit.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol).
+Applies to a `BUY` only. The vault adds up its net equity (USDC, every listed stock it holds and every stock supplied as collateral, minus any credit debt, so borrowing cannot loosen the cap) and returns `CONCENTRATION` when the bought stock's weight after the buy would be above its `maxWeightBps` (default <Fact name="mandate.maxWeightBps" />). A holding that is not allowed, or whose price is stale or unreadable, counts as zero. An unreadable collateral or debt value, or debt at or above the assets, counts as a weight above any cap. See `test_concentration`, `test_concentrationNetsCreditDebt` and `test_unreadableCollateralFailsConcentrationClosed`; the last two are in [MandateVaultCredit.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol).
 
 ## After the checks pass
 

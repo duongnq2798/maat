@@ -126,7 +126,7 @@ The buy would push one stock past its `maxWeightBps` (default <Fact name="mandat
 
 The amount is zero, or more than the vault holds (or, for a collateral withdrawal, more than it has supplied).
 
-- **Returned by:** `BUY`, `SELL` and `PAY_EXPENSE` (zero, or above the balance), `SUPPLY` (above the stock balance), `WITHDRAW_COLLATERAL` (above what is supplied), `REPAY` (above the USDC balance), and `BORROW` with an amount of zero.
+- **Returned by:** `BUY`, `SELL` and `PAY_EXPENSE` (zero, or above the balance), `SUPPLY` (zero, or above the stock balance), `WITHDRAW_COLLATERAL` (zero, or above what is supplied), `REPAY` (zero, or above the USDC balance), and `BORROW` with an amount of zero.
 - **Raised in:** `MandateVault._check`, `_checkExpense`, `_checkCredit` and `_checkCollateralMove`.
 
 ### PAYEE_NOT_ALLOWED
@@ -181,7 +181,7 @@ A token transfer or an approval failed.
 
 ## How the agent reacts
 
-The agent [previews](/docs/help/glossary#preview) every [intent](/docs/help/glossary#intent) before it sends anything, and then looks at the preview's reason. This is its whole rule, in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
+The agent is built to [preview](/docs/help/glossary#preview) every [intent](/docs/help/glossary#intent) before it sends anything, and then to look at the preview's reason. The agent is built and fork-tested, and it has not run live. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, it sends nothing, so what follows is what it is built to do when it does send. The rule is all in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
 
 ```typescript title="agent/src/refusals.ts#L5-L17"
 export const LOGGABLE_REASONS: ReadonlySet<ReasonName> = new Set<ReasonName>([
@@ -210,14 +210,14 @@ export function gate(preview: PreviewResult, alreadyLogged: boolean): Gate {
 }
 ```
 
-| Preview result | What the agent does |
+| Preview result | What the agent is built to do |
 | --- | --- |
-| `OK` | Sends `execute`. |
-| A reason in the set above | Sends the intent anyway, so the refusal is recorded onchain, but only once per reason per UTC day. It journals the later ones as already logged. |
-| Any other reason | Writes the intent to its journal and sends nothing. A refusal like `INSUFFICIENT_BALANCE` costs no gas. |
-| `UNKNOWN` | Sends nothing. The preview call failed, or it returned an id the agent does not know. The journal records the guard state as unknown. |
+| `OK` | Send `execute`. |
+| A reason in the set above | Send the intent anyway, so the refusal is recorded onchain, but only once per reason per UTC day. It journals the later ones as already logged. |
+| Any other reason | Write the intent to its journal and send nothing. A refusal like `INSUFFICIENT_BALANCE` costs no gas. |
+| `UNKNOWN` | Send nothing. The preview call failed, or it returned an id the agent does not know. The journal records the guard state as unknown. |
 
-In [dry-run mode](/docs/help/glossary#dry-run), which is the default, the agent sends nothing at all and the journal records what it would have done. If a preview said `OK` and the vault then returns any other reason, including `SWAP_FAILED` or `TRANSFER_FAILED`, the agent journals a mismatch and halts the round so that a person can look.
+In dry-run mode the journal records what the agent would have sent. If a preview said `OK` and the vault then returned any other reason, including `SWAP_FAILED` or `TRANSFER_FAILED`, the agent is built to journal a mismatch and halt the round so that a person can look.
 
 A comment in the code calls the set the market-safety story: the market, price and multiplier reasons, a paused token, the transfer policy, size, concentration and the two health factor reasons. Every other reason, for example `VAULT_PAUSED`, `TOKEN_NOT_ALLOWED`, `PAYEE_NOT_ALLOWED`, `INSUFFICIENT_BALANCE` and `CREDIT_FAILED`, is only journaled. `SWAP_FAILED` and `TRANSFER_FAILED` are not in the set either, because the preview cannot return them. [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send) follows the same rule inside a round.
 

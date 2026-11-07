@@ -74,7 +74,7 @@ The widest gap allowed between the pool's [TWAP](/docs/help/glossary#twap) and t
 
 ### maxSlippageBps
 
-How far below the oracle-implied output a swap may land. The vault turns it into a floor on the swap's minimum output. A swap below the floor fails and is recorded as `SWAP_FAILED`. The vault rejects a value above 100% with `InvalidConfig`.
+How far below the oracle-implied output a swap may land. The vault turns it into a floor on the swap's minimum output. A swap below the floor fails and is recorded as `SWAP_FAILED`. The vault rejects a tolerance larger than the whole amount with `InvalidConfig`.
 
 - **Unit:** basis points.
 - **Default:** <Fact name="mandate.maxSlippageBps" />.
@@ -86,7 +86,7 @@ The oldest oracle answer the vault will use.
 
 - **Unit:** seconds.
 - **Default:** <Fact name="mandate.maxStalenessSec" />.
-- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), and by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt. It returns `FEED_STALE`.
+- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt, and by the valuation in [check 9](/docs/concepts/nine-checks#9-concentration), where a holding with a stale price counts as zero. It returns `FEED_STALE`.
 
 ### multiplierCooldown
 
@@ -102,7 +102,7 @@ The window over which the pool price is averaged.
 
 - **Unit:** seconds.
 - **Default:** <Fact name="mandate.twapWindowSec" />.
-- **Read by:** [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle). The vault does not validate this value when it is set. A window of zero makes the pool price unreadable, so every trade would return `BAD_PRICE`.
+- **Read by:** [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle). The vault does not validate this value when it is set. A window of zero makes the pool price unreadable, so every trade that reaches check 7 would return `BAD_PRICE`.
 
 ### perTradeCapUsd
 
@@ -156,7 +156,7 @@ The lowest [health factor](/docs/help/glossary#health-factor) that a borrow, or 
 
 ### targetHealthFactor
 
-The health factor required instead of the floor inside the [de-risk window](/docs/help/glossary#de-risk-window). It must not be below the floor.
+The health factor required instead of the floor inside the [de-risk window](/docs/help/glossary#de-risk-window). When a credit adapter is set, the vault rejects a target below the floor.
 
 - **Unit:** WAD.
 - **Default:** <Fact name="mandate.targetHealthFactor" />.
@@ -164,7 +164,7 @@ The health factor required instead of the floor inside the [de-risk window](/doc
 
 ### deriskWindow
 
-How long before the feeds stop the stricter target applies. The window is counted back from the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" />, on a Friday and on a weekday that comes before a market holiday. Zero turns the window off. The vault rejects a window longer than <Fact name="maxDeriskWindowHours" />.
+How long before the feeds stop the stricter target applies. The window is counted back from the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" />, on a Friday and on a weekday that comes before a market holiday. Zero turns the window off. When a credit adapter is set, the vault rejects a window longer than <Fact name="maxDeriskWindowHours" />.
 
 - **Unit:** seconds.
 - **Default:** <Fact name="mandate.deriskWindowSec" />.
@@ -185,24 +185,24 @@ struct TokenConfig {
 
 ### allowed
 
-Whether the vault may buy the stock or post it as collateral. Setting it to false while the feed or the pool stays set makes the stock exit-only: it can still be sold and its collateral withdrawn, but it cannot be bought, supplied or borrowed against. Clearing the feed and the pool as well removes the market: the stock can then no longer be sold, but collateral can still be withdrawn.
+Whether the vault may buy the stock or post it as collateral. Setting it to false while the feed or the pool stays set makes the stock exit-only: it can still be sold and its collateral withdrawn, but it cannot be bought, supplied or borrowed against. A withdrawal works at any hour when there is no debt. Against debt the withdrawal checks apply: an open market, a live feed and a stable multiplier on every supplied stock. Clearing the feed and the pool as well removes the market: the stock can then no longer be sold, collateral can still be withdrawn when there is no debt, and against debt the withdrawal fails with `BAD_PRICE`.
 
 - **Default:** true for each of the three stocks.
-- **Read by:** [check 1](/docs/concepts/nine-checks#1-token-allowed), and by `SUPPLY` and `BORROW`.
+- **Read by:** [check 1](/docs/concepts/nine-checks#1-token-allowed), by `SUPPLY` and `BORROW`, and by the valuation in [check 9](/docs/concepts/nine-checks#9-concentration), which counts a stock that is not allowed as zero.
 
 ### feed
 
 The [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) that prices the stock. When the stock has a market, the vault requires the feed to be a contract that reports prices with <Fact name="priceDecimals" />, and rejects it with `InvalidConfig` otherwise.
 
 - **Default:** one feed per stock. The addresses are on [Base addresses](/docs/reference/base-addresses).
-- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), and by the valuation in checks 8 and 9.
+- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), by the valuation in checks 8 and 9, and by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt.
 
 ### pool
 
 The [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool for the stock and USDC. The vault requires a contract whose two tokens are the stock and USDC, in either order, and rejects anything else with `InvalidConfig`.
 
 - **Default:** one pool per stock. The addresses are on [Base addresses](/docs/reference/base-addresses).
-- **Read by:** [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle), and by the swap.
+- **Read by:** [check 3](/docs/concepts/nine-checks#3-transfer-policy), where the pool is a leg of the transfer path, by [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle), and by the swap.
 
 ### maxWeightBps
 
