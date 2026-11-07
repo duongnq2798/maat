@@ -127,7 +127,7 @@ This is the mismatch test, the one that makes the agent stop when its preview an
     });
 ```
 
-The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts), goes one step further. It deploys the contracts with the real deploy script on a local fork, funds the vault, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
+The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts), goes one step further. It deploys the contracts on a local fork from the compiled artifacts, through its own helper [`deploy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/deploy.ts), wired the way the deploy script wires them. It funds the vault with `fund`, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
 
 <Callout type="warning" title="Not exercised">
 
