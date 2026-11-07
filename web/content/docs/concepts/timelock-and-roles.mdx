@@ -12,7 +12,7 @@ sources:
 next: [guides/change-a-rule, security/threat-model]
 ---
 
-The vault splits its power between two addresses and a small public surface. This page shows who may call what, which owner actions take effect at once and which must wait, how a rule change moves through the [timelock](/docs/help/glossary#timelock), and what an attacker gets if a key leaks. All of it is built and has been tested, and the executor limits have been run against Base state on a mainnet fork. Nothing is deployed, so no key has been set for a real vault yet.
+The vault splits its power between two addresses and a small public surface. This page shows who may call what, which owner actions take effect at once and which must wait, how a rule change moves through the [timelock](/docs/help/glossary#timelock), and what an attacker gets if a key leaks. All of it is built and has been tested. One fork test runs an executor against Base state, with the vault's credit switched off: it pays an address that is not on the allowlist, buys more than the per-trade cap and calls `withdraw`. Nothing is deployed, so no key has been set for a real vault yet.
 
 ## Three roles
 
@@ -58,7 +58,7 @@ Three of the instant functions fit in one excerpt. None of them looks at a timer
     }
 ```
 
-`withdraw` sends only to the owner address, and it moves only what the vault holds. Collateral supplied to Aave stays in the position until a `WITHDRAW_COLLATERAL` brings it back. Every owner function emits an event. The vault does not check a new executor. The transfer-policy check reads `tx.origin` as an executor leg, so a new executor needs to be an address that the stock's [B20](/docs/help/glossary#b20) policy lets through ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
+`withdraw` sends only to the owner address, and it moves only what the vault holds. Collateral supplied to Aave stays in the position until a `WITHDRAW_COLLATERAL` brings it back. Every owner function emits an event. Other than refusing the zero address, the vault does not check a new executor. The transfer-policy check reads `tx.origin` as an executor leg, so a new executor needs to be an address that the stock's [B20](/docs/help/glossary#b20) policy lets through ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
 
 ## What the executor can do
 
@@ -85,7 +85,7 @@ A call from any other address reverts with `NotExecutor`, and an intent id works
 
 ## The timelock
 
-A rule change is one of three kinds: a new mandate, new settings for one stock, or a payee added or removed. Each goes through the same four steps.
+A rule change is one of three kinds: a new [mandate](/docs/help/glossary#mandate), new settings for one stock, or a payee added or removed. Each goes through the same four steps.
 
 <TimelockFlow />
 
@@ -150,7 +150,7 @@ The leading string names the kind of change. This is what makes the rules above 
 
 ## Escape hatches
 
-Three owner actions are instant. The README calls them the owner's escape hatches:
+Three of the instant actions are what the README calls the owner's escape hatches:
 
 - **`setPaused`.** A paused vault refuses every action except `REPAY`, which stays open so that debt can still be paid ([Credit and the health factor](/docs/concepts/credit-and-health-factor#repay-while-paused)). `test_repayIsAllowedWhileVaultPaused` shows it.
 - **`setExecutor`.** The owner swaps the executor key. The old key stops working at once (`test_rotatingExecutorRevokesOldOne`).
@@ -164,10 +164,10 @@ If the executor key leaks, the attacker controls the machine that sends intents.
 
 | The attacker can | but cannot |
 | --- | --- |
-| Call `execute` with any intent, once per intent id | Skip the vault's checks for that action, trade a stock the mandate does not allow, or trade outside the session |
-| Make bad trades that stay inside the mandate | Go over the per-trade cap (<Fact name="mandate.perTradeCapUsd" />) or the daily cap (<Fact name="mandate.dailyCapUsd" />) with a trade or a bill payment |
+| Call `execute` with any intent, once per intent id | Skip the vault's checks for that action, buy a stock that is not allowed, trade a stock that has no market in the vault, or trade outside the session |
+| Make bad trades that stay inside the [mandate](/docs/help/glossary#mandate) | Go over the per-trade cap (<Fact name="mandate.perTradeCapUsd" />) or the daily cap (<Fact name="mandate.dailyCapUsd" />) with a trade or a bill payment |
 | Pay a payee on the allowlist, up to those caps | Pay any other address: the vault returns [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed) |
-| Supply stock to Aave and borrow USDC against it | Send a swap's output, borrowed USDC or withdrawn collateral anywhere but the vault, or leave the health factor under the floor (<Fact name="mandate.minHealthFactor" />), or under the target (<Fact name="mandate.targetHealthFactor" />) inside the de-risk window |
+| Supply stock to Aave and borrow USDC against it | Send a swap's output, borrowed USDC or withdrawn collateral anywhere but the vault, or leave the [health factor](/docs/help/glossary#health-factor) under the floor (<Fact name="mandate.minHealthFactor" />), or under the target (<Fact name="mandate.targetHealthFactor" />) inside the [de-risk window](/docs/help/glossary#de-risk-window) |
 | Stop sending intents | Change the mandate, withdraw, unpause, or keep the key once the owner rotates it |
 
 <Callout type="fork" title="Fork run">

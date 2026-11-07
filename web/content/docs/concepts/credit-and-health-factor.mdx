@@ -18,16 +18,23 @@ The vault can put its stock to work. It supplies a stock to [Aave V4](/docs/help
 
 ## The four credit actions
 
-Credit is one lending position, held by a credit adapter that the [mandate](/docs/help/glossary#mandate) names. The vault asks the adapter to act, and the vault's checks run first. If the mandate has no credit adapter, all four actions return `ACTION_NOT_SUPPORTED`. None of them counts toward the per-trade or the daily cap, and the health factor bounds the ones that add risk instead.
+Credit is one lending position, held by a credit adapter that the [mandate](/docs/help/glossary#mandate) names. The vault asks the adapter to act, and the vault's checks run first. If the mandate has no credit adapter, all four actions return `ACTION_NOT_SUPPORTED`, except that a paused vault returns `VAULT_PAUSED` first for the three that are not `REPAY`. None of them counts toward the per-trade or the daily cap, and the health factor bounds the ones that add risk instead.
 
-| Action | What the vault checks | Market closed | Vault paused |
+| Action | What it does | Market closed | Vault paused |
 | --- | --- | --- | --- |
-| `SUPPLY` | The stock is allowed and the adapter supports it. It is not paused, every leg of the move passes its transfer policy, and the amount is non-zero and within the vault's balance | Works | Refused |
-| `WITHDRAW_COLLATERAL` | The stock is listed (allowed or not) and supported, not paused, and the path passes the policy; the amount is non-zero and within what is supplied. With debt outstanding it also needs an open market, and every supplied stock needs a live feed and a stable multiplier. The adapter then checks the health factor after the withdrawal | Works with no debt, refused with debt | Refused |
-| `BORROW` | The token is USDC and the amount is non-zero. The market is open, and every supplied stock is allowed, not paused, with a live feed and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the de-risk window. The adapter checks again after the borrow | Refused | Refused |
-| `REPAY` | The token is USDC, and the amount is non-zero and within the vault's USDC balance | Works | Works |
+| `SUPPLY` | Moves stock into the position as collateral | Works | Refused |
+| `WITHDRAW_COLLATERAL` | Takes collateral back to the vault | Works with no debt, refused with debt | Refused |
+| `BORROW` | Borrows USDC to the vault | Refused | Refused |
+| `REPAY` | Repays USDC debt from the vault | Works | Works |
 
-A few points the table compresses:
+What the vault checks for each action:
+
+- **`SUPPLY`.** The stock is allowed, and the adapter supports it. The stock is not paused. Every leg of the move passes its transfer policy. The amount is non-zero and within the vault's balance.
+- **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. It is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a live feed, no pause and a stable multiplier. The adapter then checks the health factor after the withdrawal.
+- **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a live feed and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the de-risk window. The adapter checks again after the borrow.
+- **`REPAY`.** The token is USDC, and the amount is non-zero and within the vault's USDC balance.
+
+A few more points:
 
 - `BORROW` refuses collateral that is exit-only. A supplied stock whose `allowed` flag is false returns [`TOKEN_NOT_ALLOWED`](/docs/concepts/refusal-codes#token_not_allowed), whether the owner has only delisted it or removed its market as well (`test_exitOnlyCollateralBlocksBorrowingNotWithdrawing`, `test_fullyDelistedCollateralBlocksBorrowing`). `SUPPLY` refuses it too, but `WITHDRAW_COLLATERAL` does not refuse it for that reason, so the collateral can still come home (`test_exitOnlyCollateralCanBeWithdrawnNotSupplied`).
 - `BORROW` and `WITHDRAW_COLLATERAL` against debt read the feed and the multiplier of every stock that is supplied, not only the one in the intent. A stale or unreadable feed, a paused stock or a multiplier change in any of them refuses the action. `SUPPLY` and `REPAY` do not read the feed (`test_staleCollateralFeedBlocksBorrowNotRepay`). The [multiplier](/docs/concepts/splits-and-multiplier) and [staleness](/docs/concepts/prices-and-premium#staleness) rules are defined on their own pages.
@@ -122,7 +129,7 @@ Read it as these rules, in New York time:
 
 The unit tests with a mock adapter pin each case: the window starts at the right minute (`test_deriskWindowRequiresTargetHealthFactor`), covers the last session before a Friday holiday and the Thursday before New Year (`test_deriskWindowCoversLastSessionBeforeFridayHoliday`, `test_deriskWindowCoversThursdayBeforeNewYear`), leaves an ordinary Thursday alone (`test_ordinaryThursdayIsNotInDeriskWindow`), fails closed on an unreadable holiday flag (`test_unreadableHolidayCountsAsDeriskWindow`), and can be switched off (`test_deriskWindowDisabledWhenZero`). The window also applies to a withdrawal against debt (`test_deriskWindowRequiresTargetHealthFactorToWithdrawAgainstDebt`). The calendar side is on [Market hours](/docs/concepts/market-hours#the-feed-edge).
 
-The agent's rule-based policy does not look at the window. The vault enforces it, and the agent's preview shows `DERISK_WINDOW` when a borrow falls inside it.
+The agent's rule-based policy does not look at the window. The vault enforces it, and the agent's preview shows `DERISK_WINDOW` when a borrow inside the window would leave the projected health factor at or above the floor but under the target.
 
 ## What still works when the market is closed
 
@@ -152,7 +159,7 @@ The owner can pause the vault, and a pause stops everything except `REPAY`. It i
 
 A paused vault can therefore still reduce its debt. `REPAY` keeps its own checks (the token must be USDC, and the amount must be non-zero and within the balance), and a failing adapter still returns `CREDIT_FAILED`. `test_repayIsAllowedWhileVaultPaused` pauses the vault, shows that `previewIntent` and `execute` both allow a repay and clear the debt, and shows that `SUPPLY`, `BORROW` and `WITHDRAW_COLLATERAL` all return `VAULT_PAUSED`. That test uses a mock adapter, and nothing in the fork tests pauses the vault.
 
-A repay is still an `execute` call, so it needs the executor. The owner can make itself the executor with `setExecutor`; [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover) covers the steps.
+A repay is still an `execute` call, so it needs the [executor](/docs/help/glossary#executor). The owner can make itself the executor with `setExecutor`; [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover) covers the steps.
 
 ## The adapter holds the position
 

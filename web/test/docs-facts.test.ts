@@ -63,12 +63,13 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(tsConst("agent/src/exec/calls.ts", "EXECUTE_GAS_FLOOR")).toBe(DOCS_FACTS.executeGasFloor.value);
   });
 
-  it("policy: cash reserve and runway", () => {
+  it("policy: cash reserve, runway and the smallest suggestion", () => {
     const policy = readRepo("agent/src/policy.ts");
     const param = (name: string) =>
       Number(new RegExp(`DEFAULT_POLICY[^;]*\\b${name}:\\s*([\\d_]+)`).exec(policy)?.[1]?.replaceAll("_", ""));
     expect(param("cashReserveBps") / 100).toBe(DOCS_FACTS.cashReservePct.value);
     expect(param("runwayDays")).toBe(DOCS_FACTS.runwayDays.value);
+    expect(param("minTradeUsd6") / 1e6).toBe(DOCS_FACTS.minTradeUsd.value);
   });
 
   it("off-session cadence and the smallest bill", () => {

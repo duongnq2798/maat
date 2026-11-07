@@ -39,6 +39,10 @@ export const DOCS_FACTS = {
   executeGasFloor: fact(2_500_000, "agent/src/exec/calls.ts EXECUTE_GAS_FLOOR, the minimum gas limit for execute"),
   cashReservePct: fact(30, "agent/src/policy.ts DEFAULT_POLICY.cashReserveBps = 3000"),
   runwayDays: fact(7, "agent/src/policy.ts DEFAULT_POLICY.runwayDays, days of compute cost kept as cash"),
+  minTradeUsd: fact(
+    1,
+    "agent/src/policy.ts DEFAULT_POLICY.minTradeUsd6 = 1_000_000n, the smallest suggestion the policy keeps",
+  ),
   offSessionMinutes: fact(60, "agent/src/loop/scheduler.ts OFF_SESSION_MS, agent loop cadence outside the session"),
   billMinUsd: fact(0.1, "agent/src/loop/runOnce.ts BILL_MIN_USD6 = 100_000n, the smallest compute bill the agent pays"),
   treasuryUsd: fact({ min: 20, max: 200 }, `${SPEC} §1 Constraints: small mainnet amounts, $20 to $200`),

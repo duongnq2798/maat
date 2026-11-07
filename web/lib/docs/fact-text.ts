@@ -76,6 +76,7 @@ export const FACT_TEXT = {
   cashReservePct: t(`${F.cashReservePct.value}%`, "cashReservePct"),
   runwayDays: t(`${F.runwayDays.value} days`, "runwayDays"),
   billMinUsd: t(usd(F.billMinUsd.value), "billMinUsd"),
+  minTradeUsd: t(usd(F.minTradeUsd.value), "minTradeUsd"),
   maxTxPerDay: t(String(F.maxTxPerDay.value), "maxTxPerDay"),
   dailyComputeUsd: t(usd(F.dailyComputeUsd.value), "dailyComputeUsd"),
   maxIntents: t(String(F.maxIntents.value), "maxIntents"),

@@ -19,7 +19,7 @@ When a company splits its shares or pays a dividend, the [B20](/docs/help/glossa
 
 A B20 stock token publishes `uiMultiplier()` as a [WAD](/docs/help/glossary#wad) number, a fixed-point value scaled so that `1e18` means 1.0. The vault reads it through the `IB20Asset` interface, together with `effectiveAt()`, which it uses for scheduled changes (see [Scheduled changes](#scheduled-changes)). On the fork, at block <Fact name="forkBlock" />, NVDAc reports <Fact name="nvdaUiMultiplier" />, a little above 1.
 
-The token also has a display balance, `balanceOfUI`. The vault never values anything with it. It values the raw `balanceOf` amount, and it reads the [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) answer as the price of one raw token with the multiplier already applied. The design spec records why: the feed matched Coinbase's NAV price, so the multiplier must not be applied a second time. The value of a holding is the raw amount times the 8-decimal price, divided down to USDC units (<Fact name="usdcDecimals" />):
+The token also has a display balance, `balanceOfUI`. The vault never values anything with it. It values the raw `balanceOf` amount, and it reads the [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) answer as the price of one raw token with the multiplier already applied. The design spec records why: the feed matched Coinbase's NAV price, so the multiplier must not be applied a second time. The value of a holding is the raw amount times the price (<Fact name="priceDecimals" />), divided down to USDC units (<Fact name="usdcDecimals" />):
 
 ```solidity title="contracts/src/MandateVault.sol#L504-L507"
     /// @dev raw stock amount x 8-decimal price -> USDC (6 decimals)
@@ -125,7 +125,7 @@ A token can also announce a change before it happens, through `effectiveAt()`. T
 - A non-zero `effectiveAt()` that is in the past blocks the stock until the cooldown has passed since it.
 - Zero means nothing is scheduled. A change that leaves `effectiveAt()` at zero is called "legacy-style" in the tests, and only the snapshot catches it.
 
-`test_multiplierRules` in [GuardLib.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) walks these cases against a mock token: a pending update blocks, an update that took effect inside the cooldown blocks, and one that took effect before the cooldown passes. `test_pendingMultiplierBlocks` shows the same through the vault.
+`test_multiplierRules` in [GuardLib.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) walks these cases against a mock token: a pending update blocks, an update that took effect inside the cooldown blocks, and an update whose cooldown has passed is allowed. `test_pendingMultiplierBlocks` shows the same through the vault.
 
 ## Fail closed
 
@@ -147,6 +147,6 @@ The first two tests are in `GuardLib.t.sol`, the third in `MandateVault.t.sol`. 
 - **It cannot choose the value.** The vault reads the multiplier from the token itself.
 - **It cannot end a block early.** Recording starts the cooldown, and the stock stays blocked until the cooldown has passed.
 - **It cannot extend a block.** A second call sees no difference and returns.
-- **It does not need the executor, and a pause does not stop it.** Anyone can have a change recorded while the vault is paused.
+- **It does not need the [executor](/docs/help/glossary#executor), and a pause does not stop it.** Anyone can have a change recorded while the vault is paused.
 
-The mechanism is the same for all three stocks. [Prices and premium](/docs/concepts/prices-and-premium#assumptions) lists the other assumptions the price checks rest on, and the [MandateVault reference](/docs/reference/mandate-vault) lists every function.
+The mechanism is the same for every stock the vault tracks. [Prices and premium](/docs/concepts/prices-and-premium#assumptions) lists the other assumptions the price checks rest on, and the [MandateVault reference](/docs/reference/mandate-vault) lists every function.
