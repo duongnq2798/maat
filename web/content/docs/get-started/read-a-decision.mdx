@@ -13,7 +13,7 @@ sources:
 next: [concepts/refusal-codes, guides/watch-decisions-onchain]
 ---
 
-A `Decision` event is the vault's public record of one verdict. This page explains the event field by field, shows how to read a refusal, and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. You will need it whenever you look at a Maat trade on X, on the site or onchain.
+A [Decision](/docs/help/glossary#decision) event is the vault's public record of one verdict. This page explains the event field by field, shows how to read a refusal, and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. No Maat vault is deployed yet, so every example here is a row from the fork run. Once Maat is live, the same steps apply to its mainnet events.
 
 ## The Decision event
 
@@ -27,7 +27,7 @@ Every `execute` call that does not revert emits one `Decision`, whether the inte
 
 | Field | Type | Indexed | Meaning |
 | --- | --- | --- | --- |
-| `intentId` | `bytes32` | yes | The id of the intent. Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the round, and the vault only requires that it was never used before. |
+| `intentId` | `bytes32` | yes | The id of the [intent](/docs/help/glossary#intent). Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the round, and the vault only requires that it was never used before. |
 | `action` | `Action` | no | What the intent asked for, as an enum id (see the table below). |
 | `token` | `address` | yes | The token the intent names: a stock for a buy, a sell and the collateral actions, and USDC for borrowing, repaying and paying the compute bill. |
 | `amount` | `uint256` | no | The size in the token's own raw units, not dollars. For a buy it is USDC to spend, with 6 decimals. |
@@ -53,12 +53,13 @@ Every `execute` call that does not revert emits one `Decision`, whether the inte
 
 Start with `allowed`. When it is `true`, the checks passed and the action ran. When it is `false`, look at `reason`:
 
-- **A check failed.** Most reasons name the check that refused, such as `MARKET_CLOSED` or `SIZE_LIMIT`. The vault stops at the first failure, in the fixed order of [the nine checks](/docs/concepts/nine-checks), so the reason is the earliest check the intent failed. Market checks come before balance and size checks, so an empty vault on a holiday still reports the holiday.
-- **The action itself failed.** `SWAP_FAILED`, `TRANSFER_FAILED` and `CREDIT_FAILED` mean the checks passed but the swap, the transfer or the credit call failed inside the vault. `execute` still did not revert.
+- **A check failed.** Most reasons name the check that refused, such as `MARKET_CLOSED` or `SIZE_LIMIT`. For a BUY or a SELL the vault stops at the first failure, in the fixed order of [the nine checks](/docs/concepts/nine-checks), so the reason is the earliest check the intent failed. Market checks come before balance and size checks, so an empty vault on a holiday still reports the holiday. The other actions run their own checks.
+- **The action itself failed.** `SWAP_FAILED` and `TRANSFER_FAILED` mean the checks passed but the swap or the token transfer failed inside the vault. `execute` still did not revert.
+- **A credit step failed or could not be read.** `CREDIT_FAILED` means the credit call failed, or a credit read that the checks needed could not be read, so the vault fails closed.
 
 Either way the intent id is spent, so the same intent can never run again. The agent may propose the same trade later, with a new id.
 
-A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent sends a given refusal reason at most once per UTC day and only journals the rest.
+A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent is built to send a given refusal reason at most once per UTC day and only journal the rest.
 
 ## From a ledger row to its reasoning
 
@@ -76,18 +77,21 @@ Each column comes from the event or from the transaction around it:
 | Gas | The gas the transaction used. It is on the transaction receipt, not in the event. |
 | Note | A short comment written for the site. It is not onchain. |
 
-To match a decision to the reasoning behind it:
+The fork rows have no mainnet transaction, because they ran on a local fork and no Maat contract is deployed. The agent's journal is a file on the operator's machine, so only the operator holds it. Once Maat is live, this is how to match a mainnet decision to the reasoning behind it, and only the operator, or someone the operator shares the file with, can do steps 2 and 3:
 
 1. Open the transaction that emitted the `Decision` and read `intentId` and `rationaleHash` from the log.
-2. In the agent's journal, `data/journal.jsonl`, find the line of kind `intent` with the same `intentId`. It holds the `rationale` text, the `rationaleHash`, the preview result, and once the receipt is in, the `txHash`, `gasUsed` and the `decision`. A line of kind `sent` is written just before the receipt.
+2. In the agent's journal, `data/journal.jsonl`, find the line of kind `intent` with the same `intentId`. It holds the `rationale` text, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result, and once the receipt is in, the `txHash`, `gasUsed` and the `decision`. A line of kind `sent` is written just before the receipt.
 3. Compute `keccak256` over the UTF-8 bytes of the `rationale` and compare it with `rationaleHash`. If they match, the text is what the agent committed to when it sent the intent.
 
-The journal is a file on the operator's machine. Only the agent's operator holds it, so nobody else can run steps 2 and 3 unless the operator shares the file. The fork rows have no mainnet transaction either, because they ran on a local fork.
+Two rows of the ledger above, read the same way:
+
+- **The first row (BUY NVDAc, ALLOWED · OK).** The log has `allowed = true` and `reason = 0`. Its journal line would carry `preview: "OK"` and `gate: "execute"`.
+- **The last row (BUY GOOGLc, REFUSED · MARKET_CLOSED).** The log has `allowed = false` and `reason = 6`. Its journal line would carry `preview: "MARKET_CLOSED"` and `gate: "log-refusal"`: the agent sent the refusal on purpose, to put it onchain.
 
 ## What a decision does not tell you
 
 - **The reasoning.** The event holds only a hash. The text is in the journal.
 - **The gas or the Builder Code.** Both are on the transaction. The agent appends the [Builder Code](/docs/help/glossary#builder-code-erc-8021) to the calldata of every transaction it sends, and owner-signed transactions do not carry it.
-- **Whether the trade was a good idea.** `allowed` means the intent stayed inside the mandate. A bad trade inside every limit is still allowed.
+- **Whether the trade was a good idea.** `allowed` means the intent stayed inside the [mandate](/docs/help/glossary#mandate). A bad trade inside every limit is still allowed.
 - **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged that UTC day. A missing `Decision` is therefore not proof that the agent did not try.
 - **The dollar value.** `amount` is in raw token units. The site's ledger converts it.
