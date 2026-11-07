@@ -286,10 +286,10 @@ export function AddressTable() {
   );
 }
 
-/** Facts with their value and the source that proves it, for the default parameters page. */
-export function FactTable({ names }: { names: readonly FactName[] }) {
+/** Facts with their value and the source that proves it, for the default parameters page. `label` names the region, so give each table on a page its own. */
+export function FactTable({ names, label = "Defaults" }: { names: readonly FactName[]; label?: string }) {
   return (
-    <ScrollTable label="Defaults">
+    <ScrollTable label={label}>
       <thead>
         <tr>
           <th>Name</th>

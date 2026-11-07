@@ -14,11 +14,11 @@ sources:
 next: [concepts/mandate, guides/configure-a-mandate]
 ---
 
-A default is a value the code uses until someone changes it. This page lists the defaults that the vault, the calendar and the agent ship with, each with its unit and the file that sets it, so you can find a number without reading the code. A last table holds figures that look like defaults and are not: measurements, counts and plans. The vault and the agent are built and fork-tested, and nothing is deployed, so these are the defaults of the code, not of a running deployment. The values come from the same fact list as the rest of the docs, and tests compare the ones the repository can prove with the code that sets them.
+A default is a value the code uses until someone changes it. This page lists the defaults that the vault, the calendar and the agent ship with, each with its unit and the file that sets it, so you can find a number without reading the code. Some rows are fixed constants and bounds, not values you can change; the text above each table says which. A last table holds figures that look like defaults and are not: measurements, counts and plans. The vault and the agent are built and fork-tested, and nothing is deployed, so these are the defaults of the code, not of a running deployment. The values come from the same fact list as the rest of the docs, and tests compare the ones the repository can prove with the code that sets them.
 
 ## Vault and mandate
 
-The rows named `mandate.*` are the default mandate that `MaatConfig.defaultMandate()` builds for the deploy script. The owner can change any [mandate](/docs/concepts/mandate) field later, through the [timelock](/docs/help/glossary#timelock). The other rows are constants and bounds in the contract code, so only a new deployment changes them.
+The rows named `mandate.*` are the defaults that `MaatConfig` and the deploy script give a deployment. `MaatConfig.defaultMandate()` builds the [mandate](/docs/concepts/mandate), and the deploy script passes `REGULAR` to it as the session mode. `MaatConfig.basket()` sets `maxWeightBps` for each token. The owner can change any of them later through the [timelock](/docs/help/glossary#timelock). The other rows are constants and bounds in the contract code, so only a new deployment changes them.
 
 <FactTable
   names={[
@@ -42,6 +42,7 @@ The rows named `mandate.*` are the default mandate that `MaatConfig.defaultManda
     "usdcDecimals",
     "maxTokenDecimals",
   ]}
+  label="Vault and mandate defaults"
 />
 
 [The mandate](/docs/concepts/mandate) explains what each field limits and which check reads it, and [Configure a mandate](/docs/guides/configure-a-mandate) shows how to change one before you deploy.
@@ -59,6 +60,7 @@ These come from `MarketCalendar.sol`. The session times and the feed edge are co
     "etOffsetHours.dst",
     "etOffsetHours.standard",
   ]}
+  label="Calendar defaults"
 />
 
 ## Agent
@@ -81,13 +83,14 @@ These come from `MarketCalendar.sol`. The session times and the feed edge are co
     "maxGas",
     "executeGasFloor",
   ]}
+  label="Agent defaults"
 />
 
 [The treasury loop](/docs/concepts/treasury-loop) shows where the policy rows act in a round.
 
 ## Measured and planned figures
 
-The rows below are measurements, counts, dates, versions, derived values or planned values, not settings. Each Source says what was measured or counted and where. `x402Price` and `treasuryUsd` are plans, not features of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
+The rows below are measurements, counts, dates, versions, derived values or planned values, not settings. Each Source says where the figure comes from. `x402Price` and `treasuryUsd` are plans, not features of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
 
 <FactTable
   names={[
@@ -115,6 +118,7 @@ The rows below are measurements, counts, dates, versions, derived values or plan
     "treasuryUsd",
     "x402Price",
   ]}
+  label="Measured and planned figures"
 />
 
 ## Related

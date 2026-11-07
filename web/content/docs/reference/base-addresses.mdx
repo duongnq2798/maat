@@ -10,13 +10,13 @@ sources:
 next: [concepts/prices-and-premium, guides/deploy-your-own-vault]
 ---
 
-Maat does not deploy its own tokens, feeds or pools. It reads and calls contracts that already exist on Base mainnet, and `contracts/script/BaseAddresses.sol` lists them for the deploy script and the fork tests. This page shows every constant in that file, with each address linked to Basescan, and explains the rows that are not addresses. The library header says the addresses were verified on <Fact name="addressesVerifiedOn" />. The vault and the agent are built and fork-tested, and nothing is deployed, so no Maat contract is on this page. The owner records the addresses of a deployment in `deployments/README.md`.
+Maat does not deploy its own tokens, feeds or pools. It is built to read and call contracts that already exist on Base mainnet, and `contracts/script/BaseAddresses.sol` lists them for the deploy script and the fork tests. This page shows every constant in that file, with each address linked to Basescan, and explains the rows that are not addresses. The library header says the addresses were verified on <Fact name="addressesVerifiedOn" />. The vault and the agent are built and fork-tested, and nothing is deployed, so no Maat contract is on this page. The owner records the addresses of a deployment in `deployments/README.md`.
 
 <AddressTable />
 
 ## What each group is for
 
-| Group | Names | What Maat uses it for |
+| Group | Names | What it is for |
 | --- | --- | --- |
 | Quote asset | `USDC` | The treasury and the quote asset |
 | Stocks | `NVDAC`, `GOOGLC`, `AAPLC` | The basket. They are [B20](/docs/help/glossary#b20) tokens, and the vault reads `isPaused`, `policyId`, `uiMultiplier` and `effectiveAt` from each |

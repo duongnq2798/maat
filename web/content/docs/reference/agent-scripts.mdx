@@ -22,7 +22,7 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | `npm run test:integration` | Runs the fork test | A Base archive RPC and the Base build of Anvil | Your Base RPC. No Claude call and no CDP call |
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
 | `npm run gen:abi` | Rewrites the generated ABI file | The compiled contracts | None |
-| `cdp-setup.ts` | Creates the executor account and its policy | The three CDP credentials | Coinbase CDP |
+| `cdp-setup.ts` | Owner only. Creates the executor account and its policy | The three CDP credentials | Coinbase CDP |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
 
@@ -50,7 +50,7 @@ It needs a vault to read and makes a paid call to Claude, so this page shows the
 
 At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
 
-- With `--once` it prints one line with the mode, the vault, the executor and the data directory, runs one round, prints the round's report as JSON, releases the lock and exits. The report holds the run id, the `status`, the block it read, the hashes in `sent`, the counts `skipped` and `proposals`, and a `haltReason` when the round halted.
+- With `--once` it prints one line with the mode, the vault, the executor and the data directory, runs one round, prints the round's report as JSON, releases the lock and exits. The report includes the run id, the `status`, the block it read, `marketOpen`, the hashes in `sent`, the counts `skipped` and `proposals`, and a `haltReason` when the round halted.
 - Without `--once` it runs a round, then waits. The wait is <Fact name="loopMinutes" /> after a round that saw the market open, and <Fact name="offSessionMinutes" /> after any other round, including a round that threw an error. The agent logs a round that throws and tries again after the longer wait.
 - A stop signal (Ctrl+C, or SIGTERM) ends the wait. It does not interrupt a round in progress: the agent finishes that round, releases the lock and exits.
 
@@ -105,7 +105,7 @@ Trimmed output from the run at commit `95e4024`:
 
 Rewrites `agent/src/abi/generated.ts`, the ABIs the agent calls the chain with. It reads compiled ABIs from `contracts/out` and writes them into that one file. `contracts/out` is build output that Git does not track, so run `forge build` in `contracts/` first, and run this script again after any change to a contract's interface. It reads no setting and needs no network. The generated file is committed, so commit it when it changes. The script file is [gen-abis.ts](#gen-abists).
 
-Trimmed output from the run at commit `95e4024`. The start of the absolute path in the last line is cut:
+Trimmed output from the run on Windows at commit `95e4024`. The start of the absolute path in the last line is cut:
 
 ```text
 > @maat/agent@0.1.0 gen:abi
@@ -124,7 +124,7 @@ Only `gen-abis.ts` has an npm script, `gen:abi`. You run the other files in `age
 
 <Callout type="warning" title="Owner only">
 
-Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy allows only transactions on Base to the vault you pass in, with a value of zero, and it rejects raw hash signing. Every run creates a new policy, so a second run attaches a second one.
+Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects raw hash signing. Every run creates a new policy and points the account at it, so a second run creates a second policy.
 
 It needs `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`, and it reads `CDP_ACCOUNT_NAME` for the account name. It sends no transaction on Base and does not touch the vault.
 

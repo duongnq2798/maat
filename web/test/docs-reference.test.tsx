@@ -175,4 +175,13 @@ describe("agent, address and fact entries", () => {
     expect(screen.getByText(FACTS.timelockHours.source)).toBeInTheDocument();
     expect(() => FactTable({ names: ["nope" as never] })).toThrow('<Fact name="nope" /> is not in FACT_TEXT');
   });
+
+  it("FactTable names its region with the label it is given, and says Defaults without one", () => {
+    const { unmount } = render(<FactTable names={["timelockHours"]} label="Measured and planned figures" />);
+    expect(screen.getByRole("region", { name: "Measured and planned figures" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Defaults" })).toBeNull();
+    unmount();
+    render(<FactTable names={["timelockHours"]} />);
+    expect(screen.getByRole("region", { name: "Defaults" })).toBeInTheDocument();
+  });
 });

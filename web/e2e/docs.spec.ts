@@ -2,7 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
-/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8 and 13). */
+/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8, 13 and 14). */
 const PAGES: string[] = [
   "/docs",
   "/docs/concepts/nine-checks",

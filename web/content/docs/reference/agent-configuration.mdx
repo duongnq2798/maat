@@ -12,7 +12,7 @@ sources:
 next: [guides/run-the-agent, reference/agent-scripts]
 ---
 
-The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only, so the Claude and CDP settings below have never been used against the real services.
+The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
 
 <EnvTable />
 
@@ -50,13 +50,13 @@ The address the agent pays its compute bill to. It goes into the `payee` field o
 
 <EnvVar name="MAAT_MODE" />
 
-The only values are `dry-run` and `live`, and anything else stops the start. The default is `dry-run`. In dry-run mode the agent reads the chain, asks Claude, previews every intent and writes its journal, but it never sends a transaction and it never connects to CDP. In live mode it also sends through the CDP wallet, which needs `MAAT_BUILDER_CODE` and the three CDP credentials. The flag `--dry-run` on the command line forces dry-run whatever this setting says. The flag is applied after the settings are checked, so `MAAT_MODE=live` without a Builder Code still stops the start.
+The only values are `dry-run` and `live`, and anything else stops the start. The default is `dry-run`. In dry-run mode the agent reads the chain, asks Claude, previews every intent and writes its journal, but it never sends a transaction and it never connects to CDP. In live mode it also sends through the CDP wallet, which needs `MAAT_BUILDER_CODE` and the three CDP credentials. The flag `--dry-run` on the command line forces dry-run whatever this setting says. The flag is applied after the settings are checked, so `MAAT_MODE=live` without a [Builder Code](/docs/help/glossary#builder-code-erc-8021) still stops the start.
 
 ### MAAT_BUILDER_CODE
 
 <EnvVar name="MAAT_BUILDER_CODE" />
 
-A [Builder Code](/docs/help/glossary#builder-code-erc-8021) that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the live runtime, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet.
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the live runtime, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet.
 
 ### MAAT_LOOP_MODEL
 
