@@ -10,10 +10,14 @@ sources:
   - contracts/foundry.toml
   - agent/package.json
   - web/package.json
+  - web/playwright.config.ts
+  - agent/test/integration/agent.fork.test.ts
+  - agent/test/integration/deploy.ts
+  - contracts/test/fork/DeployFork.t.sol
 next: [guides/reproduce-the-fork-run, security/testing]
 ---
 
-This guide runs every test suite in the Maat repository, one at a time, and says what each one needs. The suites that touch no chain run offline against mocks and fakes. The fork suites need a Base archive RPC, and the agent's also needs a special build of Anvil. Nothing is deployed and the agent has not run live, so these suites are the evidence behind the claims in these docs, and running them yourself is how you check that evidence.
+This guide runs every test suite in the Maat repository, one at a time, and says what each one needs. The suites that touch no chain run offline against mocks and fakes. The [fork tests](/docs/help/glossary#fork-test) need a Base archive RPC, and the agent's also needs a special build of Anvil. Nothing is deployed and the agent has not run live, so these suites are the evidence behind the claims in these docs, and running them yourself is how you check that evidence.
 
 ## Before you start
 
@@ -21,7 +25,7 @@ This guide is for developers and evaluators who have cloned the repository. It a
 
 | Tool | Version | Needed for |
 | --- | --- | --- |
-| [Foundry](https://getfoundry.sh) | 1.8.4 or newer | The contract suites. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the B20 stock precompiles need. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer | The contract suites. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
 | Node.js with npm | 24 | The website needs 24.x (`web/package.json`). The agent needs 22.9 or newer (`agent/package.json`). |
 | A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here | The fork suites only. |
 | `base-anvil` | v1.5.1 | The agent's fork test only. |

@@ -9,6 +9,13 @@ sources:
   - contracts/script/MaatConfig.sol
   - contracts/src/MandateVault.sol
   - contracts/test/MandateVaultAdmin.t.sol
+  - contracts/script/Deploy.s.sol
+  - contracts/script/BaseAddresses.sol
+  - contracts/test/MandateVault.t.sol
+  - contracts/test/MandateVaultCredit.t.sol
+  - contracts/test/fork/DeployFork.t.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - web/test/facts.test.ts
 next: [guides/deploy-your-own-vault, guides/change-a-rule]
 ---
 
@@ -16,11 +23,19 @@ This guide shows where every default of the [mandate](/docs/help/glossary#mandat
 
 ## Before you start
 
-You edit Solidity in a clone of the repository, so you need the same tools as [Deploy your own vault](/docs/guides/deploy-your-own-vault): Foundry 1.8.4 or newer, and a Base RPC for the dry run, written `<BASE_RPC_URL>` here. Time: the edit is a few lines. Checking it takes the dry run and the unit tests.
+This guide is for builders who edit the deploy configuration before the first deploy. You edit Solidity in a clone of the repository, so you need the same tools as [Deploy your own vault](/docs/guides/deploy-your-own-vault).
+
+| Need | Detail |
+| --- | --- |
+| A clone of the repository | `contracts/script/MaatConfig.sol` is the file you edit. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer, for `forge script` and `forge test`. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
+| A Base RPC | Your own URL, written `<BASE_RPC_URL>` here, for the dry run. |
+
+Time: the edit is a few lines. Checking it takes the dry run and the unit tests.
 
 <Callout type="note" title="Before the first deploy only">
 
-Editing `MaatConfig.sol` changes the values a new deployment starts with. It changes nothing on a vault that already exists. After a vault is deployed, every change to the mandate, to a stock's settings or to the payee list goes through the timelock: the owner queues it, waits <Fact name="timelockHours" />, then applies exactly the queued values within <Fact name="gracePeriodDays" />, and even a tighter limit waits. [Change a rule](/docs/guides/change-a-rule) walks through that.
+Editing `MaatConfig.sol` changes the values a new deployment starts with. It changes nothing on a vault that already exists. After a vault is deployed, every change to the mandate, to a stock's settings or to the [payee](/docs/help/glossary#payee) list goes through the [timelock](/docs/help/glossary#timelock): the owner queues it, waits <Fact name="timelockHours" />, then applies exactly the queued values within <Fact name="gracePeriodDays" />, and even a tighter limit waits. [Change a rule](/docs/guides/change-a-rule) walks through that.
 
 </Callout>
 
@@ -32,26 +47,26 @@ Editing `MaatConfig.sol` changes the values a new deployment starts with. It cha
 
 ### Find the value
 
-Open `contracts/script/MaatConfig.sol`. The table says where each setting is set. Dollar amounts in the code are USDC units, which have <Fact name="usdcDecimals" />, and health factors are fixed-point numbers where one whole unit is `1e18` (a [WAD](/docs/help/glossary#wad)).
+Open `contracts/script/MaatConfig.sol`. The table says where each setting is set. Dollar amounts in the code are USDC units, which have <Fact name="usdcDecimals" />, and [health factors](/docs/help/glossary#health-factor) are fixed-point numbers where one whole unit is `1e18` (a [WAD](/docs/help/glossary#wad)).
 
 | Setting | Where it is set | Unit | Default |
 | --- | --- | --- | --- |
 | `sessionMode` | `Deploy.s.sol` passes `SessionMode.REGULAR` to `defaultMandate` | Enum | <Fact name="mandate.sessionMode" /> |
-| `maxPremiumBps` | `defaultMandate` | Basis points | <Fact name="mandate.maxPremiumBps" /> |
+| `maxPremiumBps` | `defaultMandate` | [Basis points](/docs/help/glossary#basis-point-bps), the widest [premium](/docs/help/glossary#premium) | <Fact name="mandate.maxPremiumBps" /> |
 | `maxSlippageBps` | `defaultMandate` | Basis points | <Fact name="mandate.maxSlippageBps" /> |
-| `maxStaleness` | `defaultMandate` | Seconds | <Fact name="mandate.maxStalenessSec" /> |
-| `multiplierCooldown` | `defaultMandate`, written as `1 days` | Seconds | <Fact name="mandate.multiplierCooldownSec" /> |
-| `twapWindow` | `defaultMandate` | Seconds | <Fact name="mandate.twapWindowSec" /> |
+| `maxStaleness` | `defaultMandate` | Seconds, the oldest answer ([staleness](/docs/help/glossary#staleness)) an oracle may give | <Fact name="mandate.maxStalenessSec" /> |
+| `multiplierCooldown` | `defaultMandate` | Seconds, which the code writes as `1 days` | <Fact name="mandate.multiplierCooldownSec" /> |
+| `twapWindow` | `defaultMandate` | Seconds, the averaging window of the [TWAP](/docs/help/glossary#twap) | <Fact name="mandate.twapWindowSec" /> |
 | `perTradeCapUsd` | `defaultMandate` | USDC units | <Fact name="mandate.perTradeCapUsd" /> |
 | `dailyCapUsd` | `defaultMandate` | USDC units | <Fact name="mandate.dailyCapUsd" /> |
 | `calendar`, `swapAdapter`, `creditAdapter` | The contracts that `Deploy.s.sol` creates in the same run | Addresses | None |
 | `minHealthFactor` | The constant `MIN_HEALTH_FACTOR` at the top of `MaatConfig` | WAD | <Fact name="mandate.minHealthFactor" /> |
 | `targetHealthFactor` | The constant `TARGET_HEALTH_FACTOR` | WAD | <Fact name="mandate.targetHealthFactor" /> |
-| `deriskWindow` | The constant `DERISK_WINDOW` | Seconds | <Fact name="mandate.deriskWindowSec" /> |
+| `deriskWindow` | The constant `DERISK_WINDOW` | Seconds, which the code writes as `8 hours`. It is the length of the [de-risk window](/docs/help/glossary#de-risk-window) | <Fact name="mandate.deriskWindowSec" /> |
 | Each stock's `allowed`, `feed`, `pool` and `maxWeightBps` | `basket()` | Booleans, addresses, basis points | Allowed, with a `maxWeightBps` of <Fact name="mandate.maxWeightBps" /> |
 | Each stock's Aave reserve | `creditReserves()`, in the same order as the basket | Reserve ids | None |
-| Payees | `Deploy.s.sol` builds a one-entry list from `MAAT_EXPENSE_PAYEE` | Addresses | None |
-| Owner and executor | The `MAAT_OWNER` and `MAAT_EXECUTOR` environment variables | Addresses | None |
+| [Payees](/docs/help/glossary#payee) | `Deploy.s.sol` builds a one-entry list from `MAAT_EXPENSE_PAYEE` | Addresses | None |
+| Owner and [executor](/docs/help/glossary#executor) | The `MAAT_OWNER` and `MAAT_EXECUTOR` environment variables | Addresses | None |
 
 The credit constants sit at the top of the library:
 
@@ -175,21 +190,37 @@ The tests that do read `MaatConfig.sol` are the contract fork tests, which build
 
 ## What the vault rejects
 
-The vault validates a mandate and a stock's settings when it sets them: in its constructor, and in `applyMandate` and `applyTokenConfig` after a deploy. The queue functions do not validate, and `execute` never does. A bad change can therefore be queued, wait out the timelock, and fail only when it is applied. [Errors](/docs/reference/errors#invalidconfig) lists every condition, and these tables follow the same rules. The code behind the mandate rules is short:
+The vault validates a mandate and a stock's settings when it sets them: in its constructor, and in `applyMandate` and `applyTokenConfig` after a deploy. The queue functions do not validate, and `execute` never does. A bad change can therefore be queued, wait out the timelock, and fail only when it is applied. [Errors](/docs/reference/errors#invalidconfig) lists every condition, and these tables follow the same rules. The code behind the mandate rules is short. This function checks the contracts and the slippage limit, and passes the credit settings on only when a credit adapter is set:
 
-```solidity title="contracts/src/MandateVault.sol#L657-L668"
+```solidity title="contracts/src/MandateVault.sol#L657-L661"
     function _requireValidMandate(Mandate memory m) internal view {
         if (m.calendar.code.length == 0 || m.swapAdapter.code.length == 0) revert InvalidConfig();
         if (m.maxSlippageBps > BPS) revert InvalidConfig();
         if (m.creditAdapter != address(0)) _requireValidCredit(m);
     }
+```
 
+This one checks the credit adapter, the health factor bounds, the de-risk window and what the adapter reports for its vault and its USDC:
+
+```solidity title="contracts/src/MandateVault.sol#L663-L680"
     /// @dev The adapter must be a contract bound to this vault and its USDC, so the vault can never route
     /// collateral into a position it does not control.
     function _requireValidCredit(Mandate memory m) internal view {
         if (m.creditAdapter.code.length == 0) revert InvalidConfig();
         if (m.minHealthFactor < WAD || m.targetHealthFactor < m.minHealthFactor) revert InvalidConfig();
         if (m.deriskWindow > MAX_DERISK_WINDOW) revert InvalidConfig();
+        ICreditAdapter ca = ICreditAdapter(m.creditAdapter);
+        try ca.vault() returns (address v) {
+            if (v != address(this)) revert InvalidConfig();
+        } catch {
+            revert InvalidConfig();
+        }
+        try ca.usdc() returns (address u) {
+            if (u != usdc) revert InvalidConfig();
+        } catch {
+            revert InvalidConfig();
+        }
+    }
 ```
 
 ### Mandate rules
@@ -197,7 +228,7 @@ The vault validates a mandate and a stock's settings when it sets them: in its c
 | Rule | Error |
 | --- | --- |
 | `calendar` or `swapAdapter` has no code at its address | `InvalidConfig` |
-| `maxSlippageBps` is above the basis-point denominator, which would let a swap lose more than the whole amount. A value equal to the denominator passes | `InvalidConfig` |
+| `maxSlippageBps` is above the basis-point denominator. The vault computes the swap's minimum output from the denominator minus `maxSlippageBps`, which a larger value would underflow. A value equal to the denominator passes | `InvalidConfig` |
 
 ### Credit rules
 

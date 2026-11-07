@@ -10,20 +10,31 @@ sources:
   - contracts/script/Deploy.s.sol
   - contracts/script/MaatConfig.sol
   - contracts/test/fork/DeployFork.t.sol
+  - contracts/src/MandateVault.sol
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/GuardLib.sol
+  - contracts/src/Types.sol
+  - contracts/script/BaseAddresses.sol
+  - contracts/.env.example
+  - contracts/test/fork/MandateVaultFork.t.sol
+  - agent/src/policy.ts
+  - agent/src/chain/state.ts
+  - agent/test/integration/deploy.ts
+  - agent/test/integration/agent.fork.test.ts
 next: [guides/configure-a-mandate, guides/run-the-agent]
 ---
 
-This guide takes you from a clone of the repository to a `MandateVault` with the default mandate on Base mainnet: a dry run on a fork that needs no key, a checklist, the broadcast from your own wallet, funding, and a small smoke test. It is written for a builder who will own the vault. Every transaction is signed by you, from your own wallet, and no script in this repository holds a key.
+This guide takes you from a clone of the repository to a `MandateVault` with the default [mandate](/docs/help/glossary#mandate) on Base mainnet: a dry run on a fork that needs no key, a checklist, the broadcast from your own wallet, funding, and a small smoke test. It is written for a builder who will own the vault. Every transaction is signed by you, from your own wallet, and no script in this repository holds a key.
 
 <Callout type="fork" title="Not deployed yet">
 
-The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`, so the steps below are built and fork-tested, not proven on mainnet. The contracts are unaudited.
+The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract fork tests and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a cheat code instead). The commands below, including the broadcast, the verification and the smoke test, are copied from the runbook and have not been run by the Maat team, so they are not proven on mainnet. The contracts are unaudited.
 
 </Callout>
 
 ## Before you start
 
-You need the pieces below. Your wallet is the owner of the vault, so the steps that sign are marked **Owner only**.
+You need the pieces below. Your wallet is the [owner](/docs/help/glossary#owner) of the vault, so the steps that sign are marked **Owner only**.
 
 | Need | Detail |
 | --- | --- |
@@ -34,7 +45,7 @@ You need the pieces below. Your wallet is the owner of the vault, so the steps t
 | An Etherscan v2 API key | `ETHERSCAN_API_KEY` in `contracts/.env`, for `--verify`. A v2 key works for Basescan. |
 | USDC on Base | What you fund the vault with. |
 
-`contracts/.env.example` lists the variables, and Git ignores `contracts/.env`. The deploy script reads the four addresses like this:
+`contracts/.env.example` lists `BASE_RPC_URL` and the four addresses; add `ETHERSCAN_API_KEY` yourself. Git ignores `contracts/.env`. The deploy script reads the four addresses like this:
 
 ```solidity title="contracts/script/Deploy.s.sol#L23-L26"
         address deployer = vm.envAddress("MAAT_DEPLOYER");
@@ -43,7 +54,7 @@ You need the pieces below. Your wallet is the owner of the vault, so the steps t
         address payee = vm.envAddress("MAAT_EXPENSE_PAYEE");
 ```
 
-In the runbook the owner is your wallet, the executor is temporarily your wallet until the CDP Server Wallet takes over, and the payee is the wallet that pays for Claude usage. Its `.env` step sets all three to your wallet address. The deploy uses [`MaatConfig.defaultMandate`](/docs/concepts/mandate#the-default-mandate) with the `REGULAR` session and the three-stock basket. To change a limit, a token or the payee, read [Configure a mandate](/docs/guides/configure-a-mandate) before you deploy.
+In the runbook the owner is your wallet, the [executor](/docs/help/glossary#executor) is temporarily your wallet until the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) takes over, and the [payee](/docs/help/glossary#payee) is the compute-expense wallet, the address the vault's `PAY_EXPENSE` action may pay. Its `.env` step sets all three to your wallet address. The deploy uses [`MaatConfig.defaultMandate`](/docs/concepts/mandate#the-default-mandate) with the `REGULAR` session and the three-stock basket. To change a limit, a token or the payee, read [Configure a mandate](/docs/guides/configure-a-mandate) before you deploy.
 
 Time: not measured. No mainnet deploy has been run, and the runbook gives no durations.
 
@@ -98,7 +109,7 @@ Go through this list before step 5.
 
 - **Gas.** The deployer wallet has enough ETH on Base to deploy the calendar, the swap adapter, the credit adapter and the vault. Fund extra, because gas prices change.
 - **The deployer.** `MAAT_DEPLOYER` is exactly the address of the `--account` wallet that you broadcast with. The next paragraph says why.
-- **The other addresses.** `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` are correct. They can be changed later: the executor at once with `setExecutor`, and the payee only through the timelock, which is <Fact name="timelockHours" /> long.
+- **The other addresses.** `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` are correct. They can be changed later: the executor at once with `setExecutor`, and the payee only through the [timelock](/docs/help/glossary#timelock), which is <Fact name="timelockHours" /> long.
 - **Verification.** `--verify` needs `ETHERSCAN_API_KEY` in `contracts/.env`. If the deploy finishes but verification fails, do not redeploy. The resume command is in step 5.
 - **Funding.** Fund the vault with `approve` and then `fund(amount)` (step 6), never with a plain USDC transfer.
 - **Later changes.** After the deploy, every change to the configuration is queued with `queueMandate`, `queueTokenConfig` or `queuePayee`, which publishes all parameters in an event. You wait <Fact name="timelockHours" />, then apply it within <Fact name="gracePeriodDays" /> after that. Past that deadline the change expires (`ChangeExpired`) and must be queued again. See [The timelock](/docs/concepts/timelock-and-roles#the-timelock).
@@ -189,11 +200,11 @@ deployments/README.md prints no output for the broadcast, so none is shown. The 
 
 ### Fund the vault
 
-Approve the vault to pull USDC, then call `fund`. Do not transfer USDC straight into the vault. `fund` pulls the USDC from the owner and records it, so it does not count as revenue. A direct transfer is not recorded until `notifyRevenue` runs. Anyone can call it, and `execute` calls it first once an intent has passed its checks. It then emits `RevenueReceived` for the difference. The agent reads the same gap between the vault's USDC balance and `recordedUsdc` as new revenue, and its policy answers new revenue by suggesting a repayment when the vault has debt.
+Approve the vault to pull USDC, then call `fund`. Do not transfer USDC straight into the vault. `fund` pulls the USDC from the owner and records it, so it does not count as revenue. A direct transfer is not recorded until `notifyRevenue` runs. Anyone can call it, and `execute` calls it first once an intent has passed its checks. It then emits `RevenueReceived` for the difference. The agent reads the same gap between the vault's USDC balance and `recordedUsdc` as new revenue, and its policy answers new revenue by suggesting a repayment when the vault has debt and the amount to repay is at least the minimum trade size, <Fact name="minTradeUsd" />.
 
 <Callout type="warning" title="Owner only">
 
-These two transactions are signed by your wallet. The amounts are in USDC units, which have <Fact name="usdcDecimals" />. The runbook funds the vault with `20000000` of them for its smoke test, and you can fund any amount you choose. Replace `<VAULT_ADDRESS>` with the vault address from the previous step. The USDC address is the one in [Base addresses](/docs/reference/base-addresses).
+These two transactions are signed by your wallet. The amounts are in USDC units, which have <Fact name="usdcDecimals" />. The runbook funds the vault with a small test amount, shown in the commands below in USDC units, and you can fund any amount you choose. Replace `<VAULT_ADDRESS>` with the vault address from the previous step. The USDC address is the one in [Base addresses](/docs/reference/base-addresses).
 
 ```bash
 VAULT=<VAULT_ADDRESS>   # address of the MandateVault just deployed
@@ -214,7 +225,7 @@ deployments/README.md prints no output for these commands, so none is shown. The
 
 Send one small BUY of NVDAc, then one on a weekend. Do the first only during US market hours, which the calendar sets at <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, on a day that is not a market holiday. New York is <Fact name="etOffsetHours.dst" /> behind UTC during US daylight saving time and <Fact name="etOffsetHours.standard" /> behind otherwise. On an early-close day the session ends earlier, and an `execute` outside it is refused with `MARKET_CLOSED`.
 
-The owner's wallet is the executor at this stage, so it can send `execute` itself. Run the smoke test before you hand the executor role to the CDP Server Wallet, because after the handover the owner's own `execute` calls revert with `NotExecutor`. The BUY amount is `5000000`, USDC units, as the funding amounts are.
+The owner's wallet is the executor at this stage, so it can send `execute` itself. Run the smoke test before you hand the executor role to the CDP Server Wallet, because after the handover the owner's own `execute` calls revert with `NotExecutor`. The BUY amount in the commands is in USDC units too.
 
 <Callout type="warning" title="Owner only">
 
@@ -225,18 +236,20 @@ cast call "$VAULT" "previewIntent((bytes32,uint8,address,uint256,uint256,address
 cast send "$VAULT" "execute((bytes32,uint8,address,uint256,uint256,address,bytes32))" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL" --account maat-owner
 ```
 
+For the weekend intent below, run both lines again with `maat-smoke-2` in place of `maat-smoke-1`. That second `cast send` is signed by your wallet too.
+
 </Callout>
 
 The intent has action `0`, which is `BUY`, and the token is NVDAc. The expected result, from deployments/README.md:
 
-- `previewIntent` returns `0`, which is `OK`.
-- The `execute` transaction has a `Decision` log with `allowed=true`.
+- The [preview](/docs/help/glossary#preview) from `previewIntent` returns `0`, which is `OK`.
+- The `execute` transaction has a [`Decision`](/docs/help/glossary#decision) log with `allowed=true`.
 
-Then send one more new intent, with the id `maat-smoke-2`, on a weekend: repeat the last two commands with `maat-smoke-2` in place of `maat-smoke-1`. The `Decision` log must show `reason=6`, which is `MARKET_CLOSED`. Every intent id works once, so a repeat of `maat-smoke-1` would revert.
+Then send one more new intent, with the id `maat-smoke-2`, on a weekend, using the two commands in the callout. The `Decision` log must show `reason=6`, which is `MARKET_CLOSED`. Every intent id works once, so a repeat of `maat-smoke-1` would revert.
 
 <Callout type="note" title="Preview from the executor">
 
-The transfer-policy check reads `tx.origin`, so `previewIntent` gives the answer `execute` would give only when it is called from the executor. The runbook's `cast call` sets no sender. If the preview does not return `0`, repeat it with `--from <OWNER_ADDRESS>`, because your wallet is the executor now.
+The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The runbook's `cast call` sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
 
 </Callout>
 
@@ -267,7 +280,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - **A mistyped owner.** The owner is immutable on the vault and the calendar. Check the owner line of the simulation with your real `.env`, not the dry run.
 - **A deployer that does not match the account.** `MAAT_DEPLOYER` must be the address of the `--account` wallet, and that wallet must send no other transaction between the simulation and the broadcast.
 - **A plain USDC transfer instead of `fund`.** It is counted as revenue the next time `notifyRevenue` runs. Approve, then `fund`.
-- **A smoke test out of session.** A BUY on a weekend or a holiday, or after the close, is refused with `MARKET_CLOSED` instead of returning `OK`. That is the vault working, but it is not the first smoke test.
+- **A smoke test out of session.** A BUY on a weekend or a holiday, or after the close, is refused with `MARKET_CLOSED` instead of returning `OK`. That is the vault working, but it is not the first smoke test. The refused intent still uses its id, so retry with a new one, such as `maat-smoke-3`.
 - **Redeploying because verification failed.** Run the resume command instead.
 - **Handing the executor role over too early.** After `setExecutor` points at the CDP Server Wallet, your wallet's `execute` calls revert with `NotExecutor`.
 - **Treating the dry-run addresses as yours.** The contract addresses in the dry run differ from mainnet, and the four address lines are placeholders.

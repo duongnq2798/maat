@@ -10,10 +10,13 @@ sources:
   - agent/test/integration/anvil.ts
   - agent/test/integration/fork-gas.json
   - agent/README.md
+  - agent/test/integration/deploy.ts
+  - agent/src/ledger/journal.ts
+  - web/content/facts.ts
 next: [get-started/read-a-decision, security/testing]
 ---
 
-By the end of this page you will have rerun the end-to-end agent test that sits behind the site's decision ledger, on a local fork of Base mainnet, and you will know what it checks, where its decisions and its gas log go, and how to read them. The fork run is the strongest evidence that the contracts and the agent's send path work together, so it is worth reproducing instead of taking on trust. It is written for developers and evaluators. Nothing is broadcast, and the run needs no wallet key, no Claude API key and no CDP credentials.
+By the end of this page you will have rerun the end-to-end agent [fork test](/docs/help/glossary#fork-test) that sits behind the site's decision ledger, on a local fork of Base mainnet, and you will know what it checks, where its decisions and its gas log go, and how to read them. The fork run is the end-to-end evidence that the contracts and the agent's send path work together, so it is worth reproducing instead of taking on trust. It is written for developers and evaluators. Nothing is broadcast, and the run needs no wallet key, no Claude API key and no CDP credentials.
 
 <Callout type="fork" title="What this run covers">
 
@@ -23,7 +26,7 @@ The contracts and the agent's send path run on the fork. The real Claude API and
 
 ## Before you start
 
-The fork point is Base block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />, inside the regular NYSE session. At that block the NVDA price feed was <Fact name="feedAgeSec" /> old. Every run starts from that same chain state.
+The fork point is Base block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />, inside the regular [NYSE session](/docs/help/glossary#nyse-session). At that block the NVDA price feed was <Fact name="feedAgeSec" /> old. Every run starts from that same chain state.
 
 | Need | Detail | Why |
 | --- | --- | --- |
@@ -79,7 +82,7 @@ The test reads `BASE_RPC_URL` from your shell, not from a `.env` file. Set both 
 
 ```bash
 export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
-export MAAT_ANVIL_BIN=<PATH_TO_ANVIL_EXE>   # Windows only, for example ~/.foundry/versions/base-v1.5.1/anvil.exe
+# export MAAT_ANVIL_BIN=<PATH_TO_ANVIL_EXE>   # Windows only: remove the leading # and use the real anvil.exe, for example ~/.foundry/versions/base-v1.5.1/anvil.exe
 ```
 
 </Step>
@@ -118,7 +121,7 @@ The test is a script of rounds. Each row of the ledger below is one transaction 
 
 | Round | What the test sends | What it checks |
 | --- | --- | --- |
-| First (`fork-1`) | One round with a BUY of NVDAc, a SUPPLY of NVDAc to Aave V4 and a BORROW of USDC | The round finishes. Every transaction goes from the executor to the vault, carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021), has an explicit gas limit at or above its floor, uses less gas than the limit and succeeds. For each intent the [preview](/docs/help/glossary#preview) says `OK` and the onchain `Decision` is allowed with reason `OK`. No mismatch is journaled, nothing is left pending, and the credit adapter's debt is within a few units of the amount borrowed. |
+| First (`fork-1`) | One round with a BUY of NVDAc, a SUPPLY of NVDAc to [Aave V4](/docs/help/glossary#aave-v4) and a BORROW of USDC | The round finishes. Every transaction goes from the [executor](/docs/help/glossary#executor) to the vault, carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021), has an explicit gas limit at or above its floor, uses less gas than the limit and succeeds. For each intent the [preview](/docs/help/glossary#preview) says `OK` and the onchain `Decision` is allowed with reason `OK`. No mismatch is journaled, nothing is left pending, and the credit adapter's debt is within a few units of the amount borrowed. |
 | Second (`fork-2`) | The clock moves ahead <Fact name="weekendOffsetDays" /> days, to a Saturday, and the agent tries a BUY of GOOGLc | The agent sends the refusal once, on purpose, so that a `Decision` with `allowed` false exists onchain. Its reason equals the preview's reason and is `MARKET_CLOSED` or `FEED_STALE`. |
 | Third (`fork-3`) | The same BUY again | The agent sends nothing, because it already logged that reason today. The executor's transaction count does not change. |
 | Fourth (`fork-4`) | A SELL of NVDAc in [dry-run](/docs/help/glossary#dry-run) mode, with a fresh journal | Nothing is sent. The journal records what the agent would have done, as `dry-run: would execute` or `dry-run: would log-refusal`. |
@@ -153,7 +156,7 @@ The file is a JSON array with one entry per transaction. The committed log, `age
 
 `runId` is the round, `fn` is the vault function, `gas` is the limit the agent set, and `gasUsed` is what the receipt reports. Only rounds that sent a transaction appear: the first and the second. In the committed log every limit is the floor for `execute`, <Fact name="executeGasFloor" />, and the ledger above shows `gasUsed`.
 
-BUY gas varies slightly between runs. In the two runs the README compares, the BUY figure moved by less than one percent, and SUPPLY, BORROW and the refusal log did not change. The committed log holds the higher of the two BUY figures, <Fact name="gas.buy" />, next to <Fact name="gas.supply" /> for SUPPLY, <Fact name="gas.borrow" /> for BORROW and <Fact name="gas.refusalLog" /> for the refusal log. Expect your BUY figure to be close to that one, not equal to it.
+BUY gas varies slightly between runs. In the two runs the README compares, the BUY figure moved by less than one percent, and SUPPLY, BORROW and the refusal log did not change. The committed log holds the higher of the two BUY figures, <Fact name="gas.buy" />, next to <Fact name="gas.supply" /> for SUPPLY, <Fact name="gas.borrow" /> for BORROW and <Fact name="gas.refusalLog" /> for the refusal log. Expect your BUY figure to be close to that one, and it need not be equal to it.
 
 </Step>
 
@@ -162,7 +165,7 @@ BUY gas varies slightly between runs. In the two runs the README compares, the B
 ## Check it worked
 
 - Vitest reports every test in `agent.fork.test.ts` as passed. A skipped suite did not run, and it is what you get when `BASE_RPC_URL` is not set.
-- If you wrote a gas log, each of its entries has a `gasUsed` below its `gas`, and your SUPPLY, BORROW and refusal figures match the committed ones.
+- If you wrote a gas log, each of its entries has a `gasUsed` below its `gas`, and your SUPPLY, BORROW and refusal figures should match the committed ones, as they did in both runs the README compares.
 - Your BUY `gasUsed` is close to the committed figure. A small difference is normal.
 - The journal folder in your temp directory holds a `journal.jsonl` whose `intent` lines show `OK` for the first round and a refused `decision` for the second.
 
@@ -170,7 +173,7 @@ BUY gas varies slightly between runs. In the two runs the README compares, the B
 
 - **No `BASE_RPC_URL`.** The suite is skipped, not failed, and the output can look clean. Export the variable in the shell that runs the test.
 - **An RPC that is not an archive node.** The fork block is old, so the RPC has to serve historical state.
-- **Upstream Anvil instead of `base-anvil`.** Upstream Anvil 1.9 reverts on `uiMultiplier()`, so the vault cannot be deployed. If the test cannot start the binary, it says `could not start base-anvil` and tells you to set `MAAT_ANVIL_BIN` to the `base-anvil` binary.
+- **Upstream Anvil instead of `base-anvil`.** Upstream Anvil 1.9 reverts on `uiMultiplier()`, so the vault cannot be deployed. If the test cannot start the binary, it says `could not start base-anvil` (or the path you set) and tells you to set `MAAT_ANVIL_BIN` to the `base-anvil` binary.
 - **Port `8547` in use.** The test refuses to attach to a node it did not start: it stops with `port 8547 already answers JSON-RPC; stop that node first`. Stop the other node and run again.
 - **Missing or stale contract artifacts.** The test fails while reading a file under `contracts/out`. Run `forge build` in `contracts/`, and again after any contract change.
 - **Stopping the run during the first swap.** The first swap on a cold fork is very slow on a public RPC, and the test allows long waits on purpose. Give it the 3 to 5 minutes.
