@@ -1,0 +1,77 @@
+---
+title: What is Maat
+description: The problem with agents that trade tokenized stocks around the clock, and how a mandate onchain decides every trade they propose.
+type: overview
+audience: [newcomer, watcher, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - docs/superpowers/specs/2026-11-06-mandate-treasury-design.md
+next: [get-started/how-a-decision-is-made, get-started/quickstart, concepts/nine-checks]
+---
+
+Maat is an experiment in letting an AI agent trade without letting it decide what is safe. This page explains the problem it solves, the one idea behind the answer, and what is built so far, so you can judge the rest of the docs against it.
+
+## The problem
+
+Tokenized stocks on Base trade around the clock, every day of the week. The stocks they track do not. When NYSE is closed, the Chainlink equity feed stops updating and the DEX price has nothing to anchor it. When a company splits its shares or pays a dividend, the [B20](/docs/help/glossary#b20) token's multiplier changes and every valuation shifts. An AI agent that trades by itself will happily buy at a Saturday price nobody can check.
+
+Each hazard below is something the vault checks for, with the reason code it returns.
+
+| Hazard | What goes wrong for an agent that trades around the clock | Reason code |
+| --- | --- | --- |
+| The market is closed | NYSE trades <Fact name="nyseOpen" /> to <Fact name="nyseClose" /> on weekdays. The Chainlink equity feeds on Base update only from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />. On a Saturday or a holiday the DEX price has no live reference | [`MARKET_CLOSED`](/docs/concepts/refusal-codes#market_closed) |
+| The oracle is stale or broken | A feed that stopped updating, or returns zero or a negative answer, cannot value anything | [`FEED_STALE`](/docs/concepts/refusal-codes#feed_stale), [`BAD_PRICE`](/docs/concepts/refusal-codes#bad_price) |
+| The pool has drifted from the oracle | A thin concentrated-liquidity pool can trade far from the feed. The vault compares the pool's time-weighted average price ([TWAP](/docs/help/glossary#twap)) with the oracle. In session on <Fact name="forkDay" /> the gap measured <Fact name="premiumsBps.AAPLc" /> to <Fact name="premiumsBps.NVDAc" /> for the three basket stocks | [`PREMIUM_TOO_HIGH`](/docs/concepts/refusal-codes#premium_too_high) |
+| A corporate action is under way | A split or dividend changes the B20 [uiMultiplier](/docs/help/glossary#uimultiplier). Values computed across the change are wrong, so the vault waits out a cooldown after any change, and refuses while a change is scheduled | [`MULTIPLIER_COOLDOWN`](/docs/concepts/refusal-codes#multiplier_cooldown) |
+| The issuer paused the token, or its transfer policy blocks the path | B20 tokens can pause transfers and enforce sender, receiver and executor policies. A swap that would fail midway should be refused up front | [`TOKEN_PAUSED`](/docs/concepts/refusal-codes#token_paused), [`POLICY_BLOCKED`](/docs/concepts/refusal-codes#policy_blocked) |
+| The agent is simply wrong | It proposes too much, too often, or all in one stock | [`SIZE_LIMIT`](/docs/concepts/refusal-codes#size_limit), [`CONCENTRATION`](/docs/concepts/refusal-codes#concentration) |
+
+Spending caps on an agent wallet stop the last row. They do not know whether NYSE is open, whether the feed is alive or whether a split is pending. Maat checks all of these, onchain, on every trade.
+
+## The answer: the agent proposes, the mandate decides
+
+> The agent proposes. The mandate decides.
+
+The owner deploys a vault with a [mandate](/docs/help/glossary#mandate): which stocks it may trade, how much per trade and per day, the largest gap between the pool and the oracle, the trading session, and the health factor for borrowing. Claude reads the vault's state and proposes trades. The agent can send them only through `execute`, and `execute` runs <Fact name="checksPerTrade" /> market and mandate checks in a fixed order, behind a pause switch and a balance check.
+
+If any check fails, the vault does not revert. It emits `Decision(allowed=false, reason)` and moves no money, so every refused `execute` call leaves a public, typed record. If the executor key leaks, the attacker gets exactly the same <Fact name="checksPerTrade" /> checks.
+
+[How a decision is made](/docs/get-started/how-a-decision-is-made) follows one trade through that path. [The nine checks](/docs/concepts/nine-checks) lists the checks in order.
+
+## What exists today
+
+Maat is one agent with one vault, "Agent #1", owned by the team. It trades only its own treasury of <Fact name="treasuryUsd" />.
+
+<Callout type="fork" title="Fork-tested, not live">
+
+Everything these docs describe has run on a local fork of Base mainnet. No Maat contract is deployed to Base mainnet, and the contracts are unaudited. The owner signs the deploy by hand.
+
+</Callout>
+
+| Stage | What it covers | More |
+| --- | --- | --- |
+| Exists today | The vault and its checks, the market calendar, the swap and credit adapters, the deploy script, the agent runtime and the website are built and tested, including on a Base mainnet fork. | [Built and fork-tested](/docs/get-started/status#built-and-fork-tested) |
+| Next | The owner deploys the vault to Base mainnet, funds it, hands the executor role to the Coinbase CDP wallet, and the first real `Decision` is recorded. | [Next: mainnet](/docs/get-started/status#next-mainnet) |
+| Planned | Revenue from other agents and more. None of it is built. | [Planned, not built](/docs/get-started/status#planned-not-built) |
+
+## Who it is for
+
+Each reader has a first page.
+
+- **New to Maat:** keep reading, then [How a decision is made](/docs/get-started/how-a-decision-is-made).
+- **Watching the agent:** [Read a decision](/docs/get-started/read-a-decision) explains a `Decision` you saw on X or on the site.
+- **Developer or judge:** the [Quickstart](/docs/get-started/quickstart) verifies the claims offline in about five minutes.
+- **Builder:** [Deploy your own vault](/docs/guides/deploy-your-own-vault) runs the same contracts with your own mandate.
+- **Evaluator or partner:** the [Security model](/docs/security/model) says what the vault guarantees and what it does not.
+
+## What it is not
+
+- **Not investment advice.** Maat gives no investment advice.
+- **No shareholder rights.** Maat confers none.
+- **Not offered to US persons.**
+- **Its own money only.** Maat holds only its own treasury.
+- **No API or SDK to integrate today.** What exists is the code in the repository, which you can read, run and deploy yourself.

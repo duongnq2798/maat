@@ -1,0 +1,182 @@
+---
+title: "Quickstart: verify Maat in five minutes"
+description: Clone the repo and run the refusal test, the contract suites, the agent tests and the site build offline. No wallet, RPC or API key.
+type: guide
+audience: [developer, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - contracts/test/MandateVault.t.sol
+  - contracts/foundry.toml
+next: [guides/run-the-tests, guides/reproduce-the-fork-run, security/testing]
+---
+
+By the end of this page you will have watched the vault refuse a Saturday buy without reverting, and run the contract, agent and website tests on your own machine. It is written for developers and evaluators, and it lets you check Maat's claims against its code yourself. You need no wallet, no RPC URL and no API key: every test runs against mocks and fakes, so nothing touches a chain. You do need network access to clone the repository and install packages.
+
+## Prerequisites
+
+Time: about five minutes on a fresh clone. Most of it goes to compiling the contracts and to the two `npm ci` runs.
+
+| Tool | Version | Why |
+| --- | --- | --- |
+| git | Not pinned | Clones the repository and its two direct submodules. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer | `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the B20 stock precompiles need. |
+| Node.js with npm | 24 | Runs the agent tests and the website. |
+| bash | Linux, macOS, or Git Bash on Windows | Runs the commands exactly as written below. |
+
+## The five steps
+
+<Steps>
+
+<Step>
+
+### Clone and initialize the submodules
+
+Only the two direct submodules are needed (forge-std and v4-core). Do not pass `--recursive`.
+
+```bash
+git clone https://github.com/duongnq2798/maat.git
+cd maat
+git submodule update --init
+```
+
+</Step>
+
+<Step>
+
+### Watch the vault refuse a Saturday buy
+
+This unit test sets the clock to Saturday 2026-10-31 at 18:00 UTC and asks the vault to buy a mock [B20](/docs/help/glossary#b20) stock with USDC. The first run compiles the contracts.
+
+```bash
+cd contracts
+forge test --match-test test_refusalIsLoggedNotReverted -vvvv
+```
+
+Expected output, trimmed from README.md, How to evaluate Maat in 5 minutes. A line with only an ellipsis marks removed lines, and hashes are shortened. Gas figures can differ by Foundry version.
+
+```text
+[PASS] test_refusalIsLoggedNotReverted() (gas: 198082)
+…
+    ├─ [109794] MandateVault::execute(Intent({ id: 0xb10e…, action: 0, token: 0x2e23…, amount: 20000000 [2e7], minOut: 0, … }))
+    │   ├─ [4640] MockB20::uiMultiplier() [staticcall]
+    │   │   └─ ← [Return] 1000000000000000000 [1e18]
+    │   ├─ [2838] MockB20::isPaused(0) [staticcall]
+    │   │   └─ ← [Return] false
+    │   ├─ [2843] MockB20::policyId(0xb817…) [staticcall]
+    │   │   └─ ← [Return] 0
+…
+    │   ├─ [8133] MarketCalendar::isOpen(1793469600 [1.793e9], 0) [staticcall]
+    │   │   └─ ← [Return] false
+    │   ├─ emit Decision(intentId: 0xb10e…, action: 0, token: MockB20: [0x2e23…], amount: 20000000 [2e7], allowed: false, reason: 6, rationaleHash: 0x6254…)
+    │   └─ ← [Return] false, 6
+    ├─ [2486] MockERC20::balanceOf(MandateVault: [0x15cF…]) [staticcall]
+    │   └─ ← [Return] 200000000 [2e8]
+    ├─ [3051] MandateVault::usedIntent(0xb10e…) [staticcall]
+    │   └─ ← [Return] true
+```
+
+Read the trace from the top. After taking a snapshot of the token's multiplier, the vault checks that the token is in the mandate (check 1, a storage read that the trace does not show), reads its pause flag (check 2) and its transfer-policy legs (check 3), then asks the calendar, which says the market is closed (check 4). `reason: 6` is `MARKET_CLOSED` in [Types.sol](https://github.com/duongnq2798/maat/blob/main/contracts/src/Types.sol). `execute` returned normally, so it did not revert. The vault's USDC balance read near the end still returns `200000000`, the amount it started with, and `usedIntent` returns `true`: the intent id is spent, so the same request cannot be replayed.
+
+</Step>
+
+<Step>
+
+### Run every contract unit test
+
+This covers the vault, the guards, the calendar, the price math and both adapters. Run it in the same `contracts` folder.
+
+```bash
+forge test --no-match-path "test/fork/*"
+```
+
+Expected output, from README.md, How to evaluate Maat in 5 minutes, with the counts replaced:
+
+```text
+Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
+```
+
+</Step>
+
+<Step>
+
+### Run the agent's tests
+
+Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing is sent and nothing is billed.
+
+```bash
+cd ../agent
+npm ci
+npm test
+```
+
+Expected output, from README.md, How to evaluate Maat in 5 minutes, with the counts replaced:
+
+```text
+ Test Files  … passed (…)
+      Tests  … passed (…)
+```
+
+</Step>
+
+<Step>
+
+### Run the website's tests and build it
+
+The website tests read the Solidity sources and the committed fork-run gas log, so a number on a page that drifts from the code fails here. The same tests check these docs: every number comes from a fact checked against the code, and every code excerpt is compared with the file it quotes.
+
+```bash
+cd ../web
+npm ci
+npm test
+NEXT_TELEMETRY_DISABLED=1 npm run build
+npm run check:out
+```
+
+Expected output, trimmed, with the counts replaced. The test lines and the marker for removed lines are from README.md, How to evaluate Maat in 5 minutes. The last line is from the check run at commit 46330e7.
+
+```text
+ Test Files  … passed (…)
+      Tests  … passed (…)
+...
+out/ is ready to deploy (landing and … docs pages checked)
+```
+
+`npm run dev` serves the site on http://localhost:3000, and these docs are at `/docs`.
+
+</Step>
+
+</Steps>
+
+## Check it worked
+
+- Every Foundry suite reports `0 failed`. Vitest prints only `passed` counts when all tests pass, and a `failed` count appears next to them when one does not.
+- The refusal trace from step 2 shows `allowed: false, reason: 6`.
+- The last line of the website check starts with `out/ is ready to deploy`.
+
+If something else shows up, [Troubleshooting](/docs/help/troubleshooting) lists symptoms, causes and fixes.
+
+## Optional: the fork tests
+
+The contract fork tests run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. Nothing is broadcast: Foundry forks the chain locally.
+
+```bash
+cd contracts   # from the repository root
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
+forge test --match-path "test/fork/*"
+```
+
+Expected output, from README.md, How to evaluate Maat in 5 minutes, with the counts replaced:
+
+```text
+Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
+```
+
+[Run the tests](/docs/guides/run-the-tests) covers every suite, including the agent's fork tests, and what each one needs.
+
+## Common mistakes
+
+- **Foundry is too old.** The `hardfork = "base:Cobalt"` setting needs Foundry 1.8.4 or newer. Run `forge --version` and update Foundry if it is older.
+- **`--recursive` on Windows.** The nested submodules of v4-core hit the Windows path-length limit, and Maat does not need them. Clone into a short path and run `git submodule update --init` without `--recursive`.
+- **CRLF line endings.** The repository's `.gitattributes` checks text files out with LF on every OS, so tests that parse source files behave the same on Windows. If your files have CRLF line endings anyway, see [Troubleshooting](/docs/help/troubleshooting) for the symptom and the fix.

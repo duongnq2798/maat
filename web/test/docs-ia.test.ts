@@ -6,7 +6,14 @@ import { DOCS_IA, IA_SLUGS } from "@/lib/docs/ia";
 import { DOCS_DIR, docsPages } from "./helpers/docs";
 
 /** The pages written so far. Each content task (7 to 18) appends its slugs; Task 18b checks this is the whole IA. */
-const SHIPPED: readonly string[] = ["index"];
+const SHIPPED: readonly string[] = [
+  "index",
+  "get-started/what-is-maat",
+  "get-started/how-a-decision-is-made",
+  "get-started/quickstart",
+  "get-started/read-a-decision",
+  "get-started/status",
+];
 
 const written = docsPages().map((p) => p.slug);
 const meta = (dir: string) => JSON.parse(readFileSync(join(DOCS_DIR, dir, "meta.json"), "utf8")) as unknown;

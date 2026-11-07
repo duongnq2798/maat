@@ -7,9 +7,18 @@ status: fork-tested
 lastReviewed: 2026-11-07
 sources:
   - README.md
+next: [get-started/what-is-maat, get-started/quickstart]
 ---
 
-Maat is an AI agent that proposes trades in tokenized stocks. A vault on Base weighs every proposal
-against an onchain mandate and refuses anything that fails a check.
+Maat is an AI agent that trades tokenized stocks on Base from its own treasury: Claude proposes every move, an onchain mandate decides, and every verdict is recorded. Every trade it proposes passes <Fact name="checksPerTrade" /> checks before any funds move.
 
-Every trade it proposes passes <Fact name="checksPerTrade" /> checks before any funds move.
+<RouterCards />
+
+<DecisionLoop />
+
+## Where to find things
+
+- **Search:** press Ctrl K on any page to search the docs.
+- **Code:** [GitHub](https://github.com/duongnq2798/maat) holds the contracts, the agent, the tests and the specs behind every page.
+- **News:** [@maatonbase on X](https://x.com/maatonbase) is the project's account.
+- **What is built:** [Status and roadmap](/docs/get-started/status) says what is fork-tested, what is next and what is planned.

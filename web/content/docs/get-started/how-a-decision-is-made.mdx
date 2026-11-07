@@ -1,0 +1,130 @@
+---
+title: How a decision is made
+description: "Follow one trade from vault state to the Decision event: the policy, Claude's proposal, the preview, the send and the nine checks."
+type: concept
+audience: [newcomer, watcher, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - agent/src/loop/runOnce.ts
+  - agent/src/llm/schema.ts
+  - agent/src/exec/sender.ts
+  - contracts/src/MandateVault.sol
+  - contracts/src/IMandateVaultEvents.sol
+next: [concepts/nine-checks, get-started/read-a-decision, concepts/refusal-codes]
+---
+
+This page follows one trade from the moment the agent reads the vault to the moment the vault records its verdict. You will see which steps belong to the agent, which one belongs to the contract, and why only the contract's step is trusted.
+
+## The loop in four steps
+
+One round of the agent loop has four steps. The agent runs a round every <Fact name="loopMinutes" /> while the US market is in session and every <Fact name="offSessionMinutes" /> outside it.
+
+1. [Read the vault](#step-1-read-the-vault): balances, prices, the mandate and the market, all at one block.
+2. [Policy, then Claude](#step-2-the-policy-and-claude): rules suggest trades, and Claude proposes intents, each with a rationale.
+3. [Preview, then send](#step-3-preview-and-send): each intent is previewed first, and only worthwhile calls cost gas.
+4. [The vault decides](#step-4-the-vault-decides): the contract runs its <Fact name="checksPerTrade" /> checks and records the verdict.
+
+Steps 1 to 3 run in the agent, off chain. Step 4 runs in the vault, onchain.
+
+<Architecture />
+
+The agent-side steps save gas and keep a readable journal. None of them is trusted: the vault runs every check again itself.
+
+## Step 1: read the vault
+
+The agent reads the vault, its tokens, their feeds and its Aave position at one pinned block, so every number in the round comes from the same moment. If a required read fails, the agent does nothing and writes the failure to its journal. It also stops if the vault's executor is not its own address.
+
+Before it asks for any proposal, the agent settles any send that an earlier round left pending, by looking the intent up with `usedIntent` and reading its `Decision`. In live mode it also sends `syncMultiplier` for any stock whose [uiMultiplier](/docs/help/glossary#uimultiplier) changed, so the vault records the change.
+
+## Step 2: the policy and Claude
+
+A rule-based policy turns the state into suggestions. It keeps an equal-weight basket of the three stocks with <Fact name="cashReservePct" /> held in USDC, and it rebalances when a weight drifts more than <Fact name="rebalanceDriftPct" /> from its target. It suggests borrowing when cash covers less than <Fact name="runwayDays" /> of compute cost.
+
+The suggestions are arithmetic, not orders. Claude can adopt, resize or drop them, and proposing nothing is a valid answer.
+
+A proposal from Claude is JSON that must match a schema: at most <Fact name="maxIntents" /> intents, each with an action, a stock, a dollar amount and a rationale of at most <Fact name="maxRationaleChars" /> characters. The agent validates the answer again with zod and clamps each amount to what the vault can actually act on.
+
+```typescript title="agent/src/llm/schema.ts#L3-L17"
+export const LLM_ACTIONS = ["BUY", "SELL", "SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY"] as const;
+export const LLM_SYMBOLS = ["USDC", "NVDAc", "GOOGLc", "AAPLc"] as const;
+
+/** The bounds BatchSchema enforces; SYSTEM_PROMPT states the same numbers to Claude. */
+export const MAX_INTENTS = 6;
+export const MAX_RATIONALE_CHARS = 600;
+export const MAX_SUMMARY_CHARS = 1200;
+export const MAX_AMOUNT_USD = 1_000_000;
+
+export const ProposalSchema = z.strictObject({
+  action: z.enum(LLM_ACTIONS),
+  symbol: z.enum(LLM_SYMBOLS),
+  amountUsd: z.number().positive().max(MAX_AMOUNT_USD),
+  rationale: z.string().min(1).max(MAX_RATIONALE_CHARS),
+});
+```
+
+Claude's schema cannot express `PAY_EXPENSE`: it is not in `LLM_ACTIONS`. When the agent owes at least <Fact name="billMinUsd" /> for its Claude usage, the agent's own code adds the `PAY_EXPENSE` intent, and pays that bill before any proposal.
+
+The agent keeps each rationale in its journal and puts `keccak256(rationale)` onchain as the `rationaleHash` of the intent. That lets anyone match a `Decision` to the reasoning behind it. [Read a decision](/docs/get-started/read-a-decision) shows how.
+
+## Step 3: preview and send
+
+For each proposal the agent builds an `Intent` and calls `previewIntent`, a read-only `eth_call` made as the executor. The vault answers with the reason `execute` would reach, without a transaction, so the agent spends gas only on calls worth sending.
+
+An intent whose preview is `OK` is sent. A refused intent is sent only when the refusal is worth recording onchain (a market, policy, size, concentration or health-factor refusal) and the agent has not logged that reason yet on the current UTC day. Every other refusal, such as `INSUFFICIENT_BALANCE`, is only written to the journal. In dry-run mode, which is the default, the agent sends nothing.
+
+Sending goes through `GuardedSender`, which refuses everything except a call to the vault's `execute`, `syncMultiplier` or `notifyRevenue`. Every send carries an explicit gas limit, at least <Fact name="executeGasFloor" /> for `execute` and never more than <Fact name="maxGas" />, because the vault catches inner failures and a plain gas estimate can come out too low for the swap. It also carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The wallet behind it is a Coinbase CDP Server Wallet whose account policy allows only zero-value transactions to the vault on Base and rejects raw hash signing.
+
+Two guards protect the round itself. The agent stores each `execute` as pending before it sends it, so a send that fails after broadcast, or a lost receipt, is settled against `usedIntent` in the next round and a bill is never paid twice. And if an intent the preview called `OK` comes back refused, the agent journals a mismatch and halts the round.
+
+## Step 4: the vault decides
+
+`execute` is the executor's only way to move anything.
+
+```solidity title="contracts/src/MandateVault.sol#L102-L113"
+    function execute(Intent calldata intent) external returns (bool allowed, Reason reason) {
+        if (msg.sender != executor) revert NotExecutor();
+        if (usedIntent[intent.id]) revert IntentAlreadyUsed(intent.id);
+        usedIntent[intent.id] = true;
+        if (_hasMarket(tokenConfig[intent.token])) _syncMultiplier(intent.token);
+
+        uint256 price;
+        (reason, price) = _check(intent);
+        if (reason == Reason.OK) reason = _perform(intent, price);
+        allowed = reason == Reason.OK;
+        emit Decision(intent.id, intent.action, intent.token, intent.amount, allowed, reason, intent.rationaleHash);
+    }
+```
+
+Read it top to bottom:
+
+- Only the executor can call it, and each intent id works once, refused or not. These two cases are the only reverts by design, so a refused intent still uses up its id and cannot be replayed.
+- `_check` runs the checks in a fixed order, and the first failure decides the reason. [The nine checks](/docs/concepts/nine-checks) lists them.
+- If every check passes, `_perform` carries out the swap or the credit action. For a swap the vault computes its own slippage floor from the oracle price and the mandate's `maxSlippageBps` (<Fact name="mandate.maxSlippageBps" /> by default), whatever `minOut` the agent sent. The agent always sends 0.
+- The last line emits `Decision`, whether the intent was allowed or not. A refusal does not revert: it records `allowed=false` and the reason, and moves no money.
+
+## Worked example: the Saturday buy
+
+The agent's end-to-end test runs this on a fork of Base mainnet pinned at block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />. A scripted proposer stands in for Claude.
+
+1. **Thursday <Fact name="forkTimeEt" />.** The agent reads the vault, previews a BUY of NVDAc and sends it. The preview says `OK`, every check passes, and the vault records `Decision(allowed=true, reason=OK)`. The same run also supplies the stock to Aave V4 and borrows USDC against it.
+2. **The clock moves.** The test moves the fork's clock ahead <Fact name="weekendOffsetDays" /> days, to Saturday. The agent proposes a BUY of GOOGLc.
+3. **The preview.** `previewIntent` returns `MARKET_CLOSED`. That refusal is worth recording and the agent has not logged it that day, so it sends the intent.
+4. **The verdict.** The vault's calendar says the market is closed. The vault emits `Decision(allowed=false, reason=MARKET_CLOSED)`, the transaction uses <Fact name="gas.refusalLog" /> gas, and no money moves. The call does not revert.
+
+<Callout type="fork" title="Fork only">
+
+The Saturday round is the same fork with the clock moved forward, not a real Saturday block. The proposer is scripted, and no output from the real Claude API is committed yet. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it, and [Read a decision](/docs/get-started/read-a-decision) shows all four decisions of the run.
+
+</Callout>
+
+## What none of the agent's steps can do
+
+Steps 1 to 3 belong to the agent, and none of them is trusted. A confused Claude, a bug in the agent or a stolen executor key still meets the vault's checks. Whoever holds only the executor key cannot:
+
+- skip any of the <Fact name="checksPerTrade" /> checks, trade outside the session or the stock list, or beat the default <Fact name="mandate.perTradeCapUsd" /> per-trade and <Fact name="mandate.dailyCapUsd" /> per-day caps;
+- send funds anywhere: swaps go to the allowlisted pool, borrowed USDC and collateral come back to the vault, and `PAY_EXPENSE` pays only allowlisted payees;
+- push the projected health factor below <Fact name="mandate.minHealthFactor" />, or below <Fact name="mandate.targetHealthFactor" /> inside the de-risk window;
+- change the mandate, withdraw or unpause the vault. Those are owner-only, and the owner can also pause the vault or rotate the executor key at any time, instantly.
+
+Claude itself cannot choose the verdict, set the slippage or pay a bill. [Timelock and roles](/docs/concepts/timelock-and-roles) covers who can do what, and the fork test `test_compromisedExecutorIsBounded` in [MandateVaultFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) tries a leaked executor key against real Base state.

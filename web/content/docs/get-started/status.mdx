@@ -1,0 +1,77 @@
+---
+title: Status and roadmap
+description: What is built and fork-tested today, what is next before mainnet, and what is planned but not built, with what each step needs.
+type: overview
+audience: [newcomer, evaluator, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - deployments/README.md
+  - docs/superpowers/specs/2026-11-07-maat-web-design.md
+next: [security/not-claimed, guides/deploy-your-own-vault]
+---
+
+This page says what exists, what comes next and what is only an idea, so you can tell a claim about Maat from a plan. Maat is unaudited and is not deployed on Base mainnet yet. Everything built so far has been tested, including on a local fork of Base mainnet.
+
+## What the three labels mean
+
+Every page in these docs carries one of three labels next to its title.
+
+| Label | Meaning | Today |
+| --- | --- | --- |
+| <StatusBadge status="fork-tested" /> | Exercised on a Base mainnet fork, not deployed. | Every page in these docs. |
+| <StatusBadge status="live" /> | Deployed to Base mainnet by the owner, with the addresses recorded in `deployments/README.md`. | None. No Maat contract is deployed. |
+| <StatusBadge status="planned" /> | Designed but not built. | Planned work is listed on this page, under Planned, not built. |
+
+## Built and fork-tested
+
+This table follows the Status section of the README, without the test counts. The Status column says how each part was tested. Nothing was broadcast to mainnet.
+
+| Component | Status | Where |
+| --- | --- | --- |
+| `MandateVault`: holds USDC and B20 stocks, runs the <Fact name="checksPerTrade" /> checks, logs every verdict as `Decision`, <Fact name="timelockHours" /> timelock on every rule change | Built and tested, including fork tests. Not deployed on mainnet | [`contracts/src/MandateVault.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol) |
+| `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | Built and tested | [`contracts/src/GuardLib.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/src/GuardLib.sol) |
+| `MarketCalendar`: NYSE session in America/New_York, daylight saving computed onchain, holidays and early closes | Built and tested. Preloaded with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes up to 2027-01-01 | [`contracts/src/MarketCalendar.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MarketCalendar.sol) |
+| `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | Built, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol) |
+| `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | Built, unit and fork tested (the full supply, borrow, repay and withdraw loop) | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol) |
+| Deploy script and Base mainnet configuration | Built, and simulated on a fork. The owner has not broadcast it yet | [`contracts/script`](https://github.com/duongnq2798/maat/tree/main/contracts/script) |
+| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-transaction reconcile | Built and tested, with fork integration tests. The Claude proposer is tested against a fake client and the fork run uses a scripted proposer. No output from the real Claude API is committed yet | [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent) |
+| ERC-8021 Builder Code on every agent transaction | Built and tested, including in the fork run. No real code is registered yet | [`agent/src/exec/builderCode.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/builderCode.ts) |
+| Coinbase CDP Server Wallet as the executor, with an account policy | Built, and tested against a fake CDP client only. Never run against the real CDP | [`agent/src/exec/cdpSender.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpPolicy.ts) |
+| Landing page with the interactive decision engine and the labeled fork ledger | Built and tested. A static export with no wallet, no RPC calls, no analytics and no cookies | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
+
+There is no third-party audit. Treat the contracts as unaudited. [What Maat does not claim](/docs/security/not-claimed) lists the known limits.
+
+## Next: mainnet
+
+The owner deploys by hand. Every mainnet transaction is signed from the owner's own wallet, and no script in the repository holds a key. The checklist, in order:
+
+1. **Deploy.** Simulate with the real configuration and check the printed owner address character for character, because the owner is immutable. Then broadcast. The commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault).
+2. **Fund.** Approve the USDC, then call `fund(amount)` on the vault. Do not transfer USDC straight into it, because `notifyRevenue` would record that as revenue.
+3. **Hand the executor role to the CDP wallet.** Until then the executor is the owner's own wallet. The agent's `cdp-setup.ts` script prints the CDP executor address, and the owner then calls `setExecutor`.
+4. **Record the first real `Decision`.** A smoke test sends one small buy during US market hours, which must be allowed, and one buy on a weekend, which must be refused with `MARKET_CLOSED`. The addresses and transaction hashes then go into the table in `deployments/README.md`.
+
+Until the owner deploys, no page in these docs is labeled live, and the site's ledger shows only the fork run.
+
+## Planned, not built
+
+<Callout type="note" title="Planned">
+
+None of this is built. W2 and W3 are the next two stages of the website, as the web design spec lays them out.
+
+1. **A live ledger, a dashboard and a Base App mini-app manifest (W2).** The ledger would read `Decision` events from the mainnet vault. It needs the mainnet deploy first.
+2. **An x402 Guard Service.** Other agents would pay <Fact name="x402Price" /> per "is this trade safe now?" check, and that USDC would fund the treasury loop. It is not implemented anywhere in the repository.
+3. **A Guard Service HTTP API, an MCP server and a Bankr Skill** that expose the same check.
+4. **`MandateFactory`.** Any agent would deploy its own vault with its own mandate. It is a stretch goal.
+5. **A daily diary and a replay page for the fork scenarios (W3).**
+
+</Callout>
+
+## How this page stays honest
+
+- Every page sets its label in its frontmatter, and a test rejects any value other than the three above.
+- Nothing is labeled live until the owner deploys. The address table in `deployments/README.md` is empty today.
+- Numbers come from facts that tests check against the contracts, the agent and the fork-run gas log. The planned x402 price cites the design spec, because nothing in the code can prove it.
+- Test counts are not shown, because they go stale. The [Quickstart](/docs/get-started/quickstart) shows how to run the suites yourself.
+- The date at the top of each page, Last reviewed, says when the page was last checked against its sources.

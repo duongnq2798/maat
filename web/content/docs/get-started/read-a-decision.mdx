@@ -1,0 +1,93 @@
+---
+title: Read a decision
+description: What each field of a Decision event means, how to read a refusal, and how to match a ledger row to its transaction and rationale.
+type: concept
+audience: [watcher, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/IMandateVaultEvents.sol
+  - contracts/src/Types.sol
+  - web/content/decisions.ts
+  - agent/src/ledger/journal.ts
+next: [concepts/refusal-codes, guides/watch-decisions-onchain]
+---
+
+A `Decision` event is the vault's public record of one verdict. This page explains the event field by field, shows how to read a refusal, and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. You will need it whenever you look at a Maat trade on X, on the site or onchain.
+
+## The Decision event
+
+Every `execute` call that does not revert emits one `Decision`, whether the intent was allowed or refused. The vault declares it in `contracts/src/IMandateVaultEvents.sol`:
+
+<EventSignature name="Decision" />
+
+`intentId` and `token` are indexed, so you can filter the vault's logs by either one. The other fields sit in the log's data.
+
+## Field by field
+
+| Field | Type | Indexed | Meaning |
+| --- | --- | --- | --- |
+| `intentId` | `bytes32` | yes | The id of the intent. Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the round, and the vault only requires that it was never used before. |
+| `action` | `Action` | no | What the intent asked for, as an enum id (see the table below). |
+| `token` | `address` | yes | The token the intent names: a stock for a buy, a sell and the collateral actions, and USDC for borrowing, repaying and paying the compute bill. |
+| `amount` | `uint256` | no | The size in the token's own raw units, not dollars. For a buy it is USDC to spend, with 6 decimals. |
+| `allowed` | `bool` | no | `true` only when `reason` is `OK`. `false` means the vault refused or the action failed. |
+| `reason` | `Reason` | no | `OK` when allowed. Otherwise the first check that failed, or the kind of failure. |
+| `rationaleHash` | `bytes32` | no | `keccak256` of the rationale text Claude gave for the intent. The text itself is not onchain. |
+
+`Action` is an enum, so the log carries its position in the list. The full definitions are in the [Types reference](/docs/reference/types).
+
+| Id | Action | What `token` and `amount` mean |
+| --- | --- | --- |
+| 0 | `BUY` | The stock to buy. USDC to spend. |
+| 1 | `SELL` | The stock to sell. Its raw amount. |
+| 2 | `SUPPLY` | The stock to post as collateral. Its raw amount. |
+| 3 | `WITHDRAW_COLLATERAL` | The stock to take back. Its raw amount. |
+| 4 | `BORROW` | USDC. The amount to borrow. |
+| 5 | `REPAY` | USDC. The amount to repay. |
+| 6 | `PAY_EXPENSE` | USDC. The amount to pay to an allowlisted payee, which is in the intent and not in the event. |
+
+`Reason` works the same way. `OK` is 0, and the <Fact name="refusalCount" /> refusals have the ids 1 to <Fact name="refusalCount" />, in an enum that only ever grows. In the fork run you meet only two of them: `OK` (0) and `MARKET_CLOSED` (6). [Refusal codes](/docs/concepts/refusal-codes) lists every id with its meaning.
+
+## Reading a refusal
+
+Start with `allowed`. When it is `true`, the checks passed and the action ran. When it is `false`, look at `reason`:
+
+- **A check failed.** Most reasons name the check that refused, such as `MARKET_CLOSED` or `SIZE_LIMIT`. The vault stops at the first failure, in the fixed order of [the nine checks](/docs/concepts/nine-checks), so the reason is the earliest check the intent failed. Market checks come before balance and size checks, so an empty vault on a holiday still reports the holiday.
+- **The action itself failed.** `SWAP_FAILED`, `TRANSFER_FAILED` and `CREDIT_FAILED` mean the checks passed but the swap, the transfer or the credit call failed inside the vault. `execute` still did not revert.
+
+Either way the intent id is spent, so the same intent can never run again. The agent may propose the same trade later, with a new id.
+
+A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent sends a given refusal reason at most once per UTC day and only journals the rest.
+
+## From a ledger row to its reasoning
+
+The ledger on the site shows the decisions of the fork run. These are the same rows, read from the same data:
+
+<ForkLedger />
+
+Each column comes from the event or from the transaction around it:
+
+| Column | Where it comes from |
+| --- | --- |
+| Time (ET) | New York time of the round. |
+| Intent | The `action`, the symbol of the `token`, and the `amount` converted to dollars. |
+| Decision | `allowed` and `reason`, with the reason by name. |
+| Gas | The gas the transaction used. It is on the transaction receipt, not in the event. |
+| Note | A short comment written for the site. It is not onchain. |
+
+To match a decision to the reasoning behind it:
+
+1. Open the transaction that emitted the `Decision` and read `intentId` and `rationaleHash` from the log.
+2. In the agent's journal, `data/journal.jsonl`, find the line of kind `intent` with the same `intentId`. It holds the `rationale` text, the `rationaleHash`, the preview result, and once the receipt is in, the `txHash`, `gasUsed` and the `decision`. A line of kind `sent` is written just before the receipt.
+3. Compute `keccak256` over the UTF-8 bytes of the `rationale` and compare it with `rationaleHash`. If they match, the text is what the agent committed to when it sent the intent.
+
+The journal is a file on the operator's machine. Only the agent's operator holds it, so nobody else can run steps 2 and 3 unless the operator shares the file. The fork rows have no mainnet transaction either, because they ran on a local fork.
+
+## What a decision does not tell you
+
+- **The reasoning.** The event holds only a hash. The text is in the journal.
+- **The gas or the Builder Code.** Both are on the transaction. The agent appends the [Builder Code](/docs/help/glossary#builder-code-erc-8021) to the calldata of every transaction it sends, and owner-signed transactions do not carry it.
+- **Whether the trade was a good idea.** `allowed` means the intent stayed inside the mandate. A bad trade inside every limit is still allowed.
+- **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged that UTC day. A missing `Decision` is therefore not proof that the agent did not try.
+- **The dollar value.** `amount` is in raw token units. The site's ledger converts it.
