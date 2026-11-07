@@ -62,20 +62,20 @@ The table below maps the guarantees to their tests, in the contracts and in the 
 | --- | --- | --- | --- |
 | **[Refusal](/docs/help/glossary#refusal) is logged, not reverted** | [`test_refusalIsLoggedNotReverted`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A `BUY` on a Saturday returns `(false, MARKET_CLOSED)`, emits `Decision`, leaves the USDC where it is and spends the intent id |
 | **A real weekend is refused** | [`test_weekendBuyIsRefusedInBothModes`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Fork | The same refusal at a real Saturday block, in both session modes |
-| **Replay reverts** | [`test_replayReverts`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A refused intent sent a second time reverts with `IntentAlreadyUsed` |
+| **Replay reverts** | [`test_replayReverts`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A used intent id reverts with `IntentAlreadyUsed` |
 | **[Slippage floor](/docs/help/glossary#slippage-floor)** | [`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A swap that returns less than the oracle-based floor fails, whatever `minOut` the agent sent |
 | **[Timelock](/docs/help/glossary#timelock)** | [`test_mandateChangeNeedsTimelock`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | A change cannot be applied unqueued or early, and applies once the wait is over |
 | **Repay while paused** | [`test_repayIsAllowedWhileVaultPaused`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) | Unit, mock credit adapter | `REPAY` works on a paused vault, while `SUPPLY`, `BORROW` and `WITHDRAW_COLLATERAL` return `VAULT_PAUSED` |
 | **Compromised [executor](/docs/help/glossary#executor) bounded** | [`test_compromisedExecutorIsBounded`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Fork, no credit adapter | A payment to a non-payee and a buy over the cap are refused, `withdraw` reverts, and the vault keeps its USDC |
-| **Only the [owner](/docs/help/glossary#owner) can act as owner** | [`test_executorCannotUseOwnerFunctions`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | Every owner function reverts with `NotOwner` when the executor calls it |
+| **Only the [owner](/docs/help/glossary#owner) can act as owner** | [`test_executorCannotUseOwnerFunctions`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol), [`test_nonOwnerCannotCancelChange`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol), [`test_nonOwnerCannotApplyReadyChanges`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | The executor calling `withdraw`, `fund`, `setExecutor`, `setPaused` or a `queue` function reverts with `NotOwner`, and so does a non-owner calling `cancelChange` or an `apply` function |
 | **A rotated key stops working** | [`test_rotatingExecutorRevokesOldOne`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | After `setExecutor`, the old executor's `execute` reverts with `NotExecutor` |
 | **[Fail closed](/docs/help/glossary#fail-closed)** | [`test_revertingIsPausedFailsClosed`](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) and its siblings | Unit | A reverting pause, policy, calendar or multiplier read gives a refusal and no revert. [The security model](/docs/security/model#fail-closed) lists them |
 | **Concentration counts debt** | [`test_concentrationNetsCreditDebt`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) | Unit, mock credit adapter | Borrowing does not loosen the weight cap, because it is measured on equity net of debt |
 | **The calendar only gets stricter** | [`test_ownerCanOnlyMakeItStricter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) | Unit | The calendar owner can add a holiday or an earlier close, and cannot loosen either |
-| **[Preview](/docs/help/glossary#preview) mismatch halts** | `runOnce.test.ts`: "halts when the preview said OK but the vault refused" | Agent unit | The round stops and the journal records the mismatch |
-| **Exactly-once sends** | `runOnce.test.ts`: "reconciles a send that threw after broadcast instead of sending again" | Agent unit | A send that threw after broadcast is reconciled in the next round, and nothing is sent twice |
-| **The sender only reaches the vault** | `sender.test.ts`: "refuses another target", "refuses owner functions", "refuses calldata that does not decode" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
-| **The gas limit is bounded** | `sender.test.ts`: "refuses a missing, zero or over-cap gas limit" | Agent unit | A missing, zero or over-cap limit is refused, and a limit at the cap is sent |
+| **[Preview](/docs/help/glossary#preview) mismatch halts** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "halts when the preview said OK but the vault refused" | Agent unit | The round stops and the journal records the mismatch |
+| **Exactly-once sends** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "reconciles a send that threw after broadcast instead of sending again" | Agent unit | A send that threw after broadcast is reconciled in the next round, and nothing is sent twice |
+| **The sender only reaches the vault** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses calldata that does not decode" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
+| **The gas limit is bounded** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses a missing, zero or over-cap gas limit" | Agent unit | A missing, zero or over-cap limit is refused, and a limit at the cap is sent |
 
 ## Fork tests against real Base state
 
@@ -100,7 +100,7 @@ What a [fork test](/docs/help/glossary#fork-test) does not show:
 
 ## The agent
 
-The agent's unit tests use fakes: a fake Claude client, a fake CDP client and fake chain clients in `agent/test/fakes`. They test what the agent does with a proposal or a receipt, round by round, and they test the guards that sit in front of the key.
+The agent's unit tests use fakes. The fake chain, receipts and sender are in [`agent/test/fakes`](https://github.com/duongnq2798/maat/tree/main/agent/test/fakes) (`fakeChain.ts`, `fakeReceipts.ts` and `fakeSender.ts`). The Claude client stub is written inline in [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts), and the fake CDP client is in [`cdpSender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpSender.test.ts). They test what the agent does with a proposal or a receipt, round by round, and they test the guards that sit in front of the key.
 
 | Test file | What it covers |
 | --- | --- |
@@ -127,7 +127,7 @@ This is the mismatch test, the one that makes the agent stop when its preview an
     });
 ```
 
-The agent's fork run, `agent.fork.test.ts`, goes one step further. It deploys the contracts with the real deploy script on a local fork, funds the vault, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
+The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts), goes one step further. It deploys the contracts with the real deploy script on a local fork, funds the vault, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
 
 <Callout type="warning" title="Not exercised">
 
@@ -162,7 +162,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
 | **Mainnet** | No Maat contract is deployed, so every test is a unit test or a fork |
 | **A real split or dividend** | The assumption that the feed includes the multiplier has not been observed across one |
-| **Some failure paths** | No unit test makes the feed or the pool revert, none makes a plain `balanceOf` or `decimals` read revert, and none calls `withdraw` with a token that has no code |
+| **Some failure paths** | No unit test makes the feed's `latestRoundData` or the pool's `observe` revert during `execute`, none makes a plain `balanceOf` or `decimals` read revert, and none calls `withdraw` with a token that has no code |
 | **A hostile owner** | The vault has no defense against one, so there is nothing to test |
 | **Continuous integration** | There is no CI in this repository yet. The suites run when someone runs them, so any claim here is as fresh as the last run |
 

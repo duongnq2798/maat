@@ -60,7 +60,7 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 ## Caps are simple
 
-**What it means for you.** The daily cap is a counter per UTC day, not a rolling window, so spending just before and just after midnight UTC draws on two days' caps within a short time. Credit actions (`SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`) are bounded by the [health factor](/docs/help/glossary#health-factor) and not by the trade caps. Bill payments share the daily cap with trades, so a bill can use room that trades would have used, and a day of trading can leave no room for the bill.
+**What it means for you.** The daily cap is a counter per UTC day, not a rolling window, so spending just before and just after midnight UTC draws on two days' caps within a short time. Credit actions (`SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`) are not limited by the trade caps. A `BORROW`, and a `WITHDRAW_COLLATERAL` made while debt is open, must clear the [health factor](/docs/help/glossary#health-factor) floor. `SUPPLY` and `REPAY` have no size limit other than what the vault holds. Bill payments share the daily cap with trades, so a bill can use room that trades would have used, and a day of trading can leave no room for the bill.
 
 **What would fix it.** A rolling window, and separate caps for credit actions and for bills. None is built.
 
@@ -86,11 +86,11 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 **What it means for you.** `npm audit` reports high-severity advisories in the agent, in zod 3 and abitype nested inside `@coinbase/cdp-sdk`. There is no safe override yet. The agent's README describes them as denial-of-service issues that touch only internal data. In the website, `npm audit` reports moderate and high advisories in its dev-only tools: `fflate` under `satori`, which renders the brand images, and `compression` under `serve`, which the end-to-end tests use. None of the website's flagged packages ships in the static site. The counts change, so none is given here: run `npm audit` in `agent/` and in `web/` for today's list.
 
-**What would fix it.** For the agent, a release of `@coinbase/cdp-sdk` that uses zod 4. The README warns that `npm audit fix --force` would downgrade the SDK to an old version, which is not a fix. For the website, updating or replacing the two dev tools.
+**What would fix it.** For the agent, a release of `@coinbase/cdp-sdk` that uses zod 4. The agent's README warns that `npm audit fix --force` would downgrade the SDK to an old version, which is not a fix. For the website, updating or replacing the two dev tools.
 
 ## Found while writing these docs: withdrawing a token that has no code
 
-This one is not in the README's list. It was found while writing these docs, by reading `withdraw` and the library it calls. A throwaway Foundry test confirmed it locally, and that test is not in the repository.
+This one is not in the README's list. It was found while writing these docs, by reading `withdraw` and the library it calls. The behavior follows from the code as cited below.
 
 `MandateVault.withdraw(token, amount)` sends tokens to the owner with `TokenTransfer.safeTransfer`:
 
