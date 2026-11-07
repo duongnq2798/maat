@@ -120,6 +120,21 @@ describe("parity with the contracts and the fork run (spec §5.4)", () => {
     expect(found).toEqual(FACTS.premiumsBps.value);
   });
 
+  it("agent policy: target weight, rebalance drift and loop cadence", () => {
+    const policy = readRepo("agent/src/policy.ts");
+    const param = (name: string) => {
+      const v = new RegExp(`DEFAULT_POLICY[^;]*\\b${name}:\\s*([\\d_]+)`).exec(policy)?.[1];
+      if (v === undefined) throw new Error(`${name} not found in DEFAULT_POLICY in agent/src/policy.ts`);
+      return Number(v.replaceAll("_", ""));
+    };
+    // policy.ts splits what is not held in USDC equally across the basket, rounding down to whole bps.
+    const basket = fieldValues(config, "maxWeightBps").length;
+    expect(Math.floor((10_000 - param("cashReserveBps")) / basket) / 100).toBeCloseTo(FACTS.targetWeightPct.value, 1);
+    expect(param("driftBps") / 100).toBe(FACTS.rebalanceDriftPct.value);
+    const minutes = /IN_SESSION_MS\s*=\s*(\d+)\s*\*\s*60_000/.exec(readRepo("agent/src/loop/scheduler.ts"))?.[1];
+    expect(Number(minutes)).toBe(FACTS.loopMinutes.value);
+  });
+
   it("gas: gasUsed per tx in the committed MAAT_GAS_LOG output of the fork run", () => {
     type Row = { runId: string; fn: string; action?: string; gasUsed: string };
     const rows = JSON.parse(readRepo("agent/test/integration/fork-gas.json")) as Row[];
