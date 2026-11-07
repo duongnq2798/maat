@@ -1,6 +1,7 @@
 import { metaSchema } from "fumadocs-core/source/schema";
 import { defineConfig, defineDocs } from "fumadocs-mdx/config";
 import { docsFrontmatter } from "./lib/docs/frontmatter";
+import { remarkFacts } from "./lib/docs/remark-facts";
 
 export const docs = defineDocs({
   dir: "content/docs",
@@ -15,6 +16,8 @@ export const docs = defineDocs({
 
 export default defineConfig({
   mdxOptions: {
+    // First, before Fumadocs' plugins, so the TOC, the search index and the processed Markdown see the values.
+    remarkPlugins: (plugins) => [remarkFacts, ...plugins],
     // The default github-light keywords (#D73A49) and github-dark comments (#6A737D) fall below 4.5:1 on the docs
     // code background. The high-contrast pair passes in both themes. defaultColor: false keeps both as CSS variables.
     rehypeCodeOptions: {
