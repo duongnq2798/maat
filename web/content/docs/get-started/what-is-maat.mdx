@@ -48,14 +48,14 @@ The design is one agent with one vault, "Agent #1", owned by the team. It is bui
 
 <Callout type="fork" title="Fork-tested, not live">
 
-The contracts and the agent's send path have run on a local fork of Base mainnet. The real Claude API and the CDP wallet have not run in that loop: the fork run uses a scripted proposer and a local sender, and the Claude and CDP code is tested against fake clients only. No Maat contract is deployed to Base mainnet, and the contracts are unaudited. The owner signs the deploy by hand.
+The contracts and the agent's send path have run on a local fork of Base mainnet. The real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) have not run in that loop: the fork run uses a scripted proposer and a local sender, the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. No Maat contract is deployed to Base mainnet, and the contracts are unaudited. The owner signs the deploy by hand.
 
 </Callout>
 
 | Stage | What it covers | More |
 | --- | --- | --- |
 | Exists today | The vault and its checks, the market calendar, the swap and credit adapters, the deploy script, the agent runtime and the website are built and tested. The contracts and the agent's send path have also run on a Base mainnet fork. | [Built and fork-tested](/docs/get-started/status#built-and-fork-tested) |
-| Next | The owner deploys the vault to Base mainnet, funds it and runs a smoke test, then hands the executor role to a [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), and the agent's first real `Decision` is recorded. | [Next: mainnet](/docs/get-started/status#next-mainnet) |
+| Next | The owner deploys the vault to Base mainnet, funds it and runs a smoke test, then hands the executor role to a Coinbase CDP Server Wallet, and the agent's first real `Decision` is recorded. | [Next: mainnet](/docs/get-started/status#next-mainnet) |
 | Planned | Revenue from other agents and more. None of it is built. | [Planned, not built](/docs/get-started/status#planned-not-built) |
 
 ## Who it is for
@@ -73,5 +73,5 @@ Each reader has a first page.
 - **Not investment advice.** Maat gives no investment advice.
 - **No shareholder rights.** Maat confers none.
 - **Not offered to US persons.**
-- **Its own money only.** Maat holds only its own treasury.
+- **Its own money only.** Maat is built to hold only its own treasury.
 - **No API or SDK to integrate today.** What exists is the code in the repository, which you can read, run and deploy yourself.

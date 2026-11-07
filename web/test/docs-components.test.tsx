@@ -59,7 +59,7 @@ describe("diagrams", () => {
     ["DecisionLoop", <DecisionLoop key="d" />, "How one round of the agent loop reaches a decision", 4],
     ["Architecture", <Architecture key="a" />, "Who does what, from Claude to the Base protocols", 5],
     ["TimelockFlow", <TimelockFlow key="t" />, "How a rule change goes through the timelock", 4],
-    ["TreasuryLoop", <TreasuryLoop key="l" />, "The treasury loop the agent runs", 4],
+    ["TreasuryLoop", <TreasuryLoop key="l" />, "The treasury loop the agent is built to run", 4],
   ])("%s is a labelled list of steps", (_name, node, label, steps) => {
     render(node);
     expect(within(screen.getByRole("list", { name: label })).getAllByRole("listitem")).toHaveLength(steps);

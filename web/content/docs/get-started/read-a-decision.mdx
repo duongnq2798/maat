@@ -17,7 +17,7 @@ A [Decision](/docs/help/glossary#decision) event is the vault's public record of
 
 ## The Decision event
 
-Every `execute` call that does not revert emits one `Decision`, whether the intent was allowed or refused. The vault declares it in `contracts/src/IMandateVaultEvents.sol`:
+Every `execute` call that does not revert emits one `Decision`, whether the [intent](/docs/help/glossary#intent) was allowed or refused. The vault declares it in `contracts/src/IMandateVaultEvents.sol`:
 
 <EventSignature name="Decision" />
 
@@ -27,7 +27,7 @@ Every `execute` call that does not revert emits one `Decision`, whether the inte
 
 | Field | Type | Indexed | Meaning |
 | --- | --- | --- | --- |
-| `intentId` | `bytes32` | yes | The id of the [intent](/docs/help/glossary#intent). Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the round, and the vault only requires that it was never used before. |
+| `intentId` | `bytes32` | yes | The id of the intent. Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the round, and the vault only requires that it was never used before. |
 | `action` | `Action` | no | What the intent asked for, as an enum id (see the table below). |
 | `token` | `address` | yes | The token the intent names: a stock for a buy, a sell and the collateral actions, and USDC for borrowing, repaying and paying the compute bill. |
 | `amount` | `uint256` | no | The size in the token's own raw units, not dollars. For a buy it is USDC to spend, with 6 decimals. |

@@ -112,7 +112,7 @@ export function TimelockFlow() {
 export function TreasuryLoop() {
   return (
     <Flow
-      label="The treasury loop the agent runs"
+      label="The treasury loop the agent is built to run"
       steps={[
         {
           title: "Buy",
