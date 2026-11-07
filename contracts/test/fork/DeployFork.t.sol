@@ -6,6 +6,7 @@ import {Deploy} from "../../script/Deploy.s.sol";
 import {MandateVault} from "../../src/MandateVault.sol";
 import {MarketCalendar} from "../../src/MarketCalendar.sol";
 import {AerodromeSwapAdapter} from "../../src/adapters/AerodromeSwapAdapter.sol";
+import {AaveV4CreditAdapter} from "../../src/adapters/AaveV4CreditAdapter.sol";
 import {SessionMode, Mandate, TokenConfig} from "../../src/Types.sol";
 import {BaseAddresses as A} from "../../script/BaseAddresses.sol";
 import {MaatConfig} from "../../script/MaatConfig.sol";
@@ -19,8 +20,14 @@ contract DeployForkTest is Test {
         vm.setEnv("MAAT_OWNER", vm.toString(owner));
         vm.setEnv("MAAT_EXECUTOR", vm.toString(executor));
         vm.setEnv("MAAT_EXPENSE_PAYEE", vm.toString(payee));
+        address deployer = makeAddr("deployer");
+        vm.setEnv("MAAT_DEPLOYER", vm.toString(deployer));
+        // a used deployer: the vault-address prediction must start from its real nonce, not zero
+        uint64 n = vm.getNonce(deployer) + 7;
+        vm.setNonce(deployer, n);
 
-        (MarketCalendar calendar, AerodromeSwapAdapter adapter, MandateVault vault) = new Deploy().run();
+        (MarketCalendar calendar, AerodromeSwapAdapter adapter, AaveV4CreditAdapter credit, MandateVault vault) =
+            new Deploy().run();
 
         assertEq(vault.owner(), owner);
         assertEq(vault.executor(), executor);
@@ -32,9 +39,17 @@ contract DeployForkTest is Test {
         assertEq(vault.mandate().swapAdapter, address(adapter));
         assertEq(uint8(vault.mandate().sessionMode), uint8(SessionMode.REGULAR));
         assertEq(calendar.owner(), owner);
+        assertEq(vault.mandate().creditAdapter, address(credit));
+        assertEq(credit.vault(), address(vault));
+        assertEq(address(vault), vm.computeCreateAddress(deployer, n + 3));
+        assertEq(credit.usdc(), A.USDC);
+        assertEq(credit.hub(), A.AAVE_EQUITIES_HUB);
+        assertEq(address(credit.spoke()), A.AAVE_MAG7_SPOKE);
+        assertEq(credit.collaterals().length, 3);
 
         // the deployed policy is exactly MaatConfig's
-        Mandate memory m = MaatConfig.defaultMandate(SessionMode.REGULAR, address(calendar), address(adapter));
+        Mandate memory m =
+            MaatConfig.defaultMandate(SessionMode.REGULAR, address(calendar), address(adapter), address(credit));
         assertEq(vault.mandateHash(), keccak256(abi.encode(m)));
 
         (address[] memory toks, TokenConfig[] memory cfgs) = MaatConfig.basket();

@@ -30,7 +30,7 @@ contract MandateVaultForkTest is Test {
             executor,
             A.USDC,
             A.POLICY_REGISTRY,
-            MaatConfig.defaultMandate(mode, address(calendar), address(adapter)),
+            MaatConfig.defaultMandate(mode, address(calendar), address(adapter), address(0)),
             toks,
             cfgs,
             payees

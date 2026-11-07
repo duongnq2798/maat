@@ -44,16 +44,20 @@ abstract contract VaultFixture is Test, IMandateVaultEvents {
         registry = new MockPolicyRegistry();
         calendar = new MarketCalendar(owner);
 
+        vault = _deployVault(defaultMandate());
+        usdc.mint(address(vault), 200e6);
+        vault.notifyRevenue(); // baseline recordedUsdc = 200e6
+    }
+
+    /// @dev The fixture's one-token (NVDAc) vault with one payee, under mandate `m`.
+    function _deployVault(Mandate memory m) internal returns (MandateVault) {
         address[] memory toks = new address[](1);
         toks[0] = address(nvda);
         TokenConfig[] memory cfgs = new TokenConfig[](1);
         cfgs[0] = TokenConfig({allowed: true, feed: address(feed), pool: address(pool), maxWeightBps: 4000});
         address[] memory payees = new address[](1);
         payees[0] = payee;
-
-        vault = new MandateVault(owner, executor, address(usdc), address(registry), defaultMandate(), toks, cfgs, payees);
-        usdc.mint(address(vault), 200e6);
-        vault.notifyRevenue(); // baseline recordedUsdc = 200e6
+        return new MandateVault(owner, executor, address(usdc), address(registry), m, toks, cfgs, payees);
     }
 
     function defaultMandate() internal view returns (Mandate memory) {
@@ -67,7 +71,11 @@ abstract contract VaultFixture is Test, IMandateVaultEvents {
             perTradeCapUsd: 50e6,
             dailyCapUsd: 100e6,
             calendar: address(calendar),
-            swapAdapter: address(adapter)
+            swapAdapter: address(adapter),
+            creditAdapter: address(0),
+            minHealthFactor: 0,
+            targetHealthFactor: 0,
+            deriskWindow: 0
         });
     }
 

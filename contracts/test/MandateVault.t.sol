@@ -187,6 +187,14 @@ contract MandateVaultTest is VaultFixture {
         _assertReason(r, Reason.ACTION_NOT_SUPPORTED);
     }
 
+    function test_creditActionsRefusedWhenCreditDisabled() public {
+        Action[4] memory acts = [Action.SUPPLY, Action.WITHDRAW_COLLATERAL, Action.BORROW, Action.REPAY];
+        for (uint256 k; k < acts.length; ++k) {
+            (, Reason r) = _exec(_intent(acts[k], 1e6));
+            _assertReason(r, Reason.ACTION_NOT_SUPPORTED);
+        }
+    }
+
     function test_vaultPaused() public {
         vm.prank(owner);
         vault.setPaused(true);
@@ -692,5 +700,59 @@ contract MandateVaultTest is VaultFixture {
         adapter.setNextOut(0.1e8);
         (, r) = _exec(_intent(Action.BUY, 20e6));
         _assertReason(r, Reason.OK);
+    }
+
+    // ------------------------------------------------------------------ exit-only tokens (Plan 2A)
+
+    function _applyNvdaConfig(TokenConfig memory c) internal {
+        _queueTokenAndWait(address(nvda), c);
+        vm.prank(owner);
+        vault.applyTokenConfig(address(nvda), c);
+        feed.set(200e8, vm.getBlockTimestamp()); // the 24h wait left the feed stale
+    }
+
+    function test_exitOnlyTokenCanBeSoldNotBought() public {
+        nvda.mint(address(vault), 1e8);
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(feed), pool: address(pool), maxWeightBps: 0}));
+        (, Reason buy) = _exec(_intent(Action.BUY, 20e6));
+        _assertReason(buy, Reason.TOKEN_NOT_ALLOWED);
+        adapter.setNextOut(20e6);
+        (, Reason sell) = _exec(_intent(Action.SELL, 0.1e8));
+        _assertReason(sell, Reason.OK);
+        assertEq(nvda.balanceOf(address(vault)), 0.9e8);
+    }
+
+    function test_exitOnlyTokenIsStillMultiplierGuarded() public {
+        nvda.mint(address(vault), 1e8);
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(feed), pool: address(pool), maxWeightBps: 0}));
+        nvda.setUiMultiplier(2e18);
+        (, Reason r) = _exec(_intent(Action.SELL, 0.1e8));
+        _assertReason(r, Reason.MULTIPLIER_COOLDOWN);
+        assertEq(vault.lastMultiplier(address(nvda)), 2e18); // execute() kept tracking it
+    }
+
+    function test_exitOnlyConfigIsValidated() public {
+        TokenConfig memory c =
+            TokenConfig({allowed: false, feed: makeAddr("noCodeFeed"), pool: address(pool), maxWeightBps: 0});
+        _queueTokenAndWait(address(nvda), c);
+        vm.prank(owner);
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        vault.applyTokenConfig(address(nvda), c);
+    }
+
+    function test_fullyDelistedTokenCannotBeSold() public {
+        nvda.mint(address(vault), 1e8);
+        _applyNvdaConfig(TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0}));
+        (, Reason r) = _exec(_intent(Action.SELL, 0.1e8));
+        _assertReason(r, Reason.TOKEN_NOT_ALLOWED);
+    }
+
+    function test_rejectsListingAnAddressWithoutCode() public {
+        TokenConfig memory c = TokenConfig({allowed: false, feed: address(0), pool: address(0), maxWeightBps: 0});
+        address ghost = makeAddr("ghost");
+        _queueTokenAndWait(ghost, c);
+        vm.prank(owner);
+        vm.expectRevert(MandateVault.InvalidConfig.selector);
+        vault.applyTokenConfig(ghost, c);
     }
 }

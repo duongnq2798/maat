@@ -6,7 +6,13 @@ import {BaseAddresses as A} from "./BaseAddresses.sol";
 
 /// @notice Agent #1 mandate (spec §3.2) and basket (spec §3.5).
 library MaatConfig {
-    function defaultMandate(SessionMode mode, address calendar, address adapter)
+    /// Credit defaults (spec §3.2). targetHealthFactor already includes the spec's "targetHF + buffer".
+    uint64 internal constant MIN_HEALTH_FACTOR = 1.5e18;
+    uint64 internal constant TARGET_HEALTH_FACTOR = 2e18;
+    // 8h: starts Fri 12:00 ET, so REGULAR gets 4 trading hours (12:00-16:00) at targetHF before the 20:00 freeze.
+    uint32 internal constant DERISK_WINDOW = 8 hours;
+
+    function defaultMandate(SessionMode mode, address calendar, address swapAdapter, address creditAdapter)
         internal
         pure
         returns (Mandate memory)
@@ -23,7 +29,11 @@ library MaatConfig {
             perTradeCapUsd: 50e6,
             dailyCapUsd: 100e6,
             calendar: calendar,
-            swapAdapter: adapter
+            swapAdapter: swapAdapter,
+            creditAdapter: creditAdapter,
+            minHealthFactor: MIN_HEALTH_FACTOR,
+            targetHealthFactor: TARGET_HEALTH_FACTOR,
+            deriskWindow: DERISK_WINDOW
         });
     }
 
@@ -36,5 +46,17 @@ library MaatConfig {
         cfgs[1] = TokenConfig({allowed: true, feed: A.GOOGL_FEED, pool: A.GOOGLC_USDC_POOL, maxWeightBps: 4000});
         toks[2] = A.AAPLC;
         cfgs[2] = TokenConfig({allowed: true, feed: A.AAPL_FEED, pool: A.AAPLC_USDC_POOL, maxWeightBps: 4000});
+    }
+
+    /// Aave V4 MAG7 reserves for the basket, in basket order.
+    function creditReserves() internal pure returns (address[] memory toks, uint256[] memory ids) {
+        toks = new address[](3);
+        ids = new uint256[](3);
+        toks[0] = A.NVDAC;
+        ids[0] = A.AAVE_RESERVE_NVDAC;
+        toks[1] = A.GOOGLC;
+        ids[1] = A.AAVE_RESERVE_GOOGLC;
+        toks[2] = A.AAPLC;
+        ids[2] = A.AAVE_RESERVE_AAPLC;
     }
 }
