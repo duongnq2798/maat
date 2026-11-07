@@ -1,6 +1,39 @@
 import { expect, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 
+const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
+/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8 and 13). */
+const PAGES: string[] = ["/docs"];
+
+function collectErrors(page: Page): string[] {
+  const errors: string[] = [];
+  page.on("console", (m) => {
+    if (m.type() === "error") errors.push(m.text());
+  });
+  page.on("pageerror", (e) => errors.push(e.message));
+  return errors;
+}
+
+for (const width of WIDTHS) {
+  for (const path of PAGES) {
+    test(`${path} fits ${width}px: no page scroll, no console errors`, async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto(path, { waitUntil: "networkidle" });
+      await page.evaluate(() => document.fonts.ready);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+      expect(overflow).toBeLessThanOrEqual(0);
+      // Text in a docs diagram must fit its card; page scroll cannot see this. The li itself is skipped: its arrow sits in the gap.
+      const overflowingText = await page.evaluate(
+        () => [...document.querySelectorAll("figure ol li p")].filter((p) => p.scrollWidth > p.clientWidth).length,
+      );
+      expect(overflowingText).toBe(0);
+      await page.screenshot({ path: `test-results/screens/docs${path.replace(/\//g, "-")}-${width}.png`, fullPage: true });
+      expect(errors).toEqual([]);
+    });
+  }
+}
+
 /** Opens search the way a reader does. Playwright sends "K" for "Control+K"; a real Ctrl+K sends "k", which Fumadocs matches. */
 async function openSearch(page: Page) {
   await page.keyboard.press("Control+k");
@@ -88,6 +121,7 @@ test.describe("copy", () => {
     await page.goto("/docs", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Copy page as Markdown" }).click();
     await expect(page.getByRole("button", { name: "Copied" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Copied" })).toHaveText("Copied");
     // The Windows clipboard stores line breaks as CRLF.
     const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
     expect(text).toMatch(/^# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/);
@@ -100,5 +134,45 @@ test.describe("copy", () => {
     await page.goto("/docs", { waitUntil: "networkidle" });
     await page.getByRole("button", { name: "Copy page as Markdown" }).click();
     await expect(page.getByRole("button", { name: "Copy failed. Try again" })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "Copy failed. Try again" })).toHaveText("Copy failed. Try again");
   });
+});
+
+test("the theme toggles and persists across a reload", async ({ page }) => {
+  await page.goto("/docs");
+  const html = page.locator("html");
+  await expect(html).not.toHaveClass(/\bdark\b/);
+  await page.locator("[data-theme-toggle]").first().click();
+  await expect(html).toHaveClass(/\bdark\b/);
+  await page.reload();
+  await expect(html).toHaveClass(/\bdark\b/);
+  // A single "d" keypress must not flip the theme back (Fumadocs' hotkey is off).
+  await page.locator("body").press("d");
+  await expect(html).toHaveClass(/\bdark\b/);
+});
+
+test("dark docs do not reach the landing page", async ({ page }) => {
+  await page.goto("/docs");
+  await page.locator("[data-theme-toggle]").first().click();
+  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+  await page.goto("/");
+  await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(255, 255, 255)");
+});
+
+test("at 360px the sidebar drawer opens and closes by keyboard", async ({ page }) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/docs");
+  // The drawer has its own copy of the button; the one in the page header opens it.
+  const header = page.locator("#nd-subnav");
+  const open = header.getByRole("button", { name: "Open Sidebar" });
+  const drawer = page.locator("#nd-sidebar-mobile");
+  await open.focus();
+  await page.keyboard.press("Enter");
+  await expect(drawer).toHaveAttribute("data-state", "open");
+  await expect(drawer.getByRole("link", { name: "Maat docs" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toHaveAttribute("data-state", "closed");
+  // Focus goes back to the button that opened the drawer.
+  await expect(header.getByRole("button", { name: "Open Sidebar" })).toBeFocused();
 });
