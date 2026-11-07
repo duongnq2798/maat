@@ -30,8 +30,8 @@ export function Hero() {
               Verify it in 5 minutes
               <span aria-hidden="true"> ↗</span>
             </a>
-            <a className="pill-line" href="#how">
-              How it weighs a trade
+            <a className="pill-line" href="#try">
+              Try to make it say no
             </a>
           </div>
           <dl className="m-0 mt-2 grid max-w-[560px] grid-cols-3 border-t border-line">
