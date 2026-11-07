@@ -71,6 +71,10 @@ describe("docs pages follow the IA (docs spec §3)", () => {
     expect(SHIPPED.filter((s) => !IA_SLUGS.includes(s))).toEqual([]);
   });
 
+  it("the whole IA has shipped", () => {
+    expect([...SHIPPED].sort()).toEqual([...IA_SLUGS].sort());
+  });
+
   it("each section's meta.json lists its written pages in IA order", () => {
     for (const s of sections) {
       const pages = s.pages.filter((p) => written.includes(p.slug)).map((p) => p.slug.slice(s.dir.length + 1));
