@@ -1,0 +1,278 @@
+---
+title: Change a rule
+description: Queue a mandate, token or payee change, wait out the timelock, then apply or cancel it and check the new policy hash.
+type: guide
+audience: [builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MandateVault.sol
+  - contracts/test/MandateVaultAdmin.t.sol
+  - deployments/README.md
+  - contracts/src/IMandateVaultEvents.sol
+  - contracts/src/Types.sol
+next: [concepts/timelock-and-roles, reference/mandate-vault]
+---
+
+The vault's rules never change in a single step. This guide walks the [owner](/docs/help/glossary#owner) through the only way to change them: queue the new values, wait out the [timelock](/docs/help/glossary#timelock), then apply exactly those values or cancel the change, and finally check the new hashes. It covers the three kinds of change: a new [mandate](/docs/help/glossary#mandate), new settings for one stock, and a [payee](/docs/help/glossary#payee) added or removed. It is written for a builder who owns a vault and wants to change its limits after the deploy.
+
+<Callout type="fork" title="What is tested">
+
+The queue, wait, apply, cancel and expiry rules are pinned by unit tests in `contracts/test/MandateVaultAdmin.t.sol`, which run against mocks. No [fork test](/docs/help/glossary#fork-test) queues a change, and no Maat vault is deployed. `deployments/README.md` names the queue and apply functions in one line and gives no commands for them, so the `cast` commands on this page were written for this guide. No test sends them and the Maat team has not run them. Treat them as untested, and read the output of each one yourself.
+
+</Callout>
+
+## Before you start
+
+Every step that changes the vault is signed by the owner, the one address that is set when the vault is created and can never be replaced. The reads in this guide need no key, and anyone can run them.
+
+| Need | Detail |
+| --- | --- |
+| The owner wallet | Imported as the Foundry keystore `maat-owner` in the runbook, and passed to `cast send` as `--account`. Only the owner can queue, apply or cancel. |
+| `cast` | From [Foundry](https://getfoundry.sh). The logs commands also need the version noted in [Watch decisions onchain](/docs/guides/watch-decisions-onchain). |
+| A vault and an RPC | Written `<VAULT_ADDRESS>` and `<BASE_RPC_URL>` here. The Maat team has deployed no vault, so there is nothing to read yet. |
+| The new values | The whole new mandate, or the new settings of one stock, or the payee and a flag. Check them against [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects) first. |
+
+Time: the wait alone is <Fact name="timelockHours" />. After it you have <Fact name="gracePeriodDays" /> to apply. The Maat team has measured no durations for the commands.
+
+## How a change moves
+
+Each kind of change goes through the same four stages. Pausing, rotating the [executor](/docs/help/glossary#executor) and withdrawing to the owner are instant ([Pause, withdraw and recover](/docs/guides/pause-withdraw-recover)). Changing a rule never is, and that includes a change that only tightens a limit.
+
+<TimelockFlow />
+
+The vault stores no values when you queue. It stores the time of the call against a change hash, which commits to the kind of change and to every value in it. To apply, the owner sends the values again, the vault hashes them and looks the hash up. [Change hashes](/docs/concepts/timelock-and-roles#change-hashes) explains the keys. The three kinds use different functions:
+
+| Change | Queue | Apply | Hash helper (read-only) |
+| --- | --- | --- | --- |
+| The mandate | `queueMandate` | `applyMandate` | `mandateChangeHash` |
+| One stock's settings | `queueTokenConfig` | `applyTokenConfig` | `tokenChangeHash` |
+| A payee, added or removed | `queuePayee` | `applyPayee` | `payeeChangeHash` |
+
+Every step emits an event. The queue events carry the full new values, so anyone watching the logs can read what is coming before it can be applied.
+
+| Step | Function | Events |
+| --- | --- | --- |
+| Queue | `queueMandate` | [`MandateChangeQueued`](/docs/reference/events#mandatechangequeued) with the change hash, `eta` and the whole mandate |
+| Queue | `queueTokenConfig` | [`TokenConfigChangeQueued`](/docs/reference/events#tokenconfigchangequeued) with the change hash, `eta`, the token and its config |
+| Queue | `queuePayee` | [`PayeeChangeQueued`](/docs/reference/events#payeechangequeued) with the change hash, `eta`, the payee and the flag |
+| Cancel | `cancelChange` | [`ChangeCancelled`](/docs/reference/events#changecancelled) with the change hash |
+| Apply | `applyMandate` | [`MandateApplied`](/docs/reference/events#mandateapplied), then [`PolicyHashUpdated`](/docs/reference/events#policyhashupdated) |
+| Apply | `applyTokenConfig` | [`TokenConfigApplied`](/docs/reference/events#tokenconfigapplied), then `PolicyHashUpdated`. It can also emit [`MultiplierChangeDetected`](/docs/reference/events#multiplierchangedetected) |
+| Apply | `applyPayee` | [`PayeeApplied`](/docs/reference/events#payeeapplied), then `PolicyHashUpdated`. `PayeeApplied` is emitted even when the list did not change |
+
+## Queue, wait and apply
+
+This is the whole path for a mandate. A stock or payee change follows the same steps with different arguments, shown after the steps.
+
+<Steps>
+
+<Step>
+
+### Read the current rules
+
+These calls only read. Set the three variables first. The tuple in `MANDATE_TYPE` is the `Mandate` struct in the order of [`Types.sol`](/docs/reference/types#mandate).
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet RPC URL
+export VAULT=<VAULT_ADDRESS>         # your vault
+MANDATE_TYPE='(uint8,uint16,uint16,uint32,uint32,uint32,uint128,uint128,address,address,address,uint64,uint64,uint32)'
+cast call "$VAULT" "mandate()($MANDATE_TYPE)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "mandateHash()(bytes32)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "policyHash()(bytes32)" --rpc-url "$BASE_RPC_URL"
+```
+
+No Maat vault is deployed, so this page shows no output. The first call returns the current mandate as a tuple. The other two return the [mandate hash](/docs/help/glossary#mandate-hash) and the [policy hash](/docs/help/glossary#policy-hash). Write both hashes down, because you compare against them in the last step. For the stocks and the payees, read the lists and then each stock's settings:
+
+```bash
+cast call "$VAULT" "tokens()(address[])" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "tokenConfig(address)(bool,address,address,uint16)" <TOKEN_ADDRESS> --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "payees()(address[])" --rpc-url "$BASE_RPC_URL"
+```
+
+The stock's settings come back in the order `allowed`, `feed`, `pool`, `maxWeightBps`.
+
+</Step>
+
+<Step>
+
+### Write the new values and find their change hash
+
+Copy the tuple that `mandate()` returned into a variable, change only the field you mean to change, and keep the rest as it was. Write plain integers. The caps are USDC units, which have <Fact name="usdcDecimals" />, the two [health factors](/docs/help/glossary#health-factor) are [WAD](/docs/help/glossary#wad) numbers, the times are seconds, and the [premium](/docs/help/glossary#premium), slippage and weight limits are [basis points](/docs/help/glossary#basis-point-bps). If `cast` shows a number with a bracketed shorthand after it, leave the shorthand out.
+
+```bash
+NEW_MANDATE='(<sessionMode>,<maxPremiumBps>,<maxSlippageBps>,<maxStaleness>,<multiplierCooldown>,<twapWindow>,<perTradeCapUsd>,<dailyCapUsd>,<calendar>,<swapAdapter>,<creditAdapter>,<minHealthFactor>,<targetHealthFactor>,<deriskWindow>)'
+CHANGE_HASH=$(cast call "$VAULT" "mandateChangeHash($MANDATE_TYPE)(bytes32)" "$NEW_MANDATE" --rpc-url "$BASE_RPC_URL")
+echo "$CHANGE_HASH"
+```
+
+`mandateChangeHash` is a pure function, so it works on values that are not queued yet. The hash it prints is the key under which the vault will store the queue time, and the key that a `ChangeNotQueued` error would name. Use the same `NEW_MANDATE` for the queue and for the apply, because the vault accepts only the exact values that were queued.
+
+The queue does not check the values. A bad mandate can be queued, wait out the timelock and fail only when it is applied, so check the values against the rules before you queue.
+
+</Step>
+
+<Step>
+
+### Queue the change
+
+<Callout type="warning" title="Owner only">
+
+This signs a transaction from the owner wallet and costs gas. It starts the clock, and it changes no rule yet.
+
+```bash
+cast send "$VAULT" "queueMandate($MANDATE_TYPE)" "$NEW_MANDATE" --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+Queue each change once. Queueing the same values again restarts the wait.
+
+</Callout>
+
+The transaction emits `MandateChangeQueued`. Its `eta` is the time of the block plus the timelock, which is the earliest moment the change can be applied. The vault does not keep the values, so keep `NEW_MANDATE`. If you lose it, the event holds the whole mandate. This page shows no output, because no vault is deployed.
+
+</Step>
+
+<Step>
+
+### Wait out the timelock
+
+These calls only read. `queuedAt` is the time in seconds when you queued the change, or zero when the hash is not queued: never queued, cancelled or already applied. `TIMELOCK` and `GRACE_PERIOD` are the two constants.
+
+```bash
+cast call "$VAULT" "queuedAt(bytes32)(uint256)" "$CHANGE_HASH" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "TIMELOCK()(uint256)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "GRACE_PERIOD()(uint256)" --rpc-url "$BASE_RPC_URL"
+```
+
+The change can be applied from `queuedAt + TIMELOCK`, which is `eta`, until `eta + GRACE_PERIOD`. Both ends are inside the window: at exactly `eta` the change is ready, and at exactly `eta + GRACE_PERIOD` it still applies (`test_mandateChangeNeedsTimelock` and `test_applyAtExactGraceEdgeWorks`). The vault reads the timestamp of the block that includes your transaction, not the time you sent it, so do not leave the apply to the last second. The wait is <Fact name="timelockHours" />, the apply window is <Fact name="gracePeriodDays" />, and after it the change expires.
+
+</Step>
+
+<Step>
+
+### Apply it, or cancel it
+
+<Callout type="warning" title="Owner only">
+
+Both commands are signed by the owner wallet. Apply with exactly the values you queued:
+
+```bash
+cast send "$VAULT" "applyMandate($MANDATE_TYPE)" "$NEW_MANDATE" --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+To drop the change instead, cancel it by its hash. The owner can cancel at any time, before or after the wait:
+
+```bash
+cast send "$VAULT" "cancelChange(bytes32)" "$CHANGE_HASH" --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+If the apply reverts, the table below says why. After `ChangeNotReady`, send the same apply command once `eta` has passed. After `ChangeExpired`, or after `ChangeNotQueued` for a change that was cancelled, repeat the queue command from step 3, and the wait starts over. After `ChangeNotQueued` for different values, change `NEW_MANDATE` back to what you queued (the queue event holds those values). After `InvalidConfig`, the change cannot succeed as written: cancel it, then queue corrected values.
+
+</Callout>
+
+A successful apply replaces the mandate, deletes the queue entry and emits `MandateApplied` and `PolicyHashUpdated` in the same transaction. A cancel deletes the entry and emits `ChangeCancelled`. The vault does not check that the hash was queued, so cancelling an unknown hash does nothing but still emits the event. After a cancel, an apply of the same values reverts with `ChangeNotQueued`. Any revert leaves the queue entry as it was.
+
+| Error | Why the apply reverted |
+| --- | --- |
+| [`ChangeNotQueued`](/docs/reference/errors#changenotqueued) | This exact change is not queued: it was never queued, cancelled, already applied, or queued with other values. The error carries the hash of the values you sent. |
+| [`ChangeNotReady`](/docs/reference/errors#changenotready) | The block is earlier than `eta`. The error carries `eta`. |
+| [`ChangeExpired`](/docs/reference/errors#changeexpired) | The block is later than `eta + GRACE_PERIOD`. |
+| [`InvalidConfig`](/docs/reference/errors#invalidconfig) | The queue was fine, but the vault rejects the new values when it applies them. See [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects). |
+| [`CreditPositionOpen`](/docs/reference/errors#creditpositionopen) | The change switches or removes the credit adapter while it still holds debt or collateral, or while its position cannot be read. |
+| [`NotOwner`](/docs/reference/errors#notowner-mandatevault) | The sender is not the owner. |
+
+</Step>
+
+<Step>
+
+### Check the new hashes
+
+These calls only read. Compare them with the two hashes you wrote down in the first step.
+
+```bash
+cast call "$VAULT" "mandate()($MANDATE_TYPE)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "mandateHash()(bytes32)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "policyHash()(bytes32)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "queuedAt(bytes32)(uint256)" "$CHANGE_HASH" --rpc-url "$BASE_RPC_URL"
+```
+
+Then read the two events of your apply transaction, from its block. How `cast logs` prints them is explained in [Watch decisions onchain](/docs/guides/watch-decisions-onchain).
+
+```bash
+cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <APPLY_BLOCK> --to-block <APPLY_BLOCK> "MandateApplied(bytes32 indexed mandateHash)"
+cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <APPLY_BLOCK> --to-block <APPLY_BLOCK> "PolicyHashUpdated(bytes32 policyHash)"
+```
+
+What each check shows:
+
+- `mandate()` returns your new values.
+- `mandateHash()` is new, and equals the `mandateHash` in the `MandateApplied` event. It is `keccak256(abi.encode(mandate))` and covers the mandate only.
+- `policyHash()` is new, and equals the hash in the `PolicyHashUpdated` event of the same transaction. It covers the mandate, the listed stocks, their settings and the payee list, so any applied change that alters one of them moves it. An apply that writes the values already stored leaves it as it was.
+- `queuedAt` for your change hash is zero, because the apply deleted the entry.
+
+No Maat vault is deployed, so this page shows no output. Anyone can make the same comparison without the owner key. The latest `PolicyHashUpdated` event has to equal `policyHash()`, and that is how a watcher confirms that the policy they read is the one the vault enforces.
+
+</Step>
+
+</Steps>
+
+## Token and payee changes
+
+The path is the same: queue, wait, apply or cancel, check. The arguments differ, and so do the hash helpers. Only the owner signs the queue, apply and cancel commands, so they sit in the box below. The read-only helpers `tokenChangeHash` and `payeeChangeHash` take the same arguments as the queue and apply calls and print the change hash, as `mandateChangeHash` does.
+
+<Callout type="warning" title="Owner only">
+
+These commands are signed by the owner wallet. They use the shell from step 1. Each `queue` starts a clock, and each `apply` must use exactly the values that were queued. The same `cancelChange` command from step 5 works for any change hash.
+
+A payee, added (`true`) or removed (`false`):
+
+```bash
+PAYEE=<PAYEE_ADDRESS>
+cast send "$VAULT" "queuePayee(address,bool)" "$PAYEE" true --rpc-url "$BASE_RPC_URL" --account maat-owner
+cast send "$VAULT" "applyPayee(address,bool)" "$PAYEE" true --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+One stock's settings, in the order `allowed`, `feed`, `pool`, `maxWeightBps`:
+
+```bash
+TOKEN=<TOKEN_ADDRESS>
+TOKEN_CONFIG='(true,<FEED_ADDRESS>,<POOL_ADDRESS>,<MAX_WEIGHT_BPS>)'
+cast send "$VAULT" "queueTokenConfig(address,(bool,address,address,uint16))" "$TOKEN" "$TOKEN_CONFIG" --rpc-url "$BASE_RPC_URL" --account maat-owner
+cast send "$VAULT" "applyTokenConfig(address,(bool,address,address,uint16))" "$TOKEN" "$TOKEN_CONFIG" --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+</Callout>
+
+A few facts about these two kinds:
+
+- **Adding and removing a payee are different changes.** The flag is part of the hash, so a queued add cannot be applied as a remove.
+- **The payee list is what the vault pays from.** The vault pays an expense only to an address on the list, and a payee change is the only way to change it after the deploy. [Timelock and roles](/docs/concepts/timelock-and-roles#three-roles) says who may do it.
+- **To delist a stock, queue its settings with `allowed` false.** If you keep its `feed` and `pool`, the stock is exit-only: the vault can still sell it but not buy it. If you clear both, the vault can no longer sell it. [Types](/docs/reference/types#tokenconfig) describes the fields.
+- **A stock must pass the same validation as at the deploy.** The rules are in [Configure a mandate](/docs/guides/configure-a-mandate#stock-rules). They run at apply time.
+- **A payee or stock change moves `policyHash()` but not `mandateHash()`.** Check the policy hash after such a change.
+
+## Check it worked
+
+- The queue transaction emitted a queue event whose `eta` is the timelock after the block, and `queuedAt` for your change hash is no longer zero.
+- An apply that is attempted before `eta` reverts with `ChangeNotReady` and changes nothing.
+- After the apply, the vault holds the new values (`mandate()`, `tokenConfig(address)` or `allowedPayee(address)`), `queuedAt` for the change hash is zero, and `policyHash()` equals the hash in the `PolicyHashUpdated` event of the apply.
+- For a mandate change, `mandateHash()` also moved and equals the `MandateApplied` event. For a payee or stock change, only `policyHash()` moved.
+
+## Common mistakes
+
+- **Applying too early.** The apply reverts with `ChangeNotReady`, and the error carries `eta`. Nothing is lost, and the queue entry stays.
+- **Applying after the window.** The apply reverts with `ChangeExpired`. The change is dead, and the vault only takes it again as a new queue call, which starts a new wait.
+- **Applying different values.** A single field that differs gives a different hash, and the apply reverts with `ChangeNotQueued` for the hash of what you sent (`test_appliedParamsMustMatchQueued`). The same error appears for a change that was cancelled (`test_cancelledChangeCannotBeApplied`) or already applied (`test_applyMandateCannotBeReplayed`).
+- **Queueing the same change twice.** The second queue call restarts the clock. `test_expiredChangeReverts` shows the restart after an expiry.
+- **Expecting the queue to validate.** It does not. A bad change waits out the timelock and fails at the apply with `InvalidConfig`. The failed apply leaves the queue entry as it was, so the change stays queued until it expires or the owner cancels it.
+- **Expecting a tighter limit to be instant.** Every change waits, including one that only lowers a cap.
+- **Mixing up the three hashes.** A change hash commits to a change that has not happened. `mandateHash()` and `policyHash()` commit to the state the vault holds now.
+- **Losing the queued values.** The vault keeps only the time. The queue event holds the values, so read them from there.
+- **Leaving the apply to the last second.** The vault reads the timestamp of the block that includes the transaction. An apply sent just before the window ends can land in a block after it and revert with `ChangeExpired`.
+
+## Next steps
+
+- [Timelock and roles](/docs/concepts/timelock-and-roles) explains who can do what, and what a leaked key can reach.
+- [MandateVault](/docs/reference/mandate-vault) lists every owner function with its events and reverts.
+- [Configure a mandate](/docs/guides/configure-a-mandate) covers the validation rules your new values must pass.
+- [Watch decisions onchain](/docs/guides/watch-decisions-onchain) reads the vault's events with `cast logs`.

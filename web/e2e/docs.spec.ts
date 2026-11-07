@@ -2,7 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
-/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8, 13, 14 and 15). */
+/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8, 13, 14, 15 and 16). */
 const PAGES: string[] = [
   "/docs",
   "/docs/concepts/nine-checks",
@@ -10,6 +10,10 @@ const PAGES: string[] = [
   "/docs/guides/reproduce-the-fork-run",
   "/docs/guides/deploy-your-own-vault",
   "/docs/guides/configure-a-mandate",
+  "/docs/guides/run-the-agent",
+  "/docs/guides/change-a-rule",
+  "/docs/guides/pause-withdraw-recover",
+  "/docs/guides/watch-decisions-onchain",
   "/docs/reference/mandate-vault",
   "/docs/reference/adapters",
   "/docs/reference/agent-configuration",

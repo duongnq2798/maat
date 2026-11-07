@@ -67,6 +67,17 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(tsConst("agent/src/exec/calls.ts", "EXECUTE_GAS_FLOOR")).toBe(DOCS_FACTS.executeGasFloor.value);
   });
 
+  it("the window after which a pending send with no trace is dropped", () => {
+    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_BLOCKS")).toBe(DOCS_FACTS.pendingWindowBlocks.value);
+  });
+
+  it("the executor's gas top-up is the figure in the agent README and in the setup script", () => {
+    const readme = /send about ([\d.]+) ETH on Base to the executor address/.exec(readRepo("agent/README.md"));
+    const script = /send ~([\d.]+) ETH on Base to \$\{account\.address\} for gas/.exec(readRepo("agent/scripts/cdp-setup.ts"));
+    expect(Number(readme?.[1])).toBe(DOCS_FACTS.executorGasEth.value);
+    expect(Number(script?.[1])).toBe(DOCS_FACTS.executorGasEth.value);
+  });
+
   it("policy: cash reserve, runway and the smallest suggestion", () => {
     const policy = readRepo("agent/src/policy.ts");
     const param = (name: string) =>

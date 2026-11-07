@@ -41,6 +41,14 @@ export const DOCS_FACTS = {
   maxRationaleChars: fact(600, "agent/src/llm/schema.ts MAX_RATIONALE_CHARS, characters per intent rationale"),
   maxGas: fact(3_000_000, "agent/src/exec/calls.ts MAX_GAS, the gas limit cap on every transaction the agent sends"),
   executeGasFloor: fact(2_500_000, "agent/src/exec/calls.ts EXECUTE_GAS_FLOOR, the minimum gas limit for execute"),
+  pendingWindowBlocks: fact(
+    300,
+    "agent/src/loop/runOnce.ts PENDING_WINDOW_BLOCKS = 300n, the blocks after which a send with no onchain trace is recorded as dropped",
+  ),
+  executorGasEth: fact(
+    0.002,
+    "agent/README.md Live run, step 5, and agent/scripts/cdp-setup.ts: about 0.002 ETH on Base for the executor's gas. An estimate, not measured",
+  ),
   cashReservePct: fact(30, "agent/src/policy.ts DEFAULT_POLICY.cashReserveBps = 3000"),
   runwayDays: fact(7, "agent/src/policy.ts DEFAULT_POLICY.runwayDays, days of compute cost kept as cash"),
   minTradeUsd: fact(
