@@ -32,13 +32,15 @@ describe("every public function has a reference entry", () => {
 
 describe("every function has its heading", () => {
   // <FunctionIndex> links to these anchors and no other gate checks them. On the adapters page most names repeat
-  // between an interface and its implementation, so every heading there names its contract.
+  // between an interface and its implementation, so every heading there names its contract. The entry sits directly
+  // under its heading, so a heading cannot carry another function's signature.
   for (const c of docsData.surface.contracts) {
     const slug = FUNCTION_PAGES[c.name];
     if (slug === undefined) continue;
     it.each(c.functions.map((f) => f.name))(`${c.name}.%s`, (name) => {
       const text = slug === "reference/adapters" ? `${name} \\(${c.name}\\)` : name;
-      expect(page(slug).replace(/\r\n/g, "\n")).toMatch(new RegExp(`^### ${text}$`, "m"));
+      const heading = new RegExp(`^### ${text}\\n\\n<Fn contract="${c.name}" name="${name}" />$`, "m");
+      expect(page(slug).replace(/\r\n/g, "\n")).toMatch(heading);
     });
   }
 });

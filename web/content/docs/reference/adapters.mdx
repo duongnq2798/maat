@@ -54,7 +54,7 @@ The pool calls this function during a swap to collect the input, and nobody else
 
 ## ICreditAdapter
 
-One lending position owned by one vault. Stock amounts are raw units, USDC amounts have <Fact name="usdcDecimals" />, and health factors are [WAD](/docs/help/glossary#wad), with the largest `uint256` meaning no debt. The vault accepts a credit adapter only if it reports this vault from `vault()` and this vault's USDC from `usdc()`, and rejects the mandate with `InvalidConfig` otherwise. It trusts the return data of the view functions. The four functions that change the position are low-level calls whose return data it ignores, so neither a revert nor malformed return data can revert `execute`.
+One lending position owned by one vault. Stock amounts are raw units, USDC amounts have <Fact name="usdcDecimals" />, and [health factors](/docs/help/glossary#health-factor) are [WAD](/docs/help/glossary#wad), with the largest `uint256` meaning no debt. The vault accepts a credit adapter only if it reports this vault from `vault()` and this vault's USDC from `usdc()`, and rejects the mandate with `InvalidConfig` otherwise. It trusts the return data of the view functions. The four functions that change the position are low-level calls whose return data it ignores, so neither a revert nor malformed return data can revert `execute`.
 
 <FunctionIndex contract="ICreditAdapter" qualify />
 
@@ -104,7 +104,7 @@ True when the adapter can hold `token` as collateral. The vault asks it before a
 
 <Fn contract="ICreditAdapter" name="suppliedOf" />
 
-Returns how much of `token` the adapter has supplied, in raw token units. The vault reads it for every listed token, when it measures a stock's weight and when it checks collateral, which is why it must not revert for a token the adapter does not support. A value the vault cannot read fails closed: the weight counts as above any cap, and a `BORROW` or a `WITHDRAW_COLLATERAL` returns `CREDIT_FAILED`.
+Returns how much of `token` the adapter has supplied, in raw token units. The vault reads it for every listed token, when it measures a stock's weight and when it checks collateral, which is why it must not revert for a token the adapter does not support. A value the vault cannot read [fails closed](/docs/help/glossary#fail-closed): the weight counts as above any cap, and a `BORROW` or a `WITHDRAW_COLLATERAL` returns `CREDIT_FAILED`.
 
 ### debt (ICreditAdapter)
 

@@ -13,7 +13,7 @@ sources:
 next: [reference/events, concepts/timelock-and-roles]
 ---
 
-`MandateVault` holds the treasury and checks every intent against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it reverts or refuses. The contract is built and fork-tested, and nothing is deployed yet, so there is no address to give.
+`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it reverts or refuses. The contract is built and fork-tested, and nothing is deployed yet, so there is no address to give.
 
 <Callout type="note" title="Refusals are not reverts">
 
@@ -25,13 +25,13 @@ next: [reference/events, concepts/timelock-and-roles]
 
 ## Executor only
 
-The executor is the one address that can send intents. [Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do) explains what a leaked executor key can and cannot do.
+The [executor](/docs/help/glossary#executor) is the one address that can send intents. [Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do) explains what a leaked executor key can and cannot do.
 
 ### execute
 
 <Fn contract="MandateVault" name="execute" />
 
-Only the current `executor` may call it: any other caller reverts with `NotExecutor`, and an [intent](/docs/help/glossary#intent) `id` that was used before reverts with `IntentAlreadyUsed`, with nothing recorded. Otherwise the vault marks the id used, refreshes its multiplier snapshot of the intent's token when the token has a market (`MultiplierChangeDetected` if the value changed), and runs the checks for the action: [the nine checks](/docs/concepts/nine-checks) for a `BUY` or a `SELL` (check 9 is for a `BUY` only), and [their own checks](/docs/concepts/nine-checks#other-actions) for each other action. If they pass, the vault records any USDC that arrived since its last count (`RevenueReceived`) and acts: a swap, a transfer to the payee, or a call to the credit adapter. Every call that does not revert emits one `Decision`: a refusal comes back as `allowed = false` with a `Reason`, moves no funds and still uses up the id, and a swap, token call or credit call that fails after the checks is recorded the same way, as `SWAP_FAILED`, `TRANSFER_FAILED` or `CREDIT_FAILED`.
+Only the current `executor` may call it: any other caller reverts with `NotExecutor`, and an intent `id` that was used before reverts with `IntentAlreadyUsed`, with nothing recorded. Otherwise the vault marks the id used, refreshes its multiplier snapshot of the intent's token when the token has a market (`MultiplierChangeDetected` if the value changed), and runs the checks for the action: [the nine checks](/docs/concepts/nine-checks) for a `BUY` or a `SELL` (check 9 is for a `BUY` only), and [their own checks](/docs/concepts/nine-checks#other-actions) for each other action. If they pass, the vault records any USDC that arrived since its last count (`RevenueReceived`) and acts: a swap, a transfer to the [payee](/docs/help/glossary#payee), or a call to the credit adapter. Every call that does not revert emits one `Decision`: a refusal comes back as `allowed = false` with a `Reason`, moves no funds and still uses up the id, and a swap, token call or credit call that fails after the checks is recorded the same way, as `SWAP_FAILED`, `TRANSFER_FAILED` or `CREDIT_FAILED` (a credit call can also be recorded as `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`).
 
 ### previewIntent
 
@@ -51,7 +51,7 @@ Anyone may call it, and it moves no funds. If the vault's USDC balance is above 
 
 <Fn contract="MandateVault" name="syncMultiplier" />
 
-Anyone may call it for any token address. When the token has a market in the vault (it is allowed, or has a feed or a pool set), the vault reads its [uiMultiplier](/docs/help/glossary#uimultiplier) and, if the value differs from `lastMultiplier`, stores it, sets `multiplierChangedAt` to now and emits `MultiplierChangeDetected`, which starts the cooldown. For a token with no market it does nothing, and a token whose `uiMultiplier()` reverts is skipped without reverting, so the checks fail closed with `MULTIPLIER_COOLDOWN` instead. `execute` runs the same sync for the intent's token before it checks anything ([Splits and the multiplier](/docs/concepts/splits-and-multiplier#anyone-can-sync)).
+Anyone may call it for any token address. When the token has a market in the vault (it is allowed, or has a feed or a pool set), the vault reads its [uiMultiplier](/docs/help/glossary#uimultiplier) and, if the value differs from `lastMultiplier`, stores it, sets `multiplierChangedAt` to now and emits `MultiplierChangeDetected`, which starts the cooldown. For a token with no market it does nothing, and a token whose `uiMultiplier()` reverts is skipped without reverting, so the checks [fail closed](/docs/help/glossary#fail-closed) with `MULTIPLIER_COOLDOWN` instead. `execute` runs the same sync for the intent's token before it checks anything ([Splits and the multiplier](/docs/concepts/splits-and-multiplier#anyone-can-sync)).
 
 ## Owner, instant
 
@@ -89,7 +89,7 @@ A change to the mandate, to a token's settings or to the payee list takes two ca
 
 <Fn contract="MandateVault" name="queueMandate" />
 
-Computes the change hash of the proposed mandate, stores the current time against it in `queuedAt`, and emits `MandateChangeQueued` with the hash, the earliest apply time (`eta`) and the whole mandate. It returns the hash. The live mandate does not change, and the new values are not validated yet: that happens in `applyMandate`, so a bad mandate can be queued and then fail with `InvalidConfig`. Queueing the same mandate again restarts its clock.
+Computes the change hash of the proposed mandate, stores the current time against it in `queuedAt`, and emits `MandateChangeQueued` with the hash, the earliest apply time (`eta`) and the whole mandate. It returns the hash. The current mandate does not change, and the new values are not validated yet: that happens in `applyMandate`, so a bad mandate can be queued and then fail with `InvalidConfig`. Queueing the same mandate again restarts its clock.
 
 ### queueTokenConfig
 
@@ -159,7 +159,7 @@ Returns the current payee allowlist as an array. Removing a payee moves the last
 
 <Fn contract="MandateVault" name="policyHash" />
 
-Computes the [policy hash](/docs/help/glossary#policy-hash) from the vault's current state on each call, so it changes with every apply. The value in the latest `PolicyHashUpdated` event equals what this function returns, which lets anyone watching the events check the policy they read against the vault. It is a different value from a change hash, which commits to a change that has not happened yet.
+Computes the [policy hash](/docs/help/glossary#policy-hash) from the vault's current state on each call. It changes when the mandate, a token's config, the token list or the payee list changes, and an apply that writes the values already stored leaves it as it was. The value in the latest `PolicyHashUpdated` event equals what this function returns, which lets anyone watching the events check the policy they read against the vault. It is a different value from a change hash, which commits to a change that has not happened yet.
 
 ### today
 
@@ -265,7 +265,7 @@ The time a change hash was queued, or zero when it is not queued, which covers a
 
 <Fn contract="MandateVault" name="recordedUsdc" />
 
-The USDC balance the vault has accounted for. `notifyRevenue` reports any balance above it as revenue. `fund` raises it by the amount funded, and an allowed trade, an allowed bill payment and every credit action set it to the real balance afterwards, so swap proceeds and borrowed USDC are not counted as revenue.
+The USDC balance the vault has accounted for. `notifyRevenue` reports any balance above it as revenue. `fund` raises it by the amount funded, and an allowed trade, an allowed bill payment and every allowed credit action set it to the real balance afterwards, so swap proceeds and borrowed USDC are not counted as revenue.
 
 ### TIMELOCK
 

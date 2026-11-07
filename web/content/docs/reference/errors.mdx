@@ -78,7 +78,7 @@ Raised by `execute` when the intent's `id` has been used before, whether that in
 Raised when a mandate or a token's settings fail the vault's validation. The constructor, `applyMandate` and `applyTokenConfig` run it, and `execute` never does. The queue functions do not, so a bad change can be queued and then fail when it is applied. A mandate fails when:
 
 - `calendar` or `swapAdapter` has no code at its address.
-- `maxSlippageBps` is above the basis-point denominator, which is more than the whole of a trade.
+- `maxSlippageBps` is above the [basis-point](/docs/help/glossary#basis-point-bps) denominator, which is more than the whole of a trade.
 - A credit adapter is set, and it has no code, does not report this vault from `vault()`, or does not report this vault's USDC from `usdc()`, or one of those calls reverts.
 - A credit adapter is set, and `minHealthFactor` is below one [WAD](/docs/help/glossary#wad) (<Fact name="healthFactorBound" />), `targetHealthFactor` is below `minHealthFactor`, or `deriskWindow` is longer than <Fact name="maxDeriskWindowHours" />.
 

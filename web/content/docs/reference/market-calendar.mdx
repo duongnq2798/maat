@@ -30,13 +30,13 @@ Only the owner may call it, and any other caller reverts with `NotOwner`. It mar
 
 <Fn contract="MarketCalendar" name="setEarlyClose" />
 
-Only the owner may call it. It sets the early close of one New York day to `closeMin` minutes after midnight and emits `EarlyCloseSet`. The value must be after the open (<Fact name="nyseOpen" />) and before the regular close (<Fact name="nyseClose" />), and earlier than the day's existing early close if it has one. Otherwise the call reverts with `InvalidClose`, so a close can only move earlier. An early close applies to the `REGULAR` mode only: `FEED_24_5` ignores it.
+Only the owner may call it. It sets the early close of one New York day to `closeMin` minutes after midnight and emits `EarlyCloseSet`. The value must be after the open (<Fact name="nyseOpen" />) and before the regular close (<Fact name="nyseClose" />) of the [NYSE session](/docs/help/glossary#nyse-session), and earlier than the day's existing early close if it has one. Otherwise the call reverts with `InvalidClose`, so a close can only move earlier. An early close applies to the `REGULAR` mode only: `FEED_24_5` ignores it.
 
 ### etOffsetSeconds
 
 <Fn contract="MarketCalendar" name="etOffsetSeconds" />
 
-Returns the seconds to subtract from a UTC timestamp to get New York time: <Fact name="etOffsetHours.dst" /> during US daylight saving time and <Fact name="etOffsetHours.standard" /> otherwise. Daylight saving runs from 02:00 on the second Sunday in March to 02:00 on the first Sunday in November, local time. The rule is written into the contract, so it needs no yearly update, and it takes the year from the UTC date of the timestamp. [Market hours](/docs/concepts/market-hours#new-york-time-onchain) explains it further.
+Returns the seconds to subtract from a UTC timestamp to get New York time: <Fact name="etOffsetHours.dst" /> during US daylight saving time and <Fact name="etOffsetHours.standard" /> otherwise. Daylight saving runs from the second Sunday in March to the first Sunday in November, and the contract writes the two switch instants in UTC. The rule is fixed in the code, so it needs no yearly update, and it takes the year from the UTC date of the timestamp. [Market hours](/docs/concepts/market-hours#new-york-time-onchain) explains it further.
 
 ### localTime
 

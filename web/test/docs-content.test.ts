@@ -17,7 +17,7 @@ import {
 import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
 import { docsFrontmatter } from "@/lib/docs/frontmatter";
 import { DOCS_IA } from "@/lib/docs/ia";
-import { docsSlug } from "@/lib/docs/links";
+import { docsSlug, headingId } from "@/lib/docs/links";
 import { SITE } from "@/lib/site";
 import { docsPages } from "./helpers/docs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
@@ -29,6 +29,29 @@ const pages = docsPages();
 const bySlug = new Map(pages.map((p) => [p.slug, p.source]));
 const ia = new Map(DOCS_IA.flatMap((s) => s.pages).map((p) => [p.slug, p]));
 const at = (slug: string, f: { line: number; text: string }) => `content/docs/${slug}.mdx:${f.line} ${f.text}`;
+
+const FENCED = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+
+/**
+ * Every heading id on a page that an earlier heading already has (h2 to h6, outside fenced code), with its line.
+ * headingIds() in lib/docs/content-checks.ts returns a set, so it cannot see a repeat; the site gives the second
+ * heading a suffixed id, and a link to the plain one then lands on the first.
+ */
+function repeatedHeadingIds(source: string): { line: number; text: string }[] {
+  const seen = new Set<string>();
+  const out: { line: number; text: string }[] = [];
+  source
+    .replace(FENCED, (m) => m.replace(/[^\n]/g, " "))
+    .split("\n")
+    .forEach((line, i) => {
+      const text = /^#{2,6}\s+(.+?)\s*#*\s*$/.exec(line)?.[1];
+      if (text === undefined) return;
+      const id = headingId(text.replace(/\[([^\]]*)\]\([^)]*\)/g, "$1"));
+      if (seen.has(id)) out.push({ line: i + 1, text: `#${id} is already the id of an earlier heading` });
+      seen.add(id);
+    });
+  return out;
+}
 
 describe.each(pages.map((p) => [p.slug, p.source] as const))("content/docs/%s.mdx", (slug, source) => {
   // A page whose frontmatter cannot be parsed must fail its own test, not abort the collection of every page.
@@ -77,6 +100,10 @@ describe.each(pages.map((p) => [p.slug, p.source] as const))("content/docs/%s.md
     }
     for (const p of repoPaths(source, SITE.repoUrl)) if (!existsSync(join(REPO_ROOT, p))) bad.push(`${p}: not in the repo`);
     expect(bad).toEqual([]);
+  });
+
+  it("gives every heading its own id (anchor gate)", () => {
+    expect(repeatedHeadingIds(source).map((f) => at(slug, f))).toEqual([]);
   });
 
   it("quotes code exactly (excerpt gate)", () => {

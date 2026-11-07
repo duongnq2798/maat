@@ -3,7 +3,7 @@ import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8 and 13). */
-const PAGES: string[] = ["/docs", "/docs/concepts/nine-checks", "/docs/reference/mandate-vault"];
+const PAGES: string[] = ["/docs", "/docs/concepts/nine-checks", "/docs/reference/mandate-vault", "/docs/reference/adapters"];
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -47,7 +47,9 @@ test.describe("search", () => {
     await page.goto("/docs");
     const dialog = await openSearch(page);
     await dialog.getByRole("combobox").fill("maat");
-    await dialog.getByRole("option", { name: /Maat docs/ }).first().click();
+    // Every other result's breadcrumb starts with "Maat docs" (the FAQ one comes first), so a name match is not enough.
+    // Fumadocs gives each result the id fd-search-option-<url>, so this is the result for the /docs page itself.
+    await dialog.locator('[role="option"][id="fd-search-option-/docs"]').click();
     await expect(page).toHaveURL(/\/docs$/);
   });
 
