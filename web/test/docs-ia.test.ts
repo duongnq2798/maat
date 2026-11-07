@@ -47,6 +47,8 @@ const SHIPPED: readonly string[] = [
   "security/report-a-vulnerability",
   "help/faq",
   "help/glossary",
+  "help/troubleshooting",
+  "help/changelog",
 ];
 
 const written = docsPages().map((p) => p.slug);
