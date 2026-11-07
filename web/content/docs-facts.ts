@@ -50,4 +50,12 @@ export const DOCS_FACTS = {
   offSessionMinutes: fact(60, "agent/src/loop/scheduler.ts OFF_SESSION_MS, agent loop cadence outside the session"),
   billMinUsd: fact(0.1, "agent/src/loop/runOnce.ts BILL_MIN_USD6 = 100_000n, the smallest compute bill the agent pays"),
   treasuryUsd: fact({ min: 20, max: 200 }, `${SPEC} §1 Constraints: small mainnet amounts, $20 to $200`),
+  addressesVerifiedOn: fact(
+    "2026-11-06",
+    "contracts/script/BaseAddresses.sol library NatSpec: Base mainnet addresses verified on 2026-11-06",
+  ),
+  amzncPoolLiquidityUsd: fact(
+    34_000,
+    `README.md Base integrations: AMZNc's pool held only about $34k of liquidity when the basket was chosen; ${SPEC} §3.5: on 2026-11-06`,
+  ),
 } as const;

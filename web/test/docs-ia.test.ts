@@ -28,6 +28,10 @@ const SHIPPED: readonly string[] = [
   "reference/types",
   "reference/market-calendar",
   "reference/adapters",
+  "reference/agent-configuration",
+  "reference/agent-scripts",
+  "reference/base-addresses",
+  "reference/default-parameters",
   "help/faq",
   "help/glossary",
 ];

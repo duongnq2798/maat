@@ -87,6 +87,8 @@ export const FACT_TEXT = {
   treasuryUsd: t(`${usd(F.treasuryUsd.value.min)} to ${usd(F.treasuryUsd.value.max)}`, "treasuryUsd"),
   x402Price: t(F.x402Price.value, "x402Price"),
   solidityVersion: t(F.solidityVersion.value, "solidityVersion"),
+  addressesVerifiedOn: t(F.addressesVerifiedOn.value, "addressesVerifiedOn"),
+  amzncPoolLiquidityUsd: t(`about ${usd(F.amzncPoolLiquidityUsd.value)}`, "amzncPoolLiquidityUsd"),
 } as const satisfies Record<string, FactText>;
 
 export type FactName = keyof typeof FACT_TEXT;

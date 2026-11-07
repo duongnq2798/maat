@@ -82,6 +82,21 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(tsConst("agent/src/loop/runOnce.ts", "BILL_MIN_USD6") / 1e6).toBe(DOCS_FACTS.billMinUsd.value);
   });
 
+  it("the date the Base addresses were verified is the library's NatSpec date", () => {
+    const addresses = readRepo("contracts/script/BaseAddresses.sol");
+    const date = /^\/\/\/ @notice Base mainnet addresses verified on (\d{4}-\d{2}-\d{2})\.$/m.exec(addresses)?.[1];
+    expect(date).toBe(DOCS_FACTS.addressesVerifiedOn.value);
+  });
+
+  it("the AMZNc pool liquidity is the figure in the README and in the design spec", () => {
+    const readme = /AMZNc is not in the basket: its pool held only about \$(\d+)k of liquidity/.exec(readRepo("README.md"));
+    const spec = /AMZNc is excluded because its pool has only about \$(\d+)k of liquidity on 2026-11-06/.exec(
+      readRepo("docs/superpowers/specs/2026-11-06-mandate-treasury-design.md"),
+    );
+    expect(Number(readme?.[1]) * 1000).toBe(DOCS_FACTS.amzncPoolLiquidityUsd.value);
+    expect(Number(spec?.[1]) * 1000).toBe(DOCS_FACTS.amzncPoolLiquidityUsd.value);
+  });
+
   it("treasury size is the design spec's constraint", () => {
     const spec = readRepo("docs/superpowers/specs/2026-11-06-mandate-treasury-design.md");
     const m = /small mainnet amounts \(\$(\d+)[–-](\d+)\)/.exec(spec);

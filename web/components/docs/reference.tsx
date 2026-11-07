@@ -292,7 +292,7 @@ export function FactTable({ names }: { names: readonly FactName[] }) {
     <ScrollTable label="Defaults">
       <thead>
         <tr>
-          <th>Parameter</th>
+          <th>Name</th>
           <th>Value</th>
           <th>Source</th>
         </tr>

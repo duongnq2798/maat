@@ -1,0 +1,125 @@
+---
+title: Default parameters
+description: Every default the vault, the calendar and the agent ship with, with its unit and the source file that sets it.
+type: reference
+audience: [builder, developer, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - web/content/facts.ts
+  - contracts/script/MaatConfig.sol
+  - contracts/src/MandateVault.sol
+  - agent/src/policy.ts
+  - agent/src/config.ts
+next: [concepts/mandate, guides/configure-a-mandate]
+---
+
+A default is a value the code uses until someone changes it. This page lists the defaults that the vault, the calendar and the agent ship with, each with its unit and the file that sets it, so you can find a number without reading the code. A last table holds figures that look like defaults and are not: measurements, counts and plans. The vault and the agent are built and fork-tested, and nothing is deployed, so these are the defaults of the code, not of a running deployment. The values come from the same fact list as the rest of the docs, and tests compare the ones the repository can prove with the code that sets them.
+
+## Vault and mandate
+
+The rows named `mandate.*` are the default mandate that `MaatConfig.defaultMandate()` builds for the deploy script. The owner can change any [mandate](/docs/concepts/mandate) field later, through the [timelock](/docs/help/glossary#timelock). The other rows are constants and bounds in the contract code, so only a new deployment changes them.
+
+<FactTable
+  names={[
+    "mandate.sessionMode",
+    "mandate.maxStalenessSec",
+    "mandate.maxPremiumBps",
+    "mandate.maxSlippageBps",
+    "mandate.twapWindowSec",
+    "mandate.multiplierCooldownSec",
+    "mandate.perTradeCapUsd",
+    "mandate.dailyCapUsd",
+    "mandate.maxWeightBps",
+    "mandate.minHealthFactor",
+    "mandate.targetHealthFactor",
+    "mandate.deriskWindowSec",
+    "timelockHours",
+    "gracePeriodDays",
+    "maxDeriskWindowHours",
+    "healthFactorBound",
+    "priceDecimals",
+    "usdcDecimals",
+    "maxTokenDecimals",
+  ]}
+/>
+
+[The mandate](/docs/concepts/mandate) explains what each field limits and which check reads it, and [Configure a mandate](/docs/guides/configure-a-mandate) shows how to change one before you deploy.
+
+## Calendar
+
+These come from `MarketCalendar.sol`. The session times and the feed edge are constants in New York time, and the offsets are the rule the contract uses to turn UTC into New York time. The early close is the time that the constructor gives to the early closes it ships. The owner can add holidays and move a close earlier, but cannot make the calendar looser. The dates it ships are listed on [MarketCalendar](/docs/reference/market-calendar#shipped-holidays-and-early-closes).
+
+<FactTable
+  names={[
+    "nyseOpen",
+    "nyseClose",
+    "feedEdge",
+    "earlyClose",
+    "etOffsetHours.dst",
+    "etOffsetHours.standard",
+  ]}
+/>
+
+## Agent
+
+`maxTxPerDay` and `dailyComputeUsd` are the defaults of two environment variables, `MAAT_MAX_TX_PER_DAY` and `MAAT_DEFAULT_DAILY_COMPUTE_USD`, so you change them in `.env` ([Agent configuration](/docs/reference/agent-configuration)). The other rows are constants in the agent's source, such as `DEFAULT_POLICY` in `agent/src/policy.ts`. `main.ts` passes no override, so changing one of them means editing the code.
+
+<FactTable
+  names={[
+    "maxTxPerDay",
+    "dailyComputeUsd",
+    "loopMinutes",
+    "offSessionMinutes",
+    "cashReservePct",
+    "rebalanceDriftPct",
+    "runwayDays",
+    "minTradeUsd",
+    "billMinUsd",
+    "maxIntents",
+    "maxRationaleChars",
+    "maxGas",
+    "executeGasFloor",
+  ]}
+/>
+
+[The treasury loop](/docs/concepts/treasury-loop) shows where the policy rows act in a round.
+
+## Measured and planned figures
+
+The rows below are measurements, counts, dates, versions, derived values or planned values, not settings. Each Source says what was measured or counted and where. `x402Price` and `treasuryUsd` are plans, not features of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
+
+<FactTable
+  names={[
+    "checksPerTrade",
+    "refusalCount",
+    "calendarPreload.holidays",
+    "calendarPreload.earlyCloses",
+    "targetWeightPct",
+    "forkBlock",
+    "forkDay",
+    "forkTimeEt",
+    "weekendOffsetDays",
+    "feedAgeSec",
+    "nvdaUiMultiplier",
+    "premiumsBps.NVDAc",
+    "premiumsBps.GOOGLc",
+    "premiumsBps.AAPLc",
+    "gas.buy",
+    "gas.supply",
+    "gas.borrow",
+    "gas.refusalLog",
+    "amzncPoolLiquidityUsd",
+    "addressesVerifiedOn",
+    "solidityVersion",
+    "treasuryUsd",
+    "x402Price",
+  ]}
+/>
+
+## Related
+
+- [The mandate](/docs/concepts/mandate): every mandate field, its default and the check that reads it.
+- [Configure a mandate](/docs/guides/configure-a-mandate): change the limits, tokens and payees before you deploy.
+- [Base addresses](/docs/reference/base-addresses): the fork block, the pools and the other Base constants.
+- [Agent configuration](/docs/reference/agent-configuration): the settings behind the agent rows.

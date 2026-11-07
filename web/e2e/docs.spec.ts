@@ -3,7 +3,16 @@ import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8 and 13). */
-const PAGES: string[] = ["/docs", "/docs/concepts/nine-checks", "/docs/reference/mandate-vault", "/docs/reference/adapters"];
+const PAGES: string[] = [
+  "/docs",
+  "/docs/concepts/nine-checks",
+  "/docs/reference/mandate-vault",
+  "/docs/reference/adapters",
+  "/docs/reference/agent-configuration",
+  "/docs/reference/agent-scripts",
+  "/docs/reference/base-addresses",
+  "/docs/reference/default-parameters",
+];
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -237,4 +246,13 @@ test.describe("contract reference", () => {
     await expect(page.locator("#queuemandate")).toBeInViewport();
     await context.close();
   });
+});
+
+test("a setting name finds its entry first", async ({ page }) => {
+  await page.goto("/docs");
+  const dialog = await openSearch(page);
+  await dialog.getByRole("combobox").fill("MAAT_MODE");
+  await expect(dialog.getByRole("option").first()).toContainText(/Agent configuration|MAAT_MODE/);
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/\/docs\/reference\/agent-configuration(#maat_mode)?$/);
 });

@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
+import { FACT_TEXT } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
 import { REPO_ROOT } from "./helpers/solidity";
 
@@ -64,5 +65,55 @@ describe("every enum and struct in Types.sol has a reference entry", () => {
   const types = page("reference/types");
   it.each([...docsData.surface.enums, ...docsData.surface.structs].map((t) => t.name))("%s", (name) => {
     expect(types).toMatch(entry("TypeEntry", { name }));
+  });
+});
+
+describe("the agent reference covers every setting and script", () => {
+  const config = page("reference/agent-configuration");
+  const scripts = page("reference/agent-scripts");
+  it.each(docsData.agent.env.map((v) => v.name))("env %s", (name) => {
+    expect(config).toMatch(entry("EnvVar", { name }));
+  });
+  it.each(docsData.agent.scripts.map((s) => s.name))("npm run %s", (name) => {
+    expect(scripts).toMatch(entry("ScriptEntry", { name }));
+  });
+  it.each(docsData.agent.scriptFiles)("scripts/%s", (file) => {
+    expect(scripts).toMatch(entry("ScriptFile", { name: file }));
+  });
+});
+
+describe("every setting, script and script file has its heading", () => {
+  // <EnvTable> links to #<setting name in lower case>, so the heading must be the name itself. The entry sits
+  // directly under its heading, so a heading cannot carry another entry.
+  const lf = (slug: string) => page(slug).replace(/\r\n/g, "\n");
+  const config = lf("reference/agent-configuration");
+  const scripts = lf("reference/agent-scripts");
+  const literal = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const heading = (name: string, tag: string, attr: string) =>
+    new RegExp(`^### ${literal(name)}\\n\\n<${tag} ${attr}="${literal(name)}" />$`, "m");
+  it.each(docsData.agent.env.map((v) => v.name))("env %s", (name) => {
+    expect(config).toMatch(heading(name, "EnvVar", "name"));
+  });
+  it.each(docsData.agent.scripts.map((s) => s.name))("npm run %s", (name) => {
+    expect(scripts).toMatch(heading(name, "ScriptEntry", "name"));
+  });
+  it.each(docsData.agent.scriptFiles)("scripts/%s", (file) => {
+    expect(scripts).toMatch(heading(file, "ScriptFile", "name"));
+  });
+});
+
+describe("base addresses page lists every constant", () => {
+  it("uses the generated table", () => {
+    expect(page("reference/base-addresses")).toMatch(/<AddressTable\s*\/>/);
+  });
+});
+
+describe("default parameters page", () => {
+  it("default-parameters lists every fact once", () => {
+    const src = page("reference/default-parameters");
+    const listed = [...src.matchAll(/names=\{\[([^\]]*)\]\}/g)].flatMap((m) =>
+      [...(m[1] ?? "").matchAll(/"([^"]+)"/g)].map((n) => n[1]),
+    );
+    expect([...listed].sort()).toEqual(Object.keys(FACT_TEXT).sort());
   });
 });
