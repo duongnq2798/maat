@@ -13,7 +13,7 @@ import {BaseAddresses as A} from "../../script/BaseAddresses.sol";
 import {MaatConfig} from "../../script/MaatConfig.sol";
 
 contract MandateVaultCreditForkTest is Test {
-    uint256 internal constant SAT_1300_ET = 1794074400; // Sat 2026-11-07 18:00 UTC, two days after BLOCK_SESSION
+    uint256 internal constant SAT_1800_UTC = 1794074400; // Sat 2026-11-07 18:00 UTC, two days after BLOCK_SESSION
 
     address internal owner = makeAddr("owner");
     address internal executor = makeAddr("executor");
@@ -102,7 +102,7 @@ contract MandateVaultCreditForkTest is Test {
         uint256 stock = _buyAndSupply();
         _ok(Action.BORROW, A.USDC, 5e6, address(0));
 
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         assertEq(uint8(_exec(Action.BORROW, A.USDC, 1e6, address(0))), uint8(Reason.MARKET_CLOSED));
         // collateral against open debt stays put while the market is closed
         assertEq(uint8(_exec(Action.WITHDRAW_COLLATERAL, A.NVDAC, stock, address(0))), uint8(Reason.MARKET_CLOSED));

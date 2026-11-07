@@ -36,7 +36,7 @@ describe("decision rows", () => {
       ["Sat 7 Nov", "BUY GOOGLc · $10", "REFUSED · MARKET_CLOSED", "111,116"],
     ]);
     expect(rows.map((r) => r.note)).toEqual([
-      "NVDAc under its 33% target weight.",
+      "NVDAc under its 23.3% target weight.",
       "Posted as collateral on Aave V4.",
       "Compute runway, health factor above 2.0.",
       "Weekend. Refused and logged once.",

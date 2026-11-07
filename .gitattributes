@@ -1,0 +1,5 @@
+# Check text files out with LF on every OS, so tests that parse source files behave the same on Windows.
+* text=auto eol=lf
+
+*.png binary
+*.ico binary

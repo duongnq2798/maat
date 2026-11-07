@@ -52,7 +52,7 @@ export function Problem() {
           tag="02 · PREMIUM"
           code="PREMIUM_TOO_HIGH"
           title="The pool can drift from fair value."
-          body={`Each buy compares a ${m.twapWindowSec / 60}-minute Aerodrome TWAP with Chainlink. We measured these premiums in session before setting the limit.`}
+          body={`Each trade compares a ${m.twapWindowSec / 60}-minute Aerodrome TWAP with Chainlink. We measured these premiums in session before setting the limit.`}
         >
           <PremiumChart />
         </ProblemCard>

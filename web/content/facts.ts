@@ -72,9 +72,12 @@ export const FACTS = {
     `gasUsed per tx in agent/test/integration/fork-gas.json, written by MAAT_GAS_LOG from ${FORK_TEST} at BLOCK_SESSION (BUY varies a little between runs, the other three do not)`,
   ),
   feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (age 14 s)"),
-  loopMinutes: fact(15, `${SPEC} §3.5, agent loop cadence in session`),
-  rebalanceDriftPct: fact(5, `${SPEC} §3.5, rebalance past a 5% drift`),
-  targetWeightPct: fact(33, `${SPEC} §3.5, equal weight across three tokens`),
+  loopMinutes: fact(15, "agent/src/loop/scheduler.ts IN_SESSION_MS, agent loop cadence in session"),
+  rebalanceDriftPct: fact(5, "agent/src/policy.ts DEFAULT_POLICY.driftBps, rebalance past a 5-point drift"),
+  targetWeightPct: fact(
+    23.3,
+    "agent/src/policy.ts DEFAULT_POLICY: (10,000 - cashReserveBps 3000) / 3 tokens = 2,333 bps per token",
+  ),
   x402Price: fact("about one cent", `${SPEC} §3.4, x402 check priced at ~0.01 USDC`),
   solidityVersion: fact("0.8.28", "pragma solidity in contracts/src/IMandateVaultEvents.sol"),
   decisionEvent: fact<readonly EventParam[]>(

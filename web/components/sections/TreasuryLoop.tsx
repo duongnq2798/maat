@@ -5,7 +5,7 @@ const STEPS = [
   {
     n: "01 · EARN",
     title: "x402 revenue",
-    body: `Other agents pay ${FACTS.x402Price.value} to ask whether a stock trade is safe right now. USDC lands in the vault.`,
+    body: `Planned: other agents pay ${FACTS.x402Price.value} to ask whether a stock trade is safe right now, and the USDC lands in the vault.`,
   },
   {
     n: "02 · BUY",
