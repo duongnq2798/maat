@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/page";
-import { REASONS } from "@/content/reasons";
+import { REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
 function setup() {
@@ -35,9 +35,11 @@ describe("landing page", () => {
     const c = setup();
     const section = c.querySelector("#reasons") as HTMLElement;
     expect(within(section).getByRole("heading", { level: 2 })).toHaveTextContent("Nineteen typed ways to say no.");
-    const chips = [...section.querySelectorAll("li")].map((li) => li.textContent);
-    expect([...chips].sort()).toEqual([...REASONS].sort());
-    expect([...section.querySelectorAll("li[data-hot]")].map((li) => li.textContent)).toEqual(["MARKET_CLOSED"]);
+    const items = [...section.querySelectorAll<HTMLElement>("li[data-code]")];
+    expect(items.map((li) => li.dataset.code).sort()).toEqual([...REASONS].sort());
+    // Each code is followed by its plain-English meaning.
+    for (const li of items) expect(li).toHaveTextContent(`${li.dataset.code}${REASON_MEANING[li.dataset.code as RefusalCode]}`);
+    expect([...section.querySelectorAll<HTMLElement>("li[data-hot]")].map((li) => li.dataset.code)).toEqual(["MARKET_CLOSED"]);
   });
 
   it("shows the mandate sheet and its public timelock", () => {
@@ -46,6 +48,9 @@ describe("landing page", () => {
     expect(section.querySelectorAll("dl > div")).toHaveLength(12);
     expect(within(section).getByText("timelock 24h")).toBeInTheDocument();
     expect(within(section).getByText("mandateHash [after deploy]")).toBeInTheDocument();
+    // Nothing is deployed yet, so the sheet must not claim a network.
+    expect(within(section).getByText("default · not deployed yet")).toBeInTheDocument();
+    expect(section).not.toHaveTextContent("Base mainnet");
     expect(within(section).getByText(/waits 24 hours/)).toBeInTheDocument();
   });
 
@@ -58,7 +63,17 @@ describe("landing page", () => {
   it("closes with the CTA, disclaimer and tagline verbatim", () => {
     setup();
     expect(screen.getByRole("link", { name: "Follow @maatonbase" })).toHaveAttribute("href", SITE.xUrl);
-    expect(screen.getByRole("link", { name: "Open the ledger" })).toHaveAttribute("href", "#ledger");
+    expect(screen.getByRole("link", { name: "Read the code" })).toHaveAttribute("href", SITE.repoUrl);
+    const links = within(screen.getByRole("list", { name: "Project links" }))
+      .getAllByRole("link")
+      .map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual([
+      ["Source on GitHub", SITE.repoUrl],
+      ["Verify in 5 minutes", SITE.evaluateUrl],
+      ["Fork evidence", SITE.forkEvidenceUrl],
+      ["MIT License", SITE.licenseUrl],
+      [SITE.xHandle, SITE.xUrl],
+    ]);
     expect(screen.getByText(SITE.disclaimer)).toBeInTheDocument();
     expect(screen.getByText(SITE.tagline)).toBeInTheDocument();
   });

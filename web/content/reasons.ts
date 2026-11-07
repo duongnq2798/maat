@@ -43,3 +43,26 @@ export const REASON_GROUPS: readonly ReasonGroup[] = [
 
 /** The refusal the fork run recorded; the Refusals section highlights it. */
 export const HIGHLIGHT_REASON: RefusalCode = "MARKET_CLOSED";
+
+/** One plain-English line per refusal, written from where the contracts return it (contracts/src). */
+export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
+  VAULT_PAUSED: "The owner paused the vault. Only repaying debt still goes through.",
+  ACTION_NOT_SUPPORTED: "Credit actions are off: this vault has no credit adapter.",
+  TOKEN_NOT_ALLOWED: "The token is not in the mandate for this action.",
+  TOKEN_PAUSED: "The token's transfers are paused, or their state can't be read.",
+  POLICY_BLOCKED: "The token's own transfer policy does not allow this path.",
+  MARKET_CLOSED: "NYSE is closed for the mandate's session: a weekend, a holiday or after hours.",
+  FEED_STALE: "The Chainlink price is older than the mandate allows.",
+  BAD_PRICE: "The Chainlink feed or the pool's TWAP could not be read.",
+  MULTIPLIER_COOLDOWN: "The token's multiplier changed recently, as after a split, or can't be read.",
+  PREMIUM_TOO_HIGH: "The pool price is too far above or below Chainlink.",
+  SIZE_LIMIT: "Over the per-trade cap or the daily cap.",
+  CONCENTRATION: "The buy would push one stock past its maximum weight.",
+  PAYEE_NOT_ALLOWED: "Payments go only to payees the owner listed through the timelock.",
+  INSUFFICIENT_BALANCE: "Not enough funds for the amount, or an amount of zero.",
+  SWAP_FAILED: "The swap reverted, for example on slippage past the limit.",
+  TRANSFER_FAILED: "A token transfer or approval failed.",
+  CREDIT_FAILED: "An Aave call failed, or its account data couldn't be read.",
+  HEALTH_FACTOR_LOW: "The move would leave the Aave health factor under the floor.",
+  DERISK_WINDOW: "Before the feed pauses for a weekend or holiday, the target health factor applies, not just the floor.",
+};

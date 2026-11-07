@@ -31,7 +31,7 @@ export function Problem() {
   const m = FACTS.mandate.value;
   const cooldownH = m.multiplierCooldownSec / 3600;
   return (
-    <section aria-labelledby="problem-title" className="wrap flex flex-col gap-14 py-32">
+    <section aria-labelledby="problem-title" className="wrap flex flex-col gap-14 py-20 md:py-32">
       <SectionHeading
         id="problem-title"
         layout="split"
