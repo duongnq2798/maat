@@ -86,7 +86,7 @@ The oldest oracle answer the vault will use.
 
 - **Unit:** seconds.
 - **Default:** <Fact name="mandate.maxStalenessSec" />.
-- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt, and by the valuation in [check 9](/docs/concepts/nine-checks#9-concentration), where a holding with a stale price counts as zero. It returns `FEED_STALE`.
+- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), and by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt. Those checks return `FEED_STALE`. [Check 9](/docs/concepts/nine-checks#9-concentration) also reads it, but returns no code for it: it values a holding with a stale price at zero.
 
 ### multiplierCooldown
 

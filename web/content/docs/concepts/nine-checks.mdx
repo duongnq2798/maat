@@ -129,7 +129,7 @@ Takes the trade's notional in USDC: the amount for a `BUY`, the stock amount val
 
 ### 9. Concentration
 
-Applies to a `BUY` only. The vault adds up its net equity (USDC, every listed stock it holds and every stock supplied as collateral, minus any credit debt, so borrowing cannot loosen the cap) and returns `CONCENTRATION` when the bought stock's weight after the buy would be above its `maxWeightBps` (default <Fact name="mandate.maxWeightBps" />). A holding that is not allowed, or whose price is stale or unreadable, counts as zero. An unreadable collateral or debt value, or debt at or above the assets, counts as a weight above any cap. See `test_concentration`, `test_concentrationNetsCreditDebt` and `test_unreadableCollateralFailsConcentrationClosed`; the last two are in [MandateVaultCredit.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol).
+Applies to a `BUY` only. The vault adds up its net equity (USDC, every listed stock it holds and every stock supplied as collateral, minus any credit debt, so borrowing cannot loosen the cap) and returns `CONCENTRATION` when the bought stock's weight after the buy would be above its `maxWeightBps` (default <Fact name="mandate.maxWeightBps" />). A holding that is not allowed, or whose price is stale or unreadable, counts as zero. An unreadable position or debt amount, or debt at or above the assets, counts as a weight above any cap. See `test_concentration`, `test_concentrationNetsCreditDebt` and `test_unreadableCollateralFailsConcentrationClosed`; the last two are in [MandateVaultCredit.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol).
 
 ## After the checks pass
 
