@@ -25,6 +25,19 @@ export interface MandateFacts {
   deriskWindowSec: number;
 }
 
+export interface Holiday {
+  /** ET date, "YYYY-MM-DD". */
+  date: string;
+  name: string;
+}
+
+export interface EarlyClose {
+  /** ET date, "YYYY-MM-DD". */
+  date: string;
+  /** Minutes after midnight ET. */
+  closeMin: number;
+}
+
 export interface EventParam {
   type: string;
   indexed: boolean;
@@ -99,5 +112,24 @@ export const FACTS = {
   feedEdgeMin: fact(
     1200,
     "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET",
+  ),
+  calendar: fact<{ holidays: readonly Holiday[]; earlyCloses: readonly EarlyClose[] }>(
+    {
+      holidays: [
+        { date: "2026-11-26", name: "Thanksgiving" },
+        { date: "2026-12-25", name: "Christmas" },
+        { date: "2027-01-01", name: "New Year" },
+      ],
+      earlyCloses: [
+        { date: "2026-11-27", closeMin: 780 },
+        { date: "2026-12-24", closeMin: 780 },
+      ],
+    },
+    "contracts/src/MarketCalendar.sol constructor: _addHoliday (names from its comments) and _setEarlyClose",
+  ),
+  basket: fact(["NVDAc", "GOOGLc", "AAPLc"] as const, "contracts/script/MaatConfig.sol basket(), in listing order"),
+  forkVaultUsd: fact(
+    200,
+    "agent/test/integration/deploy.ts: owner.fund(200_000_000n), the USDC the fork vault starts with",
   ),
 } as const;
