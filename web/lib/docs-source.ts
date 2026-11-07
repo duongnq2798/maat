@@ -20,3 +20,9 @@ export async function getPageMarkdown(page: DocsPage): Promise<string> {
     body: await page.data.getText("processed"),
   });
 }
+
+/** Whether a docs page exists, by slug ("concepts/nine-checks"; "" or "index" for the home page). */
+export function pageExists(slug: string): boolean {
+  const parts = slug === "index" ? [] : slug.split("/").filter(Boolean);
+  return source.getPage(parts) !== undefined;
+}
