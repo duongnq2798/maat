@@ -85,7 +85,7 @@ No. Maat has no API or SDK to integrate with today, and anything not built yet i
 
 ### Can I run my own vault?
 
-Yes, with a caveat: the contracts are MIT-licensed but unaudited. The deploy script reads the deployer, owner, executor and expense payee addresses from environment variables and builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you would edit `MaatConfig.sol` first. You sign every transaction from your own wallet, and the owner address cannot be changed afterwards, so check it character for character before you broadcast. See [Deploy your own vault](/docs/guides/deploy-your-own-vault) for the commands and the checklist in [Next: mainnet](/docs/get-started/status#next-mainnet).
+Yes, with a caveat: the contracts are MIT-licensed but unaudited. The deploy script reads the deployer, owner, executor and expense payee addresses from environment variables and builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you would edit `MaatConfig.sol` first. You sign every transaction from your own wallet, and the owner address cannot be changed afterwards, so check it character for character before you broadcast. See the checklist in [Next: mainnet](/docs/get-started/status#next-mainnet), and [Deploy your own vault](/docs/guides/deploy-your-own-vault) for the commands.
 
 ### What can I set in a mandate?
 
