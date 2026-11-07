@@ -1,0 +1,199 @@
+---
+title: Glossary
+description: Plain definitions of every term the docs use, from B20 and uiMultiplier to TWAP, health factor, Builder Code and the feed edge.
+type: help
+audience: [newcomer, watcher, developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - contracts/src/Types.sol
+next: [get-started/what-is-maat, help/faq]
+---
+
+Every term the docs use is defined here in one to three sentences, with a link to the page that explains it in full. The entries are in alphabetical order, one section per letter. If you would rather start from a subject, the table below groups the terms by topic. Nothing is deployed yet, so each definition says how the contracts and the agent are built and fork-tested, not how a running system behaves.
+
+| Topic | Terms |
+| --- | --- |
+| The rules | [Mandate](/docs/help/glossary#mandate) · [Mandate hash](/docs/help/glossary#mandate-hash) · [Policy hash](/docs/help/glossary#policy-hash) · [Timelock](/docs/help/glossary#timelock) · [Owner](/docs/help/glossary#owner) · [Executor](/docs/help/glossary#executor) · [Payee](/docs/help/glossary#payee) |
+| A proposal and its verdict | [Action](/docs/help/glossary#action) · [Intent](/docs/help/glossary#intent) · [Preview](/docs/help/glossary#preview) · [Decision](/docs/help/glossary#decision) · [Reason](/docs/help/glossary#reason) · [Refusal](/docs/help/glossary#refusal) · [Fail closed](/docs/help/glossary#fail-closed) |
+| Prices and market hours | [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) · [Staleness](/docs/help/glossary#staleness) · [TWAP](/docs/help/glossary#twap) · [Premium](/docs/help/glossary#premium) · [Basis point (bps)](/docs/help/glossary#basis-point-bps) · [Slippage floor](/docs/help/glossary#slippage-floor) · [NYSE session](/docs/help/glossary#nyse-session) · [Session mode](/docs/help/glossary#session-mode) · [Feed edge](/docs/help/glossary#feed-edge) |
+| Tokens | [B20](/docs/help/glossary#b20) · [uiMultiplier](/docs/help/glossary#uimultiplier) · [WAD](/docs/help/glossary#wad) |
+| Credit | [Aave V4](/docs/help/glossary#aave-v4) · [Health factor](/docs/help/glossary#health-factor) · [De-risk window](/docs/help/glossary#de-risk-window) |
+| Venue, wallet and testing | [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) · [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) · [Builder Code (ERC-8021)](/docs/help/glossary#builder-code-erc-8021) · [Dry run](/docs/help/glossary#dry-run) · [Fork test](/docs/help/glossary#fork-test) · [x402](/docs/help/glossary#x402) |
+
+## A
+
+### Aave V4
+
+The lending market on Base where the vault can supply a stock as collateral and borrow USDC against it. Maat uses the MAG7 Spoke and the Equities Hub, through a credit adapter that holds the position. See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
+
+### Action
+
+What an [intent](/docs/help/glossary#intent) asks the vault to do: `BUY`, `SELL`, `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW`, `REPAY` or `PAY_EXPENSE`. The <Fact name="checksPerTrade" /> checks apply to `BUY` and `SELL`, and each other action has its own checks. See [Read a decision](/docs/get-started/read-a-decision#field-by-field) for the ids and [The nine checks](/docs/concepts/nine-checks#other-actions) for the checks.
+
+### Aerodrome Slipstream
+
+The concentrated-liquidity pools on Base where each basket stock trades against USDC. The vault swaps directly against the stock's pool, with no router, and reads the pool's [TWAP](/docs/help/glossary#twap) as the pool price. See [Prices and premium](/docs/concepts/prices-and-premium#two-prices).
+
+## B
+
+### B20
+
+The token type behind the tokenized stocks Maat trades on Base (NVDAc, GOOGLc and AAPLc). A B20 token can pause transfers, enforce sender, receiver and executor transfer policies, and publish a [uiMultiplier](/docs/help/glossary#uimultiplier), and the vault reads all three before it trades. See [the transfer-policy check](/docs/concepts/nine-checks#3-transfer-policy) and [Splits and the multiplier](/docs/concepts/splits-and-multiplier).
+
+### Basis point (bps)
+
+One hundredth of a percent. The mandate states its price tolerances and weight caps in basis points, for example the largest [premium](/docs/help/glossary#premium) and the slippage tolerance. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
+
+### Builder Code (ERC-8021)
+
+A short code registered for a project, which ERC-8021 appends to a transaction's calldata as a suffix. The agent is built to add its code to every transaction it sends (transactions the owner signs do not carry it), and no real code is registered yet. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send).
+
+## C
+
+### CDP Server Wallet
+
+The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in live mode. Its account policy allows only zero-value transactions to the vault on Base and rejects raw hash signing ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
+
+### Chainlink equity feed
+
+The oracle that publishes a stock's price on Base. It updates from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />, and the vault reads its answer as the price of one raw token with the [uiMultiplier](/docs/help/glossary#uimultiplier) already applied. See [Prices and premium](/docs/concepts/prices-and-premium#two-prices).
+
+## D
+
+### Decision
+
+The event the vault emits for every `execute` call that does not revert, whether the intent was allowed or refused. It carries the intent id, the action, the token, the amount, the `allowed` flag, the [reason](/docs/help/glossary#reason) and the hash of the rationale. See [Read a decision](/docs/get-started/read-a-decision#the-decision-event).
+
+### De-risk window
+
+The last stretch before the [feed edge](/docs/help/glossary#feed-edge) on every Friday, and on a weekday that comes before a market holiday. Inside it, `BORROW` and `WITHDRAW_COLLATERAL` against debt must keep the [health factor](/docs/help/glossary#health-factor) at or above the target, <Fact name="mandate.targetHealthFactor" /> by default, instead of the floor. The default window is <Fact name="mandate.deriskWindowSec" /> long ([Credit and the health factor](/docs/concepts/credit-and-health-factor#the-de-risk-window)).
+
+### Dry run
+
+The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude, previews every [intent](/docs/help/glossary#intent) and writes its journal, but sends no transaction. It still calls Claude, so it costs API fees ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)).
+
+## E
+
+### Executor
+
+The one address allowed to call `execute` on the vault. It is set when the vault is created, the owner can replace it at once, and it can call no owner function. In live mode the agent is meant to use a [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the executor ([Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do)).
+
+## F
+
+### Fail closed
+
+Treating a read that reverts or cannot be understood as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed and Aave reads all work this way. See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
+
+### Feed edge
+
+The moment, <Fact name="feedEdge" />, at which the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) stop updating on a Friday and start again on a Sunday. The `FEED_24_5` [session mode](/docs/help/glossary#session-mode) follows it, and the [de-risk window](/docs/help/glossary#de-risk-window) is counted back from it. See [Market hours](/docs/concepts/market-hours#the-feed-edge).
+
+### Fork test
+
+A test that runs against a local copy, a fork, of Base mainnet at a pinned block, with the real tokens, feeds, pools and Aave V4. Nothing is broadcast, so a fork test shows what the code does against real state at that block, not that it has run on mainnet. See [the optional fork tests in the Quickstart](/docs/get-started/quickstart#optional-the-fork-tests).
+
+## H
+
+### Health factor
+
+A number that measures how much room a loan has. The credit adapter reports it as a [WAD](/docs/help/glossary#wad), so `1e18` means 1.00, and the mandate sets a floor for it, <Fact name="mandate.minHealthFactor" /> by default, that a borrow or a collateral withdrawal against debt must leave. Inside the [de-risk window](/docs/help/glossary#de-risk-window) the higher target applies, <Fact name="mandate.targetHealthFactor" /> by default ([Credit and the health factor](/docs/concepts/credit-and-health-factor#health-factor)).
+
+## I
+
+### Intent
+
+A request the agent sends to the vault's `execute`: an id, an [action](/docs/help/glossary#action), a token, an amount, a minimum output, a payee and the hash of the rationale. The agent builds one from each proposal, and each id works once, whether the vault allows or refuses it. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-2-the-policy-and-claude).
+
+## M
+
+### Mandate
+
+The rule set the vault enforces on every action: the trading session, the price tolerances, the size caps, the health factor limits and the addresses of the calendar and the adapters. Only the [owner](/docs/help/glossary#owner) can change it, and only through the [timelock](/docs/help/glossary#timelock). See [The mandate](/docs/concepts/mandate).
+
+### Mandate hash
+
+The `keccak256` of the encoded `Mandate` struct, returned by `mandateHash()`. It covers the mandate only: the stock settings and the payee list are in the [policy hash](/docs/help/glossary#policy-hash), and the hash of a queued change is a different value again. See [The mandate](/docs/concepts/mandate#what-the-mandate-is) and [change hashes](/docs/concepts/timelock-and-roles#change-hashes).
+
+## N
+
+### NYSE session
+
+The regular hours of the NYSE: weekdays from <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, New York time, except on holidays, with an early close ending a day sooner. The `REGULAR` [session mode](/docs/help/glossary#session-mode) follows it. See [Market hours](/docs/concepts/market-hours#two-session-modes).
+
+## O
+
+### Owner
+
+The one address that controls the vault, set when the vault is created and immutable, with no function that transfers it. It can pause the vault, replace the executor, withdraw and fund at once, and it changes the rules only through the [timelock](/docs/help/glossary#timelock) ([Timelock and roles](/docs/concepts/timelock-and-roles#three-roles)).
+
+## P
+
+### Payee
+
+An address on the vault's allowlist. `PAY_EXPENSE` can pay only a payee, and the owner changes the list through the [timelock](/docs/help/glossary#timelock). See [Timelock and roles](/docs/concepts/timelock-and-roles#three-roles).
+
+### Policy hash
+
+One hash that commits to the whole policy: the [mandate](/docs/help/glossary#mandate), the list of stocks, each stock's settings and the payee list. The vault emits it as `PolicyHashUpdated` when it is created and after every applied change. See [The mandate](/docs/concepts/mandate#what-the-mandate-is).
+
+### Premium
+
+The gap between the pool's [TWAP](/docs/help/glossary#twap) and the oracle price, as a share of the oracle price, in [basis points](/docs/help/glossary#basis-point-bps). It counts in both directions, and the vault returns `PREMIUM_TOO_HIGH` when it is greater than `maxPremiumBps`, <Fact name="mandate.maxPremiumBps" /> by default. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
+
+### Preview
+
+A read-only call, `previewIntent`, made with `eth_call` as the executor, that returns the verdict the vault's checks would give an [intent](/docs/help/glossary#intent) without sending a transaction. It returns the check verdict, not the execution result, so it cannot see `SWAP_FAILED` or `TRANSFER_FAILED` ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)).
+
+## R
+
+### Reason
+
+The enum in `Types.sol` that says why the vault allowed or refused an action, and that every [Decision](/docs/help/glossary#decision) carries. `OK` means allowed, the other <Fact name="refusalCount" /> are refusals or failures, and the list only ever grows. See [Refusal codes](/docs/concepts/refusal-codes).
+
+### Refusal
+
+A [Decision](/docs/help/glossary#decision) with `allowed` set to false: the vault records a [reason](/docs/help/glossary#reason) instead of reverting. Most refusals come from a failed check, while `SWAP_FAILED` and `TRANSFER_FAILED` mean the checks passed and the action then failed. See [Read a decision](/docs/get-started/read-a-decision#reading-a-refusal) and [Refusal codes](/docs/concepts/refusal-codes).
+
+## S
+
+### Session mode
+
+The `sessionMode` field of the mandate, which picks which hours count as open: `REGULAR`, the [NYSE session](/docs/help/glossary#nyse-session), or `FEED_24_5`, the window in which the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) update. The default mandate uses <Fact name="mandate.sessionMode" />. See [Market hours](/docs/concepts/market-hours#two-session-modes).
+
+### Slippage floor
+
+The minimum output the vault sets for a swap, computed from the oracle price and `maxSlippageBps`, <Fact name="mandate.maxSlippageBps" /> by default. The agent can ask for a higher minimum, never a lower one, and a swap that returns less fails and is recorded as `SWAP_FAILED`. See [Prices and premium](/docs/concepts/prices-and-premium#slippage-floor).
+
+### Staleness
+
+How old the oracle's latest answer is. An answer older than the mandate's `maxStaleness`, <Fact name="mandate.maxStalenessSec" /> by default, is stale and makes the vault return `FEED_STALE`, while an answer exactly at the limit is still accepted. See [Prices and premium](/docs/concepts/prices-and-premium#staleness).
+
+## T
+
+### Timelock
+
+The wait between queueing a rule change and applying it, <Fact name="timelockHours" /> in this vault. After the wait the owner has <Fact name="gracePeriodDays" /> to apply exactly the queued values, a change that is not applied in time expires, and the owner can cancel at any time. See [Timelock and roles](/docs/concepts/timelock-and-roles#the-timelock).
+
+### TWAP
+
+The time-weighted average price: the pool's price averaged over the mandate's `twapWindow`, <Fact name="mandate.twapWindowSec" /> by default, so that one trade moves it only by its share of the window. The vault compares it with the oracle price in check 7. See [Prices and premium](/docs/concepts/prices-and-premium#the-twap).
+
+## U
+
+### uiMultiplier
+
+A number, published as a [WAD](/docs/help/glossary#wad), that a [B20](/docs/help/glossary#b20) stock token changes on a split or a dividend. The vault does not use it to value anything, but it blocks trading in that stock for a cooldown after a change, <Fact name="mandate.multiplierCooldownSec" /> by default, and while a change is scheduled. See [Splits and the multiplier](/docs/concepts/splits-and-multiplier).
+
+## W
+
+### WAD
+
+A fixed-point number scaled so that one whole unit is `1e18`. The `uiMultiplier` and the health factor are WADs, and so are the mandate's two health factor limits. See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#what-the-multiplier-is).
+
+## X
+
+### x402
+
+The payment method named in the design for the treasury loop's planned revenue: another agent would pay <Fact name="x402Price" /> in USDC to ask whether a trade is safe right now. It is not built, and no service in this repository takes a payment. See [Planned, not built](/docs/get-started/status#planned-not-built) and [The treasury loop](/docs/concepts/treasury-loop#planned-earning).

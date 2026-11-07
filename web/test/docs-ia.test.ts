@@ -22,6 +22,8 @@ const SHIPPED: readonly string[] = [
   "concepts/credit-and-health-factor",
   "concepts/timelock-and-roles",
   "concepts/treasury-loop",
+  "help/faq",
+  "help/glossary",
 ];
 
 const written = docsPages().map((p) => p.slug);
