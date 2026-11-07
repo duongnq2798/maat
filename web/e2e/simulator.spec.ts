@@ -1,6 +1,9 @@
 import { expect, type Page, test } from "@playwright/test";
 import { collectErrors, measureFit } from "./helpers";
 
+// The date field's segment order depends on the locale.
+test.use({ locale: "en-US" });
+
 function sim(page: Page) {
   const root = page.locator("#try");
   return {
@@ -14,6 +17,8 @@ function sim(page: Page) {
 }
 
 test("a visitor makes it say no, by mouse and keyboard", async ({ page }) => {
+  // 329 key presses, each one a render.
+  test.slow();
   const errors = collectErrors(page);
   await page.goto("/#try");
   const ui = sim(page);
@@ -55,7 +60,12 @@ test("a share link reproduces its refusal, and a broken one falls back", async (
   expect(post.searchParams.get("url")).toBe(`${new URL(page.url()).origin}/?day=2026-11-26&at=1030&buy=GOOGLc-10#try`);
 
   await page.goto("/?day=1999-01-01&at=9999&buy=TSLA-x&tape=junk#try");
+  // The static HTML already says allowed. Only once hydrated does Post on X carry the share link, and by then the
+  // broken query has been decoded, so the checks below test the fallback rather than the page before it.
+  await expect(ui.root.getByRole("link", { name: "Post on X" })).toHaveAttribute("href", /&url=/);
   await expect(ui.verdict).toHaveAttribute("data-verdict", "allowed");
+  await expect(ui.button("Thu 5 Nov · 10:30")).toHaveAttribute("aria-pressed", "true");
+  await expect(ui.root.getByRole("list", { name: "Today's decisions" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -82,6 +92,8 @@ for (const width of [360, 1024]) {
     });
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/?day=2026-11-05&at=1030&buy=NVDAc-999999999.99#try");
+    // Widths depend on the web fonts.
+    await page.evaluate(() => document.fonts.ready);
     const ui = sim(page);
     await expect(ui.verdict).toHaveAttribute("data-reason", "INSUFFICIENT_BALANCE");
     await expect(ui.root.locator('[data-check="balance"]')).toContainText("$999,999,999.99 > $200 USDC");
