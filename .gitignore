@@ -5,3 +5,4 @@ contracts/broadcast/*/31337/
 contracts/.env
 node_modules/
 .superpowers/
+contracts/broadcast/*/*/dry-run/
