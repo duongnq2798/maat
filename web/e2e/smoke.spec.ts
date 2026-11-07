@@ -11,22 +11,52 @@ function collectErrors(page: Page): string[] {
   return errors;
 }
 
+/** Horizontal overflow of the page, and the `.card`s whose content is wider than the card (deliberate scroll regions excluded). */
+async function measureFit(page: Page) {
+  return page.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    clipped: [...document.querySelectorAll<HTMLElement>(".card")]
+      .filter((el) => !el.hasAttribute("data-scroll-x") && el.scrollWidth > el.clientWidth + 1)
+      .map((el) => (el.textContent ?? "").trim().slice(0, 60)),
+  }));
+}
+
 for (const width of WIDTHS) {
   test(`fits ${width}px: no page scroll, nothing clipped, no console errors`, async ({ page }) => {
     const errors = collectErrors(page);
     await page.setViewportSize({ width, height: 900 });
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
-    const fit = await page.evaluate(() => ({
-      overflow: document.documentElement.scrollWidth - window.innerWidth,
-      clipped: [...document.querySelectorAll<HTMLElement>(".card")]
-        .filter((el) => !el.hasAttribute("data-scroll-x") && el.scrollWidth > el.clientWidth + 1)
-        .map((el) => (el.textContent ?? "").trim().slice(0, 60)),
-    }));
-    expect(fit.overflow).toBeLessThanOrEqual(0);
-    expect(fit.clipped).toEqual([]);
+
+    // Default moment: Saturday, Refused.
+    const saturday = await measureFit(page);
+    expect(saturday.overflow).toBeLessThanOrEqual(0);
+    expect(saturday.clipped).toEqual([]);
+    // `animations: "disabled"` fast-forwards the intro, so the owner sees all nine rows and the verdict.
+    await page.screenshot({
+      path: `test-results/screens/landing-${width}.png`,
+      fullPage: true,
+      animations: "disabled",
+    });
+
+    // Thursday: the longest mono detail (`$20 ≤ $50 · $100/day`) only renders in this moment.
+    const thu = page.getByRole("button", { name: "Thu 5 Nov · 10:30" });
+    await thu.click();
+    await expect(thu).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("status").locator("> div")).toHaveAttribute("data-verdict", "allowed");
+    await expect(page.getByText("$20 ≤ $50 · $100/day")).toBeVisible();
+    // Wait for the intro animations to end; the live dot loops forever, so it is skipped.
+    await page.waitForFunction(() =>
+      document
+        .getAnimations()
+        .filter((a) => a.effect?.getComputedTiming().iterations !== Infinity)
+        .every((a) => a.playState === "finished"),
+    );
+    const thursday = await measureFit(page);
+    expect(thursday.overflow).toBeLessThanOrEqual(0);
+    expect(thursday.clipped).toEqual([]);
+
     expect(errors).toEqual([]);
-    await page.screenshot({ path: `test-results/screens/landing-${width}.png`, fullPage: true });
   });
 }
 
