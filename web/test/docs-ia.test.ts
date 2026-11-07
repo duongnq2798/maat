@@ -18,6 +18,10 @@ const SHIPPED: readonly string[] = [
   "concepts/refusal-codes",
   "concepts/market-hours",
   "concepts/prices-and-premium",
+  "concepts/splits-and-multiplier",
+  "concepts/credit-and-health-factor",
+  "concepts/timelock-and-roles",
+  "concepts/treasury-loop",
 ];
 
 const written = docsPages().map((p) => p.slug);

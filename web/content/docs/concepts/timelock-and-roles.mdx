@@ -1,0 +1,193 @@
+---
+title: Timelock and roles
+description: "Who can do what: owner, executor and payees. How rule changes are queued, applied or cancelled, and what a leaked key can do."
+type: concept
+audience: [developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MandateVault.sol
+  - contracts/test/MandateVaultAdmin.t.sol
+  - contracts/test/fork/MandateVaultFork.t.sol
+next: [guides/change-a-rule, security/threat-model]
+---
+
+The vault splits its power between two addresses and a small public surface. This page shows who may call what, which owner actions take effect at once and which must wait, how a rule change moves through the [timelock](/docs/help/glossary#timelock), and what an attacker gets if a key leaks. All of it is built and has been tested, and the executor limits have been run against Base state on a mainnet fork. Nothing is deployed, so no key has been set for a real vault yet.
+
+## Three roles
+
+| Role | Who it is | May call | May not |
+| --- | --- | --- | --- |
+| Owner | One address, set when the vault is created. It is immutable, and no function transfers it | Pause and unpause. Rotate the executor. Withdraw and fund. Queue, cancel and apply rule changes | Apply a change before the wait is over, or with values other than the queued ones |
+| Executor | One address, set at creation and replaceable by the owner | `execute`, once per intent id | Any owner function |
+| Anyone | Any address | `notifyRevenue`, `syncMultiplier`, `previewIntent` and the view functions | `execute` and any owner function |
+
+The [MandateVault reference](/docs/reference/mandate-vault) lists every function. [The owner](/docs/help/glossary#owner) and the [executor](/docs/help/glossary#executor) are both defined in the glossary.
+
+Payees are not a role. A [payee](/docs/help/glossary#payee) is an address on the vault's allowlist, and a `PAY_EXPENSE` can pay only an address on it. Changing the list is a rule change, so it goes through the timelock. The `MarketCalendar` has its own owner, which the deploy script sets to the vault's owner. Its two functions only make the calendar stricter and take effect at once (see [Market hours](/docs/concepts/market-hours#holidays-and-early-closes)).
+
+## What only the owner can do
+
+Every function below is guarded by `onlyOwner`, which reverts with `NotOwner` for anyone else. They fall into three groups by when they take effect.
+
+| When it takes effect | Functions | What they do |
+| --- | --- | --- |
+| At once | `setPaused`, `setExecutor`, `withdraw`, `fund`, `cancelChange` | Pause or unpause. Replace the executor. Send tokens held by the vault to the owner. Add USDC from the owner. Cancel a queued change |
+| Starts the clock | `queueMandate`, `queueTokenConfig`, `queuePayee` | Record a change and the earliest time it can be applied. Nothing changes yet |
+| After the wait | `applyMandate`, `applyTokenConfig`, `applyPayee` | Apply a queued change, only inside the apply window described below |
+
+Three of the instant functions fit in one excerpt. None of them looks at a timer, and none looks at the pause flag:
+
+```solidity title="contracts/src/MandateVault.sol#L139-L155"
+    function setExecutor(address newExecutor) external onlyOwner {
+        if (newExecutor == address(0)) revert ZeroAddress();
+        executor = newExecutor;
+        emit ExecutorSet(newExecutor);
+    }
+
+    function setPaused(bool p) external onlyOwner {
+        paused = p;
+        emit PausedSet(p);
+    }
+
+    function withdraw(address token, uint256 amount) external onlyOwner {
+        if (token == usdc) notifyRevenue();
+        token.safeTransfer(owner, amount);
+        if (token == usdc) recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this));
+        emit Withdrawn(token, amount);
+    }
+```
+
+`withdraw` sends only to the owner address, and it moves only what the vault holds. Collateral supplied to Aave stays in the position until a `WITHDRAW_COLLATERAL` brings it back. Every owner function emits an event. The vault does not check a new executor. The transfer-policy check reads `tx.origin` as an executor leg, so a new executor needs to be an address that the stock's [B20](/docs/help/glossary#b20) policy lets through ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
+
+## What the executor can do
+
+The executor has one entry point. It can send an intent to `execute`, and nothing else:
+
+```solidity title="contracts/src/MandateVault.sol#L102-L113"
+    function execute(Intent calldata intent) external returns (bool allowed, Reason reason) {
+        if (msg.sender != executor) revert NotExecutor();
+        if (usedIntent[intent.id]) revert IntentAlreadyUsed(intent.id);
+        usedIntent[intent.id] = true;
+        if (_hasMarket(tokenConfig[intent.token])) _syncMultiplier(intent.token);
+
+        uint256 price;
+        (reason, price) = _check(intent);
+        if (reason == Reason.OK) reason = _perform(intent, price);
+        allowed = reason == Reason.OK;
+        emit Decision(intent.id, intent.action, intent.token, intent.amount, allowed, reason, intent.rationaleHash);
+    }
+```
+
+A call from any other address reverts with `NotExecutor`, and an intent id works once, whether the intent was allowed or refused. By design only those two cases revert. A refusal, including the refusal of a paused vault, is recorded as a `Decision` instead (the README notes that this assumes plain ERC-20 balance and decimals reads do not revert). The vault runs the checks for the intent's action itself, so the executor chooses what to try and the vault decides ([The nine checks](/docs/concepts/nine-checks)).
+
+`test_executorCannotUseOwnerFunctions` has the executor call `withdraw`, `queueMandate`, `queueTokenConfig`, `queuePayee`, `fund`, `setExecutor` and `setPaused`, and every call reverts with `NotOwner`. `test_nonOwnerCannotCancelChange` and `test_nonOwnerCannotApplyReadyChanges` show the same for `cancelChange` and the three `apply` functions, for the executor and for a stranger.
+
+## The timelock
+
+A rule change is one of three kinds: a new mandate, new settings for one stock, or a payee added or removed. Each goes through the same four steps.
+
+<TimelockFlow />
+
+1. **Queue.** The owner calls `queueMandate`, `queueTokenConfig` or `queuePayee` with the new values. The vault stores the time of the call against the change's hash and emits an event that carries the full new values and the earliest time they can be applied.
+2. **Wait.** For <Fact name="timelockHours" /> nothing can apply the change. An early `apply` reverts with `ChangeNotReady`, which carries that time.
+3. **Apply or cancel.** From the end of the wait until <Fact name="gracePeriodDays" /> after it, the owner can apply the change with exactly the queued values. The owner can also cancel it at any time.
+4. **Or expire.** After the apply window, applying reverts with `ChangeExpired`, and the change must be queued again.
+
+The timer logic is two small functions:
+
+```solidity title="contracts/src/MandateVault.sol#L762-L775"
+    /// @return eta earliest time the change can be applied. Re-queueing the same change restarts its clock.
+    function _queue(bytes32 changeHash) internal returns (uint256 eta) {
+        queuedAt[changeHash] = block.timestamp;
+        eta = block.timestamp + TIMELOCK;
+    }
+
+    function _consume(bytes32 changeHash) internal {
+        uint256 t = queuedAt[changeHash];
+        if (t == 0) revert ChangeNotQueued(changeHash);
+        if (block.timestamp < t + TIMELOCK) revert ChangeNotReady(changeHash, t + TIMELOCK);
+        // forge-lint: disable-next-line(block-timestamp)
+        if (block.timestamp > t + TIMELOCK + GRACE_PERIOD) revert ChangeExpired(changeHash);
+        delete queuedAt[changeHash];
+    }
+```
+
+| The owner applies | Result |
+| --- | --- |
+| A change that was never queued, was cancelled or was already applied | `ChangeNotQueued` |
+| The same kind of change with different values | `ChangeNotQueued`, for the hash of the values sent |
+| Before the wait is over | `ChangeNotReady` |
+| From the end of the wait to the end of the grace period, inclusive | The change is applied and the queue entry is deleted |
+| After the grace period | `ChangeExpired` |
+
+Each row has a test in [MandateVaultAdmin.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol): `test_mandateChangeNeedsTimelock`, `test_appliedParamsMustMatchQueued`, `test_cancelledChangeCannotBeApplied`, `test_applyMandateCannotBeReplayed`, `test_expiredChangeReverts` and `test_applyAtExactGraceEdgeWorks`. `test_expiredChangeReverts` also shows that queueing the same change again restarts its clock. The vault checks the new values when it applies them, not when it queues them, so a bad change can wait in the queue and then fail with `InvalidConfig` ([The mandate](/docs/concepts/mandate#changing-it) covers the validation). An apply emits `PolicyHashUpdated` with the new [policy hash](/docs/help/glossary#policy-hash).
+
+## Change hashes
+
+The vault does not keep the queued values. It keeps one timestamp per hash, in the public mapping `queuedAt`. The hash covers the kind of change and all of its values, and three public functions compute it:
+
+```solidity title="contracts/src/MandateVault.sol#L243-L253"
+    function mandateChangeHash(Mandate memory m) public pure returns (bytes32) {
+        return keccak256(abi.encode("MANDATE", m));
+    }
+
+    function tokenChangeHash(address token, TokenConfig memory c) public pure returns (bytes32) {
+        return keccak256(abi.encode("TOKEN", token, c));
+    }
+
+    function payeeChangeHash(address payee, bool allowed) public pure returns (bytes32) {
+        return keccak256(abi.encode("PAYEE", payee, allowed));
+    }
+```
+
+The leading string names the kind of change. This is what makes the rules above work:
+
+- To apply a change, the owner sends the values again. The vault hashes them and looks the hash up in `queuedAt`. Other values give another hash, so they are not queued.
+- `cancelChange` takes the hash and deletes its entry. It does not check that the hash was queued, and it emits `ChangeCancelled` either way.
+- The queue events carry the hash as an indexed topic, next to the full values. Anyone can watch the logs, read what is coming and see when it becomes ready.
+- A change hash is not `mandateHash()` or `policyHash()`. Those commit to the state the vault holds now, and a change hash commits to a change that has not happened yet.
+
+## Escape hatches
+
+Three owner actions are instant. The README calls them the owner's escape hatches:
+
+- **`setPaused`.** A paused vault refuses every action except `REPAY`, which stays open so that debt can still be paid ([Credit and the health factor](/docs/concepts/credit-and-health-factor#repay-while-paused)). `test_repayIsAllowedWhileVaultPaused` shows it.
+- **`setExecutor`.** The owner swaps the executor key. The old key stops working at once (`test_rotatingExecutorRevokesOldOne`).
+- **`withdraw`.** The owner takes tokens out of the vault, to the owner address only (`test_withdrawOnlyGoesToOwner`).
+
+`withdraw` cannot reach collateral that is supplied to Aave. To unwind a position, the owner makes itself the executor, sends `REPAY` and then `WITHDRAW_COLLATERAL`, and withdraws; [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover) has the steps. Changing a rule is never instant: even a tighter limit waits for the timelock.
+
+## If a key leaks
+
+If the executor key leaks, the attacker controls the machine that sends intents. The table says what that buys, and each cell is bound by the vault's checks, not by the agent:
+
+| The attacker can | but cannot |
+| --- | --- |
+| Call `execute` with any intent, once per intent id | Skip the vault's checks for that action, trade a stock the mandate does not allow, or trade outside the session |
+| Make bad trades that stay inside the mandate | Go over the per-trade cap (<Fact name="mandate.perTradeCapUsd" />) or the daily cap (<Fact name="mandate.dailyCapUsd" />) with a trade or a bill payment |
+| Pay a payee on the allowlist, up to those caps | Pay any other address: the vault returns [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed) |
+| Supply stock to Aave and borrow USDC against it | Send a swap's output, borrowed USDC or withdrawn collateral anywhere but the vault, or leave the health factor under the floor (<Fact name="mandate.minHealthFactor" />), or under the target (<Fact name="mandate.targetHealthFactor" />) inside the de-risk window |
+| Stop sending intents | Change the mandate, withdraw, unpause, or keep the key once the owner rotates it |
+
+<Callout type="fork" title="Fork run">
+
+`test_compromisedExecutorIsBounded` in [MandateVaultFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) runs on the fork at block <Fact name="forkBlock" />, with the vault funded by a test cheat code. As the executor, it pays an address that is not on the allowlist, buys more than the per-trade cap and calls `withdraw`. The first two are refused and the third reverts. The attacker address ends with nothing and the vault keeps all of its USDC. The test deploys the vault without credit, so the borrow row of the table is covered by the credit tests instead: `test_creditLoopInSession` on the fork and the unit tests for the floor and the window.
+
+</Callout>
+
+```solidity title="contracts/test/fork/MandateVaultFork.t.sol#L83-L93"
+    function test_compromisedExecutorIsBounded() public {
+        _deploy(A.BLOCK_SESSION, SessionMode.REGULAR);
+        address attacker = makeAddr("attacker");
+        assertEq(uint8(_exec(Action.PAY_EXPENSE, A.USDC, 100e6, attacker)), uint8(Reason.PAYEE_NOT_ALLOWED));
+        assertEq(uint8(_exec(Action.BUY, A.NVDAC, 60e6, address(0))), uint8(Reason.SIZE_LIMIT));
+        vm.prank(executor);
+        vm.expectRevert(MandateVault.NotOwner.selector);
+        vault.withdraw(A.USDC, 1);
+        assertEq(IERC20Minimal(A.USDC).balanceOf(attacker), 0);
+        assertEq(IERC20Minimal(A.USDC).balanceOf(address(vault)), 200e6);
+    }
+```
+
+The owner key is a different case. It is fixed for the life of the vault, so no function can replace it, and `withdraw`, `setPaused` and `setExecutor` do not wait for the timelock. A leaked owner key can take what the vault holds at once, and it can first make itself the executor to unwind the Aave position. The timelock slows rule changes only. The README lists the single-key owner as a known limitation: a multisig owner would work with the contract but is not set up. [The threat model](/docs/security/threat-model) covers every actor and key in more detail.
