@@ -1,7 +1,7 @@
 # Maat Docs Center. Design Spec
 
 - **Date:** 2026-11-07
-- **Status:** awaiting owner approval
+- **Status:** approved by the owner on 2026-11-07; §7 updated the same day with the spike's outcome
 - **Lives at:** `https://maatonbase.xyz/docs`, built from this repo's `web/` app
 - **Related:** `docs/superpowers/specs/2026-11-06-mandate-treasury-design.md` (product), `docs/superpowers/specs/2026-11-07-maat-web-design.md` (site, Signal design system), root `README.md` (current long-form docs)
 - **Reference studied:** `https://www.vestiarion.xyz/docs` (93 pages, MDX on Next.js; studied 2026-11-07)
@@ -31,7 +31,7 @@ project: every statement traces to the implementation.
    run, and read any public function, event, error or reason code without opening the Solidity.
 3. **Evaluator test:** the security pages state what the vault guarantees, what it does not, how each claim is
    tested, and the current deployment status, with links to the code and tests.
-4. **No drift:** every number comes from `web/content/facts.ts` or generated data that tests keep in sync with
+4. **No drift:** every number comes from `web/content/facts.ts` (or `web/content/docs-facts.ts`, for numbers only the docs cite, kept out of the landing bundle) or generated data that tests keep in sync with
    the contracts and agent; reference pages fail the build when a contract function, event, error, reason
    code or agent setting is undocumented.
 5. **Quality bar:** works from 360 px to 1920 px with no horizontal page scroll; search answers a reason code,
@@ -49,7 +49,7 @@ project: every statement traces to the implementation.
    fork, not deployed), **Live on mainnet** (only after the owner deploys; none today), **Planned**.
 3. **Every page lists its sources**: the contract, agent or test files that prove it (a "Source of truth"
    box with GitHub links to `main`).
-4. **Numbers are never typed into prose.** They render through a `<Fact>` component reading `FACTS`, or
+4. **Numbers are never typed into prose.** They render through a `<Fact>` component reading `FACTS` or `DOCS_FACTS`, or
    through generated data with a sync test. A number that has no source does not go on the page. Test counts
    are not shown (nothing keeps them in sync); the docs tell readers how to run the suites instead.
 5. **No invented outputs.** Command output shown on a page is copied from a real run and labelled with what
@@ -175,7 +175,7 @@ sources:                 # repo paths; each must exist
 ### 5.2 MDX components
 | Component | Does |
 | --- | --- |
-| `<Fact name="…" />` | Renders a value from `FACTS`; a typo fails the typecheck |
+| `<Fact name="…" />` | Renders a value from `FACTS` or `DOCS_FACTS`; a typo fails the typecheck |
 | `<Status />`, `<Audience />` | Header labels, from frontmatter |
 | `<SourceOfTruth />` | Source box, from frontmatter `sources` |
 | `<Callout type="note" \| "warning" \| "fork">` | Notes; `fork` marks content that ran on a fork only |
@@ -223,12 +223,17 @@ the committed JSON is stale, following the existing `fork-gas.json` pattern. The
   - `web/content/docs/<section>/<page>.mdx` plus `meta.json` per section for sidebar order
   - `web/source.config.ts`: MDX collection and frontmatter schema
   - `web/lib/docs-source.ts`: the page tree and lookup
-  - `web/app/docs/layout.tsx`: docs layout, providers, theme
-  - `web/app/docs/[[...slug]]/page.tsx`: page renderer, metadata, static params
+  - route groups give the landing page and the docs separate root layouts: `web/app/(site)/` holds the
+    landing page, `web/app/(docs)/layout.tsx` the docs root layout (providers, theme, docs styles)
+  - `web/app/(docs)/docs/layout.tsx`: docs layout (header, sidebar)
+  - `web/app/(docs)/docs/[[...slug]]/page.tsx`: page renderer, metadata, static params
+  - `web/app/global-not-found.tsx`: the 404 page, since two root layouts cannot share `not-found.tsx`
   - search, `llms.txt` and `llms-full.txt` as statically generated routes
   - `web/components/docs/*` for the components in §5.2 and the diagrams
 - **Isolation from the landing page:** docs styles and providers load only under `/docs`. The landing page's
-  HTML, CSS and first-load JavaScript must not change beyond the added "Docs" links (verified in the spike).
+  HTML and CSS must not change beyond the added "Docs" links, and its first-load JavaScript may grow by at
+  most 1024 B gzip. The spike measured 876 B: Next splits its own router code differently once the app has
+  a second root layout; none of it is docs code. The plan's spike decision record has the details.
 - **Static export:** every docs route has static params; the search index is a static file; no route needs a
   server at request time.
 - **Fallback:** if the spike (§9, Phase 1 task 1) shows Fumadocs cannot meet the isolation, export or
@@ -244,7 +249,7 @@ All run in `npm run verify` (unit and build) or `npm run e2e`.
 3. **Generated data in sync** with the Solidity sources (§5.3).
 4. **Coverage:** every function, event, error, enum member, reason code, agent environment variable and
    agent script has a documented entry.
-5. **Facts:** numbers render from `FACTS`. A lint over the MDX flags hand-typed copies of distinctive fact
+5. **Facts:** numbers render from `FACTS` and `DOCS_FACTS`. A lint over the MDX flags hand-typed copies of distinctive fact
    values (gas figures, the fork block, dollar caps, bps limits, the multiplier), so they cannot drift.
 6. **Language:** `web/content/docs` is plain English; a check rejects letters outside basic Latin except an
    allowlist of symbols the docs use (·, ≤, ≥, →, ↗, −).
