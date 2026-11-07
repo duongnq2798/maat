@@ -28,7 +28,7 @@ contract MandateVaultTest is VaultFixture {
     }
 
     function test_refusalIsLoggedNotReverted() public {
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         feed.set(200e8, block.timestamp);
         Intent memory i = _intent(Action.BUY, 20e6);
         vm.expectEmit(true, true, false, true, address(vault));
@@ -150,7 +150,7 @@ contract MandateVaultTest is VaultFixture {
     }
 
     function test_payExpenseWorksWhenMarketClosed() public {
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         Intent memory i = _intent(Action.PAY_EXPENSE, 5e6);
         i.payee = payee;
         (, Reason r) = _exec(i);
@@ -564,8 +564,8 @@ contract MandateVaultTest is VaultFixture {
         (, Reason r) = _exec(_intent(Action.BUY, 1_000e6));
         _assertReason(r, Reason.FEED_STALE);
 
-        vm.warp(SAT_1300_ET);
-        feed.set(200e8, SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
+        feed.set(200e8, SAT_1800_UTC);
         (, r) = _exec(_intent(Action.SELL, 1e8)); // vault holds no NVDAc
         _assertReason(r, Reason.MARKET_CLOSED);
         (, r) = _exec(_intent(Action.BUY, 0));

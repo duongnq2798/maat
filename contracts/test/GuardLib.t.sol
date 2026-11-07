@@ -43,7 +43,7 @@ contract GuardHarness {
 
 contract GuardLibTest is Test {
     uint256 internal constant THU_1030_ET = 1793892600;
-    uint256 internal constant SAT_1300_ET = 1793469600;
+    uint256 internal constant SAT_1800_UTC = 1793469600;
     address internal constant HUB = address(0x4B);
     address internal constant SPOKE = address(0x5B);
     address internal constant VAULT = address(0xA11CE);
@@ -340,8 +340,8 @@ contract GuardLibTest is Test {
     }
 
     function test_collateralIgnoresMarketHours() public {
-        vm.warp(SAT_1300_ET);
-        feed.set(200e8, SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
+        feed.set(200e8, SAT_1800_UTC);
         _expectCollateral(_cc(), Reason.OK);
     }
 
@@ -350,7 +350,7 @@ contract GuardLibTest is Test {
     }
 
     function test_marketClosedOnSaturday() public {
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         assertFalse(h.open(address(calendar), SessionMode.REGULAR));
         assertFalse(h.open(address(calendar), SessionMode.FEED_24_5));
     }

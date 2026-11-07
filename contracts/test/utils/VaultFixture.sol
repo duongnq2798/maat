@@ -15,7 +15,7 @@ import {MockSwapAdapter} from "../mocks/MockSwapAdapter.sol";
 
 abstract contract VaultFixture is Test, IMandateVaultEvents {
     uint256 internal constant THU_1030_ET = 1793892600; // Thu 2026-11-05 15:30 UTC
-    uint256 internal constant SAT_1300_ET = 1793469600; // Sat 2026-10-31 18:00 UTC
+    uint256 internal constant SAT_1800_UTC = 1793469600; // Sat 2026-10-31 18:00 UTC
 
     address internal owner = makeAddr("owner");
     address internal executor = makeAddr("executor");

@@ -132,7 +132,7 @@ contract MandateVaultCreditTest is CreditFixture {
     }
 
     function test_supplyIsAllowedWhileMarketClosed() public {
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         _assertReason(_execCredit(Action.SUPPLY, address(nvda), 1e8), Reason.OK);
     }
 
@@ -183,7 +183,7 @@ contract MandateVaultCreditTest is CreditFixture {
 
     function test_repayIsAllowedWhileMarketClosed() public {
         credit.setDebt(5e6);
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         _assertReason(_execCredit(Action.REPAY, address(usdc), 5e6), Reason.OK);
         assertEq(credit.debt(), 0);
     }
@@ -303,7 +303,7 @@ contract MandateVaultCreditTest is CreditFixture {
     function test_borrowRefusedWhileMarketClosedButRepayAllowed() public {
         _supplyAll();
         _assertReason(_execCredit(Action.BORROW, address(usdc), 5e6), Reason.OK);
-        _warpFresh(SAT_1300_ET);
+        _warpFresh(SAT_1800_UTC);
         _assertReason(_execCredit(Action.BORROW, address(usdc), 5e6), Reason.MARKET_CLOSED);
         _assertReason(_execCredit(Action.REPAY, address(usdc), 5e6), Reason.OK);
         assertEq(credit.debt(), 0);
@@ -450,7 +450,7 @@ contract MandateVaultCreditTest is CreditFixture {
 
     function test_withdrawWithoutDebtIsAllowedWhileMarketClosed() public {
         _supplyAll();
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 1e8), Reason.OK);
         assertEq(nvda.balanceOf(address(vault)), 1e8);
         assertEq(credit.lastMinHf(), MIN_HF);
@@ -459,7 +459,7 @@ contract MandateVaultCreditTest is CreditFixture {
     function test_withdrawAgainstDebtNeedsOpenMarket() public {
         _supplyAll();
         credit.setDebt(5e6);
-        vm.warp(SAT_1300_ET);
+        vm.warp(SAT_1800_UTC);
         _assertReason(_execCredit(Action.WITHDRAW_COLLATERAL, address(nvda), 0.5e8), Reason.MARKET_CLOSED);
     }
 
