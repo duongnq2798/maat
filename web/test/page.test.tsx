@@ -1,6 +1,6 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import Page from "@/app/page";
+import Page from "@/app/(site)/page";
 import { REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
