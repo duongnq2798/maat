@@ -1,0 +1,30 @@
+[
+  {
+    "runId": "fork-1",
+    "fn": "execute",
+    "action": "BUY",
+    "gas": "2500000",
+    "gasUsed": "758192"
+  },
+  {
+    "runId": "fork-1",
+    "fn": "execute",
+    "action": "SUPPLY",
+    "gas": "2500000",
+    "gasUsed": "286707"
+  },
+  {
+    "runId": "fork-1",
+    "fn": "execute",
+    "action": "BORROW",
+    "gas": "2500000",
+    "gasUsed": "484173"
+  },
+  {
+    "runId": "fork-2",
+    "fn": "execute",
+    "action": "BUY",
+    "gas": "2500000",
+    "gasUsed": "111116"
+  }
+]
