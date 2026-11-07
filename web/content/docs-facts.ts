@@ -18,6 +18,19 @@ export const DOCS_FACTS = {
     { holidays: 3, earlyCloses: 2 },
     "contracts/src/MarketCalendar.sol constructor: _addHoliday and _setEarlyClose calls",
   ),
+  etOffsetHours: fact(
+    { dst: 4, standard: 5 },
+    "contracts/src/MarketCalendar.sol etOffsetSeconds: 4 hours to subtract from UTC during US daylight saving time, 5 hours otherwise",
+  ),
+  priceDecimals: fact(8, "contracts/src/lib/PriceLib.sol PRICE_DECIMALS = 8, the decimals of every price the vault reads"),
+  usdcDecimals: fact(
+    6,
+    "contracts/src/lib/PriceLib.sol USDC_DECIMALS = 6; the MandateVault constructor reverts BadUsdcDecimals for any other value",
+  ),
+  healthFactorBound: fact(
+    1,
+    "contracts/src/MandateVault.sol _requireValidCredit: a minHealthFactor below WAD (1e18, a health factor of 1.0) is InvalidConfig",
+  ),
   maxTxPerDay: fact(40, "agent/src/config.ts MAAT_MAX_TX_PER_DAY default"),
   dailyComputeUsd: fact(0.5, "agent/src/config.ts MAAT_DEFAULT_DAILY_COMPUTE_USD default"),
   maxIntents: fact(6, "agent/src/llm/schema.ts MAX_INTENTS, intents per Claude proposal"),

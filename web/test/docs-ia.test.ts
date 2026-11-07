@@ -13,6 +13,11 @@ const SHIPPED: readonly string[] = [
   "get-started/quickstart",
   "get-started/read-a-decision",
   "get-started/status",
+  "concepts/mandate",
+  "concepts/nine-checks",
+  "concepts/refusal-codes",
+  "concepts/market-hours",
+  "concepts/prices-and-premium",
 ];
 
 const written = docsPages().map((p) => p.slug);

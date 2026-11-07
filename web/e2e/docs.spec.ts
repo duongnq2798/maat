@@ -3,7 +3,7 @@ import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8 and 13). */
-const PAGES: string[] = ["/docs"];
+const PAGES: string[] = ["/docs", "/docs/concepts/nine-checks"];
 
 function collectErrors(page: Page): string[] {
   const errors: string[] = [];
@@ -175,4 +175,45 @@ test("at 360px the sidebar drawer opens and closes by keyboard", async ({ page }
   await expect(drawer).toHaveAttribute("data-state", "closed");
   // Focus goes back to the button that opened the drawer.
   await expect(header.getByRole("button", { name: "Open Sidebar" })).toBeFocused();
+});
+
+test.describe("concept pages", () => {
+  test("\"nine\" lists The nine checks first", async ({ page }) => {
+    await page.goto("/docs");
+    const dialog = await openSearch(page);
+    await dialog.getByRole("combobox").fill("nine");
+    await expect(dialog.getByRole("option").first()).toContainText("The nine checks");
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/docs\/concepts\/nine-checks$/);
+  });
+
+  test("a reason code finds its entry first", async ({ page }) => {
+    await page.goto("/docs");
+    const dialog = await openSearch(page);
+    await dialog.getByRole("combobox").fill("MARKET_CLOSED");
+    await expect(dialog.getByRole("option").first()).toContainText(/Refusal codes|MARKET_CLOSED/);
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/docs\/concepts\/refusal-codes(#market_closed)?$/);
+  });
+
+  test("a deep link loaded cold scrolls to its heading", async ({ browser }) => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto("/docs/concepts/nine-checks#why-the-order-matters");
+    await expect(page.locator("#why-the-order-matters")).toBeInViewport();
+    await context.close();
+  });
+
+  test.describe("copy", () => {
+    test.use({ permissions: ["clipboard-read", "clipboard-write"] });
+
+    test("the copy button on a code block copies the code", async ({ page }) => {
+      await page.goto("/docs/concepts/nine-checks", { waitUntil: "networkidle" });
+      const figure = page.locator("figure").filter({ has: page.locator("pre", { hasText: "function checkMarket" }) });
+      await figure.hover();
+      await figure.getByRole("button", { name: /copy/i }).click();
+      const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
+      expect(text.trim()).toMatch(/^function checkMarket\(MarketCheck memory c\)/);
+    });
+  });
 });

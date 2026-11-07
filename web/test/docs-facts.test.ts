@@ -34,6 +34,20 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(new Set(closes)).toEqual(new Set([DOCS_FACTS.earlyCloseMin.value]));
   });
 
+  it("Eastern time offsets, the price decimals and the USDC decimals", () => {
+    const offsets = /\?\s*(\d+) hours\s*:\s*(\d+) hours/.exec(calendar);
+    expect({ dst: Number(offsets?.[1]), standard: Number(offsets?.[2]) }).toEqual(DOCS_FACTS.etOffsetHours.value);
+    const price = readRepo("contracts/src/lib/PriceLib.sol");
+    expect(solidityNumber(constantValue(price, "PRICE_DECIMALS"))).toBe(DOCS_FACTS.priceDecimals.value);
+    expect(solidityNumber(constantValue(price, "USDC_DECIMALS"))).toBe(DOCS_FACTS.usdcDecimals.value);
+    expect(vault).toMatch(new RegExp(`decimals\\(\\) != ${DOCS_FACTS.usdcDecimals.value}\\)`));
+  });
+
+  it("the lowest health factor floor the vault accepts is one WAD", () => {
+    expect(solidityNumber(constantValue(vault, "WAD"))).toBe(DOCS_FACTS.healthFactorBound.value * 1e18);
+    expect(vault).toMatch(/m\.minHealthFactor < WAD\b/);
+  });
+
   it("agent settings defaults", () => {
     expect(zodDefault("MAAT_MAX_TX_PER_DAY")).toBe(DOCS_FACTS.maxTxPerDay.value);
     expect(zodDefault("MAAT_DEFAULT_DAILY_COMPUTE_USD")).toBe(DOCS_FACTS.dailyComputeUsd.value);
