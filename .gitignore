@@ -6,3 +6,7 @@ contracts/.env
 node_modules/
 .superpowers/
 contracts/broadcast/*/*/dry-run/
+agent/data/
+research/
+research_notes/
+reports/

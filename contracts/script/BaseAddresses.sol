@@ -19,7 +19,7 @@ library BaseAddresses {
     address internal constant GOOGLC_USDC_POOL = 0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3;
     address internal constant AAPLC_USDC_POOL = 0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6;
 
-    /// Aave V4 Equities Hub on Base (research/03-aave-v4-equities-hub.md, verified 2026-11-06).
+    /// Aave V4 Equities Hub on Base (verified on Base, 2026-11-06).
     /// On the MAG7 spoke reserveId == hub assetId.
     address internal constant AAVE_MAG7_SPOKE = 0x17905Db0e4A3514467539956c084180616AE7B8D;
     address internal constant AAVE_EQUITIES_HUB = 0xa4d5947Eb727A052bae69C593FfC84247EC9864E;

@@ -2,7 +2,7 @@
 pragma solidity 0.8.28;
 
 /// @notice Subset of the Aave V4 Spoke (ISpoke.sol, aave/aave-v4 main @ a3ef63ea) and its oracle used by Maat.
-/// Selectors were checked against the MAG7 Spoke implementation on Base (research/03-aave-v4-equities-hub.md §3).
+/// Selectors were checked against the MAG7 Spoke implementation on Base.
 interface IAaveV4Spoke {
     struct Reserve {
         address underlying;

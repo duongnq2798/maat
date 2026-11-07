@@ -20,7 +20,7 @@ library MaatConfig {
         return Mandate({
             sessionMode: mode,
             // 100 not 50: measured in-session TWAP(1800s)-vs-Chainlink premiums at BLOCK_SESSION were
-            // NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps (research/04-onchain-findings.md).
+            // NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps (measured in session on a Base fork).
             maxPremiumBps: 100,
             maxSlippageBps: 100,
             maxStaleness: 3600,

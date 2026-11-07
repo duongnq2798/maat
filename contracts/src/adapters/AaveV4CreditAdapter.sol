@@ -77,7 +77,7 @@ contract AaveV4CreditAdapter is ICreditAdapter {
         token.safeApprove(address(spoke), amount);
         spoke.supply(id, amount, address(this));
         token.safeApprove(address(spoke), 0);
-        // Aave V4 does not enable collateral on supply (research/04 §5)
+        // Aave V4 does not enable collateral on supply
         (bool enabled,) = spoke.getUserReserveStatus(id, address(this));
         if (!enabled) spoke.setUsingAsCollateral(id, true, address(this));
     }
@@ -148,7 +148,7 @@ contract AaveV4CreditAdapter is ICreditAdapter {
     }
 
     /// @notice HF = collateral value x avgCF / debt value, with the new debt valued at the spoke oracle's USDC
-    /// price. Matched Aave's own post-borrow HF on a Base fork (research/04 §5). Existing debt is rounded up.
+    /// price. Matched Aave's own post-borrow HF on a Base fork. Existing debt is rounded up.
     function projectedHealthFactorAfterBorrow(uint256 amount) external view returns (uint256) {
         IAaveV4Spoke.UserAccountData memory d = spoke.getUserAccountData(address(this));
         uint256 price = IAaveV4Oracle(spoke.ORACLE()).getReservePrice(usdcReserveId);

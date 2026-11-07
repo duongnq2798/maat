@@ -52,7 +52,7 @@ contract AaveV4CreditAdapterForkTest is Test {
         assertEq(_usdc(address(this)), before + 5e6);
         assertEq(_usdc(address(adapter)), 0);
         assertApproxEqRel(adapter.healthFactor(), projected, 1e12); // within 1e-6
-        assertApproxEqRel(adapter.healthFactor(), 2.7979e18, 0.01e18); // research/04 §5
+        assertApproxEqRel(adapter.healthFactor(), 2.7979e18, 0.01e18); // Aave's own post-borrow HF on the fork
         assertTrue(adapter.hasPosition());
 
         vm.warp(vm.getBlockTimestamp() + 1 hours);
