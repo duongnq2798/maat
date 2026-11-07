@@ -4,6 +4,8 @@ import type { NextConfig } from "next";
 // W1 ships as a static site (spec §5.1). W2 drops `output: "export"` when the ledger reads mainnet server-side.
 const config: NextConfig = {
   output: "export",
+  // Two root layouts, (site) and (docs), so the 404 for unmatched URLs comes from app/global-not-found.tsx.
+  experimental: { globalNotFound: true },
 };
 
 export default createMDX()(config);
