@@ -7,6 +7,19 @@ import { docsSlug } from "@/lib/docs/links";
 import { Callout } from "./Callout";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "./content";
 import { Architecture, DecisionLoop, MarketWeek, TimelockFlow, TreasuryLoop } from "./diagrams";
+import {
+  AddressTable,
+  EnvTable,
+  EnvVar,
+  ErrorEntry,
+  EventEntry,
+  FactTable,
+  Fn,
+  FunctionIndex,
+  ScriptEntry,
+  ScriptFile,
+  TypeEntry,
+} from "./reference";
 import { StatusBadge } from "./StatusBadge";
 
 // <Fact /> is replaced with text at build time (lib/docs/remark-facts.ts). Reaching render means that plugin did not run.
@@ -46,6 +59,17 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     TimelockFlow,
     TreasuryLoop,
     MarketWeek,
+    AddressTable,
+    EnvTable,
+    EnvVar,
+    ErrorEntry,
+    EventEntry,
+    FactTable,
+    Fn,
+    FunctionIndex,
+    ScriptEntry,
+    ScriptFile,
+    TypeEntry,
     ...components,
   };
 }
