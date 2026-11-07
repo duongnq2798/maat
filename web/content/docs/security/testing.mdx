@@ -1,0 +1,169 @@
+---
+title: How it is tested
+description: "How each guarantee is tested: contract unit and fork suites, agent tests, parity tests between the site and the code."
+type: concept
+audience: [evaluator, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/test/MandateVault.t.sol
+  - contracts/test/GuardLib.t.sol
+  - contracts/test/fork/MandateVaultFork.t.sol
+  - contracts/test/MandateVaultAdmin.t.sol
+  - contracts/test/MandateVaultCredit.t.sol
+  - agent/test/runOnce.test.ts
+  - agent/test/sender.test.ts
+  - agent/test/cdpPolicy.test.ts
+  - agent/test/integration/agent.fork.test.ts
+  - web/test/facts.test.ts
+  - web/test/docs-gen.test.ts
+  - web/test/docs-facts.test.ts
+  - web/test/docs-coverage.test.ts
+  - web/test/docs-content.test.ts
+  - README.md
+next: [guides/run-the-tests, guides/reproduce-the-fork-run]
+---
+
+This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. Nothing is deployed, and no test here touches mainnet.
+
+## Layers
+
+| Layer | Where | Runs against | Needs |
+| --- | --- | --- | --- |
+| **Contracts, unit** | `contracts/test/*.t.sol` | Mocks of the tokens, feeds, pools and adapters | Nothing |
+| **Contracts, fork** | `contracts/test/fork/*.t.sol` | Real Base state at two pinned mainnet blocks | A Base archive RPC |
+| **Agent, unit** | `agent/test/*.test.ts` | Fakes for Claude, the CDP wallet and the chain | Nothing |
+| **Agent, fork run** | `agent/test/integration/agent.fork.test.ts` | A local fork of Base, with a scripted proposer and a local sender | A Base archive RPC and `base-anvil` |
+| **Parity, site and docs** | `web/test/*.test.ts` | The Solidity and TypeScript sources and the committed fork-run gas log | Nothing |
+| **Site, end to end** | `web/e2e/*.spec.ts` | The built static site, in a browser | Playwright's Chromium |
+
+Each layer has its own limit. Unit tests are fast and exact but use stand-ins. Fork tests use the real tokens and pools but cover few paths. No layer touches the real Claude API or the real CDP wallet.
+
+## Contracts
+
+The unit suites are `MandateVault`, `MandateVaultCredit`, `MandateVaultAdmin`, `GuardLib`, `MarketCalendar`, `PriceLib`, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`. They run against mocks in `contracts/test/mocks`: a mock [B20](/docs/help/glossary#b20) token with switches that make each read revert, a mock feed, a mock pool, and mock swap and credit adapters. The mocks are what make the tests exact: a test can make `isPaused` revert, move the clock to a Saturday, or have the swap return a hair less than the floor. The price is that a mock shows the vault's logic and not the behavior of the real contract it stands for. Here is one such test:
+
+```solidity title="contracts/test/MandateVault.t.sol#L114-L121"
+    function test_slippageFloorIsEnforcedEvenIfAgentSendsZero() public {
+        adapter.setNextOut(0.098e8); // floor is 0.099e8 (1% below oracle-implied 0.1e8)
+        (bool allowed, Reason r) = _exec(_intent(Action.BUY, 20e6));
+        assertFalse(allowed);
+        _assertReason(r, Reason.SWAP_FAILED);
+        assertEq(usdc.balanceOf(address(vault)), 200e6);
+        assertEq(usdc.allowance(address(vault), address(adapter)), 0);
+    }
+```
+
+The [intent](/docs/help/glossary#intent) asks for a `minOut` of zero. The mock adapter returns slightly less than the floor the vault computed from the oracle. The swap fails, the vault records `SWAP_FAILED`, the USDC stays and the allowance is reset.
+
+The table below maps the guarantees to their tests, in the contracts and in the agent. For each of the checks, the last column of the README's [nine checks table](https://github.com/duongnq2798/maat/blob/main/README.md) names a test that shows it, and [The nine checks](/docs/concepts/nine-checks#the-order) explains them.
+
+| Guarantee | Test | Kind | What it shows |
+| --- | --- | --- | --- |
+| **[Refusal](/docs/help/glossary#refusal) is logged, not reverted** | [`test_refusalIsLoggedNotReverted`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A `BUY` on a Saturday returns `(false, MARKET_CLOSED)`, emits `Decision`, leaves the USDC where it is and spends the intent id |
+| **A real weekend is refused** | [`test_weekendBuyIsRefusedInBothModes`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Fork | The same refusal at a real Saturday block, in both session modes |
+| **Replay reverts** | [`test_replayReverts`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A refused intent sent a second time reverts with `IntentAlreadyUsed` |
+| **[Slippage floor](/docs/help/glossary#slippage-floor)** | [`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A swap that returns less than the oracle-based floor fails, whatever `minOut` the agent sent |
+| **[Timelock](/docs/help/glossary#timelock)** | [`test_mandateChangeNeedsTimelock`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | A change cannot be applied unqueued or early, and applies once the wait is over |
+| **Repay while paused** | [`test_repayIsAllowedWhileVaultPaused`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) | Unit, mock credit adapter | `REPAY` works on a paused vault, while `SUPPLY`, `BORROW` and `WITHDRAW_COLLATERAL` return `VAULT_PAUSED` |
+| **Compromised [executor](/docs/help/glossary#executor) bounded** | [`test_compromisedExecutorIsBounded`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Fork, no credit adapter | A payment to a non-payee and a buy over the cap are refused, `withdraw` reverts, and the vault keeps its USDC |
+| **Only the [owner](/docs/help/glossary#owner) can act as owner** | [`test_executorCannotUseOwnerFunctions`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | Every owner function reverts with `NotOwner` when the executor calls it |
+| **A rotated key stops working** | [`test_rotatingExecutorRevokesOldOne`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | After `setExecutor`, the old executor's `execute` reverts with `NotExecutor` |
+| **[Fail closed](/docs/help/glossary#fail-closed)** | [`test_revertingIsPausedFailsClosed`](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) and its siblings | Unit | A reverting pause, policy, calendar or multiplier read gives a refusal and no revert. [The security model](/docs/security/model#fail-closed) lists them |
+| **Concentration counts debt** | [`test_concentrationNetsCreditDebt`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) | Unit, mock credit adapter | Borrowing does not loosen the weight cap, because it is measured on equity net of debt |
+| **The calendar only gets stricter** | [`test_ownerCanOnlyMakeItStricter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) | Unit | The calendar owner can add a holiday or an earlier close, and cannot loosen either |
+| **[Preview](/docs/help/glossary#preview) mismatch halts** | `runOnce.test.ts`: "halts when the preview said OK but the vault refused" | Agent unit | The round stops and the journal records the mismatch |
+| **Exactly-once sends** | `runOnce.test.ts`: "reconciles a send that threw after broadcast instead of sending again" | Agent unit | A send that threw after broadcast is reconciled in the next round, and nothing is sent twice |
+| **The sender only reaches the vault** | `sender.test.ts`: "refuses another target", "refuses owner functions", "refuses calldata that does not decode" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
+| **The gas limit is bounded** | `sender.test.ts`: "refuses a missing, zero or over-cap gas limit" | Agent unit | A missing, zero or over-cap limit is refused, and a limit at the cap is sent |
+
+## Fork tests against real Base state
+
+The contract fork tests run the real B20 tokens, Chainlink feeds, Aerodrome pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned mainnet blocks: `BLOCK_SESSION` (<Fact name="forkBlock" />, a Thursday, <Fact name="forkDay" />, in session) and `BLOCK_WEEKEND` (a Saturday, 2026-10-31). Foundry forks the chain locally, so nothing is broadcast. They need a Base archive RPC. This is the README's table:
+
+| Test file | What it shows |
+| --- | --- |
+| [`MandateVaultFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Buys and sells NVDAc in session, buys the basket, refuses a real-weekend buy in both session modes, and bounds a compromised executor |
+| [`MandateVaultCreditFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultCreditFork.t.sol) | The credit loop in session; then, with the clock moved to Saturday, borrowing is refused while repay and withdraw still work |
+| [`AaveV4CreditAdapterFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/AaveV4CreditAdapterFork.t.sol) | Full supply, borrow, repay and withdraw on the Aave V4 MAG7 Spoke; reserve ids match the chain; a borrow below the minimum [health factor](/docs/help/glossary#health-factor) reverts |
+| [`AerodromeSwapAdapterFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/AerodromeSwapAdapterFork.t.sol) | Buys and sells NVDAc directly against the Slipstream pool |
+| [`PriceLibFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) | The live basket trades near the oracle price |
+| [`B20Smoke.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/B20Smoke.t.sol) | Reads B20 state through the precompile and transfers NVDAc |
+| [`DeployFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/DeployFork.t.sol) | The deploy script wires every contract and address correctly |
+
+What a [fork test](/docs/help/glossary#fork-test) does not show:
+
+- **It is a block, not a deployment.** It shows what the code does against real state at that block. It says nothing about how the system behaves on mainnet over time.
+- **The vault is funded by a test cheat code** in the two vault fork tests, not by an owner's `fund` call.
+- **Several paths have no fork test.** No fork test pauses the vault, rotates the executor, queues a rule change or withdraws a stock. The compromised-executor test deploys the vault without a credit adapter, so it does not try a borrow.
+- **The Saturday round of the agent's fork run is the same fork with the clock moved ahead.** The contract fork tests have a real Saturday block, and the agent's run does not.
+
+## The agent
+
+The agent's unit tests use fakes: a fake Claude client, a fake CDP client and fake chain clients in `agent/test/fakes`. They test what the agent does with a proposal or a receipt, round by round, and they test the guards that sit in front of the key.
+
+| Test file | What it covers |
+| --- | --- |
+| [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) | A whole round: [dry run](/docs/help/glossary#dry-run) versus live, the once-per-day refusal log, the daily transaction cap, explicit gas, pending sends and their reconcile, and the preview and `Decision` mismatch |
+| [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts) | The guarded sender: the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix, the vault-only target, the allowed functions and the gas bounds |
+| [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts), [`cdpSender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpSender.test.ts) | The shape of the CDP policy, and the CDP sender against a fake client |
+| [`schema.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/schema.test.ts), [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts), [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts) | What Claude may propose, how an answer is validated and billed, and how a proposal becomes an intent |
+| [`refusals.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/refusals.test.ts), [`lock.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/lock.test.ts) | Which refusals are worth a log, and the one-agent-per-folder lock |
+| [`types.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/types.test.ts) | The agent's copy of the `Action`, `Reason` and `SessionMode` enums against `Types.sol` |
+
+This is the mismatch test, the one that makes the agent stop when its preview and the vault disagree:
+
+```typescript title="agent/test/runOnce.test.ts#L357-L367"
+    it("halts when the preview said OK but the vault refused", async () => {
+      const t = await setup({ batch: TWO });
+      t.receipts.verdict = () => ({ allowed: false, reason: 15 });
+      const r = await runOnce(t.deps);
+      expect(r).toMatchObject({ status: "halted", haltReason: "mismatch: preview OK, vault SWAP_FAILED" });
+      expect(t.inner.sent).toHaveLength(1);
+      const rows = await t.journal.read();
+      expect(rows.find((e) => e.kind === "mismatch")).toMatchObject({ preview: "OK", decision: { allowed: false, reason: "SWAP_FAILED" }, message: "mismatch: preview OK, vault SWAP_FAILED" });
+      expect(rows.find((e) => e.kind === "intent")).toMatchObject({ gate: "execute", decision: { allowed: false, reason: "SWAP_FAILED" } });
+      expect(t.store.pending()).toEqual([]);
+    });
+```
+
+The agent's fork run, `agent.fork.test.ts`, goes one step further. It deploys the contracts with the real deploy script on a local fork, funds the vault, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
+
+<Callout type="warning" title="Not exercised">
+
+Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no output from the real Claude API is committed. The CDP code is tested against a fake client only, and has never run against the real CDP. These tests show the agent's logic, not what those services do.
+
+</Callout>
+
+## Parity tests: the site and these docs
+
+The website and these docs carry numbers, signatures and code that come from the contracts and the agent. The parity tests read those sources and fail when a page drifts from them. They run offline, in `web/`.
+
+| Gate | What fails it | File |
+| --- | --- | --- |
+| **Facts** | A number on the landing page that differs from the Solidity sources, the agent's policy or the committed fork-run gas log | [`facts.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/facts.test.ts) |
+| **Docs facts** | A number only the docs cite (the grace period, the gas cap, the agent's defaults) that differs from the file it names | [`docs-facts.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-facts.test.ts) |
+| **Generated data** | The committed reference data (functions, events, errors, types, addresses and the agent's settings) differs from what the sources now parse to. The test says to run `npm run docs:gen` | [`docs-gen.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-gen.test.ts) |
+| **Coverage** | A public function, event, error, enum, struct, agent setting or script with no reference entry | [`docs-coverage.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-coverage.test.ts) |
+| **Content** | A page whose frontmatter, links, anchors, repository paths or typed numbers are wrong, or whose code excerpt differs from the lines of the file it names | [`docs-content.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-content.test.ts) |
+| **Structure** | A written page that is not in the information architecture, or a section list out of order | [`docs-ia.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-ia.test.ts) |
+
+The built site is checked too. `npm run check:out` fails if the export contains a third-party script, is missing a page or lacks the Markdown copy of a docs page. The Playwright end-to-end tests load pages at several widths and fail on page overflow or a console error.
+
+These gates prove that numbers, signatures, excerpts, links and the shape of the reference match the code. They do not prove that a sentence is true. The prose on these pages was checked by reading it against the code and the tests, and a reader can do the same with the links above.
+
+## What is not tested
+
+| Not tested | Why it matters |
+| --- | --- |
+| **No audit** | Nobody independent has reviewed the code. See [What Maat does not claim](/docs/security/not-claimed) |
+| **No fuzz or invariant tests** | A search of `contracts/test` and `foundry.toml` for both finds nothing. Every contract test is a fixed example |
+| **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
+| **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
+| **Mainnet** | No Maat contract is deployed, so every test is a unit test or a fork |
+| **A real split or dividend** | The assumption that the feed includes the multiplier has not been observed across one |
+| **Some failure paths** | No unit test makes the feed or the pool revert, none makes a plain `balanceOf` or `decimals` read revert, and none calls `withdraw` with a token that has no code |
+| **A hostile owner** | The vault has no defense against one, so there is nothing to test |
+| **Continuous integration** | There is no CI in this repository yet. The suites run when someone runs them, so any claim here is as fresh as the last run |
+
+If you can think of a test that belongs on this list, or one that fails, [Report a vulnerability](/docs/security/report-a-vulnerability) says how to tell the team.

@@ -2,7 +2,7 @@ import { expect, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
-/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8, 13, 14, 15 and 16). */
+/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8, 13, 14, 15, 16 and 17). */
 const PAGES: string[] = [
   "/docs",
   "/docs/concepts/nine-checks",
@@ -20,6 +20,11 @@ const PAGES: string[] = [
   "/docs/reference/agent-scripts",
   "/docs/reference/base-addresses",
   "/docs/reference/default-parameters",
+  "/docs/security/model",
+  "/docs/security/threat-model",
+  "/docs/security/not-claimed",
+  "/docs/security/testing",
+  "/docs/security/report-a-vulnerability",
 ];
 
 function collectErrors(page: Page): string[] {

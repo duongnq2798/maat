@@ -15,7 +15,7 @@ These are the questions people ask about Maat, with a short answer to each and a
 | Question | Today | Read more |
 | --- | --- | --- |
 | Is Maat deployed to Base mainnet? | No | [Status and roadmap](/docs/get-started/status) |
-| Has a third party audited the contracts? | No | [Status and roadmap](/docs/get-started/status#built-and-fork-tested) |
+| Has a third party audited the contracts? | No | [What Maat does not claim](/docs/security/not-claimed#unaudited) |
 | Has it run on a fork of Base mainnet? | Yes, the contracts and the agent's send path | [Status and roadmap](/docs/get-started/status#built-and-fork-tested) |
 | Did the fork run use the real Claude API or the CDP wallet? | No, a scripted proposer and a local sender stood in | [How a decision is made](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy) |
 
@@ -103,11 +103,11 @@ A dry run still calls Claude, so it costs real API fees even though it sends not
 
 ### What if the executor key is stolen?
 
-The attacker can only call `execute`, so every intent still meets the vault's checks and caps, including the per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> in the default mandate. They can make bad trades inside the mandate and pay an allowlisted payee up to those caps, but they cannot pay any other address or change the mandate. The owner can replace the key at once with `setExecutor`. See the fork test `test_compromisedExecutorIsBounded` under [If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks).
+The attacker can only call `execute`, so every intent still meets the vault's checks and caps, including the per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> in the default mandate. They can make bad trades inside the mandate and pay an allowlisted payee up to those caps, but they cannot pay any other address or change the mandate. The owner can replace the key at once with `setExecutor`. See the fork test `test_compromisedExecutorIsBounded` under [If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks). [The threat model](/docs/security/threat-model#the-executor-key) goes through every key that could leak.
 
 ### What if the owner key is stolen?
 
-The owner key is a different case from the executor key. It is fixed for the life of the vault, and `withdraw`, `setPaused` and `setExecutor` do not wait for the timelock, so a leaked owner key can take what the vault holds at once. The README lists the single-key owner as a known limitation: a multisig owner would work with the contract but is not set up. See [If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks).
+The owner key is a different case from the executor key. It is fixed for the life of the vault, and `withdraw`, `setPaused` and `setExecutor` do not wait for the timelock, so a leaked owner key can take what the vault holds at once. The README lists the single-key owner as a known limitation: a multisig owner would work with the contract but is not set up. See [If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks), and [the threat model](/docs/security/threat-model#the-owner-key) for this case and the other keys.
 
 ### Can the agent still make a bad trade?
 
@@ -119,7 +119,7 @@ No. Maat gives no investment advice, confers no shareholder rights and is not of
 
 ### Has it been audited?
 
-No. There is no third-party audit, so treat the contracts as unaudited, and nothing is deployed to mainnet either. The README lists this first among its known limitations. See [Status and roadmap](/docs/get-started/status#built-and-fork-tested).
+No. There is no third-party audit, so treat the contracts as unaudited, and nothing is deployed to mainnet either. The README lists this first among its known limitations. See [What Maat does not claim](/docs/security/not-claimed#unaudited) for the limitations, and [Status and roadmap](/docs/get-started/status#built-and-fork-tested) for what is built.
 
 ### How do I know the numbers on the site are real?
 

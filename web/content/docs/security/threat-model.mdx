@@ -1,0 +1,156 @@
+---
+title: Threat model
+description: The assets, the actors and what each one could do with a leaked key, from the owner to the Claude API key, and the mitigations.
+type: concept
+audience: [evaluator, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - docs/superpowers/specs/2026-11-06-mandate-treasury-design.md
+  - contracts/test/fork/MandateVaultFork.t.sol
+  - agent/src/exec/cdpPolicy.ts
+  - contracts/src/MandateVault.sol
+  - agent/src/exec/cdpSender.ts
+  - agent/src/llm/proposer.ts
+  - agent/src/loop/runOnce.ts
+  - agent/scripts/cdp-setup.ts
+  - agent/README.md
+next: [security/not-claimed, guides/pause-withdraw-recover]
+---
+
+This page says what Maat protects, who can touch it, and what an attacker gets from each secret that could leak: what they can do, what they cannot, and what the response is. It is about the code and the tests as they are. Nothing is deployed and the agent has not run live, so no real key exists yet, and the CDP wallet and the Claude API have never been used by this code. Where a protection is untested against the real service, the row says so. [The security model](/docs/security/model) lists the rules themselves.
+
+## Assets
+
+| Asset | Where it lives | What protects it |
+| --- | --- | --- |
+| **The treasury**: USDC and [B20](/docs/help/glossary#b20) stocks | The vault. The design spec sizes the treasury at <Fact name="treasuryUsd" /> | The checks and caps on `execute`. Only the [owner](/docs/help/glossary#owner) can `withdraw`, and only to the owner address |
+| **Collateral and debt** | The [Aave V4](/docs/help/glossary#aave-v4) position, held by the credit adapter | Only the vault can move the position (`onlyVault` in the adapter). The credit checks, and the [health factor](/docs/help/glossary#health-factor) floor on every borrow |
+| **The rules** | The [mandate](/docs/help/glossary#mandate), each stock's settings and the [payee](/docs/help/glossary#payee) list | Owner-only, and changed only through the [timelock](/docs/help/glossary#timelock) of <Fact name="timelockHours" /> |
+| **The owner role** | One address, set when the vault is created | It is immutable and no function transfers it |
+| **The [executor](/docs/help/glossary#executor)'s gas** | A little ETH in the executor account. The runbook funds <Fact name="executorGasEth" /> | The CDP account policy, which is untested against the real CDP. The vault's funds are not in this account |
+| **The secrets** | The owner key, the executor key (held by the CDP wallet), the Claude API key, the CDP API key and wallet secret, and the RPC URL | Outside the repository. The agent reads them from its environment, and `.env` files are git-ignored |
+| **The agent's data folder** | `data/state.json` and `data/journal.jsonl`: unpaid bills, pending sends, the journal | One agent per folder, enforced by a lock file. Tampering can make the agent skip or repeat a bill, not change what the vault allows |
+
+## Actors
+
+| Actor | Trusted? | What it can do | What it cannot do |
+| --- | --- | --- | --- |
+| **The owner** | Yes | Everything an owner function allows: pause, replace the executor, withdraw, fund, and queue or apply rule changes | Change the owner address, or apply a rule change before the timelock ends |
+| **The executor** | No | Send [intents](/docs/help/glossary#intent) to `execute`, once per intent id | Call any owner function, or loosen a rule |
+| **Claude** | No | Propose intents as data | Hold a wallet key, send a transaction, choose the verdict, set the slippage or pay a bill |
+| **Whoever runs the agent host** | Holds the secrets in the agent's environment | Everything the Claude key, the CDP credentials and the RPC URL allow. The next section goes through them | Anything the owner key alone can do. The agent does not need the owner key |
+| **Anyone onchain** | No | Call `notifyRevenue`, `syncMultiplier`, `previewIntent` and the views | Call `execute` or an owner function |
+| **The calendar's owner** | Yes (it is the vault's owner) | Add a holiday or set an earlier close | Remove a holiday or loosen a close |
+| **The token's issuer** | Outside Maat | Pause a B20 token's transfers, change its transfer policies, change its `uiMultiplier` | Make the vault trade through any of those: the vault refuses |
+| **The RPC provider** | No | Answer the agent's reads, truthfully or not | Sign or send as the agent, or change a verdict |
+
+## If a key leaks
+
+Five secrets exist when Maat runs. For each, the table says what an attacker with only that secret can and cannot do, and the paragraph after it says what the response is. The responses are described, not scripted: the steps that need the owner's signature are in [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover).
+
+### The owner key
+
+| The attacker can | but cannot |
+| --- | --- |
+| Withdraw every token the vault holds to the owner address, at once. `withdraw` does not wait for the timelock and the pause flag does not stop it | Change the owner address. It is immutable and no function transfers it |
+| Make the owner address the executor, repay the debt, take the collateral back and then withdraw it. The collateral step works only if the token's transfer policy accepts that address (see [tx.origin in the policy check](/docs/security/not-claimed#txorigin-in-the-policy-check)) | Rewrite the contract code |
+| Pause or unpause the vault, and replace the executor with an address they control | |
+| Queue and apply rule changes, which is the only owner action that waits | |
+
+The timelock slows rule changes only, and a rule change is the slowest way to take the funds. There is no onchain response to a leaked owner key: the vault has no way to tell two holders of the same key apart, or to take the role away. The only response left is a race: the legitimate holder withdrawing and pausing before the attacker does. The README lists the single-key owner as a known limitation, and says that a multisig owner is compatible but not set up. No test plays a hostile owner, because the vault has no defense to test.
+
+### The executor key
+
+This is the case the vault is built for. Say an attacker controls the server that runs the agent:
+
+| The attacker can | but cannot |
+| --- | --- |
+| Call `execute` with any intent, once per intent id | Skip any of the <Fact name="checksPerTrade" /> checks on a `BUY` or a `SELL` (the other actions have their own), trade outside the session or the stock list, or beat the per-trade cap (<Fact name="mandate.perTradeCapUsd" />) or the daily cap (<Fact name="mandate.dailyCapUsd" />) with a trade or a bill payment |
+| Make bad but allowed trades inside the mandate, every UTC day until the key is replaced | Send funds anywhere: swaps go to the allowlisted pool, borrowed USDC and collateral come back to the vault, and `PAY_EXPENSE` pays only allowlisted [payees](/docs/help/glossary#payee) |
+| Pay an allowlisted payee, up to the same caps | Pay any other address: the vault returns `PAYEE_NOT_ALLOWED` |
+| Supply stock to Aave, borrow USDC against it and leave the debt open | Push the projected health factor below the floor (<Fact name="mandate.minHealthFactor" />), or below the target (<Fact name="mandate.targetHealthFactor" />) inside the [de-risk window](/docs/help/glossary#de-risk-window), at the moment of the borrow |
+| Stop sending intents | Change the mandate, withdraw, unpause, or keep the key once the owner replaces it |
+
+Two things in the left column are worth reading twice. The caps bound each UTC day and not the whole episode: a stolen key can spend up to the daily cap every day until the owner notices, so the total depends on how fast that is. And a borrow is checked when it is made. A loan at the floor is still a loan with interest, and a fall in the stock's price afterwards lowers its health factor without the vault doing anything.
+
+**Response.** The owner replaces the executor, which is instant and stops the old key at once (`test_rotatingExecutorRevokesOldOne`), or pauses the vault. A paused vault still accepts `REPAY`, so debt can be paid down (`test_repayIsAllowedWhileVaultPaused`). The steps are in the guide above.
+
+<Callout type="fork" title="Fork run">
+
+`test_compromisedExecutorIsBounded` in [MandateVaultFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) plays this attacker against real Base state at block <Fact name="forkBlock" />. The vault is funded by a test cheat code, and it is deployed without a credit adapter.
+
+</Callout>
+
+| What the test tries as the executor | Result |
+| --- | --- |
+| `PAY_EXPENSE` to an address that is not a payee | Refused with `PAYEE_NOT_ALLOWED` |
+| A `BUY` above the per-trade cap | Refused with `SIZE_LIMIT` |
+| `withdraw` | Reverts with `NotOwner` |
+
+At the end the attacker address holds nothing and the vault holds all the USDC it started with. The test does not try a borrow, because the vault has no credit adapter there. The borrow row of the table is covered by the credit unit tests instead: `test_borrowRefusals` shows the floor and `test_deriskWindowRequiresTargetHealthFactor` shows the target, both with a mock credit adapter, and the adapter's own [fork test](/docs/help/glossary#fork-test) shows that a borrow below the minimum health factor reverts. The caps are the default mandate's, and the owner can set others.
+
+### The Claude API key
+
+| The attacker can | but cannot |
+| --- | --- |
+| Make calls that are billed to the account that owns the key | Move, read or change anything in the vault, or sign or send a transaction |
+| Use up the account's limits so that the agent's own calls fail | Change what the agent proposes. The agent makes its own calls, and the key only authenticates them |
+
+The vault pays only for the usage the agent counted. The agent computes each cost from the `usage` in its own responses, so calls made by someone else are not on the bill that the vault pays. If the agent's calls fail for any reason, including a revoked key, the proposer returns no proposals and does not throw (`proposer.test.ts`: "never throws on an API error"). The round then proposes no trades, but a bill that is due is still queued, because `runOnce` adds it before it looks at Claude's answer.
+
+**Response.** Revoke the key with Anthropic, create a new one and put it in the agent's environment. The key never reaches the chain, so nothing onchain needs to change. Claude has never run through this code, so the calls the proposer makes are tested only against a fake client.
+
+### The CDP API key and wallet secret
+
+The agent reads three values for the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet): `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET`. The repository does not say which of the three CDP needs for which call, so this page treats them as one secret.
+
+| The attacker can | but cannot |
+| --- | --- |
+| Act as the executor: ask CDP to send or sign transactions from the executor account, which is the same position as the executor-key row above | Send those transactions anywhere but the vault, on any network but Base, or with any value, while the account policy holds. Sign a raw hash |
+| Call any function of the vault from that account | Make any function other than `execute` do more than anyone could: the rest are public and harmless, or revert `NotOwner` |
+
+The policy is attached by `cdp-setup.ts`, with the same three values. The repository does not show whether CDP would let a holder of these values change or detach the policy, and the code has never run against the real CDP: it is tested against a fake client only, and `cdpPolicy.test.ts` checks the shape of the rules, not that CDP enforces them. So do not count on the policy as the only barrier. If the policy could be removed, the worst case would still be the executor account's own ETH, because the vault's funds are not in that account.
+
+**Response.** Two halves. In the CDP portal, replace the API key and the wallet secret. In the vault, the owner replaces the executor with a new account, so that the old account can no longer call `execute`. When it is unclear whether someone else still controls the old account, the second half is the one that stops it, and it is instant.
+
+### The RPC URL
+
+| The attacker can | but cannot |
+| --- | --- |
+| Send requests on your quota, and so on your bill | Sign or send a transaction as the agent. The agent sends through CDP, and the RPC only serves its reads, estimates and receipts |
+| Make the agent's reads fail by using up the quota | Read anything that is not public chain data, or change a verdict |
+
+If the agent cannot read the vault's state, it does nothing for that round (`runOnce.test.ts`: "does nothing when the vault state is unavailable"). That is a stop, not a risk to funds.
+
+**Response.** Replace the URL at your provider and update the agent's environment. This is a leaked URL. A provider that answers dishonestly is a different case, and the next section covers it.
+
+## Other threats
+
+| Threat | What bounds it | What it does not cover |
+| --- | --- | --- |
+| **A bad Claude proposal**, from a wrong idea or from manipulated input | The schema and the clamps in the agent, then the mandate: the session, the stock list, the caps, concentration and the health factor. Claude cannot set the slippage, choose a payee or pay a bill | A bad trade inside every limit is allowed. The vault does not judge whether a trade is a good idea |
+| **A stale price** | Check 5 refuses a feed answer that is not positive, or is older than `maxStaleness` (<Fact name="mandate.maxStalenessSec" /> by default): `FEED_STALE` or `BAD_PRICE` | Within that age, the vault trades on the last published price |
+| **A manipulated pool price** | Check 7 refuses a pool [TWAP](/docs/help/glossary#twap) (<Fact name="mandate.twapWindowSec" /> window) that is more than `maxPremiumBps` (<Fact name="mandate.maxPremiumBps" /> by default) from the oracle. The [slippage floor](/docs/help/glossary#slippage-floor), set from the oracle (<Fact name="mandate.maxSlippageBps" /> by default), makes a swap that returns less fail with `SWAP_FAILED` | A pool price inside the [premium](/docs/help/glossary#premium) limit is accepted. A wrong but fresh oracle price is trusted |
+| **A missed holiday** | Nothing but [staleness](/docs/help/glossary#staleness). A day missing from the calendar counts as a normal session | Until the last answer is older than the staleness limit, the vault can trade on it. The owner has to add the day |
+| **A split or a dividend** | Check 6 blocks a stock when its multiplier differs from the vault's snapshot, has a change scheduled, or is inside the cooldown after a change | The assumption that the feed already includes the multiplier has not been observed across a real split |
+| **The issuer pauses or restricts a token** | Checks 2 and 3 refuse with `TOKEN_PAUSED` or `POLICY_BLOCKED` | The vault can only refuse. It cannot move a token that the token itself will not transfer |
+| **A dishonest or failing RPC** | The vault does not use it: a verdict is computed in the transaction. The agent [previews](/docs/help/glossary#preview) as the executor and halts if the preview and the vault disagree (`runOnce.test.ts`: "halts when the preview said OK but the vault refused") | A lying RPC can mislead the agent's bookkeeping, for example report a payment that landed as missing, so that the agent later pays the same bill again. The daily cap bounds that amount |
+| **A lost owner key** | Nothing. No function replaces the owner | Nobody can pause, replace the executor, withdraw or change a rule. The executor keeps working inside the mandate, and if its key leaks later nobody can stop it |
+| **A bug in the contracts or the agent** | The tests, which [How it is tested](/docs/security/testing) lists | There is no third-party audit. See [What Maat does not claim](/docs/security/not-claimed) |
+
+## Mitigations you run
+
+The code cannot do these for you. They are advice, they are not enforced and none of them has a test.
+
+- **Keep the owner key off the agent's host.** No script in the repository holds a key, and every mainnet transaction is meant to be signed by the owner from their own wallet. The agent does not need the owner key to run.
+- **Check the owner address before you deploy.** It is immutable. A typo is permanent. [Deploy your own vault](/docs/guides/deploy-your-own-vault) has the checklist.
+- **Consider a multisig as the owner.** The contract is compatible with one and Maat has not set one up. The owner is fixed at deployment, so the choice is made then.
+- **Keep secrets out of the repository.** Put the Claude key, the CDP values and the RPC URL in the agent's `.env` or in your secret store, and never paste a real RPC URL into an issue or a doc.
+- **Fund the executor with gas only.** Its account should hold nothing else.
+- **Start with a [dry run](/docs/help/glossary#dry-run).** It reads the chain, calls Claude and sends nothing, so you can read the journal before anything is signed. It still costs real API fees.
+- **Watch the decisions.** An unexpected `allowed=true`, or a run of refusals, is the signal. [Watch decisions onchain](/docs/guides/watch-decisions-onchain) shows how.
+- **Keep the calendar current.** Add each holiday before the day. A missed one leaves staleness as the only backstop.
+- **Know the response before you need it.** Read [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover) while nothing is wrong.
+- **Keep the treasury small.** The design spec sizes it at <Fact name="treasuryUsd" />, and the caps are in the same range.

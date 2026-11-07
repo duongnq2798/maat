@@ -40,6 +40,11 @@ const SHIPPED: readonly string[] = [
   "reference/agent-scripts",
   "reference/base-addresses",
   "reference/default-parameters",
+  "security/model",
+  "security/threat-model",
+  "security/not-claimed",
+  "security/testing",
+  "security/report-a-vulnerability",
   "help/faq",
   "help/glossary",
 ];
