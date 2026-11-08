@@ -1,6 +1,7 @@
-import agent from "@/content/generated/agent.json";
-import addresses from "@/content/generated/base-addresses.json";
-import contracts from "@/content/generated/contracts.json";
+// Relative imports only: source.config.ts loads this file through the fumadocs-mdx bundler, outside Next.
+import agent from "../../content/generated/agent.json";
+import addresses from "../../content/generated/base-addresses.json";
+import contracts from "../../content/generated/contracts.json";
 import type { AgentData, BaseConstant, DocsData } from "./docs-data";
 import type { SolSurface } from "./sol-surface";
 

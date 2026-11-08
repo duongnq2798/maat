@@ -2,26 +2,16 @@ import type { ReactNode } from "react";
 import { type FactName, factFor } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
 import { headingId } from "@/lib/docs/links";
+import { kindLabels, NO_DEFAULT, NO_EXAMPLE, READ_BY, readByDetail, requiredDetail, requiredLabel } from "@/lib/docs/reference-labels";
 import { accessLabel, errorSignature, eventSignature, findContract, findItem, functionSignature } from "@/lib/docs/signatures";
-import type { Mutability, SolFunction, SolParam } from "@/lib/docs/sol-surface";
+import type { SolParam } from "@/lib/docs/sol-surface";
 import { SITE } from "@/lib/site";
 
 // Reference entries for the MDX pages under content/docs/reference. Each reads the committed output of
-// `npm run docs:gen` and throws on an unknown name, so a typo in a page fails the build.
+// `npm run docs:gen` and throws on an unknown name, so a typo in a page fails the build. The words they share
+// with the Markdown copies of the pages (lib/docs/component-text.ts) live in lib/docs/reference-labels.ts.
 
 const surface = docsData.surface;
-
-const MUTABILITY_LABEL: Readonly<Record<Mutability, string>> = {
-  view: "Read only",
-  pure: "Read only",
-  nonpayable: "Changes state",
-  payable: "Changes state, takes ETH",
-};
-
-/** What a function does to state, then "Public state" for a getter: the words <Fn> and <FunctionIndex> both use. */
-function kindLabels(f: SolFunction): string[] {
-  return f.kind === "getter" ? [MUTABILITY_LABEL[f.mutability], "Public state"] : [MUTABILITY_LABEL[f.mutability]];
-}
 
 function Signature({ children }: { children: string }) {
   return (
@@ -185,8 +175,6 @@ function envVar(name: string) {
   return v;
 }
 
-const READ_BY = { agent: "Agent config", sdk: "SDK" } as const;
-
 /** Every setting in agent/.env.example, each linking to its entry. */
 export function EnvTable() {
   return (
@@ -204,8 +192,8 @@ export function EnvTable() {
           <tr key={v.name}>
             <td><a href={`#${headingId(v.name)}`}><code>{v.name}</code></a></td>
             <td>{READ_BY[v.readBy]}</td>
-            <td>{v.required ? "Yes" : v.requiredInLive ? "In live mode" : "No"}</td>
-            <td>{v.default === null ? "None" : <code>{v.default}</code>}</td>
+            <td>{requiredLabel(v)}</td>
+            <td>{v.default === null ? NO_DEFAULT : <code>{v.default}</code>}</td>
           </tr>
         ))}
       </tbody>
@@ -219,13 +207,13 @@ export function EnvVar({ name }: { name: string }) {
     <div data-entry="env">
       <dl className="not-prose grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
         <dt className="text-fd-muted-foreground">Read by</dt>
-        <dd>{v.readBy === "agent" ? "agent/src/config.ts" : "the SDK that uses it, not agent/src/config.ts"}</dd>
+        <dd>{readByDetail(v)}</dd>
         <dt className="text-fd-muted-foreground">Required</dt>
-        <dd>{v.required ? "Yes, in every mode" : v.requiredInLive ? "In live mode" : "No"}</dd>
+        <dd>{requiredDetail(v)}</dd>
         <dt className="text-fd-muted-foreground">Default</dt>
-        <dd>{v.default === null ? "None" : <code>{v.default}</code>}</dd>
+        <dd>{v.default === null ? NO_DEFAULT : <code>{v.default}</code>}</dd>
         <dt className="text-fd-muted-foreground">In .env.example</dt>
-        <dd>{v.example ? <code>{v.example}</code> : "Empty: set your own"}</dd>
+        <dd>{v.example ? <code>{v.example}</code> : NO_EXAMPLE}</dd>
       </dl>
       <Notice text={v.note} />
     </div>

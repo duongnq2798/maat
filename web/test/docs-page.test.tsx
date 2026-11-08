@@ -27,6 +27,34 @@ describe("docs Markdown helpers", () => {
       "# T\n\nURL: https://x/docs\n\nD\n\nBody\n",
     );
   });
+
+  it("makes links to the site's own pages absolute, so a copy read elsewhere still leads back", () => {
+    const body = "See [the checks](/docs/concepts/nine-checks#x), [the home](/docs) and [its copy](/md/docs.md).\n";
+    expect(pageMarkdown({ title: "T", url: "http://localhost:3000/docs/a", body })).toBe(
+      "# T\n\nURL: http://localhost:3000/docs/a\n\nSee [the checks](http://localhost:3000/docs/concepts/nine-checks#x), [the home](http://localhost:3000/docs) and [its copy](http://localhost:3000/md/docs.md).\n",
+    );
+  });
+
+  it("leaves other links alone, and everything inside code fences", () => {
+    const body = [
+      "[out](https://other.dev/docs) [near](/documents) [anchor](#x)",
+      "",
+      "```md",
+      "[kept](/docs/a)",
+      "```",
+      "",
+      "````md",
+      "```",
+      "[kept too](/md/a.md)",
+      "```",
+      "````",
+      "",
+      "[after](/docs/b)",
+    ].join("\n");
+    expect(pageMarkdown({ title: "T", url: "https://x.dev/docs", body })).toBe(
+      `# T\n\nURL: https://x.dev/docs\n\n${body.replace("[after](/docs/b)", "[after](https://x.dev/docs/b)")}\n`,
+    );
+  });
 });
 
 describe("page footer feedback", () => {

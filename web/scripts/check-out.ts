@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation } from "../lib/check-out";
+import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation, checkMarkdownCopies } from "../lib/check-out";
 import { siteUrl } from "../lib/site";
 
 const OUT = fileURLToPath(new URL("../out/", import.meta.url));
@@ -54,6 +54,11 @@ const INDEXES = ["llms.txt", "llms-full.txt", "sitemap.xml"];
 if (INDEXES.every((f) => existsSync(join(OUT, f)))) {
   const urls = [...known].map((url) => new URL(url, siteUrl()).href);
   problems.push(...checkDocsIndexes({ llms: read("llms.txt"), llmsFull: read("llms-full.txt"), sitemap: read("sitemap.xml") }, urls));
+}
+
+// llms-full.txt holds every Markdown copy: no reference entry, table or diagram may be left as a raw component tag.
+if (existsSync(join(OUT, "llms-full.txt"))) {
+  problems.push(...checkMarkdownCopies(read("llms-full.txt")).map((p) => `llms-full.txt ${p}`));
 }
 
 if (problems.length > 0) {

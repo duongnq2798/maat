@@ -1,4 +1,6 @@
 import { MOMENTS } from "../content/engine";
+import { DATA_COMPONENTS } from "./docs/data-components";
+import { markdownLines } from "./docs/markdown";
 import { SITE } from "./site";
 
 /** Problems with the exported landing page; an empty list means it is ready to ship. */
@@ -99,5 +101,20 @@ export function checkDocsIndexes(files: { llms: string; llmsFull: string; sitema
     if (!files.llmsFull.includes(`URL: ${url}\n`)) problems.push(`llms-full.txt has no page with URL ${url}`);
     if (!files.sitemap.includes(`<loc>${url}</loc>`)) problems.push(`sitemap.xml does not list ${url}`);
   }
+  return problems;
+}
+
+const DATA_TAG = new RegExp(`<(${DATA_COMPONENTS.join("|")})(?![\\w$])`, "g");
+
+/**
+ * Problems with the Markdown copies of the docs (the text of one page, or of all of them): one per data component
+ * tag still in the text, outside code fences. Callout, Steps and Step stay, because their tags wrap real text.
+ */
+export function checkMarkdownCopies(text: string): string[] {
+  const problems: string[] = [];
+  markdownLines(text).forEach(({ text: line, inFence }, i) => {
+    if (inFence) return;
+    for (const [, name] of line.matchAll(DATA_TAG)) problems.push(`line ${i + 1}: <${name}> was left in the Markdown instead of its text`);
+  });
   return problems;
 }

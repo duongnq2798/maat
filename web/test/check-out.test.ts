@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation } from "@/lib/check-out";
+import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation, checkMarkdownCopies } from "@/lib/check-out";
 import { SITE } from "@/lib/site";
 
 const GOOD = [
@@ -135,5 +135,49 @@ describe("checkDocsIndexes", () => {
       `llms-full.txt has no page with URL ${url}`,
       `sitemap.xml does not list ${url}`,
     ]);
+  });
+});
+
+describe("checkMarkdownCopies", () => {
+  it("accepts Markdown whose components were turned into text", () => {
+    const text = "# T\n\n```solidity\nfunction execute(Intent intent) external\n```\n\nWho may call: Executor only.\n";
+    expect(checkMarkdownCopies(text)).toEqual([]);
+  });
+
+  it("flags every data component tag left in the text, by line", () => {
+    const text = [
+      "# T",
+      "",
+      '<Fn contract="MandateVault" name="execute" />',
+      "",
+      '| <StatusBadge status="live" /> | Deployed |',
+      "<FactTable",
+      '  names={["a"]}',
+      "/>",
+    ].join("\n");
+    expect(checkMarkdownCopies(text)).toEqual([
+      "line 3: <Fn> was left in the Markdown instead of its text",
+      "line 5: <StatusBadge> was left in the Markdown instead of its text",
+      "line 6: <FactTable> was left in the Markdown instead of its text",
+    ]);
+  });
+
+  it("ignores code fences, names that only start like a component, and placeholders", () => {
+    const text = [
+      "Set <BASE_RPC_URL> and <VAULT_ADDRESS>, then <ReasonName> and <Fnord> and <Fn2>.",
+      "",
+      "```ts",
+      'type X = <Fn contract="x" />;',
+      "```",
+      "",
+      "~~~md",
+      "<EnvVar name=\"A\" />",
+      "~~~",
+    ].join("\n");
+    expect(checkMarkdownCopies(text)).toEqual([]);
+  });
+
+  it("leaves the containers of the page alone: a Callout wraps real Markdown text", () => {
+    expect(checkMarkdownCopies('<Callout type="warn">\nText.\n</Callout>\n\n<Steps>\n<Step>\nDo it.\n</Step>\n</Steps>\n')).toEqual([]);
   });
 });

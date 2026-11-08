@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
-import { decisionLabel, gasLabel, getDecisions, intentLabel } from "@/content/decisions";
-import { FACTS } from "@/content/facts";
-import { mandateRows } from "@/content/mandate";
-import { REASON_GROUPS, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
-import { factFor } from "@/lib/docs/fact-text";
+import { REASON_MEANING, REASONS } from "@/content/reasons";
+import { decisionEventSource, forkLedger, GROUP_OF, mandateTable } from "@/lib/docs/content-data";
+import { READER_PATHS, type ReaderPath } from "@/lib/docs/reader-paths";
 
-// Tables and cards the docs share with the landing page's data, so a page and the site never disagree.
+export { READER_PATHS, type ReaderPath };
+
+// Tables and cards the docs share with the landing page's data, so a page and the site never disagree. The rows
+// and captions come from lib/docs/content-data.ts, which the Markdown copies of the pages print too.
 
 /** A table that scrolls inside its own focusable region on small screens, never the page. */
 function ScrollTable({ label, caption, children }: { label: string; caption?: string; children: ReactNode }) {
@@ -19,8 +20,6 @@ function ScrollTable({ label, caption, children }: { label: string; caption?: st
     </figure>
   );
 }
-
-const GROUP_OF = new Map<RefusalCode, string>(REASON_GROUPS.flatMap((g) => g.codes.map((c) => [c, g.title] as const)));
 
 /** Every refusal code with its enum id (OK is 0), its group and what it means. */
 export function ReasonTable() {
@@ -52,8 +51,9 @@ export function ReasonTable() {
 
 /** The default mandate, the same rows the landing page shows. */
 export function MandateTable() {
+  const { caption, rows } = mandateTable();
   return (
-    <ScrollTable label="Default mandate" caption="Set in contracts/script/MaatConfig.sol; contracts/script/Deploy.s.sol uses these values when the owner deploys.">
+    <ScrollTable label="Default mandate" caption={caption}>
       <thead>
         <tr>
           <th>Setting</th>
@@ -62,11 +62,11 @@ export function MandateTable() {
         </tr>
       </thead>
       <tbody>
-        {mandateRows(FACTS.mandate.value).map((r) => (
-          <tr key={r.k}>
+        {rows.map((r) => (
+          <tr key={r.field}>
             <td>{r.label}</td>
-            <td><code>{r.k}</code></td>
-            <td>{r.v}</td>
+            <td><code>{r.field}</code></td>
+            <td>{r.value}</td>
           </tr>
         ))}
       </tbody>
@@ -76,26 +76,23 @@ export function MandateTable() {
 
 /** The Decision event as declared in contracts/src/IMandateVaultEvents.sol (parity-tested in test/facts.test.ts). */
 export function EventSignature({ name }: { name: string }) {
-  if (name !== "Decision") throw new Error(`<EventSignature name="${name}" />: only Decision is in FACTS; use <EventEntry> on reference pages`);
-  const params = FACTS.decisionEvent.value.map((p) => [p.type, p.indexed ? "indexed" : "", p.name].filter(Boolean).join(" "));
+  const source = decisionEventSource(name);
   return (
     // tabIndex: a scrollable region must be reachable by keyboard (axe rule scrollable-region-focusable).
     <pre
       className="not-prose my-4 overflow-x-auto rounded-lg border border-fd-border bg-fd-muted px-4 py-3 font-mono text-[13px] leading-6 text-fd-foreground"
       tabIndex={0}
     >
-      <code>{`event Decision(\n  ${params.join(",\n  ")}\n)`}</code>
+      <code>{source}</code>
     </pre>
   );
 }
 
 /** The decisions the agent made in the fork run, as the landing page's ledger shows them. */
 export function ForkLedger() {
+  const { caption, rows } = forkLedger();
   return (
-    <ScrollTable
-      label="Decisions from the fork run"
-      caption={`Base mainnet fork at block ${factFor("forkBlock").text}, recorded by agent/test/integration/agent.fork.test.ts.`}
-    >
+    <ScrollTable label="Decisions from the fork run" caption={caption}>
       <thead>
         <tr>
           <th>Time (ET)</th>
@@ -106,12 +103,12 @@ export function ForkLedger() {
         </tr>
       </thead>
       <tbody>
-        {getDecisions().map((r) => (
-          <tr key={`${r.timeLabel} ${intentLabel(r)}`}>
-            <td>{r.timeLabel}</td>
-            <td>{intentLabel(r)}</td>
-            <td><code>{decisionLabel(r)}</code></td>
-            <td>{gasLabel(r)}</td>
+        {rows.map((r) => (
+          <tr key={`${r.time} ${r.intent}`}>
+            <td>{r.time}</td>
+            <td>{r.intent}</td>
+            <td><code>{r.decision}</code></td>
+            <td>{r.gas}</td>
             <td>{r.note}</td>
           </tr>
         ))}
@@ -119,23 +116,6 @@ export function ForkLedger() {
     </ScrollTable>
   );
 }
-
-export interface ReaderPath {
-  readonly reader: string;
-  readonly want: string;
-  /** Docs slug of the first page, as in content/docs. */
-  readonly slug: string;
-  readonly cta: string;
-}
-
-/** One path per reader in the docs spec section 1, each naming its first page. */
-export const READER_PATHS: readonly ReaderPath[] = [
-  { reader: "New to Maat", want: "Know what it is and why it matters.", slug: "get-started/what-is-maat", cta: "What is Maat" },
-  { reader: "Watching the agent", want: "Understand a Decision, as shown in the fork ledger.", slug: "get-started/read-a-decision", cta: "Read a decision" },
-  { reader: "Developer or judge", want: "Verify the claims and read the code.", slug: "get-started/quickstart", cta: "Verify it in five minutes" },
-  { reader: "Builder", want: "Run your own vault and agent.", slug: "guides/deploy-your-own-vault", cta: "Deploy your own vault" },
-  { reader: "Evaluator or partner", want: "Decide whether to trust it or build on it.", slug: "security/model", cta: "Security model" },
-];
 
 /** The docs home router. A path whose page has not shipped yet shows without a link, never as a dead one. */
 export function RouterCards({ exists }: { exists: (slug: string) => boolean }) {
