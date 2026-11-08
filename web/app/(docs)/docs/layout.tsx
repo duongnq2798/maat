@@ -18,6 +18,7 @@ export default function Layout({ children }: { children: ReactNode }) {
         ),
         url: "/docs",
       }}
+      sidebar={{ prefetch: false }}
       githubUrl={SITE.repoUrl}
       links={[
         { text: "Home", url: "/" },
