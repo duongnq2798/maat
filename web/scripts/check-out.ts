@@ -44,7 +44,10 @@ const known = new Set(docsFiles.map(urlOf));
 for (const file of docsFiles) {
   const url = urlOf(file);
   problems.push(...checkDocsPage(readFileSync(file, "utf8"), `out${url}.html`, known));
-  if (!existsSync(join(OUT, `md${url}.md`))) problems.push(`missing out/md${url}.md`);
+  const md = `md${url}.md`;
+  if (!existsSync(join(OUT, md))) problems.push(`missing out/${md}`);
+  // No reference entry, table or diagram may be left as a raw component tag; llms-full.txt joins these same copies.
+  else problems.push(...checkMarkdownCopies(read(md), `out/${md}`));
 }
 // test/docs-ia.test.ts checks that every written page is in the IA; here, that the export has docs at all.
 if (docsFiles.length === 0) problems.push("found no docs pages in out/");
@@ -54,11 +57,6 @@ const INDEXES = ["llms.txt", "llms-full.txt", "sitemap.xml"];
 if (INDEXES.every((f) => existsSync(join(OUT, f)))) {
   const urls = [...known].map((url) => new URL(url, siteUrl()).href);
   problems.push(...checkDocsIndexes({ llms: read("llms.txt"), llmsFull: read("llms-full.txt"), sitemap: read("sitemap.xml") }, urls));
-}
-
-// llms-full.txt holds every Markdown copy: no reference entry, table or diagram may be left as a raw component tag.
-if (existsSync(join(OUT, "llms-full.txt"))) {
-  problems.push(...checkMarkdownCopies(read("llms-full.txt")).map((p) => `llms-full.txt ${p}`));
 }
 
 if (problems.length > 0) {

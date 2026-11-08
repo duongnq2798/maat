@@ -1,5 +1,8 @@
 // @vitest-environment node
 import { createStringifier } from "fumadocs-core/mdx-plugins/stringifier";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentText } from "@/lib/docs/component-text";
 import { type MdNode } from "@/lib/docs/remark-facts";
@@ -55,7 +58,7 @@ describe("remarkComponentText", () => {
     expect(JSON.stringify(root)).toBe(before);
   });
 
-  it("finds a component inside a Callout or a list, and leaves the Callout's own text", () => {
+  it("finds a component inside a Callout, and leaves the Callout's own text", () => {
     const source = `<Callout>\nRead this.\n\n${EXECUTE}\n</Callout>\n`;
     const { nodes, whole } = parse(source, { [EXECUTE]: flow("Fn", [attr("contract", "MandateVault"), attr("name", "execute")]) });
     const callout: MdNode = { type: "mdxJsxFlowElement", name: "Callout", attributes: [], children: nodes, position: whole };
@@ -106,6 +109,52 @@ describe("remarkComponentText", () => {
     const out = run(cards, { type: "root", children: nodes, position: whole }, { exists: (slug) => slug !== "security/model" });
     expect(out).toContain("Security model (coming soon)");
     expect(out).toContain("[What is Maat →](/docs/get-started/what-is-maat)");
+  });
+
+  it("by default, links a router card whose page is in content/docs", () => {
+    const cards = "<RouterCards />";
+    const { nodes, whole } = parse(cards, { [cards]: flow("RouterCards") });
+    const out = run(cards, { type: "root", children: nodes, position: whole }, {});
+    expect(out).toContain("- **New to Maat**: Know what it is and why it matters. [What is Maat →](/docs/get-started/what-is-maat)");
+    expect(out).not.toContain("coming soon");
+  });
+
+  it("finds a shipped page as <slug>.mdx or <slug>/index.mdx under docsDir, and leaves the others as 'coming soon'", () => {
+    const dir = mkdtempSync(join(tmpdir(), "maat-docs-"));
+    try {
+      mkdirSync(join(dir, "get-started"), { recursive: true });
+      writeFileSync(join(dir, "get-started", "what-is-maat.mdx"), "x");
+      mkdirSync(join(dir, "security", "model"), { recursive: true });
+      writeFileSync(join(dir, "security", "model", "index.mdx"), "x");
+      const cards = "<RouterCards />";
+      const { nodes, whole } = parse(cards, { [cards]: flow("RouterCards") });
+      const lines = run(cards, { type: "root", children: nodes, position: whole }, { docsDir: dir }).split("\n");
+      expect(lines.filter((l) => l.includes("](/docs/"))).toEqual([
+        expect.stringContaining("[What is Maat →](/docs/get-started/what-is-maat)"),
+        expect.stringContaining("[Security model →](/docs/security/model)"),
+      ]);
+      expect(lines.filter((l) => l.endsWith("(coming soon)"))).toHaveLength(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("indents a multi-line rendering under its list item, with empty lines for the blank ones", () => {
+    const source = `- ${EXECUTE}\n- Second item.\n`;
+    const { nodes, whole } = parse(source, { [EXECUTE]: flow("Fn", [attr("contract", "MandateVault"), attr("name", "execute")]) });
+    const item: MdNode = { type: "listItem", children: nodes, position: whole };
+    const root: MdNode = { type: "root", children: [{ type: "list", children: [item], position: whole }], position: whole };
+    const indented = FN_TEXT.replace(/\n(?=.)/g, "\n  ");
+    expect(run(source, root)).toBe(`- ${indented}\n- Second item.\n`);
+    expect(indented).toContain("\n\n  Who may call");
+  });
+
+  it("indents a rendering that follows text inside a list item the same way", () => {
+    const source = `1. Call it:\n\n   ${EXECUTE}\n\n2. Done.\n`;
+    const { nodes, whole } = parse(source, { [EXECUTE]: flow("Fn", [attr("contract", "MandateVault"), attr("name", "execute")]) });
+    const item: MdNode = { type: "listItem", children: nodes, position: whole };
+    const root: MdNode = { type: "root", children: [{ type: "list", children: [item], position: whole }], position: whole };
+    expect(run(source, root)).toBe(`1. Call it:\n\n   ${FN_TEXT.replace(/\n(?=.)/g, "\n   ")}\n\n2. Done.\n`);
   });
 
   it("leaves every other tag in the page alone", () => {

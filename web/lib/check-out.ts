@@ -109,12 +109,14 @@ const DATA_TAG = new RegExp(`<(${DATA_COMPONENTS.join("|")})(?![\\w$])`, "g");
 /**
  * Problems with the Markdown copies of the docs (the text of one page, or of all of them): one per data component
  * tag still in the text, outside code fences. Callout, Steps and Step stay, because their tags wrap real text.
+ * `path` names the file in each problem, so a leak is not just a line number.
  */
-export function checkMarkdownCopies(text: string): string[] {
+export function checkMarkdownCopies(text: string, path?: string): string[] {
   const problems: string[] = [];
+  const where = path ? `${path} ` : "";
   markdownLines(text).forEach(({ text: line, inFence }, i) => {
     if (inFence) return;
-    for (const [, name] of line.matchAll(DATA_TAG)) problems.push(`line ${i + 1}: <${name}> was left in the Markdown instead of its text`);
+    for (const [, name] of line.matchAll(DATA_TAG)) problems.push(`${where}line ${i + 1}: <${name}> was left in the Markdown instead of its text`);
   });
   return problems;
 }

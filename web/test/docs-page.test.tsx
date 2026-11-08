@@ -35,9 +35,16 @@ describe("docs Markdown helpers", () => {
     );
   });
 
+  it("points a link to a heading on the same page at that page, so it still works once the pages are joined", () => {
+    const body = "Jump to [the table](#the-table), or to [another](/docs/b#y).\n\n```md\n[kept](#x)\n```\n";
+    expect(pageMarkdown({ title: "T", url: "https://x.dev/docs/a", body })).toBe(
+      "# T\n\nURL: https://x.dev/docs/a\n\nJump to [the table](https://x.dev/docs/a#the-table), or to [another](https://x.dev/docs/b#y).\n\n```md\n[kept](#x)\n```\n",
+    );
+  });
+
   it("leaves other links alone, and everything inside code fences", () => {
     const body = [
-      "[out](https://other.dev/docs) [near](/documents) [anchor](#x)",
+      "[out](https://other.dev/docs) [near](/documents) [file](./a.md)",
       "",
       "```md",
       "[kept](/docs/a)",

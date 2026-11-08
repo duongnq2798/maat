@@ -66,6 +66,21 @@ describe("tables", () => {
   });
 
   it.each([
+    ["AddressTable", "AddressTable", <AddressTable />],
+    ["ReasonTable", "ReasonTable", <ReasonTable />],
+  ] as const)("%s links the same targets as the rendered table, cell for cell", (_label, name, element) => {
+    const { container } = render(element);
+    const targets = [...container.querySelectorAll("tbody td")].map((td) => td.querySelector("a")?.getAttribute("href") ?? "");
+    const marked = md(name)
+      .split("\n")
+      .slice(2)
+      .flatMap((row) => row.slice(2, -2).split(/(?<!\\) \| /))
+      .map((cell) => /\]\(([^)]*)\)/.exec(cell)?.[1] ?? "");
+    expect(marked).toEqual(targets);
+    expect(targets.filter(Boolean).length).toBeGreaterThan(0);
+  });
+
+  it.each([
     ["MandateTable", "MandateTable", <MandateTable />],
     ["ForkLedger", "ForkLedger", <ForkLedger />],
   ] as const)("%s ends with the caption of the rendered figure", (_label, name, element) => {

@@ -177,6 +177,12 @@ describe("checkMarkdownCopies", () => {
     expect(checkMarkdownCopies(text)).toEqual([]);
   });
 
+  it("names the page when it is given one, so a leak is not a line number in a 590 KB file", () => {
+    expect(checkMarkdownCopies('# T\n\n<Fn contract="V" name="x" />\n', "out/md/docs/reference/mandate-vault.md")).toEqual([
+      "out/md/docs/reference/mandate-vault.md line 3: <Fn> was left in the Markdown instead of its text",
+    ]);
+  });
+
   it("leaves the containers of the page alone: a Callout wraps real Markdown text", () => {
     expect(checkMarkdownCopies('<Callout type="warn">\nText.\n</Callout>\n\n<Steps>\n<Step>\nDo it.\n</Step>\n</Steps>\n')).toEqual([]);
   });

@@ -33,10 +33,16 @@ export function markdownLines(markdown: string): { text: string; inFence: boolea
   });
 }
 
-/** Links to the site's own pages (`](/docs/x)`, `](/md/docs/x.md)`) made absolute, outside code fences. */
-function absoluteSiteLinks(markdown: string, origin: string): string {
+/**
+ * Links to the site's own pages (`](/docs/x)`, `](/md/docs/x.md)`) and to a heading on the same page (`](#x)`) made
+ * absolute, outside code fences. A bare `](#x)` points at no page once the pages are joined into llms-full.txt.
+ */
+function absoluteSiteLinks(markdown: string, pageUrl: string): string {
+  const origin = new URL(pageUrl).origin;
   return markdownLines(markdown)
-    .map(({ text, inFence }) => (inFence ? text : text.replace(/\]\((\/(?:docs|md))(?=[/#?)\s])/g, `](${origin}$1`)))
+    .map(({ text, inFence }) =>
+      inFence ? text : text.replace(/\]\((\/(?:docs|md))(?=[/#?)\s])/g, `](${origin}$1`).replace(/\]\(#/g, `](${pageUrl}#`),
+    )
     .join("\n");
 }
 
@@ -47,7 +53,7 @@ function absoluteSiteLinks(markdown: string, origin: string): string {
 export function pageMarkdown(page: { title: string; url: string; description?: string; body: string }): string {
   const parts = [`# ${page.title}`, `URL: ${page.url}`];
   if (page.description) parts.push(page.description);
-  parts.push(absoluteSiteLinks(page.body.trim(), new URL(page.url).origin));
+  parts.push(absoluteSiteLinks(page.body.trim(), page.url));
   return `${parts.join("\n\n")}\n`;
 }
 

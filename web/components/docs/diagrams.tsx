@@ -80,7 +80,7 @@ export function TreasuryLoop() {
   return <Flow {...TREASURY_LOOP} />;
 }
 
-const DAYS =["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
+const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 type Segment = readonly [start: number, end: number];
 const DAY_MIN = 1440;
 
