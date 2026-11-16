@@ -104,7 +104,7 @@ The agent's unit tests use fakes. The fake chain, receipts and sender are in [`a
 
 | Test file | What it covers |
 | --- | --- |
-| [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) | A whole round: [dry run](/docs/help/glossary#dry-run) versus live, the once-per-day refusal log, the daily transaction cap, explicit gas, pending sends and their reconcile, and the preview and `Decision` mismatch |
+| [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) | A whole round: [dry run](/docs/help/glossary#dry-run) versus live, the refusal log once per NYSE date (per closed phase for `MARKET_CLOSED`, per UTC day without the calendar), the daily transaction cap, explicit gas, pending sends and their reconcile, and the preview and `Decision` mismatch |
 | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts) | The guarded sender: the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix, the vault-only target, the allowed functions and the gas bounds |
 | [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts), [`cdpSender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpSender.test.ts) | The shape of the CDP policy, and the CDP sender against a fake client |
 | [`schema.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/schema.test.ts), [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts), [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts) | What Claude may propose, how an answer is validated and billed, and how a proposal becomes an intent |

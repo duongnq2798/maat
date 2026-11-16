@@ -33,7 +33,7 @@ Every `execute` call that does not revert emits one `Decision`, whether the [int
 | `amount` | `uint256` | no | The size in the token's own raw units, not dollars. For a buy it is USDC to spend, with 6 decimals. |
 | `allowed` | `bool` | no | `true` only when `reason` is `OK`. `false` means the vault refused or the action failed. |
 | `reason` | `Reason` | no | `OK` when allowed. Otherwise the first check that failed, or the kind of failure. |
-| `rationaleHash` | `bytes32` | no | `keccak256` of the rationale text Claude gave for the intent. The text itself is not onchain. |
+| `rationaleHash` | `bytes32` | no | `keccak256` of the rationale text the agent journals for the intent: Claude's text, with the closed phase appended for a `MARKET_CLOSED` log, or the agent's own text for a compute bill payment. The text itself is not onchain. |
 
 `Action` is an enum, so the log carries its position in the list. The full definitions are in the [Types reference](/docs/reference/types).
 
@@ -93,5 +93,5 @@ Two rows of the ledger above, read the same way:
 - **The reasoning.** The event holds only a hash. The text is in the journal.
 - **The gas or the Builder Code.** Both are on the transaction. The agent appends the [Builder Code](/docs/help/glossary#builder-code-erc-8021) to the calldata of every transaction it sends, and owner-signed transactions do not carry it.
 - **Whether the trade was a good idea.** `allowed` means the intent stayed inside the [mandate](/docs/help/glossary#mandate). A bad trade inside every limit is still allowed.
-- **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged for that NYSE date. A missing `Decision` is therefore not proof that the agent did not try.
+- **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged for that NYSE date (for `MARKET_CLOSED`, for that closed phase). A missing `Decision` is therefore not proof that the agent did not try.
 - **The dollar value.** `amount` is in raw token units. The site's ledger converts it.

@@ -154,7 +154,7 @@ A reverted call leaves no record. A refusal does: `execute` returns `(allowed, r
 
 The rule has limits:
 
-- **A record exists only if someone sends the call.** The agent previews every intent first and sends a refusal onchain only when it is worth recording and its reason has not been logged for that NYSE date. Other refusals are in the agent's journal only, so a missing `Decision` is not proof that the agent did not try.
+- **A record exists only if someone sends the call.** The agent previews every intent first and sends a refusal onchain only when it is worth recording and its reason has not been logged for that NYSE date (for `MARKET_CLOSED`, for that closed phase). Other refusals are in the agent's journal only, so a missing `Decision` is not proof that the agent did not try.
 - **"By design" is not "never".** Only `NotExecutor` and `IntentAlreadyUsed` are meant to revert. The README adds that plain ERC-20 `balanceOf` and `decimals` reads on USDC and the stocks are assumed not to revert, and no test makes one revert.
 - **A refusal does not undo what the call already wrote.** It moves no money because the vault stops before it acts, but the intent id is spent, and a multiplier change that the call noticed on the way is recorded.
 

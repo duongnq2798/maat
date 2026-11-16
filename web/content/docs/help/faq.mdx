@@ -53,7 +53,7 @@ The agent is built to run one round every <Fact name="loopMinutes" /> while the 
 
 ### Why is there no Decision for every proposal?
 
-The agent previews every intent first, and it sends a refusal onchain only when the refusal is worth recording and its reason has not been logged on the current NYSE date. Other refusals, such as `INSUFFICIENT_BALANCE`, go to the agent's journal only. So a missing `Decision` is not proof that the agent did not try. See [What a decision does not tell you](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you).
+The agent previews every intent first, and it sends a refusal onchain only when the refusal is worth recording and its reason has not been logged on the current NYSE date (for `MARKET_CLOSED`, in the current closed phase). Other refusals, such as `INSUFFICIENT_BALANCE`, go to the agent's journal only. So a missing `Decision` is not proof that the agent did not try. See [What a decision does not tell you](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you).
 
 ### What if the calendar misses a holiday?
 

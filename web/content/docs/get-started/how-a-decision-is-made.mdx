@@ -109,7 +109,7 @@ The agent's end-to-end test runs this on a fork of Base mainnet pinned at block 
 
 1. **Thursday <Fact name="forkTimeEt" />.** The agent reads the vault, previews a BUY of NVDAc and sends it. The preview says `OK`, every check passes, and the vault records `Decision(allowed=true, reason=OK)`. The same run also supplies the stock to Aave V4 and borrows USDC against it.
 2. **The clock moves.** The test moves the fork's clock ahead <Fact name="weekendOffsetDays" /> days, to Saturday. The agent proposes a BUY of GOOGLc.
-3. **The preview.** `previewIntent` returns `MARKET_CLOSED`. That refusal is worth recording and the agent has not logged it for that NYSE date in the weekend phase, so it sends the intent. It appends the phase to the proposal's rationale, which then ends in `(market closed, weekend)`, and the intent carries the hash of that text.
+3. **The preview.** `previewIntent` returns `MARKET_CLOSED`. That refusal is worth recording and the agent has not logged it for that NYSE date in the weekend phase, so it sends the intent. The agent is built to append the phase to the proposal's rationale first, so that the text ends in `(market closed, weekend)` and the intent carries the hash of that text.
 4. **The verdict.** The vault's calendar says the market is closed. The vault emits `Decision(allowed=false, reason=MARKET_CLOSED)`, the transaction uses <Fact name="gas.refusalLog" /> gas, and no money moves. The call does not revert.
 
 <Callout type="fork" title="Fork only">
