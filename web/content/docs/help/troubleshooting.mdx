@@ -157,7 +157,7 @@ For the port message, stop the node that holds port 8547 and run the test again.
 
 **Symptom.** After the node has started, `npm run test:integration` prints nothing for minutes. The agent's README says the run takes 3 to 5 minutes on a public RPC.
 
-**Cause.** The first swap on a cold fork is very slow on a public RPC. The agent's round runner waits 120 s for a receipt by default, which is too short here, so the fork test passes its own, longer waits and the integration config raises Vitest's timeouts. They are long on purpose ([`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts) and [`vitest.integration.config.ts`](https://github.com/duongnq2798/maat/blob/main/agent/vitest.integration.config.ts)).
+**Cause.** The first swap on a cold fork is very slow on a public RPC. The agent's round runner waits <Fact name="receiptTimeoutSec" /> for a receipt by default, which is too short here, so the fork test passes its own, longer waits and the integration config raises Vitest's timeouts. They are long on purpose ([`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts) and [`vitest.integration.config.ts`](https://github.com/duongnq2798/maat/blob/main/agent/vitest.integration.config.ts)).
 
 **Fix.** Wait. Give the run the full 3 to 5 minutes before you stop it. If you stop a run and the next one reports that port 8547 already answers, stop the node that still holds the port first, as in the section above.
 

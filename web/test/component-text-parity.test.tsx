@@ -50,7 +50,8 @@ describe("tables", () => {
     ["FunctionIndex of the vault", "FunctionIndex", { contract: "MandateVault" }, <FunctionIndex contract="MandateVault" />],
     ["EnvTable", "EnvTable", {}, <EnvTable />],
     ["AddressTable", "AddressTable", {}, <AddressTable />],
-    ["FactTable", "FactTable", { names: ["checksPerTrade", "nyseOpen", "mandate.sessionMode"] }, <FactTable names={["checksPerTrade", "nyseOpen", "mandate.sessionMode"]} />],
+    ["FactTable of settings", "FactTable", { names: ["nyseOpen", "mandate.sessionMode", "maxTokenDecimals"] }, <FactTable names={["nyseOpen", "mandate.sessionMode", "maxTokenDecimals"]} />],
+    ["FactTable of figures", "FactTable", { names: ["checksPerTrade", "forkBlock"] }, <FactTable names={["checksPerTrade", "forkBlock"]} />],
     ["ReasonTable", "ReasonTable", {}, <ReasonTable />],
     ["MandateTable", "MandateTable", {}, <MandateTable />],
     ["ForkLedger", "ForkLedger", {}, <ForkLedger />],
@@ -70,7 +71,7 @@ describe("tables", () => {
     ["ReasonTable", "ReasonTable", <ReasonTable />],
   ] as const)("%s links the same targets as the rendered table, cell for cell", (_label, name, element) => {
     const { container } = render(element);
-    const targets = [...container.querySelectorAll("tbody td")].map((td) => td.querySelector("a")?.getAttribute("href") ?? "");
+    const targets = [...container.querySelectorAll("tbody td, tbody th")].map((td) => td.querySelector("a")?.getAttribute("href") ?? "");
     const marked = md(name)
       .split("\n")
       .slice(2)
@@ -86,6 +87,12 @@ describe("tables", () => {
   ] as const)("%s ends with the caption of the rendered figure", (_label, name, element) => {
     const { container } = render(element);
     expect(lastBlock(md(name))).toBe(container.querySelector("figcaption")!.textContent);
+  });
+
+  it("FactTable ends with the caption of the rendered figure", () => {
+    const names = ["timelockHours"] as const;
+    const { container } = render(<FactTable names={names} caption="Set in the vault." />);
+    expect(lastBlock(md("FactTable", { names, caption: "Set in the vault." }))).toBe(container.querySelector("figcaption")!.textContent);
   });
 });
 

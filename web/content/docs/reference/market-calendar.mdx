@@ -9,10 +9,10 @@ sources:
   - contracts/src/MarketCalendar.sol
   - contracts/src/lib/DateLib.sol
   - contracts/test/MarketCalendar.t.sol
-next: [concepts/market-hours, reference/events]
+next: [reference/events, guides/change-a-rule]
 ---
 
-`MarketCalendar` answers one question for the vault: is the market open at this moment? It works in New York time, applies daylight saving by rule, and ships with a few holidays and early closes. Its owner can only make it stricter, by adding a holiday or moving a close earlier. A calendar that is looser has to be a new contract, switched in through the mandate and its [timelock](/docs/help/glossary#timelock). This page lists each function and the dates the constructor ships. The contract is built and fork-tested, and nothing is deployed yet.
+`MarketCalendar` answers one question for the [vault](/docs/help/glossary#vault): is the market open at this moment? It works in New York time, applies daylight saving by rule, and ships with a few holidays and early closes. Its owner can only make it stricter, by adding a holiday or moving a close earlier. A calendar that is looser has to be a new contract, switched in through the mandate and its [timelock](/docs/help/glossary#timelock). This page lists each function and the dates the constructor ships. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 <FunctionIndex contract="MarketCalendar" />
 
@@ -24,7 +24,7 @@ The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq279
 
 <Fn contract="MarketCalendar" name="addHoliday" />
 
-Only the owner may call it, and any other caller reverts with `NotOwner`. It marks the New York calendar day given by `y`, `m` and `d` (year, month, day) as a holiday and emits `HolidayAdded` with the day number. A holiday closes the day in both [session modes](/docs/help/glossary#session-mode). Nothing removes a holiday, which is one half of why the calendar can only get stricter. Adding a day that is already a holiday emits the event again and changes nothing, and the function does not validate the date.
+Only the owner may call it, and any other caller [reverts](/docs/help/glossary#revert) with `NotOwner`. It marks the New York calendar day given by `y`, `m` and `d` (year, month, day) as a holiday and emits `HolidayAdded` with the day number. A holiday closes the day in both [session modes](/docs/help/glossary#session-mode). Nothing removes a holiday, which is one half of why the calendar can only get stricter. Adding a day that is already a holiday emits the event again and changes nothing, and the function does not validate the date.
 
 ### setEarlyClose
 
