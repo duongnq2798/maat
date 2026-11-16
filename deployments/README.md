@@ -13,9 +13,9 @@ Owner = your wallet. The executor is temporarily your wallet until Plan 2 (CDP S
 
 `MaatConfig.defaultMandate` uses `maxPremiumBps = 100` (not 50): the premium of TWAP(1800s) against Chainlink, measured in session at `BLOCK_SESSION`, is 53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc.
 
-It uses `maxSlippageBps = 150` and `maxStaleness = 90000` (25 hours), measured on Base mainnet (read-only RPC) over the 10 NYSE sessions of Nov 2-6 and Nov 9-13, 2026:
+It uses `maxSlippageBps = 150` and `maxStaleness = 90000` (25 hours), measured on Base mainnet (read-only RPC) over the 10 NYSE sessions of Nov 2-6 and Nov 9-13, 2026. The measurement script and its data are not in the repository, so these figures cannot be re-run from it:
 
-- `maxStaleness` is the feeds' 24h heartbeat plus 1h. The Chainlink B20 equity feeds update on a 0.5% price move or every 24h, so in session the latest answer was older than 1h for 45.9% of the time on AAPL, 37.6% on GOOGL and 9.8% on NVDA, and never older than 24h. A dead feed is still caught, and the TWAP-vs-oracle premium check is the guard against a frozen price.
+- `maxStaleness` is the feeds' 24h heartbeat plus 1h. The Chainlink B20 equity feeds update on a 0.5% price move or every 24h, so in session the latest answer was older than 1h for 45.9% of the time on AAPL, 37.6% on GOOGL and 9.8% on NVDA, and never older than 24h. A dead feed is still caught. For BUY and SELL the TWAP-vs-oracle premium check is the guard against a frozen price; BORROW and WITHDRAW_COLLATERAL against debt have no premium check and rely on the 25h limit alone.
 - `maxSlippageBps`: the worst BUY cost against the oracle (pool spot price plus fee, sampled every 15 minutes in session) was 121 bps on NVDAc, p99 109 bps. At 150 bps a $50 trade loses at most $0.75 to slippage.
 - Simulated $50 BUYs passed 81% (NVDAc), 60% (GOOGLc) and 53% (AAPLc) of the time with the old limits (`maxStaleness = 3600`, `maxSlippageBps = 100`), and 93%, 98% and 99% with these values. Most NVDAc refusals left are `PREMIUM_TOO_HIGH` in the first 45 minutes after the open, when the 30-minute TWAP still reflects the overnight price.
 

@@ -67,8 +67,8 @@ Read it top to bottom. Each `if` returns the reason of one check, so the order o
 ## Why the order matters
 
 Market reasons come first, so a refusal names the outside condition that blocked the trade, not a side
-effect of it. On a Saturday the vault reports `MARKET_CLOSED`, not `FEED_STALE`, even though the feed
-is also old by then. The balance guard runs after the market checks for the same reason: an empty vault
+effect of it. On a Saturday the vault reports `MARKET_CLOSED`, not `FEED_STALE`, even when the feed
+is also older than `maxStaleness` by then. The balance guard runs after the market checks for the same reason: an empty vault
 on a Saturday or a holiday still reports `MARKET_CLOSED`.
 
 Tests pin the order:

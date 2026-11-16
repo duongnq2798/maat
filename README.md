@@ -452,7 +452,9 @@ on NVDAc, p99 109 bps, so 150 bps costs at most $0.75 on a $50 trade. Simulated 
 81% / 60% / 53% of the time (NVDAc / GOOGLc / AAPLc) with the old limits (3600 s staleness, 100 bps
 slippage) and 93% / 98% / 99% with these. Most NVDAc refusals left are `PREMIUM_TOO_HIGH` in the first 45
 minutes after the open, while the 30-minute TWAP still reflects the overnight price. A dead feed is still
-caught, and the premium check is the guard against a frozen price.
+caught. For `BUY` and `SELL` the premium check is the guard against a frozen price; `BORROW` and
+`WITHDRAW_COLLATERAL` against debt have no premium check and rely on the 25 h limit alone. The measurement
+script and its data are not in the repository, so these figures cannot be re-run from it.
 
 ## The agent runtime
 
@@ -549,8 +551,9 @@ CDP Server Wallet. Deployed addresses will be recorded in that file.
   holiday of 2027 (New Year to Christmas observed on 2027-12-24), plus early closes on 2026-11-27, 2026-12-24
   and 2027-11-26. Later holidays need `addHoliday` from the calendar owner. If one is missed, the session
   check treats that day as a normal session, and only the price checks are left to stop a trade: the
-  feed-staleness limit (25 hours by default) and the TWAP-vs-oracle premium check. `FEED_24_5` mode
-  ignores early closes.
+  feed-staleness limit (25 hours by default) and the TWAP-vs-oracle premium check. With the 25 h default the
+  staleness limit may not trip during the holiday at all, and a borrow or a withdrawal against debt has no
+  premium check. `FEED_24_5` mode ignores early closes.
 - **The feed is assumed to include the multiplier.** The vault treats each Chainlink equity answer as the
   price of one raw token with the B20 multiplier already applied. That matched Coinbase's NAV price when it
   was checked during development, with the multiplier close to 1

@@ -27,7 +27,8 @@ library MaatConfig {
             maxSlippageBps: 150,
             // The feeds' 24h heartbeat plus 1h. They update on a 0.5% move or every 24h; in those sessions
             // they were older than 1h for up to 46% of the time (AAPL), never older than 24h. A dead feed is
-            // still caught; the TWAP-vs-oracle premium check is the guard against a frozen price.
+            // still caught. For BUY and SELL the TWAP-vs-oracle premium check guards against a frozen price;
+            // BORROW and WITHDRAW_COLLATERAL against debt have no premium check and rely on this limit alone.
             maxStaleness: 25 hours,
             multiplierCooldown: 1 days,
             twapWindow: 1800,

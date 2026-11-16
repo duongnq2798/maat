@@ -140,7 +140,7 @@ The vault allows the actions that lower risk, or add none, at any hour:
 - `WITHDRAW_COLLATERAL` is allowed with no debt, because taking collateral out of a position that owes nothing is risk-free (a comment in the vault says so). Against debt it needs an open market.
 - `BORROW` is refused whenever the market is closed, with [`MARKET_CLOSED`](/docs/concepts/refusal-codes#market_closed).
 
-"Closed" is what the calendar says for the mandate's session mode, which [Market hours](/docs/concepts/market-hours) explains. A feed that has stopped counts too, even when the calendar says open: `BORROW` and a withdrawal against debt then return `FEED_STALE`.
+"Closed" is what the calendar says for the mandate's session mode, which [Market hours](/docs/concepts/market-hours) explains. A feed that has stopped counts too once its last answer is older than `maxStaleness` (<Fact name="mandate.maxStalenessSec" /> by default), even when the calendar says open: `BORROW` and a withdrawal against debt then return `FEED_STALE`.
 
 <Callout type="fork" title="Fork run: clock moved to a Saturday">
 
