@@ -11,6 +11,7 @@ sources:
   - contracts/test/fork/MandateVaultFork.t.sol
   - contracts/test/MandateVaultAdmin.t.sol
   - contracts/test/MandateVaultCredit.t.sol
+  - contracts/test/Deploy.t.sol
   - agent/test/runOnce.test.ts
   - agent/test/sender.test.ts
   - agent/test/cdpPolicy.test.ts
@@ -41,7 +42,7 @@ Each layer has its own limit. Unit tests are fast and exact but use stand-ins. F
 
 ## Contracts
 
-The unit suites are `MandateVault`, `MandateVaultCredit`, `MandateVaultAdmin`, `GuardLib`, `MarketCalendar`, `PriceLib`, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`. They run against mocks in `contracts/test/mocks`: a mock [B20](/docs/help/glossary#b20) token with switches that make each read revert, a mock feed, a mock pool, and mock swap and credit adapters. The mocks are what make the tests exact: a test can make `isPaused` revert, move the clock to a Saturday, or have the swap return a hair less than the floor. The price is that a mock shows the vault's logic and not the behavior of the real contract it stands for. Here is one such test:
+The unit suites are `MandateVault`, `MandateVaultCredit`, `MandateVaultAdmin`, `GuardLib`, `MarketCalendar`, `PriceLib`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `Deploy`, which checks the deploy script's payee list. They run against mocks in `contracts/test/mocks`: a mock [B20](/docs/help/glossary#b20) token with switches that make each read revert, a mock feed, a mock pool, and mock swap and credit adapters. The mocks are what make the tests exact: a test can make `isPaused` revert, move the clock to a Saturday, or have the swap return a hair less than the floor. The price is that a mock shows the vault's logic and not the behavior of the real contract it stands for. Here is one such test:
 
 ```solidity title="contracts/test/MandateVault.t.sol#L114-L121"
     function test_slippageFloorIsEnforcedEvenIfAgentSendsZero() public {

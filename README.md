@@ -129,7 +129,7 @@ minute each).
    ```
 
    ```text
-   Ran 8 test suites in …: 220 tests passed, 0 failed, 0 skipped (220 total tests)
+   Ran 9 test suites in …: 224 tests passed, 0 failed, 0 skipped (224 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -188,7 +188,7 @@ What exists at this commit, and what does not.
 
 | Component | Status | Where |
 | --- | --- | --- |
-| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs every verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** on mainnet | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
+| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs every verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (224 unit tests across the contracts, 14 fork tests). **Not deployed** on mainnet | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
 | `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 3 holidays and 2 early closes up to 2027-01-01 | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
@@ -503,7 +503,7 @@ docs/superpowers/          design specs and implementation plans
 
 | Suite | Command (in its folder) | Tests | Needs |
 | --- | --- | --- | --- |
-| Contracts, unit | `forge test --no-match-path "test/fork/*"` | 220 | nothing |
+| Contracts, unit | `forge test --no-match-path "test/fork/*"` | 224 | nothing |
 | Contracts, fork | `forge test --match-path "test/fork/*"` | 14 | `BASE_RPC_URL` (archive) |
 | Agent, unit | `npm test` | 167 | nothing |
 | Agent, fork integration | `npm run test:integration` | 3 | archive RPC, `base-anvil` v1.5.1 |
