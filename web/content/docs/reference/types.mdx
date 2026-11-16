@@ -1,0 +1,99 @@
+---
+title: Types
+description: The Intent, Mandate and TokenConfig structs and the Action, Reason and SessionMode enums, field by field and member by member.
+type: reference
+audience: [developer, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/Types.sol
+next: [concepts/mandate, concepts/refusal-codes]
+---
+
+The types in `Types.sol` form the vocabulary of the vault. An `Intent` is what the executor sends, a `Mandate` and a `TokenConfig` are the rules the vault applies to it, and `Action`, `Reason` and `SessionMode` are the enums they use. This page shows each field and member, with the unit of every field and the id of every enum member. The contracts are built and fork-tested, and nothing is deployed yet.
+
+| Type | Kind | What it is |
+| --- | --- | --- |
+| [`Intent`](#intent) | struct | One request the executor sends to `execute` or `previewIntent` |
+| [`Mandate`](#mandate) | struct | The vault's rule set |
+| [`TokenConfig`](#tokenconfig) | struct | The settings of one stock token |
+| [`Action`](#action) | enum | What an intent asks the vault to do |
+| [`Reason`](#reason) | enum | Why the vault allowed or refused an action |
+| [`SessionMode`](#sessionmode) | enum | Which hours count as open |
+
+## Structs
+
+### Intent
+
+<TypeEntry name="Intent" />
+
+An `Intent` is the one argument of `execute` and `previewIntent`. Its `token` and `amount` mean different things for each action, as the table shows, and amounts are always raw units: USDC has <Fact name="usdcDecimals" />, and a stock uses its own decimals.
+
+| Action | `token` | `amount` |
+| --- | --- | --- |
+| `BUY` | The stock to buy | USDC to spend |
+| `SELL`, `SUPPLY`, `WITHDRAW_COLLATERAL` | The stock | The raw stock amount |
+| `BORROW`, `REPAY` | USDC | USDC |
+| `PAY_EXPENSE` | Not used by the checks or the transfer, and the agent sends USDC | USDC, sent to `payee` |
+
+The other fields work as follows. `id` is unique per intent: the vault accepts each id once, whether the intent is allowed or refused, and reverts with `IntentAlreadyUsed` on a second use. `minOut` is the least the agent will accept from a swap, in raw units of the token it receives, and the vault uses the larger of it and its own floor, so a low `minOut` never loosens the floor. `payee` is read only for `PAY_EXPENSE`, and the address must be on the allowlist. `rationaleHash` is the hash of the agent's rationale text: the `Decision` event records it, and the vault does not check it.
+
+### Mandate
+
+<TypeEntry name="Mandate" />
+
+The `Mandate` is the vault's rule set. The constructor sets the first one, and only `queueMandate` followed by `applyMandate` can replace it. [The mandate](/docs/concepts/mandate#field-by-field) explains what each field limits and why it has its default value. The units are:
+
+| Field | Unit |
+| --- | --- |
+| `sessionMode` | A [`SessionMode`](#sessionmode) |
+| `maxPremiumBps`, `maxSlippageBps` | [Basis points](/docs/help/glossary#basis-point-bps) |
+| `maxStaleness`, `multiplierCooldown`, `twapWindow` | Seconds |
+| `perTradeCapUsd`, `dailyCapUsd` | USDC units, with <Fact name="usdcDecimals" /> |
+| `calendar`, `swapAdapter` | Addresses of contracts |
+| `creditAdapter` | The credit venue's address. The zero address disables `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` |
+| `minHealthFactor`, `targetHealthFactor` | [WAD](/docs/help/glossary#wad). A risk-increasing credit action must leave the health factor at or above the minimum, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window) |
+| `deriskWindow` | Seconds before the <Fact name="feedEdge" /> on the last session day before the feeds stop: every Friday, and a weekday before a holiday. Zero means no window |
+
+### TokenConfig
+
+<TypeEntry name="TokenConfig" />
+
+A `TokenConfig` holds the settings of one stock token, and the vault stores one per listed token (see `tokenConfig`). The owner changes it only through `queueTokenConfig` and `applyTokenConfig`.
+
+| Field | Meaning |
+| --- | --- |
+| `allowed` | Whether the vault may buy the token or supply it as collateral |
+| `feed` | The [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) that gives the oracle price, with <Fact name="priceDecimals" /> |
+| `pool` | The [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool of this token and USDC, which the vault swaps in and reads the pool price from |
+| `maxWeightBps` | The most the token may weigh in the vault's net equity after a `BUY`, in basis points |
+
+A token with a `feed` or a `pool` set still has a market when `allowed` is false. That is exit-only: the vault can still sell it, and a `BUY` or `SUPPLY` is refused. Clearing both `feed` and `pool` removes the market, and the vault can no longer sell the token.
+
+## Enums
+
+### Action
+
+<TypeEntry name="Action" />
+
+An `Action` says what an intent asks for, and the `Decision` event logs the member's id. `BUY` and `SELL` are the two trades, and they run [the nine checks](/docs/concepts/nine-checks) (check 9 is for a `BUY` only). `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` are the credit actions, and an unpaused vault whose mandate has no credit adapter refuses them with `ACTION_NOT_SUPPORTED`. `PAY_EXPENSE` pays an allowlisted payee in USDC and counts toward the daily cap. Every action other than the two trades runs [its own checks](/docs/concepts/nine-checks#other-actions).
+
+### Reason
+
+<TypeEntry name="Reason" />
+
+A `Reason` says why the vault allowed or refused an action, and every `Decision` carries one. `OK` means the checks passed and the action was carried out, and the other <Fact name="refusalCount" /> members are refusals or failures. The order is part of the interface: the source says never to reorder the enum, and `TRANSFER_FAILED`, `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` and `DERISK_WINDOW` were appended after the others, so an id never changes meaning. [Refusal codes](/docs/concepts/refusal-codes) explains each member, the actions that can return it and where the vault raises it.
+
+### SessionMode
+
+<TypeEntry name="SessionMode" />
+
+A `SessionMode` picks which hours the calendar counts as open for a trade. `REGULAR` follows the [NYSE session](/docs/help/glossary#nyse-session), weekdays from <Fact name="nyseOpen" /> to <Fact name="nyseClose" />. `FEED_24_5` follows the window in which the Chainlink equity feeds update, from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />. A holiday closes both modes, and an early close applies to `REGULAR` only. The default mandate uses <Fact name="mandate.sessionMode" />, and [Market hours](/docs/concepts/market-hours#two-session-modes) explains the two modes.
+
+## Related
+
+- [The mandate](/docs/concepts/mandate): what each `Mandate` field limits, with its default.
+- [Refusal codes](/docs/concepts/refusal-codes): every `Reason` and what raises it.
+- [Read a decision](/docs/get-started/read-a-decision#field-by-field): how the ids of `Action` and `Reason` appear in a `Decision`.
+- [Market hours](/docs/concepts/market-hours): how each `SessionMode` decides if the market is open.
+- [MandateVault](/docs/reference/mandate-vault): the functions that take and return these types.

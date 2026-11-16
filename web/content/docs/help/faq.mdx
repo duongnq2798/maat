@@ -1,0 +1,126 @@
+---
+title: FAQ
+description: Short answers to the questions people ask about Maat, from what it is to how it is tested, each linking to the page that proves it.
+type: help
+audience: [newcomer, watcher, developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+next: [get-started/quickstart, security/not-claimed]
+---
+
+These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. Nothing is deployed and the agent has not run live, so the answers say what the code is built to do and what has run on a fork. Words you do not know are in the [glossary](/docs/help/glossary).
+
+| Question | Today | Read more |
+| --- | --- | --- |
+| Is Maat deployed to Base mainnet? | No | [Status and roadmap](/docs/get-started/status) |
+| Has a third party audited the contracts? | No | [What Maat does not claim](/docs/security/not-claimed#unaudited) |
+| Has it run on a fork of Base mainnet? | Yes, the contracts and the agent's send path | [Status and roadmap](/docs/get-started/status#built-and-fork-tested) |
+| Did the fork run use the real Claude API or the CDP wallet? | No, a scripted proposer and a local sender stood in | [How a decision is made](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy) |
+
+## About Maat
+
+### What is Maat?
+
+Maat is an AI agent built to trade tokenized stocks on Base from its own treasury. Claude proposes the trades, and an onchain vault checks each intent the executor sends against a mandate and records the verdict, so the agent proposes and the mandate decides. It is built and fork-tested, not live. See [What is Maat](/docs/get-started/what-is-maat).
+
+### Is Maat live?
+
+No. No Maat contract is deployed to Base mainnet, and the agent has not run live. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why every page in these docs is labeled fork-tested. See [Status and roadmap](/docs/get-started/status).
+
+### Whose money does Maat trade?
+
+Only its own. Agent #1 is one agent with one vault, owned by the team, and it is built to trade only its own treasury, which the design spec sizes at <Fact name="treasuryUsd" />. See [What exists today](/docs/get-started/what-is-maat#what-exists-today).
+
+### Can Claude move funds on its own?
+
+No: Claude only proposes, and it cannot choose the verdict, set the slippage or pay a bill. `execute` is the executor's only way to move anything, and the vault runs its own checks on every intent, so a confused Claude, a bug in the agent or a stolen executor key meets the same rules. No human signs off each trade: once live, the agent is built to send any proposal that passes its own validation and a preview of `OK`, so the vault is the only gate. See [What none of the agent's steps can do](/docs/get-started/how-a-decision-is-made#what-none-of-the-agents-steps-can-do).
+
+## Watching the agent
+
+### What happens on a Saturday?
+
+On a Saturday the calendar contract reports the market closed in both session modes, so the vault refuses a `BUY` or a `SELL` with `MARKET_CLOSED` (unless an earlier check, such as a pause, fails first), while `SUPPLY`, `REPAY` and `PAY_EXPENSE` do not need an open market, `WITHDRAW_COLLATERAL` works only when there is no debt, and `BORROW` is refused. A refusal moves no funds, and it is recorded as a `Decision` only when the agent sends the intent, which it is built to do at most once per reason per UTC day. In the fork run, with the clock moved ahead to a Saturday, the agent's buy of GOOGLc was refused this way, and the transaction that recorded it used <Fact name="gas.refusalLog" /> gas. See [Worked example: the Saturday buy](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy).
+
+### Why refuse instead of revert?
+
+A reverted call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design only a call from the wrong address (`NotExecutor`) and a reused intent id (`IntentAlreadyUsed`) revert. A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
+
+### How often does the agent run?
+
+The agent is built to run one round every <Fact name="loopMinutes" /> while the US market is in session and every <Fact name="offSessionMinutes" /> outside it. A round that could not read the market state, or that failed, gets the slower cadence. The agent has not run live, so no round has run against a mainnet vault. See [Cadence](/docs/concepts/treasury-loop#cadence).
+
+### Why is there no Decision for every proposal?
+
+The agent previews every intent first, and it sends a refusal onchain only when the refusal is worth recording and its reason has not been logged on the current UTC day. Other refusals, such as `INSUFFICIENT_BALANCE`, go to the agent's journal only. So a missing `Decision` is not proof that the agent did not try. See [What a decision does not tell you](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you).
+
+### What if the calendar misses a holiday?
+
+The calendar ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes up to 2027-01-01, and later holidays need `addHoliday` from the calendar owner. If one is missing, the calendar treats that day as a normal session, so the market check passes. The other checks still run, but the vault can still trade on the last published price until it is older than `maxStaleness`. See [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing).
+
+## For developers
+
+### How do I check Maat's claims myself?
+
+Clone the repository and run the tests. The refusal test, the contract suites, the agent tests and the site build need no wallet, RPC URL or API key and touch no chain, though you need network access to clone the repository and install packages, and the whole path takes about five minutes on a fresh clone. The fork tests are optional and need a Base archive RPC. See the [Quickstart](/docs/get-started/quickstart).
+
+### How is Maat tested?
+
+Unit tests run the vault, the guards, the calendar, the price math and both adapters against mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks. The agent's tests use fakes, and its fork run uses a scripted proposer and a local sender. The website's tests read the Solidity sources and the fork-run gas log, so most numbers on a page fail them if they drift from the code. See the [Quickstart](/docs/get-started/quickstart#the-five-steps).
+
+### Has Claude or the CDP wallet run for real?
+
+No. In the fork run a scripted proposer stood in for Claude and a local sender stood in for the CDP wallet. The Claude proposer is tested against a fake client and the CDP code against a fake CDP client only, and no output from the real Claude API is committed yet. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
+
+### Which functions can anyone call on a vault?
+
+Anyone can call `notifyRevenue`, `syncMultiplier`, `previewIntent` and the view functions. `execute` is for the executor, and the owner functions (pause, withdraw, queue and apply) are for the owner. One catch: the transfer-policy check reads `tx.origin`, so `previewIntent` must be called from the executor's address to give the answer `execute` would. See [Three roles](/docs/concepts/timelock-and-roles#three-roles).
+
+### Is there an API or SDK?
+
+No. Maat has no API or SDK to integrate with today, and anything not built yet is listed on [Status and roadmap](/docs/get-started/status). What exists is the code in the repository, the Solidity contracts, the TypeScript agent and their tests, which you can read, run and deploy yourself. See [What it is not](/docs/get-started/what-is-maat#what-it-is-not).
+
+## For builders
+
+### Can I run my own vault?
+
+Yes, with a caveat: the contracts are MIT-licensed but unaudited. The deploy script reads the deployer, owner, executor and expense payee addresses from environment variables and builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you would edit `MaatConfig.sol` first. You sign every transaction from your own wallet, and the owner address cannot be changed afterwards, so check it character for character before you broadcast. See the checklist in [Next: mainnet](/docs/get-started/status#next-mainnet), and [Deploy your own vault](/docs/guides/deploy-your-own-vault) for the commands.
+
+### What can I set in a mandate?
+
+The mandate holds the session mode, the premium, slippage and staleness limits, the multiplier cooldown, the TWAP window, the per-trade and daily caps, the calendar and adapter addresses, the health factor limits and the de-risk window. Each stock has its own settings: whether it is allowed, its feed, its pool and its largest share of net equity. The vault also keeps a payee allowlist. See [Field by field](/docs/concepts/mandate#field-by-field).
+
+### How do I change a rule after deploying?
+
+The owner queues the change, waits <Fact name="timelockHours" />, and then applies exactly the queued values within <Fact name="gracePeriodDays" />, or cancels it. Even a tighter limit waits, while pausing the vault and rotating the executor key do not. See [The timelock](/docs/concepts/timelock-and-roles#the-timelock).
+
+### What does the agent cost to run?
+
+A dry run still calls Claude, so it costs real API fees even though it sends nothing, and the README estimates roughly one cent of Claude usage per round. That is an estimate: the Claude proposer is tested against a fake client, and no output from the real Claude API is committed yet. In live mode the executor also needs a little ETH on Base for gas, and the agent is built to track its own Claude spend and pay it from the vault in USDC. See [Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill).
+
+## Trust and safety
+
+### What if the executor key is stolen?
+
+The attacker can only call `execute`, so every intent still meets the vault's checks and caps, including the per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> in the default mandate. They can make bad trades inside the mandate and pay an allowlisted payee up to those caps, but they cannot pay any other address or change the mandate. The owner can replace the key at once with `setExecutor`. See the fork test `test_compromisedExecutorIsBounded` under [If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks). [The threat model](/docs/security/threat-model#the-executor-key) goes through every key that could leak.
+
+### What if the owner key is stolen?
+
+The owner key is a different case from the executor key. It is fixed for the life of the vault, and `withdraw`, `setPaused` and `setExecutor` do not wait for the timelock, so a leaked owner key can take what the vault holds at once. The README lists the single-key owner as a known limitation: a multisig owner would work with the contract but is not set up. See [If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks), and [the threat model](/docs/security/threat-model#the-owner-key) for this case and the other keys.
+
+### Can the agent still make a bad trade?
+
+Yes. The vault does not judge whether a trade is a good idea, so a trade inside every limit is allowed, even a bad one. The limits, such as the per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> in the default mandate, bound how much a bad trade can cost. See [What the checks do not do](/docs/concepts/nine-checks#what-the-checks-do-not-do).
+
+### Does it give investment advice?
+
+No. Maat gives no investment advice, confers no shareholder rights and is not offered to US persons. It is built to hold only its own treasury, and an allowed verdict only means a trade stayed inside the mandate, not that it is a good idea. See [What it is not](/docs/get-started/what-is-maat#what-it-is-not).
+
+### Has it been audited?
+
+No. There is no third-party audit, so treat the contracts as unaudited, and nothing is deployed to mainnet either. The README lists this first among its known limitations. See [What Maat does not claim](/docs/security/not-claimed#unaudited) for the limitations, and [Status and roadmap](/docs/get-started/status#built-and-fork-tested) for what is built.
+
+### How do I know the numbers on the site are real?
+
+Most figures are rendered from a facts file with its source, and the tests check most of those against the code or the spec. A few cite the design spec instead, because nothing in the code can prove them: the planned x402 price and the treasury size. Every code excerpt in these docs is compared with the file it quotes. See [How this page stays honest](/docs/get-started/status#how-this-page-stays-honest).

@@ -1,0 +1,118 @@
+---
+title: Market hours
+description: How the onchain calendar decides the NYSE session in New York time, with daylight saving, holidays, early closes and the feed edge.
+type: concept
+audience: [developer, evaluator, watcher]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/lib/DateLib.sol
+  - contracts/test/MarketCalendar.t.sol
+next: [reference/market-calendar, concepts/credit-and-health-factor]
+---
+
+A pool on Base can trade a stock token at any hour, but the price the vault trusts comes from a feed that follows the stock market. So the vault asks one question before it trades: is the market open right now? A calendar contract answers it onchain, in New York time. This page shows how the calendar decides, what the two session modes are, how holidays and early closes work, and what protects a trade if the calendar misses a holiday.
+
+## Two session modes
+
+The [mandate](/docs/help/glossary#mandate)'s `sessionMode` picks which hours count as open. The calendar supports two [session modes](/docs/help/glossary#session-mode).
+
+| Mode | Open | What it follows |
+| --- | --- | --- |
+| `REGULAR` | Monday to Friday, <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, except on holidays. An early close ends the day sooner | The NYSE session |
+| `FEED_24_5` | From Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />, around the clock, except on holidays. Early closes do not apply | The window in which the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) update |
+
+<MarketWeek />
+
+Agent #1's mandate uses `REGULAR`, and so does the deploy script. The [design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) calls it safer and better for pool liquidity, and keeps `FEED_24_5` off until the after-hours premium is shown to be stable. [The mandate](/docs/concepts/mandate#sessionmode) lists the field.
+
+In the fork run, the agent buys on Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />, inside the `REGULAR` session, and the vault allows it. The test then moves the fork's clock ahead <Fact name="weekendOffsetDays" /> days, to a Saturday, and the next buy is refused with `MARKET_CLOSED`. A fork test also buys at a real Saturday block, 2026-10-31 at 18:00 UTC, and gets `MARKET_CLOSED` in both modes (`test_weekendBuyIsRefusedInBothModes`).
+
+## New York time, onchain
+
+The vault reads `block.timestamp`, which is UTC. The calendar turns it into New York time itself, so no oracle or off-chain clock decides the session. It computes daylight saving time from the date: `etOffsetSeconds` returns the number of seconds to subtract from UTC, <Fact name="etOffsetHours.dst" /> during US daylight saving time and <Fact name="etOffsetHours.standard" /> otherwise.
+
+```solidity title="contracts/src/MarketCalendar.sol#L48-L54"
+    /// @return seconds to subtract from UTC: 4h during US DST, 5h otherwise
+    function etOffsetSeconds(uint256 ts) public pure returns (uint256) {
+        (uint256 y,,) = DateLib.civilFromDays(ts / 1 days);
+        uint256 dstStart = DateLib.nthSunday(y, 3, 2) * 1 days + 7 hours; // 02:00 EST
+        uint256 dstEnd = DateLib.nthSunday(y, 11, 1) * 1 days + 6 hours; // 02:00 EDT
+        return (ts >= dstStart && ts < dstEnd) ? 4 hours : 5 hours;
+    }
+```
+
+Daylight saving time runs from the second Sunday in March to the first Sunday in November, and the code writes the two switch instants in UTC. `DateLib` does the calendar arithmetic: it turns a UTC day into a year, month and day, finds a weekday, and finds the n-th Sunday of a month. `test_dstBoundaries` checks the minute before and the minute of each change in 2026. The rule is fixed in the code. A different rule would need a new calendar contract.
+
+`localTime` applies the offset and returns three values: the New York day, the weekday (0 is Sunday) and the minute of the day. `isOpen` decides from those.
+
+## Holidays and early closes
+
+`isOpen` is the whole rule. Read it with the preloaded dates below it.
+
+```solidity title="contracts/src/MarketCalendar.sol#L63-L75"
+    function isOpen(uint256 ts, SessionMode mode) external view returns (bool) {
+        (uint256 day, uint256 wd, uint256 minute) = localTime(ts);
+        if (isHoliday[day]) return false;
+        if (mode == SessionMode.REGULAR) {
+            if (wd == 0 || wd == 6) return false;
+            uint256 close = earlyCloseMin[day] != 0 ? earlyCloseMin[day] : CLOSE_MIN;
+            return minute >= OPEN_MIN && minute < close;
+        }
+        if (wd == 6) return false;
+        if (wd == 0) return minute >= FEED_EDGE_MIN;
+        if (wd == 5) return minute < FEED_EDGE_MIN;
+        return true;
+    }
+```
+
+- A holiday closes the whole New York day in both modes.
+- In `REGULAR`, Saturday and Sunday are closed. On other days the market is open from the open minute up to, but not including, the close minute. An early close replaces the regular close for that day.
+- In `FEED_24_5`, Saturday is closed, Sunday opens at the feed edge, Friday closes at the feed edge, and Monday to Thursday are open all day.
+
+The same calendar answers for the credit actions. `BORROW` and `WITHDRAW_COLLATERAL` against debt need it open. `SUPPLY` and `REPAY` do not. [The nine checks](/docs/concepts/nine-checks#other-actions) lists which action needs what.
+
+The calendar is created with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes already set. The early closes end the day at <Fact name="earlyClose" />.
+
+```solidity title="contracts/src/MarketCalendar.sol#L30-L38"
+    constructor(address owner_) {
+        if (owner_ == address(0)) revert ZeroAddress();
+        owner = owner_;
+        _addHoliday(2026, 11, 26); // Thanksgiving
+        _addHoliday(2026, 12, 25); // Christmas
+        _addHoliday(2027, 1, 1); // New Year
+        _setEarlyClose(2026, 11, 27, 780); // 13:00
+        _setEarlyClose(2026, 12, 24, 780);
+    }
+```
+
+| Date | Kind | Effect |
+| --- | --- | --- |
+| 2026-11-26 | Holiday (Thanksgiving) | Closed in both modes |
+| 2026-11-27 | Early close | `REGULAR` ends at <Fact name="earlyClose" /> |
+| 2026-12-24 | Early close | `REGULAR` ends at <Fact name="earlyClose" /> |
+| 2026-12-25 | Holiday (Christmas) | Closed in both modes |
+| 2027-01-01 | Holiday (New Year) | Closed in both modes |
+
+`test_holidaysAndEarlyClose` checks the dates on the calendar, and `test_thanksgivingIsMarketClosedAtVaultLevel` checks them through the vault: a buy on Thanksgiving morning is refused with `MARKET_CLOSED`, and the same buy the next day, inside the early close, goes through.
+
+The calendar can only get stricter. Its owner is fixed when it is created, and the deploy script gives it the vault's owner. The owner can add a holiday with `addHoliday` and set an earlier close with `setEarlyClose`, and both take effect at once. No function removes a holiday, and `setEarlyClose` rejects a close that is not earlier than the one already set (`InvalidClose`). A close must also fall after the open and before the regular close (`_setEarlyClose`). `test_ownerCanOnlyMakeItStricter` shows that a non-owner who calls `addHoliday` is refused, that a later close reverts with `InvalidClose`, that an earlier close is accepted and that `addHoliday` closes a day that was open. It does not exercise the bounds on a close. To loosen the calendar, deploy a new one and switch to it through the mandate's `calendar` field, which goes through the vault's timelock.
+
+## The feed edge
+
+The Chainlink equity feeds on Base update from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />. This moment is the [feed edge](/docs/help/glossary#feed-edge). `FEED_24_5` follows it exactly and ignores early closes.
+
+In `REGULAR` mode the session closes at <Fact name="nyseClose" />, before the edge. The edge still matters there, because the vault's [de-risk window](/docs/help/glossary#de-risk-window) is counted back from it. The vault keeps its own copy of the edge (`FEED_FREEZE_MINUTE`), and the window ends at it. [Credit and the health factor](/docs/concepts/credit-and-health-factor) covers the window.
+
+## What happens if a holiday is missing
+
+<Callout type="warning" title="Known limitation">
+
+The calendar must be maintained. It ships with the holidays and early closes in the table above, none after 2027-01-01. Later holidays need `addHoliday` from the calendar owner. Nothing in the contracts adds one by itself.
+
+</Callout>
+
+If a holiday is missed, the calendar treats that day as a normal session, so check 4 passes. Every other check still runs. The ones that could notice a closed market are the price checks. The oracle check refuses only once the last answer is older than `maxStaleness` (default <Fact name="mandate.maxStalenessSec" />), so until then the vault can still trade on the last published price. The premium check still compares the pool with that same price and refuses if the pool has drifted. The pause, policy, size and concentration checks do not know about holidays.
+
+The fix is for the owner to add the day with `addHoliday`. The [README](https://github.com/duongnq2798/maat/blob/main/README.md) lists this under its known limitations, and [Prices and premium](/docs/concepts/prices-and-premium) explains the two price checks.

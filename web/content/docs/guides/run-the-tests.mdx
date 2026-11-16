@@ -1,0 +1,225 @@
+---
+title: Run the tests
+description: Run the contract unit and fork suites, the agent unit and fork tests, and the website checks, with what each one needs to run.
+type: guide
+audience: [developer, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - contracts/foundry.toml
+  - agent/package.json
+  - web/package.json
+  - web/playwright.config.ts
+  - agent/test/integration/agent.fork.test.ts
+  - agent/test/integration/deploy.ts
+  - contracts/test/fork/DeployFork.t.sol
+next: [guides/reproduce-the-fork-run, security/testing]
+---
+
+This guide runs every test suite in the Maat repository, one at a time, and says what each one needs. The suites that touch no chain run offline against mocks and fakes. The [fork tests](/docs/help/glossary#fork-test) need a Base archive RPC, and the agent's also needs a special build of Anvil. Nothing is deployed and the agent has not run live, so these suites are the evidence behind the claims in these docs, and running them yourself is how you check that evidence.
+
+## Before you start
+
+This guide is for developers and evaluators who have cloned the repository. It assumes the clone and its two direct submodules from the [Quickstart](/docs/get-started/quickstart#the-five-steps), which also runs the offline suites in a shorter path.
+
+| Tool | Version | Needed for |
+| --- | --- | --- |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer | The contract suites. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
+| Node.js with npm | 24 | The website needs 24.x (`web/package.json`). The agent needs 22.9 or newer (`agent/package.json`). |
+| A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here | The fork suites only. |
+| `base-anvil` | v1.5.1 | The agent's fork test only. |
+| Playwright's Chromium | `npx playwright install chromium` | The website's end-to-end tests only. |
+
+The fork tests ask Foundry for the `base` endpoint, which `contracts/foundry.toml` maps to the `BASE_RPC_URL` environment variable.
+
+Time: the offline contract, agent and website suites are the Quickstart's path, about five minutes on a fresh clone, and most of that is compiling and installing packages. The contract fork suite took about a minute in the README's run. The agent's fork test takes 3 to 5 minutes on a public RPC (agent/README.md).
+
+There is no CI in this repository yet (README.md, Development). Nothing runs these suites for you, so you run them locally, and a number or claim in these docs is only as fresh as the last time someone did.
+
+## The suites at a glance
+
+This is the Development table of the README, with a Folder column and without its Tests column, because counts go stale. Run each command from its folder.
+
+| Suite | Command | Folder | Needs |
+| --- | --- | --- | --- |
+| Contracts, unit | `forge test --no-match-path "test/fork/*"` | `contracts/` | Nothing |
+| Contracts, fork | `forge test --match-path "test/fork/*"` | `contracts/` | `BASE_RPC_URL` (archive) |
+| Agent, unit | `npm test` | `agent/` | Nothing |
+| Agent, fork integration | `npm run test:integration` | `agent/` | An archive RPC, `base-anvil` v1.5.1 |
+| Web, unit, component and parity | `npm test` | `web/` | Nothing |
+| Web, end to end | `npm run e2e` (after `npm run build`) | `web/` | `npx playwright install chromium` |
+
+## Run the suites
+
+<Steps>
+
+<Step>
+
+### Contract unit tests
+
+Needs nothing. This runs the vault, the guards, the calendar, the price math and both adapters against mocks. The first run compiles the contracts.
+
+```bash
+cd contracts
+forge test --no-match-path "test/fork/*"
+```
+
+Trimmed output from the run at commit `1c1dc4d`, with the counts replaced:
+
+```text
+Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
+```
+
+</Step>
+
+<Step>
+
+### Check that the vault fits
+
+`forge build --sizes` prints the size of every compiled contract and how much room it leaves under the size limit for deployed contract code. The README singles out `MandateVault`, which has the least room of the contracts in the table.
+
+```bash
+forge build --sizes
+```
+
+Trimmed output from the run at commit `1c1dc4d`. An ellipsis marks removed rows. The Runtime Margin column is the room left, in bytes:
+
+```text
+╭----------------------+------------------+-------------------+--------------------+---------------------╮
+| Contract             | Runtime Size (B) | Initcode Size (B) | Runtime Margin (B) | Initcode Margin (B) |
++========================================================================================================+
+…
+| MandateVault         | 22,755           | 28,026            | 1,821              | 21,126              |
+…
+╰----------------------+------------------+-------------------+--------------------+---------------------╯
+```
+
+</Step>
+
+<Step>
+
+### Contract fork tests
+
+These tests run the real B20 tokens, feeds, pools and Aave V4 at two pinned Base mainnet blocks. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your own archive RPC URL in place of the placeholder.
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
+forge test --match-path "test/fork/*"
+```
+
+Expected output, from README.md, How to evaluate Maat in 5 minutes, with the counts replaced:
+
+```text
+Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
+```
+
+</Step>
+
+<Step>
+
+### Agent unit tests
+
+Needs nothing. Claude, the [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) and the chain are all fakes here, so nothing is sent and nothing is billed. The type check runs the TypeScript compiler without writing files.
+
+```bash
+cd ../agent
+npm ci
+npm test
+npm run typecheck
+```
+
+Trimmed output from the run at commit `1c1dc4d`, with the counts replaced. The type check prints only its two banner lines when the types are clean:
+
+```text
+ Test Files  … passed (…)
+      Tests  … passed (…)
+…
+> @maat/agent@0.1.0 typecheck
+> tsc --noEmit
+```
+
+</Step>
+
+<Step>
+
+### Agent fork test
+
+This test needs a Base archive RPC and `base-anvil` v1.5.1. It starts a local fork, deploys the compiled contracts from `contracts/out` onto it, which steps 1 and 2 have just built, and runs the agent's round against it with a scripted proposer in place of Claude. Run it from `agent/`.
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
+npm run test:integration
+```
+
+The README and agent/README.md print no output for this command. It succeeds when Vitest reports every test in the fork file as passed, and none as skipped. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) has the setup, the Windows detail and how to read what the run leaves behind.
+
+</Step>
+
+<Step>
+
+### Website checks
+
+Needs nothing. `npm run verify` runs the type check, the tests, the production build and the checks on the built `out/` folder, in that order. The tests read the Solidity sources and the committed fork-run gas log, so a number on a page fails here if it drifts from the code, and they also check every docs page against its rules.
+
+```bash
+cd ../web
+npm ci
+npm run verify
+```
+
+Trimmed output from the run while this guide was written, on top of commit `1c1dc4d`, with the counts replaced. An ellipsis marks removed text:
+
+```text
+ Test Files  … passed (…)
+      Tests  … passed (…)
+...
+out/ is ready to deploy (landing and … docs pages checked)
+```
+
+</Step>
+
+<Step>
+
+### Website end-to-end tests
+
+The end-to-end tests drive a real browser against the static export, which Playwright serves itself from `out/`. Build first, which `npm run verify` has just done. Install the browser once, then run the tests.
+
+```bash
+npx playwright install chromium
+npm run e2e
+```
+
+Trimmed output from the same run, with the counts replaced:
+
+```text
+  … passed (…)
+```
+
+</Step>
+
+</Steps>
+
+## Check it worked
+
+- Every Foundry run ends with `0 failed`, and the size table shows a positive margin for `MandateVault`.
+- Vitest prints only `passed` counts when every test passes. A `failed` count appears next to them when one does not.
+- The last line of the website check starts with `out/ is ready to deploy`.
+- Playwright ends with a `passed` count and no `failed` line.
+- A fork suite that shows as skipped did not run. The agent's fork test is skipped, not failed, when `BASE_RPC_URL` is not set.
+
+## Common mistakes
+
+- **A bare `forge test`.** It also runs the fork tests under `test/fork/`, which need the RPC. Use the `--no-match-path` form for the offline run.
+- **A fork suite that looks green.** The agent's fork test reads `BASE_RPC_URL` from your shell, not from a `.env` file, and without it the whole suite is skipped. Export it in the same shell that runs `npm run test:integration`.
+- **The wrong Anvil.** Upstream Anvil 1.9 reverts on the B20 `uiMultiplier()` call, so the agent's fork test cannot deploy the vault on it. Use `base-anvil` v1.5.1, as [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) shows.
+- **An RPC that is not an archive node.** The fork tests pin old blocks, so the RPC has to serve historical state. The README asks for an archive RPC for both fork suites.
+- **End-to-end tests before a build.** Playwright serves the `out/` folder that `npm run build` writes, so build first. It serves it on port `4173` and does not switch ports, so stop whatever else holds that port or wait for it to finish.
+- **Overwriting the committed gas log.** `MAAT_GAS_LOG` can write to any file. Do not point it at `agent/test/integration/fork-gas.json` unless you also update `web/content/facts.ts`, because the website's parity test compares the two.
+- **Foundry too old, line endings, or a `--recursive` clone on Windows.** [Troubleshooting](/docs/help/troubleshooting) lists the symptoms and the fixes.
+
+## Next steps
+
+- [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns the agent's end-to-end test and shows how to read its decisions and its gas log.
+- [How it is tested](/docs/security/testing) says which guarantee each suite backs.
+- [Deploy your own vault](/docs/guides/deploy-your-own-vault) is the next step once the suites pass on your machine.

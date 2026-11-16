@@ -1,0 +1,155 @@
+---
+title: Agent configuration
+description: "Every environment variable the agent reads: whether it is required, its default, and what it changes in the loop."
+type: reference
+audience: [builder, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - agent/src/config.ts
+  - agent/.env.example
+  - agent/README.md
+next: [guides/run-the-agent, reference/agent-scripts]
+---
+
+The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
+
+<EnvTable />
+
+`npm run agent` loads `agent/.env` when that file exists, and `agent/.env.example` is the template to copy. Git ignores `.env` files, so the file stays on your machine: keep every secret in it and never commit it. The agent checks its own settings once, at startup, in `agent/src/config.ts`. A blank value (`KEY=`) counts as unset, so a default applies, and a required setting that is blank is reported as missing. If any check fails, the agent stops before it does anything else, with one `invalid agent config` error that names each problem. It does not check the settings that the SDKs read, which is why the Required column says No for them.
+
+## Read by the agent
+
+These settings are read by `agent/src/config.ts`. `BASE_RPC_URL`, `MAAT_VAULT`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` have no default and are required in every mode. The addresses may be written in any letter case, and the agent converts them to checksum form.
+
+### BASE_RPC_URL
+
+<EnvVar name="BASE_RPC_URL" />
+
+The RPC endpoint for Base mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier round. It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
+
+### MAAT_VAULT
+
+<EnvVar name="MAAT_VAULT" />
+
+The address of the `MandateVault` the agent reads and sends to. You get it from the deploy logs once the owner deploys, and nothing is deployed yet. The agent's guarded sender sends only to this address and refuses any other target. The CDP policy that `cdp-setup.ts` attaches names one vault, so use the same address in both places. The zero address in `.env.example` is a placeholder, so replace it.
+
+### MAAT_EXECUTOR
+
+<EnvVar name="MAAT_EXECUTOR" />
+
+The address of the [executor](/docs/help/glossary#executor), the one address the vault accepts `execute` from. The agent makes every preview and every gas estimate as this address. In every round, in every mode, once it has read the vault it compares this address with the executor the vault reports. If they differ, the round ends with the status `wrong-executor` and an error line in the journal, and nothing else happens. In live mode it must also be the address of the CDP account named by `CDP_ACCOUNT_NAME`, and the agent stops at startup if it is not. The owner points the vault at the CDP account with `setExecutor`.
+
+### MAAT_EXPENSE_PAYEE
+
+<EnvVar name="MAAT_EXPENSE_PAYEE" />
+
+The address the agent pays its compute bill to. It goes into the `payee` field of each `PAY_EXPENSE` intent. The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: the payee given to the deploy script, or one the owner added later through the [timelock](/docs/help/glossary#timelock). For any other address the vault refuses with [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed). The agent needs this setting even in [dry-run](/docs/help/glossary#dry-run) mode.
+
+### MAAT_MODE
+
+<EnvVar name="MAAT_MODE" />
+
+The only values are `dry-run` and `live`, and anything else stops the start. The default is `dry-run`. In dry-run mode the agent reads the chain, asks Claude, previews every intent and writes its journal, but it never sends a transaction and it never connects to CDP. In live mode it also sends through the CDP wallet, which needs `MAAT_BUILDER_CODE` and the three CDP credentials. The flag `--dry-run` on the command line forces dry-run whatever this setting says. The flag is applied after the settings are checked, so `MAAT_MODE=live` without a [Builder Code](/docs/help/glossary#builder-code-erc-8021) still stops the start.
+
+### MAAT_BUILDER_CODE
+
+<EnvVar name="MAAT_BUILDER_CODE" />
+
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the live runtime, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet.
+
+### MAAT_LOOP_MODEL
+
+<EnvVar name="MAAT_LOOP_MODEL" />
+
+The model the agent asks for its proposals. The name goes to the Claude API as written, and the agent does not check it against a list. The agent books the cost of each answer under the model name the API reports back. It has prices for `claude-sonnet-5-5` and `claude-opus-5-5`, and it books any other name at the `claude-opus-5-5` rate. That cost becomes the compute bill the agent pays, as [The treasury loop](/docs/concepts/treasury-loop#paying-its-own-bill) explains.
+
+### MAAT_DATA_DIR
+
+<EnvVar name="MAAT_DATA_DIR" />
+
+The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, refusals logged per day, transactions sent per day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
+
+### MAAT_MAX_TX_PER_DAY
+
+<EnvVar name="MAAT_MAX_TX_PER_DAY" />
+
+The most transactions the agent sends in one UTC day, by default <Fact name="maxTxPerDay" />. It must be a positive whole number. The count includes every `execute` and `syncMultiplier` the agent sends or tries to send, including refusal logs and bill payments, and it is kept in `state.json`, so a restart does not reset it. The agent checks the count before each send. When the cap is reached, the round stops with the status `halted` and a reason that begins `daily tx cap`. The cap exists so that a repeating error cannot burn gas all day. In dry-run mode the agent sends nothing, so the count stays at zero.
+
+### MAAT_DEFAULT_DAILY_COMPUTE_USD
+
+<EnvVar name="MAAT_DEFAULT_DAILY_COMPUTE_USD" />
+
+The daily compute cost, in US dollars, that the agent assumes until it has a history of its own. The default is <Fact name="dailyComputeUsd" />, and it must be a positive number. The policy keeps <Fact name="runwayDays" /> of that cost as USDC: it spends only the USDC above that runway and the unpaid bill when it buys. It suggests a `BORROW` when USDC falls below the runway plus the unpaid bill, but only if some stock is already supplied as collateral. As soon as one of the days before today, up to a week back, has a recorded cost, the agent uses the average of the recorded days instead of this setting.
+
+### CDP_ACCOUNT_NAME
+
+<EnvVar name="CDP_ACCOUNT_NAME" />
+
+The name of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) account that acts as the executor. `cdp-setup.ts` creates the account under this name or finds it, and the agent looks it up by name in live mode. The agent never creates an account. Dry-run mode does not use this setting.
+
+## Read by the SDKs
+
+The agent's own code never reads these settings. The Anthropic SDK and the Coinbase CDP SDK read them from the environment when the agent first uses the SDK. Because `agent/src/config.ts` does not check them, the agent does not check for them at startup, and the Required column says No. That No does not mean a run can do without them. Which run needs which one:
+
+| Setting | Which run needs it |
+| --- | --- |
+| `ANTHROPIC_API_KEY` | Every run that reaches the Claude step, in dry-run and in live mode |
+| `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET` | Live mode only. `cdp-setup.ts` needs them too |
+
+A missing credential is reported by the SDK, not by the agent, when the call that needs it is made. Keep the values in `.env`. Never paste one into an issue, a log or a chat.
+
+### ANTHROPIC_API_KEY
+
+<EnvVar name="ANTHROPIC_API_KEY" />
+
+An API key from your own Anthropic account. The agent builds its Claude client the first time it asks for a proposal, and the SDK reads the key then. Every round that reaches the proposal step needs it, in dry-run mode as well as in live mode, and Anthropic bills each request. A round that ends earlier does not use the key, for example one that ends with the status `no-state`, `wrong-executor` or `pending-tx`. Without a key the request fails, and the agent is built to record the failure in the round's `run` line in the journal, as `ok: false` with the error. That round then has no proposals from Claude. `smoke-claude.ts` needs the key as well.
+
+### CDP_API_KEY_ID
+
+<EnvVar name="CDP_API_KEY_ID" />
+
+The ID of the API key you create in the Coinbase Developer Platform portal at [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com). Live mode needs it, because the agent looks up the executor account through CDP before the first round. Dry-run mode does not use it.
+
+### CDP_API_KEY_SECRET
+
+<EnvVar name="CDP_API_KEY_SECRET" />
+
+The secret that belongs to the API key above, from the same portal. Live mode and `cdp-setup.ts` are the only places in the repository that use it.
+
+### CDP_WALLET_SECRET
+
+<EnvVar name="CDP_WALLET_SECRET" />
+
+The Wallet Secret that you create in the same portal. The agent needs it in live mode, where the CDP wallet signs and sends every transaction, and `cdp-setup.ts` reads it too. Dry-run mode does not use it.
+
+## What each mode needs
+
+A dry run that gets proposals from Claude needs the required settings and an Anthropic key. This is the smallest `.env` for it, with placeholders where your values go:
+
+```text
+BASE_RPC_URL=<BASE_RPC_URL>
+MAAT_VAULT=<VAULT_ADDRESS>
+MAAT_EXECUTOR=<EXECUTOR_ADDRESS>
+MAAT_EXPENSE_PAYEE=<PAYEE_ADDRESS>
+ANTHROPIC_API_KEY=<ANTHROPIC_API_KEY>
+```
+
+Live mode adds a mode, a Builder Code and the three CDP credentials. `CDP_ACCOUNT_NAME` is needed only if you named the account something other than the default.
+
+```text
+MAAT_MODE=live
+MAAT_BUILDER_CODE=<BUILDER_CODE>
+CDP_API_KEY_ID=<CDP_API_KEY_ID>
+CDP_API_KEY_SECRET=<CDP_API_KEY_SECRET>
+CDP_WALLET_SECRET=<CDP_WALLET_SECRET>
+```
+
+For the steps that produce these values, see [Run the agent](/docs/guides/run-the-agent).
+
+## Related
+
+- [Agent scripts](/docs/reference/agent-scripts): the `--once` and `--dry-run` flags, and the scripts that read these settings.
+- [Default parameters](/docs/reference/default-parameters): the limits and cadences the agent ships with, including the two defaults above.
+- [The treasury loop](/docs/concepts/treasury-loop): how the compute bill, the runway and the daily cap fit into a round.
+- [Timelock and roles](/docs/concepts/timelock-and-roles): who the executor and the payee are, and who can change them.

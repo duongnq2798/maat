@@ -1,0 +1,236 @@
+---
+title: The mandate
+description: "Every field of the onchain mandate: what it limits, its default value and unit, why that value, and which check reads it."
+type: concept
+audience: [developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/Types.sol
+  - contracts/script/MaatConfig.sol
+  - contracts/script/Deploy.s.sol
+  - contracts/src/MandateVault.sol
+next: [concepts/nine-checks, guides/configure-a-mandate, concepts/timelock-and-roles]
+---
+
+The [mandate](/docs/help/glossary#mandate) is the rule set the vault enforces on every action. This page goes through every field of it: what it limits, its unit, its default value, and which check reads it. Nothing is deployed yet, so the defaults are the values the deploy script is built to set, and they have been exercised on a fork of Base mainnet.
+
+## What the mandate is
+
+The mandate is a struct, `Mandate`, stored in the vault. It holds the limits that apply to every action: the trading session, the price tolerances, the size caps, and the addresses of the calendar and the two adapters. USD amounts in it are in USDC units (<Fact name="usdcDecimals" />).
+
+```solidity title="contracts/src/Types.sol#L54-L71"
+/// @notice USD amounts are USDC units (6 decimals).
+struct Mandate {
+    SessionMode sessionMode;
+    uint16 maxPremiumBps;
+    uint16 maxSlippageBps;
+    uint32 maxStaleness;
+    uint32 multiplierCooldown;
+    uint32 twapWindow;
+    uint128 perTradeCapUsd;
+    uint128 dailyCapUsd;
+    address calendar;
+    address swapAdapter;
+    /// Credit venue; address(0) disables SUPPLY / WITHDRAW_COLLATERAL / BORROW / REPAY.
+    address creditAdapter;
+    uint64 minHealthFactor; // WAD; risk-increasing credit actions must leave HF >= this
+    uint64 targetHealthFactor; // WAD; required instead of minHealthFactor inside the derisk window
+    uint32 deriskWindow; // seconds before Fri 20:00 ET (Chainlink equity feeds stop); 0 = no window
+}
+```
+
+A second struct, `TokenConfig`, holds the settings that differ for each stock, and the vault keeps a list of payees it may pay. Together they are the vault's policy. The [policy hash](/docs/help/glossary#policy-hash) commits to all of it, and the vault emits it as `PolicyHashUpdated` when the vault is created and whenever a change is applied. On a deployed vault you would read the mandate with `mandate()`, a stock's settings with `tokenConfig(token)` and the payees with `payees()`.
+
+The [executor](/docs/help/glossary#executor) cannot change any of it. Only the [owner](/docs/help/glossary#owner) can, and only through the [timelock](/docs/help/glossary#timelock) (see [Changing it](#changing-it)).
+
+## The default mandate
+
+`MaatConfig.defaultMandate` builds the mandate for Agent #1, and `Deploy.s.sol` hands it to the vault with the `REGULAR` session. The table shows the same rows as the landing page.
+
+<MandateTable />
+
+The Field column is the name onchain. `maxWeightBps` belongs to `TokenConfig`, the rest to `Mandate`. The deploy script also lists three stocks, NVDAc, GOOGLc and AAPLc. Each is allowed, with `maxWeightBps` at <Fact name="mandate.maxWeightBps" />, its own Chainlink feed and its own Aerodrome pool.
+
+## Field by field
+
+Each entry gives the meaning, the unit, the default and the check that reads the field. The checks are numbered as on [The nine checks](/docs/concepts/nine-checks). A [basis point](/docs/help/glossary#basis-point-bps) (bps) is one hundredth of a percent.
+
+### sessionMode
+
+Which hours count as open: `REGULAR` (NYSE hours on weekdays) or `FEED_24_5` (the window in which the Chainlink equity feeds update, from Sunday evening to Friday evening). The mandate picks the mode, and the calendar contract answers, minute by minute, whether the market is open. See [Market hours](/docs/concepts/market-hours).
+
+- **Unit:** an enum (`SessionMode`), not a number.
+- **Default:** <Fact name="mandate.sessionMode" />.
+- **Read by:** [check 4](/docs/concepts/nine-checks#4-market-open), and by `BORROW` and by `WITHDRAW_COLLATERAL` against debt.
+
+### maxPremiumBps
+
+The widest gap allowed between the pool's [TWAP](/docs/help/glossary#twap) and the oracle price, as a share of the oracle price. A gap in either direction counts. See [Prices and premium](/docs/concepts/prices-and-premium).
+
+- **Unit:** basis points.
+- **Default:** <Fact name="mandate.maxPremiumBps" />.
+- **Read by:** [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle). It returns `PREMIUM_TOO_HIGH`.
+
+### maxSlippageBps
+
+How far below the oracle-implied output a swap may land. The vault turns it into a floor on the swap's minimum output. A swap below the floor fails and is recorded as `SWAP_FAILED`. The vault rejects a tolerance larger than the whole amount with `InvalidConfig`.
+
+- **Unit:** basis points.
+- **Default:** <Fact name="mandate.maxSlippageBps" />.
+- **Read by:** the swap step after the checks pass, not by a numbered check. See [After the checks pass](/docs/concepts/nine-checks#after-the-checks-pass).
+
+### maxStaleness
+
+The oldest oracle answer the vault will use.
+
+- **Unit:** seconds.
+- **Default:** <Fact name="mandate.maxStalenessSec" />.
+- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), and by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt. Those checks return `FEED_STALE`. [Check 9](/docs/concepts/nine-checks#9-concentration) also reads it, but returns no code for it: it values a holding with a stale price at zero.
+
+### multiplierCooldown
+
+How long a stock stays blocked after its [B20](/docs/help/glossary#b20) [uiMultiplier](/docs/help/glossary#uimultiplier) changes, as it does on a split or a dividend.
+
+- **Unit:** seconds.
+- **Default:** <Fact name="mandate.multiplierCooldownSec" />.
+- **Read by:** [check 6](/docs/concepts/nine-checks#6-stable-multiplier), and by the same collateral checks. It returns `MULTIPLIER_COOLDOWN`.
+
+### twapWindow
+
+The window over which the pool price is averaged.
+
+- **Unit:** seconds.
+- **Default:** <Fact name="mandate.twapWindowSec" />.
+- **Read by:** [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle). The vault does not validate this value when it is set. A window of zero makes the pool price unreadable, so every trade that reaches check 7 would return `BAD_PRICE`.
+
+### perTradeCapUsd
+
+The largest amount one trade or one bill payment may move.
+
+- **Unit:** USDC units (<Fact name="usdcDecimals" />). The table above shows dollars.
+- **Default:** <Fact name="mandate.perTradeCapUsd" />.
+- **Read by:** [check 8](/docs/concepts/nine-checks#8-size-limits), and by `PAY_EXPENSE`. Credit actions are not limited by it.
+
+### dailyCapUsd
+
+The most the vault may spend in one UTC day, across trades and bill payments.
+
+- **Unit:** USDC units (<Fact name="usdcDecimals" />).
+- **Default:** <Fact name="mandate.dailyCapUsd" />.
+- **Read by:** [check 8](/docs/concepts/nine-checks#8-size-limits), and by `PAY_EXPENSE`.
+
+Both caps return `SIZE_LIMIT`.
+
+### calendar
+
+The address of the `MarketCalendar` contract that answers whether the market is open. The vault rejects an address without code (`InvalidConfig`). Changing this field is how a calendar is replaced, for example to loosen one, because the calendar itself can only get stricter.
+
+- **Unit:** an address.
+- **Default:** the calendar that the deploy script creates in the same run.
+- **Read by:** [check 4](/docs/concepts/nine-checks#4-market-open), the market checks of the credit actions, and the de-risk window.
+
+### swapAdapter
+
+The address of the contract that performs swaps. The default is the Aerodrome Slipstream adapter, which swaps directly against a stock's pool. The vault rejects an address without code.
+
+- **Unit:** an address.
+- **Default:** the adapter that the deploy script creates in the same run.
+- **Read by:** the swap step, and by [check 3](/docs/concepts/nine-checks#3-transfer-policy) for a `SELL`, where the adapter is one of the legs of the transfer path.
+
+### creditAdapter
+
+The address of the credit adapter. The default is the Aave V4 adapter. `address(0)` disables credit: `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` then return `ACTION_NOT_SUPPORTED`. When the field is set, it must be a contract bound to this vault and to its USDC. The vault refuses to switch or remove an adapter that still holds a position (`CreditPositionOpen`).
+
+- **Unit:** an address.
+- **Default:** the adapter that the deploy script creates in the same run.
+- **Read by:** the credit actions, and by [check 9](/docs/concepts/nine-checks#9-concentration), which counts collateral and debt held through the adapter.
+
+### minHealthFactor
+
+The lowest [health factor](/docs/help/glossary#health-factor) that a borrow, or a collateral withdrawal against debt, may leave. It is stored as a [WAD](/docs/help/glossary#wad), a fixed-point number scaled so that one whole unit is `1e18`. When a credit adapter is set, the vault rejects a floor below <Fact name="healthFactorBound" />.
+
+- **Unit:** WAD.
+- **Default:** <Fact name="mandate.minHealthFactor" />.
+- **Read by:** `BORROW` and `WITHDRAW_COLLATERAL` against debt. It returns `HEALTH_FACTOR_LOW`. See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
+
+### targetHealthFactor
+
+The health factor required instead of the floor inside the [de-risk window](/docs/help/glossary#de-risk-window). When a credit adapter is set, the vault rejects a target below the floor.
+
+- **Unit:** WAD.
+- **Default:** <Fact name="mandate.targetHealthFactor" />.
+- **Read by:** the same credit actions, inside the window. It returns `DERISK_WINDOW`.
+
+### deriskWindow
+
+How long before the feeds stop the stricter target applies. The window is counted back from the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" />, on a Friday and on a weekday that comes before a market holiday. Zero turns the window off. When a credit adapter is set, the vault rejects a window longer than <Fact name="maxDeriskWindowHours" />.
+
+- **Unit:** seconds.
+- **Default:** <Fact name="mandate.deriskWindowSec" />.
+- **Read by:** `BORROW` and `WITHDRAW_COLLATERAL` against debt.
+
+## Per-token settings
+
+Each stock the vault knows has a `TokenConfig`, kept in `tokenConfig[token]`. It changes through the timelock like the mandate does.
+
+```solidity title="contracts/src/Types.sol#L73-L78"
+struct TokenConfig {
+    bool allowed;
+    address feed;
+    address pool;
+    uint16 maxWeightBps;
+}
+```
+
+### allowed
+
+Whether the vault may buy the stock or post it as collateral. Setting it to false while the feed or the pool stays set makes the stock exit-only: it can still be sold and its collateral withdrawn, but it cannot be bought, supplied or borrowed against. A withdrawal works at any hour when there is no debt. Against debt the withdrawal checks apply: an open market, a live feed and a stable multiplier on every supplied stock. Clearing the feed and the pool as well removes the market: the stock can then no longer be sold, collateral can still be withdrawn when there is no debt, and against debt the withdrawal fails with `BAD_PRICE`.
+
+- **Default:** true for each of the three stocks.
+- **Read by:** [check 1](/docs/concepts/nine-checks#1-token-allowed), by `SUPPLY` and `BORROW`, and by the valuation in [check 9](/docs/concepts/nine-checks#9-concentration), which counts a stock that is not allowed as zero.
+
+### feed
+
+The [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) that prices the stock. When the stock has a market, the vault requires the feed to be a contract that reports prices with <Fact name="priceDecimals" />, and rejects it with `InvalidConfig` otherwise.
+
+- **Default:** one feed per stock. The addresses are on [Base addresses](/docs/reference/base-addresses).
+- **Read by:** [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price), by the valuation in checks 8 and 9, and by the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt.
+
+### pool
+
+The [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool for the stock and USDC. The vault requires a contract whose two tokens are the stock and USDC, in either order, and rejects anything else with `InvalidConfig`.
+
+- **Default:** one pool per stock. The addresses are on [Base addresses](/docs/reference/base-addresses).
+- **Read by:** [check 3](/docs/concepts/nine-checks#3-transfer-policy), where the pool is a leg of the transfer path, by [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle), and by the swap.
+
+### maxWeightBps
+
+The largest share of net equity one stock may reach after a buy.
+
+- **Unit:** basis points.
+- **Default:** <Fact name="mandate.maxWeightBps" /> for each of the three stocks.
+- **Read by:** [check 9](/docs/concepts/nine-checks#9-concentration). It returns `CONCENTRATION`.
+
+## Why these values
+
+- **The premium limit comes from measurement.** On the fork, in session, the pool premiums measured <Fact name="premiumsBps.NVDAc" /> for NVDAc, <Fact name="premiumsBps.GOOGLc" /> for GOOGLc and <Fact name="premiumsBps.AAPLc" /> for AAPLc. The design started with a limit half the size of the default and raised it after these readings, and `MaatConfig.sol` says so in a comment. That is why `maxPremiumBps` is <Fact name="mandate.maxPremiumBps" />. The measurements are on [Prices and premium](/docs/concepts/prices-and-premium).
+- **The session is `REGULAR`.** The [design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) calls it safer and better for pool liquidity, and it keeps `FEED_24_5` off until the after-hours premium is shown to be stable.
+- **The de-risk window ends at the feed edge.** The Chainlink equity feeds stop on Friday at <Fact name="feedEdge" />, and the window is counted back from that moment. Its length of <Fact name="mandate.deriskWindowSec" /> is chosen so that the last trading hours of a regular Friday session fall inside it (a comment in `MaatConfig.sol`).
+- **The health factor target includes a buffer.** `MaatConfig.sol` notes that <Fact name="mandate.targetHealthFactor" /> already includes the buffer the design asked for on top of its target.
+- **The caps bound a bad trade.** The per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> limit what a leaked executor key or a bad proposal can cost. The fork test `test_compromisedExecutorIsBounded` tries a buy above the per-trade cap as the executor, against real Base state, and gets `SIZE_LIMIT`.
+- **The weight cap sits above the agent's own target.** The agent's policy aims for <Fact name="targetWeightPct" /> per stock and rebalances at a drift of <Fact name="rebalanceDriftPct" />. The vault's cap of <Fact name="mandate.maxWeightBps" /> is a separate, looser limit that applies to whatever the agent proposes.
+
+The TWAP window and the multiplier cooldown come from the design spec. The spec gives no measurement behind the staleness limit or the slippage tolerance.
+
+## Changing it
+
+The first mandate is set when the vault is created. After that only the owner can change it, and only through the [timelock](/docs/help/glossary#timelock):
+
+1. The owner queues the change with `queueMandate`, `queueTokenConfig` or `queuePayee`. The event carries the full new values, so anyone can see what will change and when.
+2. After <Fact name="timelockHours" /> the owner applies it with `applyMandate`, `applyTokenConfig` or `applyPayee`, using exactly the queued values.
+3. A queued change expires if it is not applied within <Fact name="gracePeriodDays" /> of becoming ready. The owner can cancel it at any time with `cancelChange`.
+
+The vault validates the new values when they are applied and reverts with `InvalidConfig` on a bad one. Every apply emits a new `PolicyHashUpdated`. Even a tighter limit goes through the timelock. Pausing the vault and rotating the executor key do not wait for it.
+
+[Configure a mandate](/docs/guides/configure-a-mandate) covers the validation errors, [Change a rule](/docs/guides/change-a-rule) walks through a queued change, and [Timelock and roles](/docs/concepts/timelock-and-roles) covers who can do what.

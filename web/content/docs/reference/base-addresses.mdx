@@ -1,0 +1,55 @@
+---
+title: Base addresses
+description: The Base mainnet tokens, Chainlink feeds, Aerodrome pools and Aave V4 contracts Maat uses, with links to Basescan.
+type: reference
+audience: [developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/script/BaseAddresses.sol
+next: [concepts/prices-and-premium, guides/deploy-your-own-vault]
+---
+
+Maat does not deploy its own tokens, feeds or pools. It is built to read and call contracts that already exist on Base mainnet, and `contracts/script/BaseAddresses.sol` lists them for the deploy script and the fork tests. This page shows every constant in that file, with each address linked to Basescan, and explains the rows that are not addresses. The library header says the addresses were verified on <Fact name="addressesVerifiedOn" />. The vault and the agent are built and fork-tested, and nothing is deployed, so no Maat contract is on this page. The owner records the addresses of a deployment in `deployments/README.md`.
+
+<AddressTable />
+
+## What each group is for
+
+| Group | Names | What it is for |
+| --- | --- | --- |
+| Quote asset | `USDC` | The treasury and the quote asset |
+| Stocks | `NVDAC`, `GOOGLC`, `AAPLC` | The basket. They are [B20](/docs/help/glossary#b20) tokens, and the vault reads `isPaused`, `policyId`, `uiMultiplier` and `effectiveAt` from each |
+| Transfer policy | `POLICY_REGISTRY` | The B20 policy registry, which authorizes the transfer path (the [transfer-policy check](/docs/concepts/nine-checks#3-transfer-policy)) |
+| Prices | `NVDA_FEED`, `GOOGL_FEED`, `AAPL_FEED` | The [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) for each stock. The vault reads the price per raw token, which it assumes already includes the multiplier, and the age of the answer |
+| Swaps | `NVDAC_USDC_POOL`, `GOOGLC_USDC_POOL`, `AAPLC_USDC_POOL` | The [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool for each stock: the swap venue, and the source of the [TWAP](/docs/help/glossary#twap) that the vault compares with the feed. The adapter calls the pool directly, with no router |
+| Credit | `AAVE_MAG7_SPOKE`, `AAVE_EQUITIES_HUB`, `AAVE_MAG7_ORACLE`, `AAVE_RESERVE_*` | [Aave V4](/docs/help/glossary#aave-v4): stocks as collateral and USDC borrowing. The credit adapter is the Aave user, and only its vault can move the position |
+| Fork blocks | `BLOCK_SESSION`, `BLOCK_WEEKEND` | The blocks the fork tests start from |
+
+All three pools have USDC as `token0`, as the table's note says. The deploy script uses the spoke, the USDC reserve id and the stock reserve ids to build the credit adapter. Nothing in the contracts, the deploy script or the tests of this repository uses `AAVE_MAG7_ORACLE`. The agent keeps its own copy of the USDC and basket addresses in `agent/src/addresses.ts`. [Prices and premium](/docs/concepts/prices-and-premium#two-prices) explains how the feeds and the pools combine, and [Adapters](/docs/reference/adapters) documents the two adapters.
+
+## The pinned fork blocks
+
+The last two rows of the table are `uint256` values, not addresses, so they have no Basescan link. They are Base block numbers that the fork tests pin, so that each test sees the same prices, pools and Aave state on every run.
+
+`BLOCK_SESSION` is block <Fact name="forkBlock" />, mined on <Fact name="forkDay" /> at <Fact name="forkTimeEt" />, during a regular market session. Most contract fork tests start from it, and so does the agent's fork test. The NVDA feed's answer was <Fact name="feedAgeSec" /> old at that block, so the price checks see a fresh price. The default mandate's premium limit, <Fact name="mandate.maxPremiumBps" />, sits above the premiums measured at that block, which compare the pool's <Fact name="mandate.twapWindowSec" /> TWAP with the feed: <Fact name="premiumsBps.NVDAc" /> for NVDAc, <Fact name="premiumsBps.GOOGLc" /> for GOOGLc and <Fact name="premiumsBps.AAPLc" /> for AAPLc. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
+
+`BLOCK_WEEKEND` is a block from a Saturday, when the market is closed. The table's note gives its time and the last update of the NVDA feed, which was on the Friday before. The fork test `test_weekendBuyIsRefusedInBothModes` deploys the vault at this block, once in each [session mode](/docs/help/glossary#session-mode), and checks that a `BUY` is refused with `MARKET_CLOSED` and that the vault's USDC balance does not change. See [Market hours](/docs/concepts/market-hours).
+
+## The Aave reserve ids
+
+The four `AAVE_RESERVE_*` rows are Aave V4 reserve ids: the numbers the MAG7 spoke uses for the USDC reserve and for the three stock reserves. They are not addresses. The library notes that on this spoke the reserve id equals the hub's asset id. The deploy script passes the USDC id and the three stock ids to the credit adapter. See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
+
+## Why AMZNc is not in the basket
+
+AMZNc is not in the basket: its pool held only <Fact name="amzncPoolLiquidityUsd" /> of liquidity when the basket was chosen. The README gives this reason under [Base integrations](https://github.com/duongnq2798/maat/blob/main/README.md#base-integrations).
+
+## Check an address yourself
+
+The library header says when the addresses were verified, not how, and a contract can change after that date. Open an address from the table on Basescan and check that it is the contract you expect before you rely on it. The deploy script uses these constants, so run its dry run on a fork before you broadcast anything. [Deploy your own vault](/docs/guides/deploy-your-own-vault) covers that.
+
+## Related
+
+- [Prices and premium](/docs/concepts/prices-and-premium): how the feeds and the pools combine into the premium check.
+- [Adapters](/docs/reference/adapters): the swap and credit adapters that use the pools and the Aave contracts.
+- [Default parameters](/docs/reference/default-parameters): the fork block, the measured premiums and the other figures, each with its source.

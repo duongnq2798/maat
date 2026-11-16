@@ -1,0 +1,188 @@
+---
+title: Reproduce the fork run
+description: Rerun the end-to-end agent test on a Base mainnet fork and read its decisions, its trace and the gas log it writes.
+type: guide
+audience: [developer, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - agent/test/integration/agent.fork.test.ts
+  - agent/test/integration/anvil.ts
+  - agent/test/integration/fork-gas.json
+  - agent/README.md
+  - agent/test/integration/deploy.ts
+  - agent/src/ledger/journal.ts
+  - web/content/facts.ts
+next: [get-started/read-a-decision, security/testing]
+---
+
+By the end of this page you will have rerun the end-to-end agent [fork test](/docs/help/glossary#fork-test) that sits behind the site's decision ledger, on a local fork of Base mainnet, and you will know what it checks, where its decisions and its gas log go, and how to read them. The fork run is the end-to-end evidence that the contracts and the agent's send path work together, so it is worth reproducing instead of taking on trust. It is written for developers and evaluators. Nothing is broadcast, and the run needs no wallet key, no Claude API key and no CDP credentials.
+
+<Callout type="fork" title="What this run covers">
+
+The contracts and the agent's send path run on the fork. The real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) do not: a scripted proposer stands in for Claude, and a local sender stands in for the CDP wallet. The Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The Saturday round is the same fork with the clock moved forward, not a real Saturday block. No Maat contract is deployed to Base mainnet.
+
+</Callout>
+
+## Before you start
+
+The fork point is Base block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />, inside the regular [NYSE session](/docs/help/glossary#nyse-session). At that block the NVDA price feed was <Fact name="feedAgeSec" /> old. Every run starts from that same chain state.
+
+| Need | Detail | Why |
+| --- | --- | --- |
+| A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here, exported in your shell | The test forks Base at an old block, so the node must serve historical state. |
+| `base-anvil` | v1.5.1, installed with `base-foundryup --install v1.5.1` | Upstream Anvil 1.9 reverts on the [B20](/docs/help/glossary#b20) `uiMultiplier()` call, so it cannot deploy the vault. |
+| Compiled contracts | `forge build` in `contracts/` | The test deploys from the compiled artifacts in `contracts/out`, which Git ignores. |
+| Node.js and the agent's packages | Node 22.9 or newer, and `npm ci` in `agent/` | Runs the test. |
+| A free local port | `8547` | The local node listens there. The test stops if something already answers on it. |
+| Windows only | `MAAT_ANVIL_BIN` set to the real `anvil.exe` | `base-anvil` is only a shell wrapper there, and Node cannot start it. |
+
+Time: 3 to 5 minutes on a public RPC, because the first swap on a cold fork is very slow (agent/README.md).
+
+The test runs only against a local Anvil at `127.0.0.1`. It deploys the contracts onto the fork from the compiled artifacts, wired the way the deploy script wires them, and funds the vault with `approve` and then `fund`. The Solidity deploy script itself runs on a fork in the contract test `test_deployWiresEverything`, not in this test.
+
+## Run the fork test
+
+<Steps>
+
+<Step>
+
+### Install the Base build of Anvil
+
+Do this once. `base-anvil` is Base's Foundry build of Anvil. It runs the full B20 precompile, while upstream Anvil 1.9 reverts on `uiMultiplier()`. The test starts it with the `--base` flag and `FOUNDRY_BASE=true`.
+
+```bash
+base-foundryup --install v1.5.1
+```
+
+agent/README.md prints no output for this command. It has worked when the `base-anvil` command exists afterwards. On Windows the real binary is a file such as `~/.foundry/versions/base-v1.5.1/anvil.exe`, which is the path you give to `MAAT_ANVIL_BIN` in step 3.
+
+</Step>
+
+<Step>
+
+### Build the contracts
+
+The test reads the compiled contracts from `contracts/out`. Build them once, and again after any change to a contract.
+
+```bash
+cd contracts
+forge build
+```
+
+No output is committed for this command, and a rebuild with nothing changed only says that compilation was skipped. It has worked when it finishes without a compiler error and `contracts/out` holds the artifacts.
+
+</Step>
+
+<Step>
+
+### Set the environment
+
+The test reads `BASE_RPC_URL` from your shell, not from a `.env` file. Set both variables in the shell that runs the test, and never paste a real RPC URL into a file you commit.
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
+# export MAAT_ANVIL_BIN=<PATH_TO_ANVIL_EXE>   # Windows only: remove the leading # and use the real anvil.exe, for example ~/.foundry/versions/base-v1.5.1/anvil.exe
+```
+
+</Step>
+
+<Step>
+
+### Run the unit tests and the fork test
+
+These are the two commands of agent/README.md, Test. The first needs no network. The second starts the local node, forks Base at the fork block, deploys, and runs the agent's rounds against it.
+
+```bash
+cd ../agent
+npm ci
+npm test
+npm run test:integration
+```
+
+Trimmed output of `npm test` from the run at commit `1c1dc4d`, with the counts replaced:
+
+```text
+ Test Files  … passed (…)
+      Tests  … passed (…)
+```
+
+agent/README.md prints no output for `npm run test:integration`, so none is shown. The run succeeds when Vitest reports every test in `agent.fork.test.ts` as passed and none as skipped. The test stops its node when it ends, so the fork's transactions are gone afterwards. What stays behind is the journal and, if you ask for it, the gas log.
+
+</Step>
+
+<Step>
+
+### Compare the decisions with the ledger
+
+The test is a script of rounds. Each row of the ledger below is one transaction from the first two rounds, and the table after it says what every round checks.
+
+<ForkLedger />
+
+| Round | What the test sends | What it checks |
+| --- | --- | --- |
+| First (`fork-1`) | One round with a BUY of NVDAc, a SUPPLY of NVDAc to [Aave V4](/docs/help/glossary#aave-v4) and a BORROW of USDC | The round finishes. Every transaction goes from the [executor](/docs/help/glossary#executor) to the vault, carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021), has an explicit gas limit at or above its floor, uses less gas than the limit and succeeds. For each intent the [preview](/docs/help/glossary#preview) says `OK` and the onchain `Decision` is allowed with reason `OK`. No mismatch is journaled, nothing is left pending, and the credit adapter's debt is within a few units of the amount borrowed. |
+| Second (`fork-2`) | The clock moves ahead <Fact name="weekendOffsetDays" /> days, to a Saturday, and the agent tries a BUY of GOOGLc | The agent sends the refusal once, on purpose, so that a `Decision` with `allowed` false exists onchain. Its reason equals the preview's reason and is `MARKET_CLOSED` or `FEED_STALE`. |
+| Third (`fork-3`) | The same BUY again | The agent sends nothing, because it already logged that reason today. The executor's transaction count does not change. |
+| Fourth (`fork-4`) | A SELL of NVDAc in [dry-run](/docs/help/glossary#dry-run) mode, with a fresh journal | Nothing is sent. The journal records what the agent would have done, as `dry-run: would execute` or `dry-run: would log-refusal`. |
+
+The Builder Code in this test is `bc_maattest`, a value made up for the test. No real code is registered yet, so the test shows that the suffix is appended to the calldata, not that Base attributes anything. [Read a decision](/docs/get-started/read-a-decision) explains each field of a `Decision`.
+
+The trace of a run is the agent's journal, `journal.jsonl`. The test creates it in a new folder in your operating system's temp directory, named `maat-fork-` followed by random characters, and never removes it. Each line is one JSON object. An `intent` line holds the `preview`, the `gate` that says what the agent did with it and, when it sent the intent, the `txHash` and the `decision` with its `allowed` and `reason`. The dry-run round writes its own journal in a folder that starts with `maat-fork-dry-`.
+
+</Step>
+
+<Step>
+
+### Write the gas log
+
+This step is optional. Setting `MAAT_GAS_LOG` to a file path makes the test write the gas limit and `gasUsed` of every transaction it sent. Choose a new file, and run the fork test again.
+
+```bash
+MAAT_GAS_LOG=<GAS_LOG_FILE> npm run test:integration
+```
+
+The file is a JSON array with one entry per transaction. The committed log, `agent/test/integration/fork-gas.json`, comes from a run like this one. Its first entry is the BUY of the first round:
+
+```json title="agent/test/integration/fork-gas.json#L2-L8"
+  {
+    "runId": "fork-1",
+    "fn": "execute",
+    "action": "BUY",
+    "gas": "2500000",
+    "gasUsed": "758192"
+  },
+```
+
+`runId` is the round, `fn` is the vault function, `gas` is the limit the agent set, and `gasUsed` is what the receipt reports. Only rounds that sent a transaction appear: the first and the second. In the committed log every limit is the floor for `execute`, <Fact name="executeGasFloor" />, and the ledger above shows `gasUsed`.
+
+BUY gas varies slightly between runs. In the two runs the README compares, the BUY figure moved by less than one percent, and SUPPLY, BORROW and the refusal log did not change. The committed log holds the higher of the two BUY figures, <Fact name="gas.buy" />, next to <Fact name="gas.supply" /> for SUPPLY, <Fact name="gas.borrow" /> for BORROW and <Fact name="gas.refusalLog" /> for the refusal log. Expect your BUY figure to be close to that one, and it need not be equal to it.
+
+</Step>
+
+</Steps>
+
+## Check it worked
+
+- Vitest reports every test in `agent.fork.test.ts` as passed. A skipped suite did not run, and it is what you get when `BASE_RPC_URL` is not set.
+- If you wrote a gas log, each of its entries has a `gasUsed` below its `gas`, and your SUPPLY, BORROW and refusal figures should match the committed ones, as they did in both runs the README compares.
+- Your BUY `gasUsed` is close to the committed figure. A small difference is normal.
+- The journal folder in your temp directory holds a `journal.jsonl` whose `intent` lines show `OK` for the first round and a refused `decision` for the second.
+
+## Common mistakes
+
+- **No `BASE_RPC_URL`.** The suite is skipped, not failed, and the output can look clean. Export the variable in the shell that runs the test.
+- **An RPC that is not an archive node.** The fork block is old, so the RPC has to serve historical state.
+- **Upstream Anvil instead of `base-anvil`.** Upstream Anvil 1.9 reverts on `uiMultiplier()`, so the vault cannot be deployed. If the test cannot start the binary, it says `could not start base-anvil` (or the path you set) and tells you to set `MAAT_ANVIL_BIN` to the `base-anvil` binary.
+- **Port `8547` in use.** The test refuses to attach to a node it did not start: it stops with `port 8547 already answers JSON-RPC; stop that node first`. Stop the other node and run again.
+- **Missing or stale contract artifacts.** The test fails while reading a file under `contracts/out`. Run `forge build` in `contracts/`, and again after any contract change.
+- **Stopping the run during the first swap.** The first swap on a cold fork is very slow on a public RPC, and the test allows long waits on purpose. Give it the 3 to 5 minutes.
+- **Overwriting the committed gas log.** Do not point `MAAT_GAS_LOG` at `agent/test/integration/fork-gas.json` unless you also update `web/content/facts.ts`, because the website's parity test compares the two and fails if they differ.
+- **Looking for the transactions afterwards.** They ran on a local node that stopped with the test. Nothing was sent to Base.
+
+## Next steps
+
+- [Read a decision](/docs/get-started/read-a-decision) explains each field of the `Decision` events behind the ledger.
+- [How it is tested](/docs/security/testing) says which guarantee each suite backs.
+- [Run the tests](/docs/guides/run-the-tests) runs every other suite.
+- [Run the agent](/docs/guides/run-the-agent) is the next step for the real loop, in dry-run and live modes.

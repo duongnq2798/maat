@@ -1,0 +1,181 @@
+---
+title: Credit and the health factor
+description: How the vault supplies stock to Aave V4, borrows USDC against it, and keeps the health factor above its floor before weekends.
+type: concept
+audience: [developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - contracts/src/adapters/ICreditAdapter.sol
+  - contracts/src/MandateVault.sol
+  - contracts/test/MandateVaultCredit.t.sol
+  - contracts/test/fork/MandateVaultCreditFork.t.sol
+next: [reference/adapters, guides/pause-withdraw-recover]
+---
+
+The vault can put its stock to work. It supplies a stock to [Aave V4](/docs/help/glossary#aave-v4) as collateral, borrows USDC against it, repays, and takes the collateral back. This page explains the four credit actions, the [health factor](/docs/help/glossary#health-factor) that limits them, the stricter limit that applies in the hours before the Chainlink feeds stop for a weekend or a holiday, and what still works when the market is closed or the vault is paused. The vault's credit rules are tested with a mock adapter in unit tests and, with the real Aave V4, on a Base mainnet fork. No position has been opened on mainnet, because nothing is deployed.
+
+## The four credit actions
+
+Credit is one lending position, held by a credit adapter that the [mandate](/docs/help/glossary#mandate) names. The vault asks the adapter to act, and the vault's checks run first. If the mandate has no credit adapter, all four actions return `ACTION_NOT_SUPPORTED`, except that a paused vault returns `VAULT_PAUSED` first for the three that are not `REPAY`. None of them counts toward the per-trade or the daily cap, and the health factor bounds the ones that add risk instead.
+
+| Action | What it does | Market closed | Vault paused |
+| --- | --- | --- | --- |
+| `SUPPLY` | Moves stock into the position as collateral | Works | Refused |
+| `WITHDRAW_COLLATERAL` | Takes collateral back to the vault | Works with no debt, refused with debt | Refused |
+| `BORROW` | Borrows USDC to the vault | Refused | Refused |
+| `REPAY` | Repays USDC debt from the vault | Works | Works |
+
+What the vault checks for each action:
+
+- **`SUPPLY`.** The stock is allowed, and the adapter supports it. The stock is not paused. Every leg of the move passes its transfer policy. The amount is non-zero and within the vault's balance.
+- **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. The stock is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a live feed, no pause and a stable multiplier. The adapter then checks the health factor after the withdrawal.
+- **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a live feed and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the de-risk window. The adapter checks again after the borrow.
+- **`REPAY`.** The token is USDC, and the amount is non-zero and within the vault's USDC balance.
+
+A few more points:
+
+- `BORROW` refuses collateral that is exit-only. A supplied stock whose `allowed` flag is false returns [`TOKEN_NOT_ALLOWED`](/docs/concepts/refusal-codes#token_not_allowed), whether the owner has only delisted it or removed its market as well (`test_exitOnlyCollateralBlocksBorrowingNotWithdrawing`, `test_fullyDelistedCollateralBlocksBorrowing`). `SUPPLY` refuses it too, but `WITHDRAW_COLLATERAL` does not refuse it for that reason, so the collateral can still come home (`test_exitOnlyCollateralCanBeWithdrawnNotSupplied`).
+- `BORROW` and `WITHDRAW_COLLATERAL` against debt read the feed and the multiplier of every stock that is supplied, not only the one in the intent. A stale or unreadable feed, a paused stock or a multiplier change in any of them refuses the action. `SUPPLY` and `REPAY` do not read the feed (`test_staleCollateralFeedBlocksBorrowNotRepay`). The [multiplier](/docs/concepts/splits-and-multiplier) and [staleness](/docs/concepts/prices-and-premium#staleness) rules are defined on their own pages.
+- Borrowed USDC is not revenue, and repaid USDC is not a loss. After a credit action the vault resets its record of its own balance (`test_borrowedUsdcIsNotRevenue`).
+- The full list of what each action meets is in [The nine checks](/docs/concepts/nine-checks#other-actions).
+
+`CREDIT_FAILED` is the reason for two different things. One is an adapter call that fails. For `BORROW` and `WITHDRAW_COLLATERAL` a well-formed health-factor error gets its own reason (see below) and any other failure is `CREDIT_FAILED`; for `SUPPLY` and `REPAY` every failure is. The other is a credit value the checks needed and could not read. The checks read the adapter's `supportsToken`, `collateralCustodian`, `collateralOperator`, `suppliedOf`, `debt` and `projectedHealthFactorAfterBorrow`. If one of those reverts, the vault [fails closed](/docs/help/glossary#fail-closed) and returns `CREDIT_FAILED` instead of guessing (`test_unreadableAdapterIsCreditFailed`, `test_unreadableProjectionIsCreditFailed`). The reason is listed under [Refusal codes](/docs/concepts/refusal-codes#credit_failed).
+
+## Health factor
+
+The health factor measures how much room a loan has. The adapter reports it as a [WAD](/docs/help/glossary#wad), so `1e18` means 1.00, and the interface says the largest possible number stands for no debt. The vault computes no health factor itself. Two figures matter.
+
+The first is a projection, used before a borrow. The adapter works out the health factor the position would have after the borrow, and the vault reads it:
+
+```solidity title="contracts/src/adapters/AaveV4CreditAdapter.sol#L152-L158"
+    function projectedHealthFactorAfterBorrow(uint256 amount) external view returns (uint256) {
+        IAaveV4Spoke.UserAccountData memory d = spoke.getUserAccountData(address(this));
+        uint256 price = IAaveV4Oracle(spoke.ORACLE()).getReservePrice(usdcReserveId);
+        uint256 debtValue = _ceilDiv(d.totalDebtValueRay, RAY) + amount * price * _usdcToValue;
+        if (debtValue == 0) return type(uint256).max;
+        return d.totalCollateralValue * d.avgCollateralFactor / debtValue;
+    }
+```
+
+In words: the collateral's value times the position's average collateral factor, divided by the debt value, where the debt includes the new borrow, valued at the oracle's USDC price, and the existing debt is rounded up. A comment in the adapter says it matched Aave's own post-borrow figure on a Base fork, and the fork test `test_fullCreditLoopOnAave` checks that the figure Aave reports after a real borrow is within one part in a million of the projection.
+
+The second is the figure Aave reports now, `healthFactor()`. The adapter, not the vault, reads it after a `BORROW` or a `WITHDRAW_COLLATERAL`, as the next sections show.
+
+## The floor and the target
+
+Two numbers in the mandate set how much room a credit action must leave:
+
+- The floor, `minHealthFactor`, is <Fact name="mandate.minHealthFactor" /> by default. A borrow, or a collateral withdrawal against debt, that would leave the health factor below it returns [`HEALTH_FACTOR_LOW`](/docs/concepts/refusal-codes#health_factor_low).
+- The target, `targetHealthFactor`, is <Fact name="mandate.targetHealthFactor" /> by default. It replaces the floor inside the [de-risk window](#the-de-risk-window). An action that would leave the health factor at or above the floor but below the target returns [`DERISK_WINDOW`](/docs/concepts/refusal-codes#derisk_window) there.
+
+[The mandate](/docs/concepts/mandate#minhealthfactor) describes both fields. One function turns a health factor into a reason, and it reads like the rule:
+
+```solidity title="contracts/src/MandateVault.sol#L390-L394"
+    function _healthReason(uint256 hf) internal view returns (Reason) {
+        if (hf < _mandate.minHealthFactor) return Reason.HEALTH_FACTOR_LOW;
+        if (hf < _mandate.targetHealthFactor && _inDeriskWindow()) return Reason.DERISK_WINDOW;
+        return Reason.OK;
+    }
+```
+
+When a credit adapter is set, the vault accepts a floor only at or above <Fact name="healthFactorBound" />, a target at or above the floor, and a window of at most <Fact name="maxDeriskWindowHours" />. It also requires the adapter to name this vault and this USDC. Otherwise the new mandate is rejected with `InvalidConfig`.
+
+The health factor is checked twice. The vault uses the projection for `BORROW` when it runs the checks. Then it passes the health factor the action needs to the adapter, the floor or, inside the window, the target. The adapter re-reads the real figure after the action and reverts if it is too low:
+
+```solidity title="contracts/src/adapters/AaveV4CreditAdapter.sol#L176-L179"
+    function _requireHealthy(uint256 minHealthFactor) internal view {
+        uint256 hf = healthFactor();
+        if (hf < minHealthFactor) revert HealthFactorTooLow(hf, minHealthFactor);
+    }
+```
+
+`borrow` and `withdraw` both call it. A `HealthFactorTooLow` error of exactly the expected shape is mapped back to `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`; any other revert is `CREDIT_FAILED`, and `execute` never reverts for it (`test_adapterHealthCheckIsMappedToReasons`, `test_adapterRevertNeverRevertsExecute`). So the minimum holds even if the projection was off. `previewIntent` cannot see the adapter's check after a withdrawal against debt.
+
+On the fork, `test_borrowBelowMinimumHealthFactorReverts` sends a borrow that would leave the real Aave position under the floor and gets `HealthFactorTooLow` from the adapter. The vault-level fork test `test_creditLoopInSession` buys a stock and supplies it. It then tries a borrow large enough to fall under the floor, gets `HEALTH_FACTOR_LOW`, and borrows a smaller amount successfully.
+
+## The de-risk window
+
+The Chainlink equity feeds stop at the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" /> on a Friday, and a borrow needs an open market. The README puts the idea in one line: the health-factor floor rises in the hours before the feeds stop for a weekend or holiday. The [de-risk window](/docs/help/glossary#de-risk-window) is that stretch of time. Inside it, `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the target instead of the floor.
+
+```solidity title="contracts/src/MandateVault.sol#L403-L419"
+    function _inDeriskWindow() internal view returns (bool) {
+        uint256 w = _mandate.deriskWindow;
+        if (w == 0) return false;
+        MarketCalendar cal = MarketCalendar(_mandate.calendar);
+        try cal.localTime(block.timestamp) returns (uint256 etDay, uint256 wd, uint256 minute) {
+            if (minute >= FEED_FREEZE_MINUTE || minute + w / 60 < FEED_FREEZE_MINUTE) return false;
+            if (wd == FRIDAY) return true;
+            if (wd == 0 || wd == 6) return false;
+            try cal.isHoliday(etDay + 1) returns (bool h) {
+                return h;
+            } catch {
+                return true;
+            }
+        } catch {
+            return true;
+        }
+    }
+```
+
+Read it as these rules, in New York time:
+
+- The window is the last `deriskWindow` seconds before <Fact name="feedEdge" />. The default is <Fact name="mandate.deriskWindowSec" />, and a mandate with a credit adapter cannot set more than <Fact name="maxDeriskWindowHours" />. The length is cut to whole minutes. At or after the edge, the window is over.
+- It applies on every Friday, and on a Monday to Thursday when the next New York day is a holiday. It never applies on a Saturday or a Sunday.
+- A `deriskWindow` of zero switches the window off.
+- It is fail closed: if the calendar's time or its holiday flag cannot be read, the vault counts the moment as inside the window.
+- It does not depend on the session mode. With `REGULAR`, the market closes at <Fact name="nyseClose" />, so a borrow after that is refused with `MARKET_CLOSED` anyway. The stricter target matters in the hours between the start of the window and the close. A comment in `MaatConfig.sol` says the default length was chosen so that a regular session still has trading hours inside the window.
+
+The unit tests with a mock adapter pin each case: the window starts at the right minute (`test_deriskWindowRequiresTargetHealthFactor`), covers the last session before a Friday holiday and the Thursday before New Year (`test_deriskWindowCoversLastSessionBeforeFridayHoliday`, `test_deriskWindowCoversThursdayBeforeNewYear`), leaves an ordinary Thursday alone (`test_ordinaryThursdayIsNotInDeriskWindow`), fails closed on an unreadable holiday flag (`test_unreadableHolidayCountsAsDeriskWindow`), and can be switched off (`test_deriskWindowDisabledWhenZero`). The window also applies to a withdrawal against debt (`test_deriskWindowRequiresTargetHealthFactorToWithdrawAgainstDebt`). The calendar side is on [Market hours](/docs/concepts/market-hours#the-feed-edge).
+
+The agent's rule-based policy does not look at the window. The vault enforces it, and the agent's preview shows `DERISK_WINDOW` when a borrow inside the window would leave the projected health factor at or above the floor but under the target.
+
+## What still works when the market is closed
+
+The vault allows the actions that lower risk, or add none, at any hour:
+
+- `SUPPLY` adds collateral, so only its token checks apply.
+- `REPAY` reduces debt.
+- `WITHDRAW_COLLATERAL` is allowed with no debt, because taking collateral out of a position that owes nothing is risk-free (a comment in the vault says so). Against debt it needs an open market.
+- `BORROW` is refused whenever the market is closed, with [`MARKET_CLOSED`](/docs/concepts/refusal-codes#market_closed).
+
+"Closed" is what the calendar says for the mandate's session mode, which [Market hours](/docs/concepts/market-hours) explains. A feed that has stopped counts too, even when the calendar says open: `BORROW` and a withdrawal against debt then return `FEED_STALE`.
+
+<Callout type="fork" title="Fork run: clock moved to a Saturday">
+
+`test_weekendBlocksBorrowButAllowsRepayAndWithdraw` in [MandateVaultCreditFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultCreditFork.t.sol) runs on the fork at block <Fact name="forkBlock" />. It buys a stock, supplies it and borrows in session. It then moves the fork's clock to a Saturday with `vm.warp`, which is not a real Saturday block. `BORROW` returns `MARKET_CLOSED`, and so does `WITHDRAW_COLLATERAL` against the open debt. `REPAY` is allowed and clears the debt, and the withdrawal that follows is allowed too.
+
+</Callout>
+
+## Repay while paused
+
+The owner can pause the vault, and a pause stops everything except `REPAY`. It is the first line of the vault's check function:
+
+```solidity title="contracts/src/MandateVault.sol#L258-L259"
+        // REPAY only lowers risk: spec 3.1 lets it through the vault pause; its own checks still apply
+        if (paused && intent.action != Action.REPAY) return (Reason.VAULT_PAUSED, 0);
+```
+
+A paused vault can therefore still reduce its debt. `REPAY` keeps its own checks (the token must be USDC, and the amount must be non-zero and within the balance), and a failing adapter still returns `CREDIT_FAILED`. `test_repayIsAllowedWhileVaultPaused` pauses the vault, shows that `previewIntent` and `execute` both allow a repay and clear the debt, and shows that `SUPPLY`, `BORROW` and `WITHDRAW_COLLATERAL` all return `VAULT_PAUSED`. That test uses a mock adapter, and nothing in the fork tests pauses the vault.
+
+A repay is still an `execute` call, so it needs the [executor](/docs/help/glossary#executor). The owner can make itself the executor with `setExecutor`; [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover) covers the steps.
+
+## The adapter holds the position
+
+The credit adapter, `AaveV4CreditAdapter`, is the account that Aave sees. It holds the collateral and the debt, and only its vault can move them (`test_onlyVaultCanMovePosition`).
+
+- **Bound to one vault.** The adapter names its vault and its USDC when it is built. The vault checks both when the adapter enters the mandate and rejects the mandate with `InvalidConfig` if they do not match.
+- **Stocks and reserves are fixed at construction.** Each supported stock is tied to one Aave reserve, and each reserve must list that stock and share the USDC reserve's hub. Anything else fails with `ReserveMismatch`.
+- **Funds go to the vault.** A withdrawal or a borrow is sent straight to the vault, and `repay` pulls only the debt and returns the rest, so no USDC rests in the adapter.
+- **Collateral is enabled on supply.** Aave V4 does not enable a supplied asset as collateral by itself, so `supply` does it once.
+- **A position pins the adapter.** The vault refuses to switch or remove an adapter that holds debt or collateral (`CreditPositionOpen`), and an unreadable position counts as open.
+- **The policy path includes Aave's contracts.** The adapter names a custodian for collateral, the hub, and an operator that pulls it, the spoke. The vault checks the stock's [B20](/docs/help/glossary#b20) transfer policy for those legs too.
+
+<Callout type="fork" title="Fork run: supply and borrow on Aave V4">
+
+The vault-level fork test `test_creditLoopInSession` runs the whole loop against Aave V4 on the fork: buy, supply, a borrow refused for a low health factor, a smaller borrow, a bill payment, a repay and a withdrawal. In the agent's fork run, one round with a scripted proposer and a local sender supplied a stock and borrowed USDC at block <Fact name="forkBlock" />. The `SUPPLY` used <Fact name="gas.supply" /> gas and the `BORROW` used <Fact name="gas.borrow" /> gas, as recorded in [fork-gas.json](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/fork-gas.json). None of this ran on mainnet.
+
+</Callout>
+
+[Adapters](/docs/reference/adapters) lists the adapter functions. [The treasury loop](/docs/concepts/treasury-loop) shows when the agent is built to supply and borrow.

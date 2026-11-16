@@ -1,0 +1,241 @@
+---
+title: Errors
+description: Every custom error in Maat's contracts and adapters, with its parameters and the condition that raises it.
+type: reference
+audience: [developer, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MandateVault.sol
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/adapters/AerodromeSwapAdapter.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - contracts/src/adapters/ICreditAdapter.sol
+  - contracts/src/lib/TokenTransfer.sol
+next: [guides/configure-a-mandate, help/troubleshooting]
+---
+
+A custom error is a revert with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the vault, the calendar and the two adapters, with the condition that raises it. The contracts are built and fork-tested, and nothing is deployed yet.
+
+<Callout type="note" title="A refusal is not an error">
+
+When the vault stops a trade, it does not revert. `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` instead of reverting.
+
+</Callout>
+
+Where one name appears in two contracts, each contract has its own entry, headed with the contract in brackets so that every link stays unique.
+
+| Contract | Errors |
+| --- | --- |
+| `MandateVault` | [`BadUsdcDecimals`](#badusdcdecimals), [`ChangeExpired`](#changeexpired), [`ChangeNotQueued`](#changenotqueued), [`ChangeNotReady`](#changenotready), [`CreditPositionOpen`](#creditpositionopen), [`IntentAlreadyUsed`](#intentalreadyused), [`InvalidConfig`](#invalidconfig), [`LengthMismatch`](#lengthmismatch-mandatevault), [`NotExecutor`](#notexecutor), [`NotOwner`](#notowner-mandatevault), [`TransferFailed`](#transferfailed-mandatevault), [`ZeroAddress`](#zeroaddress-mandatevault) |
+| `MarketCalendar` | [`InvalidClose`](#invalidclose), [`NotOwner`](#notowner-marketcalendar), [`ZeroAddress`](#zeroaddress-marketcalendar) |
+| `AerodromeSwapAdapter` | [`BadCallback`](#badcallback), [`InsufficientOutput`](#insufficientoutput), [`TokenNotInPool`](#tokennotinpool), [`TransferFailed`](#transferfailed-aerodromeswapadapter) |
+| `AaveV4CreditAdapter` | [`HealthFactorTooLow`](#healthfactortoolow-aavev4creditadapter), [`LengthMismatch`](#lengthmismatch-aavev4creditadapter), [`NotVault`](#notvault-aavev4creditadapter), [`ReserveMismatch`](#reservemismatch), [`TransferFailed`](#transferfailed-aavev4creditadapter), [`UnsupportedToken`](#unsupportedtoken-aavev4creditadapter), [`ZeroAddress`](#zeroaddress-aavev4creditadapter) |
+| `ICreditAdapter` | [`HealthFactorTooLow`](#healthfactortoolow-icreditadapter), [`NotVault`](#notvault-icreditadapter), [`UnsupportedToken`](#unsupportedtoken-icreditadapter) |
+
+## MandateVault
+
+### BadUsdcDecimals
+
+<ErrorEntry contract="MandateVault" name="BadUsdcDecimals" />
+
+Raised by the constructor when the USDC token's `decimals()` is not <Fact name="usdcDecimals" />. The vault's caps and valuation math assume that scale, so the vault refuses to be created with any other. A USDC token whose `decimals()` call reverts fails the deploy too, but without this error.
+
+### ChangeExpired
+
+<ErrorEntry contract="MandateVault" name="ChangeExpired" />
+
+Raised by `applyMandate`, `applyTokenConfig` and `applyPayee` when the change was queued but its apply window has closed: more than the timelock plus the grace period have passed since it was queued. `changeHash` names the change. The last moment of the window still applies, and a change that has expired must be queued again, which restarts the clock.
+
+### ChangeNotQueued
+
+<ErrorEntry contract="MandateVault" name="ChangeNotQueued" />
+
+Raised by the three `apply` functions when the hash of the values sent has no queue entry. That means the change was never queued, was cancelled, was already applied, or was queued with other values. `changeHash` is the hash of the values the owner sent, so compare it with the hash in the queue event. An applied change cannot be applied twice.
+
+### ChangeNotReady
+
+<ErrorEntry contract="MandateVault" name="ChangeNotReady" />
+
+Raised by the three `apply` functions when the change is queued but the wait is not over. `eta` is the earliest time it can be applied: the time it was queued plus <Fact name="timelockHours" />. Applying at `eta` or later works. The queue entry is untouched, so the owner can simply try again.
+
+### CreditPositionOpen
+
+<ErrorEntry contract="MandateVault" name="CreditPositionOpen" />
+
+Raised by `applyMandate` when the new mandate switches to a different credit adapter, or turns credit off, while the current adapter still holds debt or collateral, or when its position cannot be read. Only the vault can move a position that its adapter holds, so replacing the adapter would strand it. Closing the position first, or keeping the same adapter and changing other fields, avoids the error.
+
+### IntentAlreadyUsed
+
+<ErrorEntry contract="MandateVault" name="IntentAlreadyUsed" />
+
+Raised by `execute` when the intent's `id` has been used before, whether that intent was allowed or refused. Nothing is recorded and no `Decision` is emitted for the second call. Every intent needs a new id. `previewIntent` does not raise it, so a reused id previews normally.
+
+### InvalidConfig
+
+<ErrorEntry contract="MandateVault" name="InvalidConfig" />
+
+Raised when a mandate or a token's settings fail the vault's validation. The constructor, `applyMandate` and `applyTokenConfig` run it, and `execute` never does. The queue functions do not, so a bad change can be queued and then fail when it is applied. A mandate fails when:
+
+- `calendar` or `swapAdapter` has no code at its address.
+- `maxSlippageBps` is above the [basis-point](/docs/help/glossary#basis-point-bps) denominator, which is more than the whole of a trade.
+- A credit adapter is set, and it has no code, does not report this vault from `vault()`, or does not report this vault's USDC from `usdc()`, or one of those calls reverts.
+- A credit adapter is set, and `minHealthFactor` is below one [WAD](/docs/help/glossary#wad) (<Fact name="healthFactorBound" />), `targetHealthFactor` is below `minHealthFactor`, or `deriskWindow` is longer than <Fact name="maxDeriskWindowHours" />.
+
+A token's settings fail when:
+
+- The token address has no code, whether the token is allowed or only listed.
+- The token has a market (`allowed` is true, or a feed or a pool is set), and the feed or the pool has no code.
+- The pool is not a pair of this token and USDC, in either order, or its tokens cannot be read.
+- The feed does not report <Fact name="priceDecimals" />, or the token reports more than <Fact name="maxTokenDecimals" />, or either call reverts.
+
+### LengthMismatch (MandateVault)
+
+<ErrorEntry contract="MandateVault" name="LengthMismatch" />
+
+Raised by the constructor when the `tokens_` array and the `configs_` array have different lengths. Each token needs exactly one `TokenConfig`. It is a deploy-time error only.
+
+### NotExecutor
+
+<ErrorEntry contract="MandateVault" name="NotExecutor" />
+
+Raised by `execute` when the caller is not the current executor, which includes an executor the owner has replaced. It reverts before anything is recorded, so there is no `Decision` and the intent id stays unused. `previewIntent` is open to anyone and never raises it.
+
+### NotOwner (MandateVault)
+
+<ErrorEntry contract="MandateVault" name="NotOwner" />
+
+Raised by every owner-only function when the caller is not the owner: `setExecutor`, `setPaused`, `withdraw`, `fund`, the three `queue` functions, `cancelChange` and the three `apply` functions. The executor gets it too. The owner is fixed when the vault is created, so there is no function that grants the role to another address.
+
+### TransferFailed (MandateVault)
+
+<ErrorEntry contract="MandateVault" name="TransferFailed" />
+
+Raised by `withdraw` and `fund` when the token's `transfer` or `transferFrom` returns false. The error is declared in the shared `TokenTransfer` library, so the adapters raise a copy of it. A token that reverts on its own passes its own revert up unchanged, and B20 tokens revert with typed errors of their own. Inside `execute` a failing token call never reverts: it becomes `TRANSFER_FAILED` in the `Decision`.
+
+### ZeroAddress (MandateVault)
+
+<ErrorEntry contract="MandateVault" name="ZeroAddress" />
+
+Raised by the constructor when the owner, executor, USDC or policy registry is the zero address, or when a payee or a token in the lists is. Raised by `setExecutor` for the zero address, by `applyTokenConfig` for a zero token, and by `applyPayee` when it allows the zero address. The queue functions do not raise it, so a zero-address change can be queued and then fail when it is applied.
+
+## MarketCalendar
+
+### InvalidClose
+
+<ErrorEntry contract="MarketCalendar" name="InvalidClose" />
+
+Raised by `setEarlyClose` when the close time is not strictly between the open, <Fact name="nyseOpen" />, and the regular close, <Fact name="nyseClose" />. It is also raised when the day already has an early close and the new one is not earlier, which is why an early close can only move earlier. The constructor's shipped early closes follow the same rule.
+
+### NotOwner (MarketCalendar)
+
+<ErrorEntry contract="MarketCalendar" name="NotOwner" />
+
+Raised by `addHoliday` and `setEarlyClose` when the caller is not the calendar's owner. The calendar has its own owner, set in its constructor, and the vault's owner has no special rights over it unless it is the same address.
+
+### ZeroAddress (MarketCalendar)
+
+<ErrorEntry contract="MarketCalendar" name="ZeroAddress" />
+
+Raised by the constructor when the owner address is the zero address. It is the only place the calendar raises it.
+
+## AerodromeSwapAdapter
+
+### BadCallback
+
+<ErrorEntry contract="AerodromeSwapAdapter" name="BadCallback" />
+
+Raised by `uniswapV3SwapCallback` when the caller is not the pool that the current `swapExactIn` is swapping in. The adapter keeps that pool in transient storage for the length of the swap and clears it afterwards, so outside a swap the callback reverts for every caller, and the zero address is refused as well.
+
+### InsufficientOutput
+
+<ErrorEntry contract="AerodromeSwapAdapter" name="InsufficientOutput" />
+
+Raised by `swapExactIn` when the swap returns less than `minOut`. `amountOut` is what the pool gave and `minOut` is the minimum the caller asked for. When the vault is the caller, it catches this revert and records `SWAP_FAILED` instead of reverting.
+
+### TokenNotInPool
+
+<ErrorEntry contract="AerodromeSwapAdapter" name="TokenNotInPool" />
+
+Raised by `swapExactIn` when `tokenIn` is neither of the pool's two tokens. The check runs before any token moves.
+
+### TransferFailed (AerodromeSwapAdapter)
+
+<ErrorEntry contract="AerodromeSwapAdapter" name="TransferFailed" />
+
+Raised when a token returns false from a transfer the adapter makes: pulling the input from the caller, paying the pool inside the callback, or sending leftover input back. It is the `TokenTransfer` error, and a token that reverts on its own passes its own revert up instead.
+
+## AaveV4CreditAdapter
+
+### HealthFactorTooLow (AaveV4CreditAdapter)
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="HealthFactorTooLow" />
+
+Declared in `ICreditAdapter` and raised here by `borrow` and `withdraw`. After the spoke has acted, the adapter reads the health factor again and reverts if it is below `minHealthFactor`, so the minimum holds even if the vault's projection was off. The vault catches the revert and records `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` in the `Decision`.
+
+### LengthMismatch (AaveV4CreditAdapter)
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="LengthMismatch" />
+
+Raised by the constructor when the list of collateral tokens and the list of reserve ids have different lengths. Each token needs exactly one reserve id.
+
+### NotVault (AaveV4CreditAdapter)
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="NotVault" />
+
+Declared in `ICreditAdapter` and raised here by `supply`, `withdraw`, `borrow` and `repay` for any caller other than the vault the adapter is bound to. The views are open to everyone.
+
+### ReserveMismatch
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="ReserveMismatch" />
+
+Raised by the constructor when a reserve does not match what the adapter was told, and `reserveId` names the reserve that failed. The USDC reserve fails if its underlying token is not USDC or it has no hub. A collateral token fails if it is the zero address, is USDC, is listed twice, has a reserve with another underlying token, or has a reserve on a different hub than the USDC reserve.
+
+### TransferFailed (AaveV4CreditAdapter)
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="TransferFailed" />
+
+Raised when a token returns false from a transfer or an approval that the adapter makes. It is the `TokenTransfer` error, and a token that reverts on its own passes its own revert up instead.
+
+### UnsupportedToken (AaveV4CreditAdapter)
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="UnsupportedToken" />
+
+Declared in `ICreditAdapter` and raised here by `supply` and `withdraw` when `token` is not one of the collateral tokens the adapter was built with. `suppliedOf` and `supportsToken` do not raise it. The vault asks `supportsToken` first and refuses with `TOKEN_NOT_ALLOWED` before it calls the adapter.
+
+### ZeroAddress (AaveV4CreditAdapter)
+
+<ErrorEntry contract="AaveV4CreditAdapter" name="ZeroAddress" />
+
+Raised by the constructor when the vault, USDC or spoke address is the zero address.
+
+## ICreditAdapter
+
+These three errors belong to the interface, so every implementation shares them. `AaveV4CreditAdapter` inherits them.
+
+### HealthFactorTooLow (ICreditAdapter)
+
+<ErrorEntry contract="ICreditAdapter" name="HealthFactorTooLow" />
+
+The error for a `borrow` or `withdraw` that would leave the health factor below the minimum the caller passed. `healthFactor` is the value after the action, as a [WAD](/docs/help/glossary#wad). The vault reads only a well-formed `HealthFactorTooLow(healthFactor, minHealthFactor)` revert as a health reason, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`; empty data, a panic or any other error becomes `CREDIT_FAILED`.
+
+### NotVault (ICreditAdapter)
+
+<ErrorEntry contract="ICreditAdapter" name="NotVault" />
+
+The error for a caller that is not the vault the adapter is bound to. An implementation raises it from the functions that move the position.
+
+### UnsupportedToken (ICreditAdapter)
+
+<ErrorEntry contract="ICreditAdapter" name="UnsupportedToken" />
+
+The error for a token that the adapter does not support, raised by the functions that need a reserve for the token. `suppliedOf` is the exception: the interface says it returns zero and never reverts, because the vault reads it for every listed token.
+
+## Related
+
+- [Refusal codes](/docs/concepts/refusal-codes): what the vault records instead of reverting.
+- [Timelock and roles](/docs/concepts/timelock-and-roles#the-timelock): the three queue errors in context.
+- [The mandate](/docs/concepts/mandate#changing-it): how a mandate change is validated.
+- [Credit and the health factor](/docs/concepts/credit-and-health-factor): how the vault maps the adapter's errors.
+- [Configure a mandate](/docs/guides/configure-a-mandate): the validation errors a bad config raises.
+- [MandateVault](/docs/reference/mandate-vault) and [Adapters](/docs/reference/adapters): the functions that raise them.

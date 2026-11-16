@@ -1,0 +1,216 @@
+---
+title: Watch decisions onchain
+description: Read Decision events from a vault with cast or viem, decode the action and reason, and match them to the agent's journal.
+type: guide
+audience: [watcher, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/IMandateVaultEvents.sol
+  - contracts/src/Types.sol
+  - agent/src/abi/generated.ts
+  - agent/src/loop/runOnce.ts
+  - agent/src/intent.ts
+  - agent/src/types.ts
+  - agent/src/ledger/journal.ts
+  - agent/test/integration/agent.fork.test.ts
+  - deployments/README.md
+next: [get-started/read-a-decision, concepts/refusal-codes]
+---
+
+Every [Decision](/docs/help/glossary#decision) event is the vault's public record of one verdict on one request from the [executor](/docs/help/glossary#executor), so reading them is how a watcher follows what the agent asked the vault to do and what the vault answered. This guide shows how to read those events from a vault with `cast`, how to turn their numbers into an [action](/docs/help/glossary#action) and a [reason](/docs/help/glossary#reason), how the agent itself decodes them with viem, and how to match one event to the journal line that holds the reasoning behind it. It is written for a watcher who wants to follow a vault and for a developer who wants to build on the events.
+
+<Callout type="fork" title="What has run">
+
+No Maat vault is deployed, so there are no mainnet `Decision` events to read, and every command below uses `<VAULT_ADDRESS>`. The `cast logs` commands need an RPC and a vault, and the Maat team has not run them. The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in step 4, and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a Base mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
+
+</Callout>
+
+## Before you start
+
+| Need | Detail |
+| --- | --- |
+| A vault address | Written `<VAULT_ADDRESS>` here. The Maat team has deployed none ([Status and roadmap](/docs/get-started/status#next-mainnet)). Once an [owner](/docs/help/glossary#owner) deploys one, its address goes in the table in `deployments/README.md`. |
+| A Base RPC URL | Written `<BASE_RPC_URL>` here. Reading logs needs no key and no wallet. |
+| `cast` | From [Foundry](https://getfoundry.sh). The help text of `cast logs` in Foundry 1.9.0, the version checked while writing this guide, says that an event declaration with `indexed` markers decodes the matching logs in text output. |
+| The deploy block | Written `<DEPLOY_BLOCK>`. It is where to start the search. |
+| For the journal match | The agent's `data/journal.jsonl`. It is a file on the operator's machine, so only the operator, or someone the operator shares it with, can do the last step. |
+
+Time: not measured. No vault is deployed, so no log query has been timed.
+
+## The event you are reading
+
+The vault declares `Decision` in `contracts/src/IMandateVaultEvents.sol`. Its Solidity declaration is:
+
+<EventSignature name="Decision" />
+
+`intentId` and `token` are indexed, so they are topics and a filter can use them. The other fields sit in the log's data. The declaration names the enums `Action` and `Reason`. In the ABI an enum is a `uint8`, and `cast` and viem work from the ABI, so below they appear as `uint8`: the number is the position of the member in the enum in [`Types.sol`](/docs/reference/types#action). [Read a decision](/docs/get-started/read-a-decision#field-by-field) explains each field.
+
+## Read and decode the events
+
+<Steps>
+
+<Step>
+
+### Read the events with cast
+
+This command only reads. It asks for every `Decision` the vault emitted from the deploy block to the latest block. The declaration gives `cast` the names, the types and the `indexed` markers it needs to decode each log.
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet RPC URL
+export VAULT=<VAULT_ADDRESS>         # the vault to watch
+cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOCK> --to-block latest \
+  "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)"
+```
+
+No vault is deployed, so this page shows no output. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, the table in step 3 shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` in Foundry 1.9.0 splits the range into chunks of that many blocks to work around such limits.
+
+To check that you typed the signature right without any network, compute the hash that every `Decision` log carries as its first topic. The plain form without names gives the same hash as the declaration:
+
+```bash
+cast sig-event "Decision(bytes32,uint8,address,uint256,bool,uint8,bytes32)"
+```
+
+</Step>
+
+<Step>
+
+### Follow one intent
+
+The id of an intent is `intentId`, the first indexed field, so the same command takes it as an extra argument after the declaration and returns only that intent's `Decision`. A second read-only call says whether the vault has used the id at all. `execute` marks an id used before it checks the intent, and a call that does not revert emits its `Decision`, so a used id has one.
+
+```bash
+export INTENT_ID=<INTENT_ID>   # the intentId from a Decision or from the journal
+cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOCK> --to-block latest \
+  "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)" "$INTENT_ID"
+cast call "$VAULT" "usedIntent(bytes32)(bool)" "$INTENT_ID" --rpc-url "$BASE_RPC_URL"
+```
+
+An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts (`NotExecutor` or `IntentAlreadyUsed`) emits nothing.
+
+</Step>
+
+<Step>
+
+### Turn the numbers into names
+
+`cast` prints `action` and `reason` as numbers, and so does a raw log. The numbers are positions in two enums, and two pages list every member:
+
+- [Types](/docs/reference/types#action) gives the id of each `Action`, from `BUY` to `PAY_EXPENSE`, and each `Reason`.
+- [Refusal codes](/docs/concepts/refusal-codes) explains every `Reason`, the actions that can return it and what the agent does with it.
+
+`allowed` is true only when `reason` is `OK`. For example:
+
+| `action` | `allowed` | `reason` | Reads as |
+| --- | --- | --- | --- |
+| `0` | `true` | `0` | A `BUY` that passed every check and ran |
+| `0` | `false` | `6` | A `BUY` that was refused with `MARKET_CLOSED` |
+
+The ids come from the order of the enums, which only ever grows, so an id never changes meaning. `amount` is in raw units, not dollars, and the unit depends on the action. For `BUY`, `BORROW`, `REPAY` and `PAY_EXPENSE` it is USDC (<Fact name="usdcDecimals" />), even when `token` is the stock of a `BUY`. For `SELL`, `SUPPLY` and `WITHDRAW_COLLATERAL` it is the raw amount of the stock in `token`. [Types](/docs/reference/types#intent) has the table. A raw log lays the fields out like this:
+
+| Where | Holds | How to read it |
+| --- | --- | --- |
+| Topic 0 | The hash of the event signature | The output of `cast sig-event` above |
+| Topic 1 | `intentId` | A `bytes32`, as it is |
+| Topic 2 | `token` | An address, padded on the left to 32 bytes |
+| Data, word 1 | `action` | A number, the position in `Action` |
+| Data, word 2 | `amount` | An unsigned integer in raw units: USDC for a `BUY`, a `BORROW`, a `REPAY` and a `PAY_EXPENSE`, the stock's own units for a `SELL`, a `SUPPLY` and a `WITHDRAW_COLLATERAL` |
+| Data, word 3 | `allowed` | `0` or `1` |
+| Data, word 4 | `reason` | A number, the position in `Reason` |
+| Data, word 5 | `rationaleHash` | A `bytes32` |
+
+</Step>
+
+<Step>
+
+### Decode with viem, the way the agent does
+
+The agent decodes a `Decision` with viem, and this is the function it uses. It reads the logs of a receipt with the vault's ABI (`mandateVaultAbi`, generated from the compiled contract into `agent/src/abi/generated.ts`), keeps the log that came from the vault and carries the intent id, and turns the `reason` number into its name with the agent's own list of reasons. This is a copy of the code, and a test fails if the file changes and this page does not.
+
+```typescript title="agent/src/loop/runOnce.ts#L72-L76"
+function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
+  const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
+  const l = parsed.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId.toLowerCase() === id.toLowerCase());
+  return l && { allowed: l.args.allowed, reason: REASONS[Number(l.args.reason)] ?? `REASON_${l.args.reason}` };
+}
+```
+
+A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how the agent finds a `Decision` by intent id when it did not see the receipt: it asks the vault whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at.
+
+```typescript title="agent/src/loop/runOnce.ts#L173-L176"
+    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
+    if (used) {
+      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });
+      const decision = decisionIn(logs, d.vault, p.intentId);
+```
+
+This page does not write a viem snippet of its own, because nothing would compile it. Both excerpts are the agent's code. The first runs in the agent's fork test, which sends intents through the agent's loop on a Base fork and checks that each decoded `Decision` has the `allowed` and `reason` the test expects. The second runs when a round settles a send that an earlier round left pending. The agent's unit tests cover it with a fake chain client, and the fork test does not reach it.
+
+</Step>
+
+<Step>
+
+### Match a Decision to the journal
+
+The agent keeps the text of its reasoning in `data/journal.jsonl` and puts only a hash of it onchain. The `rationaleHash` of the `Decision` is that hash. To match them:
+
+1. Take the `intentId` and the `rationaleHash` from the `Decision`.
+2. Find the journal lines for the id with the command below. It ignores case, because the agent compares ids in lower case.
+3. Hash the journal's `rationale` text and compare it with the `rationaleHash`.
+
+```bash
+grep -i "<INTENT_ID>" data/journal.jsonl
+```
+
+A sent intent has a `sent` line and an `intent` line with that id. The `sent` line is written when the send returns, before the receipt arrives. The `intent` line written after the receipt holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result, the `txHash`, the `gasUsed` and the `decision` with `allowed` and the reason as a name. A `reconcile` line means a later round looked at that send, and its `outcome` is `applied`, `pending` or `dropped`. If the receipt was lost, the `rationale` and the `rationaleHash` are on the `sent` line. The agent computes the hash like this:
+
+```typescript title="agent/src/intent.ts#L24-L26"
+export function rationaleHash(text: string): Hex {
+  return keccak256(toBytes(text));
+}
+```
+
+So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` computes for a plain string. Hash the `rationale` exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. The agent's fork test gives its scripted proposer the rationale `NVDAc underweight` for its first intent. This is the hash of that text:
+
+```bash
+cast keccak "NVDAc underweight"
+```
+
+Output computed locally with `cast keccak` from Foundry 1.9.0 while this guide was written. It is the same value as viem's `keccak256(toBytes("NVDAc underweight"))` in the agent package:
+
+```text
+0x962ef37fec826fc1247c0083ffb680a1790ad265a61b6ce4cf117c9320c5a19e
+```
+
+If the hash of the journal's `rationale` equals the `rationaleHash` in the log, that text is what the intent committed to when it was sent, and it cannot have been changed since without changing its hash. It does not show that the text is the real reason for the trade. The vault stores the hash without checking it.
+
+</Step>
+
+</Steps>
+
+## Check it worked
+
+- `cast logs` returns the vault's `Decision` events with the fields decoded, and in every one `allowed` is true exactly when `reason` is `0`.
+- The hash printed by `cast sig-event` equals the first topic of a raw `Decision` log, if you read the raw form.
+- For an intent id you know, `usedIntent` returns `true` exactly when step 2 finds a `Decision` for it.
+- For an intent the agent sent, the journal's `intent` line (or its `sent` line, if the receipt was lost) has the same `intentId` and `rationaleHash` as the log, and the hash of the `rationale` equals the `rationaleHash`. The `decision`, which only the `intent` line holds, agrees with the log's `allowed` and `reason`.
+
+## Common mistakes
+
+- **Writing `Action` and `Reason` in the `cast` declaration.** `cast` works from ABI types, so write `uint8`. The numbers it prints are positions in the enums.
+- **Leaving out the `indexed` markers.** The help text of `cast logs` says that indexed parameters must be marked in the declaration, and a wrong marking decodes the log wrongly.
+- **Reading `amount` as dollars.** It is in raw units. For a `BUY` it is USDC, which has <Fact name="usdcDecimals" />, even though `token` is the stock. For a `SELL` it is in the stock's own decimals.
+- **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per UTC day, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
+- **Expecting a `Decision` from a reverted `execute`.** A call from another address reverts with `NotExecutor`, and a used id reverts with `IntentAlreadyUsed`. Neither emits anything.
+- **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator. Intents the owner sent by hand, such as the runbook's smoke tests, carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke`), and no journal holds text for them.
+- **Hashing altered text.** A trailing newline, a re-typed quote or text that was not decoded from JSON gives another hash.
+- **Treating the match as proof of the reason.** It shows what the intent committed to, nothing more.
+- **Querying too wide a range at once.** A provider may refuse it. Use `--query-size` (in Foundry 1.9.0), or start from the deploy block.
+- **Looking for mainnet events today.** Nothing is deployed. The ledger on the site shows the decisions of the fork run only.
+
+## Next steps
+
+- [Read a decision](/docs/get-started/read-a-decision) explains every field of a `Decision` and how to read a refusal.
+- [Refusal codes](/docs/concepts/refusal-codes) lists every reason, and what each one means for the agent.
+- [Events](/docs/reference/events) lists every event the vault emits, for watching more than the decisions.
+- [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs the test whose decisions this guide decodes.

@@ -1,0 +1,151 @@
+---
+title: Events
+description: Every event the vault, the calendar and the adapters emit, with each parameter and when the event is emitted.
+type: reference
+audience: [developer, watcher]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/IMandateVaultEvents.sol
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/MandateVault.sol
+next: [guides/watch-decisions-onchain, get-started/read-a-decision]
+---
+
+The vault and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested, and nothing is deployed yet.
+
+| Event | Emitted by |
+| --- | --- |
+| [`Decision`](#decision) | `execute` |
+| [`ChangeCancelled`](#changecancelled) | `cancelChange` |
+| [`ExecutorSet`](#executorset) | `setExecutor` |
+| [`Funded`](#funded) | `fund` |
+| [`MandateApplied`](#mandateapplied) | the constructor, `applyMandate` |
+| [`MandateChangeQueued`](#mandatechangequeued) | `queueMandate` |
+| [`MultiplierChangeDetected`](#multiplierchangedetected) | `execute`, `syncMultiplier`, `applyTokenConfig` |
+| [`PausedSet`](#pausedset) | `setPaused` |
+| [`PayeeApplied`](#payeeapplied) | the constructor, `applyPayee` |
+| [`PayeeChangeQueued`](#payeechangequeued) | `queuePayee` |
+| [`PolicyHashUpdated`](#policyhashupdated) | the constructor, `applyMandate`, `applyTokenConfig`, `applyPayee` |
+| [`RevenueReceived`](#revenuereceived) | `notifyRevenue`, which `execute` and `withdraw` also call |
+| [`TokenConfigApplied`](#tokenconfigapplied) | the constructor, `applyTokenConfig` |
+| [`TokenConfigChangeQueued`](#tokenconfigchangequeued) | `queueTokenConfig` |
+| [`Withdrawn`](#withdrawn) | `withdraw` |
+| [`HolidayAdded`](#holidayadded) | the `MarketCalendar` constructor, `addHoliday` |
+| [`EarlyCloseSet`](#earlycloseset) | the `MarketCalendar` constructor, `setEarlyClose` |
+
+## MandateVault
+
+### Decision
+
+<EventEntry contract="MandateVault" name="Decision" />
+
+Emitted once by every `execute` call that does not revert, whether the [intent](/docs/help/glossary#intent) was allowed or refused, so it is the vault's ledger of verdicts. `allowed` is true only when `reason` is `OK`, and otherwise `reason` names the check that refused or the kind of failure. `intentId` and `token` are indexed, so a log filter can follow one intent or one token. `rationaleHash` is the hash the intent carried: the vault records it without checking it. [Read a decision](/docs/get-started/read-a-decision#the-decision-event) explains every field and how to match a row to its transaction.
+
+### ChangeCancelled
+
+<EventEntry contract="MandateVault" name="ChangeCancelled" />
+
+Emitted by `cancelChange` with the hash of the change the owner cancelled. The vault does not check that the hash was queued, so the event can also appear for a hash that never was.
+
+### ExecutorSet
+
+<EventEntry contract="MandateVault" name="ExecutorSet" />
+
+Emitted by `setExecutor` with the new executor address. The constructor does not emit it, so the first executor is readable from `executor()` and not from this log.
+
+### Funded
+
+<EventEntry contract="MandateVault" name="Funded" />
+
+Emitted by `fund` after the owner's USDC has arrived in the vault. `amount` is in USDC units, which have <Fact name="usdcDecimals" />. The vault records the amount as its own capital, so it does not later show up in `RevenueReceived`.
+
+### MandateApplied
+
+<EventEntry contract="MandateVault" name="MandateApplied" />
+
+Emitted by the constructor for the first mandate and by `applyMandate` for each later one. `mandateHash` is the hash of the encoded mandate, the same value `mandateHash()` returns afterwards. It is always followed by `PolicyHashUpdated` in the same transaction.
+
+### MandateChangeQueued
+
+<EventEntry contract="MandateVault" name="MandateChangeQueued" />
+
+Emitted by `queueMandate`. `changeHash` is the key of the queued change, `eta` is the time it was queued plus the [timelock](/docs/help/glossary#timelock), and `mandate` carries every field of the proposed mandate. Because the event holds the full values, anyone watching the logs can read what is coming before it can be applied.
+
+### MultiplierChangeDetected
+
+<EventEntry contract="MandateVault" name="MultiplierChangeDetected" />
+
+Emitted when the vault records a new [uiMultiplier](/docs/help/glossary#uimultiplier) for a token. It comes from `syncMultiplier`, from `execute` (which syncs the intent's token before it checks anything, so a refused intent can still emit it), and from `applyTokenConfig` when a re-applied token's live value differs from the vault's snapshot. Each emission starts the cooldown, as [Splits and the multiplier](/docs/concepts/splits-and-multiplier#how-the-vault-notices) explains. The first snapshot of a token is taken without an event.
+
+### PausedSet
+
+<EventEntry contract="MandateVault" name="PausedSet" />
+
+Emitted by `setPaused` with the new value of the flag, even when the value did not change. The constructor does not emit it, and a new vault starts unpaused.
+
+### PayeeApplied
+
+<EventEntry contract="MandateVault" name="PayeeApplied" />
+
+Emitted for each payee the constructor adds and by `applyPayee`. `allowed` is the flag that was applied. It is also emitted when the allowlist did not change, for example when an already-allowed payee is allowed again.
+
+### PayeeChangeQueued
+
+<EventEntry contract="MandateVault" name="PayeeChangeQueued" />
+
+Emitted by `queuePayee` with the change hash, the earliest apply time, the payee and whether it will be added or removed. Nothing changes on the allowlist until `applyPayee` runs with the same values.
+
+### PolicyHashUpdated
+
+<EventEntry contract="MandateVault" name="PolicyHashUpdated" />
+
+Emitted last by the constructor and after each of `applyMandate`, `applyTokenConfig` and `applyPayee`. It carries the new [policy hash](/docs/help/glossary#policy-hash), which commits to the mandate, the listed tokens, their configs and the payee list. Watch this event to learn that an apply ran, and compare the hash with the previous one to see whether the policy changed. The matching `...Applied` event in the same transaction says what was applied.
+
+### RevenueReceived
+
+<EventEntry contract="MandateVault" name="RevenueReceived" />
+
+Emitted by `notifyRevenue` when the vault's USDC balance is above `recordedUsdc`, with the difference. `execute` calls `notifyRevenue` before it acts on an intent that passes the checks, and `withdraw` calls it first when the token is USDC, so the event can appear inside those transactions. A refused intent does not emit it.
+
+### TokenConfigApplied
+
+<EventEntry contract="MandateVault" name="TokenConfigApplied" />
+
+Emitted for each token the constructor lists and by `applyTokenConfig`. `config` holds the four `TokenConfig` members as stored. A delisting shows up here too: the token's `allowed` is false, and its feed and pool are zero when the market is removed.
+
+### TokenConfigChangeQueued
+
+<EventEntry contract="MandateVault" name="TokenConfigChangeQueued" />
+
+Emitted by `queueTokenConfig` with the change hash, the earliest apply time, the token and the proposed config. The config is validated only when it is applied, so this event does not mean the change will succeed.
+
+### Withdrawn
+
+<EventEntry contract="MandateVault" name="Withdrawn" />
+
+Emitted by `withdraw` after its transfer call to the owner returns without reverting. `amount` is in the token's own raw units. The vault does not check that `token` is a contract, so for an address without code the event is emitted although nothing moved.
+
+## MarketCalendar
+
+The calendar has its own two events. Both carry `etDay`, a day number counted in New York time: the number of days from the Unix epoch to the local date.
+
+### HolidayAdded
+
+<EventEntry contract="MarketCalendar" name="HolidayAdded" />
+
+Emitted by `addHoliday`, and by the constructor once for each of the <Fact name="calendarPreload.holidays" /> holidays it ships with. Adding a day that is already a holiday emits the event again and reverts nothing. A holiday cannot be removed.
+
+### EarlyCloseSet
+
+<EventEntry contract="MarketCalendar" name="EarlyCloseSet" />
+
+Emitted by `setEarlyClose`, and by the constructor once for each of the <Fact name="calendarPreload.earlyCloses" /> early closes it ships with. `closeMin` is the new close in minutes after midnight, New York time. An early close can only move earlier, so a value that is not earlier than the day's existing early close reverts with `InvalidClose` instead.
+
+## Related
+
+- [Read a decision](/docs/get-started/read-a-decision): how to read a `Decision` and match it to a transaction.
+- [Refusal codes](/docs/concepts/refusal-codes): every `reason` a `Decision` can carry.
+- [Timelock and roles](/docs/concepts/timelock-and-roles): the queue events and the apply window.
+- [Market hours](/docs/concepts/market-hours): how the calendar uses holidays and early closes.
+- [MandateVault](/docs/reference/mandate-vault) and [MarketCalendar](/docs/reference/market-calendar): the functions that emit these events.

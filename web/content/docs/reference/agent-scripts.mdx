@@ -1,0 +1,170 @@
+---
+title: Agent scripts
+description: "The npm scripts in the agent package: what each runs, the modes they take, what they need and how they exit."
+type: reference
+audience: [builder, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - agent/package.json
+  - agent/src/main.ts
+  - agent/scripts/gen-abis.ts
+  - agent/README.md
+next: [guides/run-the-agent, guides/run-the-tests]
+---
+
+This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. The agent is built and fork-tested, and it has not run live.
+
+| Entry | What it does | What it needs | Outside services |
+| --- | --- | --- | --- |
+| `npm run agent` | Runs one round or the loop | The settings in [Agent configuration](/docs/reference/agent-configuration) | Your Base RPC, Claude (paid) in every mode, and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) in live mode |
+| `npm test` | Runs the unit tests | Nothing | None |
+| `npm run test:integration` | Runs the fork test | A Base archive RPC and the Base build of Anvil | Your Base RPC. No Claude call and no CDP call |
+| `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
+| `npm run gen:abi` | Rewrites the generated ABI file | The compiled contracts | None |
+| `cdp-setup.ts` | Owner only. Creates the executor account and its policy | The three CDP credentials | Coinbase CDP |
+| `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
+| `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
+
+## npm scripts
+
+### agent
+
+<ScriptEntry name="agent" />
+
+Starts the agent. Node loads `.env` from the current directory if the file exists, and `tsx` runs the TypeScript source, so there is no build step. To pass a flag through npm, put `--` before it. `main.ts` reads only the flags below and ignores every other argument, so a misspelled flag does not stop the start. A misspelled `--once` starts the loop:
+
+| Flag | Effect |
+| --- | --- |
+| `--once` | Run one round and exit. Without it, the agent keeps running |
+| `--dry-run` | Force [dry-run](/docs/help/glossary#dry-run) mode, whatever `MAAT_MODE` says |
+
+The mode comes from `MAAT_MODE`, which is `dry-run` by default, and `--dry-run` overrides it. The flag is applied after the settings are checked, so `MAAT_MODE=live` without `MAAT_BUILDER_CODE` still stops the start. This is the command from `agent/README.md` for a single dry-run round:
+
+```bash
+cd agent
+npm run agent -- --once --dry-run
+```
+
+It needs a vault to read and makes a paid call to Claude, so this page shows the command and no output.
+
+At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
+
+- With `--once` it prints one line with the mode, the vault, the executor and the data directory, runs one round, prints the round's report as JSON, releases the lock and exits. The report includes the run id, the `status`, the block it read, `marketOpen`, the hashes in `sent`, the counts `skipped` and `proposals`, and a `haltReason` when the round halted.
+- Without `--once` it runs a round, then waits. The wait is <Fact name="loopMinutes" /> after a round that saw the market open, and <Fact name="offSessionMinutes" /> after any other round, including a round that threw an error. The agent logs a round that throws and tries again after the longer wait.
+- A stop signal (Ctrl+C, or SIGTERM) ends the wait. It does not interrupt a round in progress: the agent finishes that round, releases the lock and exits.
+
+The exit code does not tell you how a round went. `main.ts` sets no exit code, so a round that halts exits like a round that completes, and the `status` in the report is the thing to read. The process ends with an error when something throws outside the round's own handling, for example an invalid configuration, a lock held by another agent, a failed CDP lookup in live mode, or an unexpected error in a `--once` round. When a round halts or leaves a transaction pending, [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#after-a-halted-or-pending-tx-cycle) says what to read and what the next round does.
+
+### test
+
+<ScriptEntry name="test" />
+
+Runs the unit tests in `agent/test`, and skips `agent/test/integration`. The tests replace Claude, the CDP wallet and the chain with fakes, so they need no API key, no RPC URL and no wallet, and they send nothing.
+
+Trimmed output from the run at commit `95e4024`. The counts, the path and the timings are replaced or removed:
+
+```text
+> @maat/agent@0.1.0 test
+> vitest run
+
+ RUN  v5.1.0 …
+
+ Test Files  … passed (…)
+      Tests  … passed (…)
+```
+
+### test:integration
+
+<ScriptEntry name="test:integration" />
+
+Runs the fork test in `agent/test/integration`, one file at a time and with long timeouts. The test forks Base mainnet at block <Fact name="forkBlock" />, deploys Maat on a local Anvil node and runs the agent's round against it. It needs three things:
+
+- `BASE_RPC_URL` set in your shell, pointing at a Base archive RPC. The test reads it from the environment, not from `.env`. When it is not set, the suite is skipped, not failed.
+- The Base build of Anvil (`base-anvil`, installed with `base-foundryup`). On Windows, `MAAT_ANVIL_BIN` must point at the real `anvil.exe`.
+- A free local port. The test refuses to start when something already answers on it.
+
+The fork run uses a scripted proposer in place of Claude and a local sender in place of the CDP wallet, so it makes no Claude call and no CDP call. The exact versions and the port are in [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#test). Setting `MAAT_GAS_LOG` to a file path makes the test write the gas limit and `gasUsed` of each transaction it sends. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) walks through it.
+
+### typecheck
+
+<ScriptEntry name="typecheck" />
+
+Runs the TypeScript compiler without writing any files. It covers `src`, `test`, `scripts` and the Vitest configs, so it also checks the script files below without running them. It prints nothing more when the types are clean.
+
+Trimmed output from the run at commit `95e4024`:
+
+```text
+> @maat/agent@0.1.0 typecheck
+> tsc --noEmit
+```
+
+### gen:abi
+
+<ScriptEntry name="gen:abi" />
+
+Rewrites `agent/src/abi/generated.ts`, the ABIs the agent calls the chain with. It reads compiled ABIs from `contracts/out` and writes them into that one file. `contracts/out` is build output that Git does not track, so run `forge build` in `contracts/` first, and run this script again after any change to a contract's interface. It reads no setting and needs no network. The generated file is committed, so commit it when it changes. The script file is [gen-abis.ts](#gen-abists).
+
+Trimmed output from the run on Windows at commit `95e4024`. The start of the absolute path in the last line is cut:
+
+```text
+> @maat/agent@0.1.0 gen:abi
+> tsx scripts/gen-abis.ts
+
+wrote …\agent\src\abi\generated.ts
+```
+
+## Script files
+
+Only `gen-abis.ts` has an npm script, `gen:abi`. You run the other files in `agent/scripts` with Node or `npx tsx`.
+
+### cdp-setup.ts
+
+<ScriptFile name="cdp-setup.ts" />
+
+<Callout type="warning" title="Owner only">
+
+Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects raw hash signing. Every run creates a new policy and points the account at it, so a second run creates a second policy.
+
+It needs `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`, and it reads `CDP_ACCOUNT_NAME` for the account name. It sends no transaction on Base and does not touch the vault.
+
+```bash
+cd agent
+node --env-file=.env --import tsx scripts/cdp-setup.ts <VAULT_ADDRESS>
+```
+
+If the vault address is missing or is not an address, it prints its usage and exits with an error. On success it prints the account address and the policy id, then three steps that you do yourself: call `setExecutor` on the vault from the owner wallet, send a little ETH on Base to the account for gas, and set `MAAT_EXECUTOR` to the account address in `.env`. [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) has the owner's command under "Switch the executor to the CDP Server Wallet". This page shows no output for the script, because the CDP path has never run against the real CDP.
+
+</Callout>
+
+### gen-abis.ts
+
+<ScriptFile name="gen-abis.ts" />
+
+The file behind `npm run gen:abi`. Its list of targets is `MandateVault`, `ICreditAdapter`, `MarketCalendar`, `IB20Asset`, `IAggregatorV3` and `IERC20Minimal`. It writes one `export const` for each into `agent/src/abi/generated.ts`, under a header that says not to edit the file by hand. See [gen:abi](#genabi) for what it needs.
+
+### smoke-claude.ts
+
+<ScriptFile name="smoke-claude.ts" />
+
+<Callout type="warning" title="Paid API call">
+
+This script calls the paid Claude API. Each run is billed to the Anthropic account behind `ANTHROPIC_API_KEY`.
+
+</Callout>
+
+It asks Claude for one proposal and prints the result as JSON. It builds a fixed test vault from the fakes in `agent/test`, evaluates the policy on it and passes the result to the same `ClaudeProposer` the agent uses, with the model `claude-sonnet-5-5` written into the script. So it reads no chain, uses no RPC URL, no wallet and no CDP, and it ignores `MAAT_LOOP_MODEL`. It does not load `.env`, so `ANTHROPIC_API_KEY` must be set in your shell. It is not an npm script, and neither `npm test` nor `npm run typecheck` runs it.
+
+```bash
+cd agent
+npx tsx scripts/smoke-claude.ts
+```
+
+This page shows no output for it, because the script calls the paid API.
+
+## Related
+
+- [Agent configuration](/docs/reference/agent-configuration): the settings these scripts read.
+- [Run the agent](/docs/guides/run-the-agent): the steps for a first dry run and for going live.
+- [Run the tests](/docs/guides/run-the-tests): the contract, agent and website tests together.
+- [The treasury loop](/docs/concepts/treasury-loop): what one round does.

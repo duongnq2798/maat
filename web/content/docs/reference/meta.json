@@ -1,0 +1,15 @@
+{
+  "title": "Reference",
+  "pages": [
+    "mandate-vault",
+    "events",
+    "errors",
+    "types",
+    "market-calendar",
+    "adapters",
+    "agent-configuration",
+    "agent-scripts",
+    "base-addresses",
+    "default-parameters"
+  ]
+}

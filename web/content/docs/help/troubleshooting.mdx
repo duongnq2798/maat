@@ -1,0 +1,184 @@
+---
+title: Troubleshooting
+description: "Fixes for problems that happened while building and testing Maat: line endings, Foundry versions, fork RPCs, submodules and gas."
+type: help
+audience: [developer, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - agent/README.md
+  - .gitattributes
+  - contracts/foundry.toml
+  - contracts/.env.example
+  - agent/.env.example
+  - agent/src/exec/calls.ts
+  - agent/test/integration/anvil.ts
+  - agent/test/types.test.ts
+next: [guides/run-the-tests, help/faq]
+---
+
+Every problem on this page comes from the repository's own record: the README, the plans, the agent's runbook, a fix in the git history, or a message that the test code prints. Each one has the same four parts: what you see, why it happens, how to fix it and how to confirm the fix. Nothing is deployed and the agent has not run live, so these are setup and test problems on a developer machine, not problems of a running system.
+
+Where the repository holds the exact text of a message, this page quotes it. Where it does not, the page describes the symptom and says so, instead of making up a message. The shorter lists of common mistakes in the [Quickstart](/docs/get-started/quickstart#common-mistakes), [Run the tests](/docs/guides/run-the-tests#common-mistakes) and [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#common-mistakes) cover the same ground, and this page goes deeper on them.
+
+| What you see | Where to look |
+| --- | --- |
+| A clone on Windows fails while it fetches submodules | [A recursive clone fails on Windows](/docs/help/troubleshooting#a-recursive-clone-fails-on-windows) |
+| `npm test` in `agent/` fails two enum parity tests on a Windows checkout | [Windows line endings break two agent tests](/docs/help/troubleshooting#windows-line-endings-break-two-agent-tests) |
+| A test that calls a B20 token fails on an old Foundry | [Foundry is too old for the B20 hardfork](/docs/help/troubleshooting#foundry-is-too-old-for-the-b20-hardfork) |
+| A fork suite is skipped, cannot read old state or gets an HTTP 429 | [A fork test is skipped or cannot read old state](/docs/help/troubleshooting#a-fork-test-is-skipped-or-cannot-read-old-state) |
+| The agent's fork test cannot start a node or deploy the vault | [The agent fork test fails on the wrong Anvil](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil) |
+| The agent's fork test prints nothing for minutes | [The agent fork test looks stuck](/docs/help/troubleshooting#the-agent-fork-test-looks-stuck) |
+| A transaction records `SWAP_FAILED` for a swap that works with more gas | [A swap is recorded as SWAP_FAILED on a low gas limit](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit) |
+
+## A recursive clone fails on Windows
+
+**Symptom.** On Windows, `git clone --recursive`, or `git submodule update --init --recursive`, fails while Git checks out the submodules nested inside `contracts/lib/v4-core`. The README says these nested submodules hit the Windows path-length limit. It does not record the message, so this page does not quote one.
+
+**Cause.** `contracts/lib/v4-core` is a submodule that has three submodules of its own: forge-std, solmate and openzeppelin-contracts. A recursive clone fetches them as well, into paths that are deeper still, and Windows limits how long a path can be. Maat does not need them. Its Solidity imports only `TickMath` and `FullMath` from `v4-core`, through the remapping `v4-core/=lib/v4-core/src/`, and the README says to initialize only the two direct submodules.
+
+**Fix.** Delete the failed clone, clone into a short path, such as a folder close to the root of a drive, and initialize only the two direct submodules. Do not pass `--recursive`.
+
+```bash
+git clone https://github.com/duongnq2798/maat.git
+cd maat
+git submodule update --init
+```
+
+**Check the fix.** `git submodule status` prints two lines, one for `contracts/lib/forge-std` and one for `contracts/lib/v4-core`, and neither starts with `-`, which is how Git marks a submodule that was not initialized. Then run the refusal test from step 2 of the [Quickstart](/docs/get-started/quickstart#the-five-steps). It passes when the contracts build and the output shows `[PASS] test_refusalIsLoggedNotReverted()`.
+
+## Windows line endings break two agent tests
+
+**Symptom.** On a Windows clone where Git's `core.autocrlf` is `true`, `npm test` in `agent/` fails two tests in [`agent/test/types.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/types.test.ts): the `Reason` and `SessionMode` checks under "enum parity with Types.sol". The `Action` check still passes, because it is the only one of the three enums with no comments in `Types.sol`. The commit that fixed this, `159158d`, recorded it as two agent tests failing on a fresh clone. The repository holds no output of the failure, so this page quotes none.
+
+**Cause.** With `core.autocrlf` on, Git wrote `contracts/src/Types.sol` with CRLF line endings. The test split the file at `\n` only, so every line kept a trailing `\r`. It then removed each comment with a pattern that has to run to the end of the line, and `.` does not match `\r`, so the comment text stayed on the enum member and the list no longer matched the one in the agent's TypeScript.
+
+**Fix.** Use a checkout that contains `159158d`, which is on `main`. It added a [`.gitattributes`](https://github.com/duongnq2798/maat/blob/main/.gitattributes) whose rule `* text=auto eol=lf` checks text files out with LF on every OS, and it changed the test to split on `\r?\n`, so the test passes with either ending. A fresh clone of `main` has both. In an existing clone, `git pull` brings in both too, but it does not rewrite files that are already on disk. The fixed test passes with either ending anyway, and a fresh clone gives you LF files.
+
+**Check the fix.** `git ls-files --eol` shows the line endings Git sees. In a fresh clone the second field for `Types.sol`, which is the working tree, reads `w/lf`. In a clone you updated with `git pull` it can still read `w/crlf`, because Git does not rewrite files that are already on disk. The fixed test passes with either ending. Spacing differs between Git versions.
+
+```bash
+git ls-files --eol contracts/src/Types.sol
+```
+
+In a fresh clone the output looks like this:
+
+```text
+i/lf    w/lf    attr/text=auto eol=lf   contracts/src/Types.sol
+```
+
+The check that matters in both cases is `npm test` in `agent/`, which prints only `passed` counts, as in step 4 of the [Quickstart](/docs/get-started/quickstart#the-five-steps).
+
+## Foundry is too old for the B20 hardfork
+
+**Symptom.** A test that calls a [B20](/docs/help/glossary#b20) token fails on a Foundry older than 1.8.4. Plan 1 names two errors to expect when a test calls a B20 token address, which starts with `0xb2000`: `EvmError: Revert` and `call to non-contract`. No output from an old Foundry is committed, so those two phrases are the plan's words, not a captured log.
+
+**Cause.** A B20 token is a precompile. Its code on Base is only the byte `0xef`, and Foundry before 1.8.4 cannot run it ([Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` so that Foundry runs the B20 precompiles, and the README and the Quickstart name 1.8.4 or newer as the minimum. The README's numbers were measured on Foundry 1.9.0. This is about `forge`. The agent's [fork test](/docs/help/glossary#fork-test) also needs a particular build of Anvil, which has [its own section](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil).
+
+**Fix.** Update Foundry and read the version it reports.
+
+```bash
+foundryup
+forge --version
+```
+
+If the version is still older than 1.8.4, run `foundryup --install stable` and check again, as Plan 1 says.
+
+**Check the fix.** The first line of `forge --version` reads `forge Version: 1.8.4` or a higher number, such as `forge Version: 1.9.0`. The unit suite from the [Quickstart](/docs/get-started/quickstart#the-five-steps), `forge test --no-match-path "test/fork/*"`, ends with `0 failed`. With a Base archive RPC set, as in the next section, both tests in [`B20Smoke.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/B20Smoke.t.sol) pass. Plan 1 uses that file as its check that the precompile runs.
+
+```bash
+cd contracts
+forge test --match-path "test/fork/B20Smoke.t.sol"
+```
+
+## A fork test is skipped or cannot read old state
+
+**Symptom.** You may see one of three things.
+
+- The agent's fork suite is reported as skipped, and the rest of the output looks clean.
+- A fork test fails on its first read of chain state at the pinned block. The repository records no message for this, because it comes from your RPC provider.
+- The RPC answers with HTTP 429, a rate limit. `contracts/.env.example` and Plan 2B both warn about it for public RPCs.
+
+**Cause.** There is one cause for each.
+
+- The agent's fork test reads `BASE_RPC_URL` from the environment of your shell, not from a `.env` file, and the whole suite is skipped when it is empty. A skip is not a failure, which is why the output can look clean.
+- The fork tests use old blocks. The contract fork tests pin two mainnet blocks, and the agent's fork test pins one of them, block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />. A node that does not keep old state cannot serve them, so the README asks for an archive RPC for both fork suites. The agent itself does not need one: `agent/.env.example` says archive is not required for the agent.
+- Public RPCs limit how fast you can call them. `contracts/.env.example` notes that the public endpoint it lists had archive state when it was tested on 2026-11-06, and it suggests a free Alchemy or QuickNode key if you get a 429.
+
+**Fix.** Export an archive RPC URL in the same shell that runs the test, then rerun the suite from its folder: `forge test --match-path "test/fork/*"` in `contracts/`, or `npm run test:integration` in `agent/`.
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
+```
+
+If you get a 429, switch to a provider where you have your own key. Never put that URL in a file you commit, as [Plan 2B](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) says.
+
+**Check the fix.** The contract fork run ends with the line below, from the README, with the counts replaced. The agent's fork run succeeds when Vitest reports every test in the fork file as passed and none as skipped.
+
+```text
+Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
+```
+
+## The agent fork test fails on the wrong Anvil
+
+**Symptom.** `npm run test:integration` in `agent/` stops with a message that [`agent/test/integration/anvil.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/anvil.ts) writes, or it cannot deploy the vault.
+
+- `could not start base-anvil: ...`, then the reason Node gives and the hint `set MAAT_ANVIL_BIN to the base-anvil binary`. If you set `MAAT_ANVIL_BIN`, the name in the message is the path you set.
+- `anvil exited early (code ..., signal ...)`, followed by the same hint. The repository records no cause for an early exit.
+- `anvil did not start within 120 s`, when the node never answers.
+- `port 8547 already answers JSON-RPC; stop that node first`, when another node already listens on that port.
+- On upstream Anvil the node starts but the vault cannot be deployed. The repository records no message for this.
+
+**Cause.** Each message has its own cause.
+
+- The failed deploy: the vault reads each stock's [uiMultiplier](/docs/help/glossary#uimultiplier) when a token is configured, which happens as the vault is created. Upstream Anvil 1.9 serves a B20 token's `decimals()` but reverts on `uiMultiplier()`, so it cannot deploy the vault. Base's own build, `base-anvil`, runs the full B20 precompile. The test starts it with the `--base` flag and `FOUNDRY_BASE=true`. This is a different problem from an old `forge`: the README's contract runs used Foundry 1.9.0, and it is upstream Anvil 1.9 that cannot do this.
+- `could not start base-anvil`: the test starts the binary directly, without a shell. On Windows `base-anvil` is only a shell wrapper, so Node cannot start it, and the test needs the path of the real `anvil.exe`. The hint in the message also says to install the build with `base-foundryup`.
+- The early exit and the start timeout: the repository records no cause. The hint in the message is its advice.
+- The port message is a guard, not a failure of Anvil. The test refuses to attach to a node it did not start, so that it never deploys onto a chain it knows nothing about.
+
+**Fix.** Install Base's build of Anvil once.
+
+```bash
+base-foundryup --install v1.5.1
+```
+
+On Windows, also point `MAAT_ANVIL_BIN` at the real binary, in the same shell that runs the test. On macOS and Linux leave it unset.
+
+```bash
+export MAAT_ANVIL_BIN=<PATH_TO_ANVIL_EXE>   # Windows only, for example ~/.foundry/versions/base-v1.5.1/anvil.exe
+```
+
+For the port message, stop the node that holds port 8547 and run the test again.
+
+**Check the fix.** With `BASE_RPC_URL` exported, `npm run test:integration` reports every test in the fork file as passed and none as skipped. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#run-the-fork-test) has the whole setup.
+
+## The agent fork test looks stuck
+
+**Symptom.** After the node has started, `npm run test:integration` prints nothing for minutes. The agent's README says the run takes 3 to 5 minutes on a public RPC.
+
+**Cause.** The first swap on a cold fork is very slow on a public RPC. The agent's round runner waits 120 s for a receipt by default, which is too short here, so the fork test passes its own, longer waits and the integration config raises Vitest's timeouts. They are long on purpose ([`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts) and [`vitest.integration.config.ts`](https://github.com/duongnq2798/maat/blob/main/agent/vitest.integration.config.ts)).
+
+**Fix.** Wait. Give the run the full 3 to 5 minutes before you stop it. If you stop a run and the next one reports that port 8547 already answers, stop the node that still holds the port first, as in the section above.
+
+**Check the fix.** The run ends with every test in the fork file passed and none skipped.
+
+## A swap is recorded as SWAP_FAILED on a low gas limit
+
+**Symptom.** A transaction that calls `execute` is mined and does not revert, but the [Decision](/docs/help/glossary#decision) it emits has the reason `SWAP_FAILED`, for a swap that works when the transaction gets more gas. Commit `84b31d0` describes it: the estimate leaves too little gas for the calls the vault swallows, so the vault logs `SWAP_FAILED`. A `SWAP_FAILED` is therefore not always a market failure ([Gas estimation](/docs/security/not-claimed#gas-estimation)). A round of the agent that cannot estimate gas halts with a message that begins `gas estimate failed for`, followed by the function and the first line of the error. [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) says what to do about that one.
+
+**Cause.** `execute` and `syncMultiplier` swallow failures of the calls inside them. The swap is in a try/catch, token transfers go through `tryTransfer`, the credit call is a low-level call, and `uiMultiplier()` is read in a try. Because none of these fails the outer call, `eth_estimateGas` converges on a limit that starves the inner call. That is the explanation in the comment in [`agent/src/exec/calls.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/calls.ts).
+
+**Fix.** Never send the plain estimate. The agent sends an explicit gas limit on every transaction:
+
+```text
+gas limit = min(cap, max(floor, estimate * 1.3))
+```
+
+The floor for `execute` is <Fact name="executeGasFloor" />, there is a separate, lower floor for `syncMultiplier`, and the cap is <Fact name="maxGas" />. The vault swallows the same failures however the transaction is sent, so a hand-sent `execute` is exposed too. The repository records the problem only for the agent's own sends. The `cast send` lines for `execute` in the [deployments runbook](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) set no gas limit, so give such a transaction a limit at or above the floor. An [intent](/docs/help/glossary#intent) spends its id as soon as it reaches `execute`, even when the swap fails, so send the retry with a new intent id.
+
+**Check the fix.** The transaction's gas limit is at or above the floor and its `gasUsed` is below the limit. The fork test asserts this for every transaction it sends, and the committed fork-run gas log shows it. A retried intent no longer records `SWAP_FAILED` for a swap that the market allows. Two unit tests cover the rule: `gasLimit` in [`agent/test/calls.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/calls.test.ts), and "sends every transaction with an explicit gas limit at or above its floor" in [`agent/test/runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts).
+
+## If your problem is not here
+
+The common mistakes in the [Quickstart](/docs/get-started/quickstart#common-mistakes), [Run the tests](/docs/guides/run-the-tests#common-mistakes) and [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#common-mistakes) cover the other slips people make. For an agent round that halted, read [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round). If you think you found a security problem, do not open a public issue: see [Report a vulnerability](/docs/security/report-a-vulnerability).

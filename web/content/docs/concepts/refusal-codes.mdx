@@ -1,0 +1,228 @@
+---
+title: Refusal codes
+description: "All refusal reasons the vault can record: what each means, which actions can return it, where it is raised and how the agent reacts."
+type: reference
+audience: [watcher, developer, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/Types.sol
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - agent/src/refusals.ts
+  - web/content/reasons.ts
+next: [get-started/read-a-decision, concepts/nine-checks]
+---
+
+When the vault refuses an action, it records a [Reason](/docs/help/glossary#reason) in the [Decision](/docs/help/glossary#decision) event instead of reverting. This page lists every reason: what it means, which actions can return it, where in the contracts it is raised, and what the agent does with it. Look a code up here when you see it in a ledger row or a log. [The nine checks](/docs/concepts/nine-checks) shows the order in which a `BUY` or a `SELL` meets them.
+
+## All codes
+
+`Reason` is an enum in `Types.sol`. `OK` is 0 and means the action went through. The other <Fact name="refusalCount" /> reasons are refusals or failures, with ids 1 to <Fact name="refusalCount" />. The table is generated from the same data as the site, and each code links to its entry below.
+
+<ReasonTable />
+
+## By group
+
+The groups are for reading only; the contract has no groups. Under each group, one entry per code says which actions can return it and where the code raises it. "Raised in" names the contract function that returns the reason.
+
+### Market
+
+These reasons name a condition outside the vault: the clock, the oracle, the pool or the token's multiplier. For a `BUY` or a `SELL` they come from `GuardLib.checkMarket`. The credit actions that add risk (`BORROW`, and `WITHDRAW_COLLATERAL` against debt) run the same kind of checks on the stocks they hold as collateral.
+
+### MARKET_CLOSED
+
+The market is closed for the mandate's session: a weekend, a holiday or outside the hours. A calendar that cannot be read also counts as closed. See [Market hours](/docs/concepts/market-hours).
+
+- **Returned by:** `BUY`, `SELL`, `BORROW`, and `WITHDRAW_COLLATERAL` while debt is outstanding.
+- **Raised in:** `GuardLib.checkMarket` (through `GuardLib.marketOpen`) and `MandateVault._checkCollateralMarket`.
+
+### FEED_STALE
+
+The latest Chainlink answer is older than `maxStaleness` (default <Fact name="mandate.maxStalenessSec" />). See [Prices and premium](/docs/concepts/prices-and-premium).
+
+- **Returned by:** `BUY`, `SELL`, `BORROW`, and `WITHDRAW_COLLATERAL` against debt.
+- **Raised in:** `GuardLib.checkMarket`, and `GuardLib.collateralHealthy` for collateral.
+
+### BAD_PRICE
+
+A price could not be used. The Chainlink answer is zero, negative, undated or dated in the future, or the read failed, or the pool's [TWAP](/docs/help/glossary#twap) could not be read. For collateral, the feed has no code.
+
+- **Returned by:** `BUY` and `SELL` (feed or TWAP), and `BORROW` and `WITHDRAW_COLLATERAL` against debt (feed only; the pool is not read for collateral).
+- **Raised in:** `GuardLib.checkMarket` (through `PriceLib.readFeed` and `PriceLib.twapPrice`) and `GuardLib.collateralHealthy`.
+
+### PREMIUM_TOO_HIGH
+
+The pool's TWAP differs from the oracle price by more than `maxPremiumBps` (default <Fact name="mandate.maxPremiumBps" />). A gap on either side counts.
+
+- **Returned by:** `BUY` and `SELL` only.
+- **Raised in:** `GuardLib.checkMarket` (through `PriceLib.premiumBps`).
+
+### MULTIPLIER_COOLDOWN
+
+The token's [uiMultiplier](/docs/help/glossary#uimultiplier) changed within the cooldown (default <Fact name="mandate.multiplierCooldownSec" />), a change is scheduled, or the multiplier could not be read. See [Splits and the multiplier](/docs/concepts/splits-and-multiplier).
+
+- **Returned by:** `BUY`, `SELL`, `BORROW`, and `WITHDRAW_COLLATERAL` against debt.
+- **Raised in:** `GuardLib.multiplierBlocked`, called from `GuardLib.checkMarket` and `GuardLib.collateralHealthy`.
+
+### Token and policy
+
+These reasons say that the vault, the token or the action itself is not allowed.
+
+### VAULT_PAUSED
+
+The owner paused the vault. Only `REPAY` still goes through, so debt can always be reduced.
+
+- **Returned by:** every action except `REPAY`.
+- **Raised in:** `MandateVault._check`, before anything else.
+
+### ACTION_NOT_SUPPORTED
+
+Credit is switched off: the mandate's `creditAdapter` is `address(0)`.
+
+- **Returned by:** `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`.
+- **Raised in:** `MandateVault._checkCredit`.
+
+### TOKEN_NOT_ALLOWED
+
+The token is not in the mandate for this action.
+
+- **Returned by:** `BUY` (the token is not allowed), `SELL` (the token has no market), `SUPPLY` (the token is not allowed, or the credit adapter does not support it), `WITHDRAW_COLLATERAL` (the token was never listed, or the adapter does not support it), `BORROW` and `REPAY` (the token is not USDC), and `BORROW` when a supplied stock is exit-only.
+- **Raised in:** `MandateVault._check`, `_checkCredit`, `_checkCollateralMove` and `_checkCollateralMarket`.
+
+### TOKEN_PAUSED
+
+The token's transfers are paused, or its pause state could not be read.
+
+- **Returned by:** `BUY`, `SELL`, `SUPPLY` and `WITHDRAW_COLLATERAL`; also `BORROW` and `WITHDRAW_COLLATERAL` against debt, for any stock held as collateral.
+- **Raised in:** `GuardLib.tokenPaused`, called from `GuardLib.checkMarket`, `GuardLib.collateralHealthy` and `MandateVault._checkCollateralMove`.
+
+### POLICY_BLOCKED
+
+The token's own transfer policy does not allow a leg of the path, or the policy could not be read.
+
+- **Returned by:** `BUY`, `SELL`, `SUPPLY` and `WITHDRAW_COLLATERAL`.
+- **Raised in:** `GuardLib.transferPathAuthorized` for trades, and `GuardLib.transferable` (through `MandateVault._creditPathAuthorized`) for collateral moves.
+
+### Limits
+
+These reasons come from the mandate's size rules and from the funds the vault holds.
+
+### SIZE_LIMIT
+
+The notional is above the per-trade cap (default <Fact name="mandate.perTradeCapUsd" />), or today's spending would go over the daily cap (default <Fact name="mandate.dailyCapUsd" />).
+
+- **Returned by:** `BUY`, `SELL` and `PAY_EXPENSE`. The credit actions are not capped.
+- **Raised in:** `MandateVault._check` and `MandateVault._checkExpense`, both through `_withinCaps`.
+
+### CONCENTRATION
+
+The buy would push one stock past its `maxWeightBps` (default <Fact name="mandate.maxWeightBps" />) of net equity, or the weight could not be measured.
+
+- **Returned by:** `BUY` only.
+- **Raised in:** `MandateVault._check`, through `_weightAfterBuyBps`.
+
+### INSUFFICIENT_BALANCE
+
+The amount is zero, or more than the vault holds (or, for a collateral withdrawal, more than it has supplied).
+
+- **Returned by:** `BUY`, `SELL` and `PAY_EXPENSE` (zero, or above the balance), `SUPPLY` (zero, or above the stock balance), `WITHDRAW_COLLATERAL` (zero, or above what is supplied), `REPAY` (zero, or above the USDC balance), and `BORROW` with an amount of zero.
+- **Raised in:** `MandateVault._check`, `_checkExpense`, `_checkCredit` and `_checkCollateralMove`.
+
+### PAYEE_NOT_ALLOWED
+
+The payee is not on the allowlist. The owner changes the list through the [timelock](/docs/help/glossary#timelock).
+
+- **Returned by:** `PAY_EXPENSE` only.
+- **Raised in:** `MandateVault._checkExpense`.
+
+### Credit
+
+These reasons come from the credit actions. [Credit and the health factor](/docs/concepts/credit-and-health-factor) explains them in context.
+
+### HEALTH_FACTOR_LOW
+
+The action would leave the [health factor](/docs/help/glossary#health-factor) under `minHealthFactor` (default <Fact name="mandate.minHealthFactor" />).
+
+- **Returned by:** `BORROW`, from the projected health factor and again from the adapter's own check when the borrow runs; and `WITHDRAW_COLLATERAL` against debt, from the adapter's check when the withdrawal runs. The preview cannot see that last case.
+- **Raised in:** `MandateVault._healthReason` and `MandateVault._creditFailure`.
+
+### DERISK_WINDOW
+
+Inside the [de-risk window](/docs/help/glossary#de-risk-window), the health factor would be at or above the floor but below `targetHealthFactor` (default <Fact name="mandate.targetHealthFactor" />).
+
+- **Returned by:** `BORROW`, and `WITHDRAW_COLLATERAL` against debt.
+- **Raised in:** `MandateVault._healthReason`, which asks `_inDeriskWindow`.
+
+### CREDIT_FAILED
+
+A credit call failed, or a credit value that a check needed could not be read, so the vault [fails closed](/docs/help/glossary#fail-closed).
+
+- **Returned by:** `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`.
+- **Raised in:** the check phase, when an adapter view is unreadable (`MandateVault._checkCollateralMove`, `_checkBorrow` and `_checkCollateralMarket`), and `MandateVault._performCredit`, when an adapter call fails with anything other than a well-formed health factor error.
+
+### Execution
+
+The checks passed and the action then failed. `previewIntent` cannot predict either reason, because it runs the checks only.
+
+### SWAP_FAILED
+
+The swap reverted, for example because its output would be below the [slippage floor](/docs/help/glossary#slippage-floor). No funds move.
+
+- **Returned by:** `BUY` and `SELL`.
+- **Raised in:** `MandateVault._perform`.
+
+### TRANSFER_FAILED
+
+A token transfer or an approval failed.
+
+- **Returned by:** `PAY_EXPENSE` (the transfer), `BUY` and `SELL` (the approval for the swap), `SUPPLY` and `REPAY` (the approval for the credit adapter).
+- **Raised in:** `MandateVault._perform` and `MandateVault._performCredit`.
+
+## How the agent reacts
+
+The agent is built to [preview](/docs/help/glossary#preview) every [intent](/docs/help/glossary#intent) before it sends anything, and then to look at the preview's reason. The agent is built and fork-tested, and it has not run live. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, it sends nothing, so what follows is what it is built to do when it does send. The rule is all in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
+
+```typescript title="agent/src/refusals.ts#L5-L17"
+export const LOGGABLE_REASONS: ReadonlySet<ReasonName> = new Set<ReasonName>([
+  "MARKET_CLOSED",
+  "FEED_STALE",
+  "BAD_PRICE",
+  "MULTIPLIER_COOLDOWN",
+  "PREMIUM_TOO_HIGH",
+  "TOKEN_PAUSED",
+  "POLICY_BLOCKED",
+  "SIZE_LIMIT",
+  "CONCENTRATION",
+  "HEALTH_FACTOR_LOW",
+  "DERISK_WINDOW",
+]);
+```
+
+Then the gate that decides what to do with a preview:
+
+```typescript title="agent/src/refusals.ts#L21-L26"
+export function gate(preview: PreviewResult, alreadyLogged: boolean): Gate {
+  if (preview === "OK") return { send: true, kind: "execute" };
+  if (preview === "UNKNOWN") return { send: false, why: "guard state unknown (RPC)" };
+  if (!LOGGABLE_REASONS.has(preview)) return { send: false, why: `${preview} not worth a log tx` };
+  return alreadyLogged ? { send: false, why: `${preview} already logged today` } : { send: true, kind: "log-refusal" };
+}
+```
+
+| Preview result | What the agent is built to do |
+| --- | --- |
+| `OK` | Send `execute`. |
+| A reason in the set above | Send the intent anyway, so the refusal is recorded onchain, but only once per reason per UTC day. It journals the later ones as already logged. |
+| Any other reason | Write the intent to its journal and send nothing. A refusal like `INSUFFICIENT_BALANCE` costs no gas. |
+| `UNKNOWN` | Send nothing. The preview call failed, or it returned an id the agent does not know. The journal records the guard state as unknown. |
+
+In dry-run mode the journal records what the agent would have sent. If a preview said `OK` and the vault then returned any other reason, including `SWAP_FAILED` or `TRANSFER_FAILED`, the agent is built to journal a mismatch and halt the round so that a person can look.
+
+A comment in the code calls the set the market-safety story: the market, price and multiplier reasons, a paused token, the transfer policy, size, concentration and the two health factor reasons. Every other reason, for example `VAULT_PAUSED`, `TOKEN_NOT_ALLOWED`, `PAYEE_NOT_ALLOWED`, `INSUFFICIENT_BALANCE` and `CREDIT_FAILED`, is only journaled. `SWAP_FAILED` and `TRANSFER_FAILED` are not in the set either, because the preview cannot return them. [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send) follows the same rule inside a round.
+
+## Why the list only grows
+
+The id in a `Decision` event is the reason's position in the `Reason` enum. `Types.sol` marks the later members as appended and says never to reorder the enum, and `test_transferFailedIsAppendedLast` pins the ids of `SWAP_FAILED` and `TRANSFER_FAILED`. So an id never changes meaning: a log you decode today reads the same way later, and the count of <Fact name="refusalCount" /> can only go up.
+
+Two copies of the list are kept in step with `Types.sol` by tests: the agent's ([types.test.ts](https://github.com/duongnq2798/maat/blob/main/agent/test/types.test.ts)) and the website's ([facts.test.ts](https://github.com/duongnq2798/maat/blob/main/web/test/facts.test.ts)). The table on this page is built from the website's copy. An agent that meets an id it does not know treats the preview as `UNKNOWN` and sends nothing.

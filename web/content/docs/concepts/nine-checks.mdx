@@ -1,0 +1,155 @@
+---
+title: The nine checks
+description: The order in which the vault checks a trade, what each check reads, and the reason code it returns when it fails.
+type: concept
+audience: [developer, evaluator, watcher]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - contracts/src/lib/PriceLib.sol
+  - contracts/test/MandateVault.t.sol
+  - contracts/test/GuardLib.t.sol
+next: [concepts/refusal-codes, concepts/market-hours, security/model]
+---
+
+A `BUY` or a `SELL` moves funds only after it passes up to <Fact name="checksPerTrade" /> checks inside the vault, run in a fixed order (check 9 applies to a `BUY` only).
+The first one that fails decides the [refusal code](/docs/concepts/refusal-codes), the vault records it
+in a [Decision](/docs/help/glossary#decision) event, and no funds move. Nothing the agent sends can skip a check: the vault runs them
+itself, on every `execute` call for a `BUY` or a `SELL`. This page lists the checks in order, says what each one reads, and names the code it returns.
+
+## The order
+
+The vault numbers <Fact name="checksPerTrade" /> checks. Two guards without a number sit in the same order: the pause flag runs
+first, and the balance guard runs after check 7. A dot in the first column marks them.
+
+| # | Check | Refuses with | Where |
+| --- | --- | --- | --- |
+| · | The vault is not paused (every action except `REPAY`) | `VAULT_PAUSED` | `MandateVault._check` |
+| 1 | The token is in the [mandate](/docs/help/glossary#mandate) | `TOKEN_NOT_ALLOWED` | `MandateVault._check` |
+| 2 | The token's transfers are not paused | `TOKEN_PAUSED` | `GuardLib.tokenPaused` |
+| 3 | Every leg of the transfer passes the [B20](/docs/help/glossary#b20) policy registry | `POLICY_BLOCKED` | `GuardLib.transferPathAuthorized` |
+| 4 | The market is open for the mandate's session | `MARKET_CLOSED` | `GuardLib.marketOpen` |
+| 5 | The oracle answer is positive and fresh | `FEED_STALE`, `BAD_PRICE` | `PriceLib.readFeed`, `GuardLib.checkMarket` |
+| 6 | The token's multiplier is stable | `MULTIPLIER_COOLDOWN` | `GuardLib.multiplierBlocked` |
+| 7 | The pool [TWAP](/docs/help/glossary#twap) is close to the oracle | `PREMIUM_TOO_HIGH`, `BAD_PRICE` | `PriceLib.twapPrice`, `PriceLib.premiumBps` |
+| · | The amount is non-zero and covered by the balance | `INSUFFICIENT_BALANCE` | `MandateVault._check` |
+| 8 | The notional fits the per-trade and daily caps | `SIZE_LIMIT` | `MandateVault._withinCaps` |
+| 9 | After a `BUY`, the stock's weight stays within its cap | `CONCENTRATION` | `MandateVault._weightAfterBuyBps` |
+
+The market checks live in one function. Checks 2 to 7 are in `GuardLib.checkMarket`; check 1 and the guards around it are in `MandateVault._check`, which calls `checkMarket` in the middle.
+
+```solidity title="contracts/src/GuardLib.sol#L44-L62"
+    function checkMarket(MarketCheck memory c) internal view returns (Reason, uint256) {
+        IB20Asset t = IB20Asset(c.token);
+        if (tokenPaused(c.token)) return (Reason.TOKEN_PAUSED, 0);
+        if (!transferPathAuthorized(c)) return (Reason.POLICY_BLOCKED, 0);
+        if (!marketOpen(c.calendar, c.sessionMode)) return (Reason.MARKET_CLOSED, 0);
+
+        (bool ok, uint256 oracle, uint256 age) = PriceLib.readFeed(c.feed);
+        if (!ok) return (Reason.BAD_PRICE, 0);
+        if (age > c.maxStaleness) return (Reason.FEED_STALE, 0);
+
+        if (multiplierBlocked(t, c.lastMultiplier, c.multiplierChangedAt, c.multiplierCooldown)) {
+            return (Reason.MULTIPLIER_COOLDOWN, 0);
+        }
+
+        (bool tok, uint256 dex) = PriceLib.twapPrice(c.pool, c.token, c.twapWindow);
+        if (!tok) return (Reason.BAD_PRICE, 0);
+        if (PriceLib.premiumBps(dex, oracle) > c.maxPremiumBps) return (Reason.PREMIUM_TOO_HIGH, 0);
+        return (Reason.OK, oracle);
+    }
+```
+
+Read it top to bottom. Each `if` returns the reason of one check, so the order of the `if` lines is the order of the checks: token paused, transfer policy, market, oracle, multiplier, pool price. The second value it returns is the oracle price, which the vault reuses to value the trade and to compute the slippage floor.
+
+## Why the order matters
+
+Market reasons come first, so a refusal names the outside condition that blocked the trade, not a side
+effect of it. On a Saturday the vault reports `MARKET_CLOSED`, not `FEED_STALE`, even though the feed
+is also old by then. The balance guard runs after the market checks for the same reason: an empty vault
+on a Saturday or a holiday still reports `MARKET_CLOSED`.
+
+Tests pin the order:
+
+- `test_marketReasonTakesPrecedenceOverBalance` shows that a stale feed beats an over-balance buy, and that on a Saturday an empty vault reports `MARKET_CLOSED` for a sell and for a zero-amount buy.
+- `test_pauseIsCheckedBeforeMarketHours` shows that a paused token reports `TOKEN_PAUSED` on a Saturday.
+- `test_weekendBuyIsRefusedInBothModes` buys at a real weekend block, where the NVDAc feed was last updated on the Friday before, and still gets `MARKET_CLOSED` in both [session modes](/docs/help/glossary#session-mode). It is in [MandateVaultFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol).
+
+<Callout type="fork" title="Fork run">
+
+In the fork run, the Saturday buy of GOOGLc is refused with `MARKET_CLOSED`. Because the market check is fourth, that reason also tells you that the vault was not paused, and that the token was allowed, not paused and passed the transfer policy. [How a decision is made](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy) follows the whole round.
+
+</Callout>
+
+## Each check
+
+The tests named below are in [MandateVault.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [GuardLib.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) and [PriceLib.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/PriceLib.t.sol). Several checks are [fail closed](/docs/help/glossary#fail-closed): a read that reverts counts as the unsafe answer, so the trade is refused and recorded.
+
+### Guard: the vault is not paused
+
+Reads the vault's `paused` flag, which only the owner can set. When it is set, every action except `REPAY` returns `VAULT_PAUSED` before any other check runs, so repaying debt still works while the vault is stopped. `test_vaultPaused` shows the refusal for a buy.
+
+### 1. Token allowed
+
+Reads the token's `allowed` flag in the mandate's token settings, which a `BUY` needs to be true. A `SELL` needs only a market (`allowed` is true, or a feed or a pool is still set), so a stock the owner delisted can still be sold ("exit-only"). A token that is not allowed and has no feed and no pool can be neither bought nor sold. See `test_tokenNotAllowed`, `test_exitOnlyTokenCanBeSoldNotBought` and `test_fullyDelistedTokenCannotBeSold`.
+
+### 2. Token not paused
+
+Asks the [B20](/docs/help/glossary#b20) token whether its transfers are paused. A paused token returns `TOKEN_PAUSED`, and so does a token whose `isPaused` call reverts. See `test_refusesPausedToken` and `test_revertingIsPausedFailsClosed`.
+
+### 3. Transfer policy
+
+A B20 token can name sender, receiver and executor policies, and the vault asks the policy registry whether each leg of the transfer path is authorized; a leg that is not authorized, or that cannot be read, returns `POLICY_BLOCKED`. For a `BUY` the legs are the pool as sender and as executor, the vault as receiver, and `tx.origin` as executor; for a `SELL` they are the vault and the swap adapter as senders, the adapter and the pool as receivers, and the adapter and `tx.origin` as executors. Because `tx.origin` is checked, `previewIntent` must be called from the [executor](/docs/help/glossary#executor)'s address. See `test_refusesWhenPolicyBlocksVault`, `test_policyOnSellChecksAdapterAndPool` and `test_revertingPolicyIdFailsClosed`.
+
+### 4. Market open
+
+Asks the calendar contract whether the market is open now, under the mandate's `sessionMode`. A closed market returns `MARKET_CLOSED`, and so does a calendar that reverts. [Market hours](/docs/concepts/market-hours) explains the two modes, daylight saving, holidays and early closes. See `test_refusalIsLoggedNotReverted`, `test_thanksgivingIsMarketClosedAtVaultLevel` and `test_revertingCalendarFailsClosed`.
+
+### 5. Fresh oracle price
+
+Reads the Chainlink answer for the stock. An answer that is zero or negative, has no timestamp, is dated in the future or cannot be read returns `BAD_PRICE`. A readable answer older than `maxStaleness` (default <Fact name="mandate.maxStalenessSec" />) returns `FEED_STALE`. [Prices and premium](/docs/concepts/prices-and-premium) has the details. See `test_refusesStaleFeed`, `test_feedStaleAndBad` and `test_readFeedRejectsBadAnswers`.
+
+### 6. Stable multiplier
+
+A B20 stock has a [uiMultiplier](/docs/help/glossary#uimultiplier) that changes on a split or a dividend. The vault returns `MULTIPLIER_COOLDOWN` when the multiplier differs from the vault's last snapshot, when it changed less than `multiplierCooldown` ago (default <Fact name="mandate.multiplierCooldownSec" />), when an update is scheduled but not yet in effect, or when it cannot be read. [Splits and the multiplier](/docs/concepts/splits-and-multiplier) covers the mechanism. See `test_multiplierChangeStartsCooldown`, `test_pendingMultiplierBlocks` and `test_revertingUiMultiplierFailsClosed`.
+
+### 7. Pool price near the oracle
+
+Reads the pool's [TWAP](/docs/help/glossary#twap) over `twapWindow` and compares it with the oracle price. A pool that cannot be read returns `BAD_PRICE`. A gap larger than `maxPremiumBps` (default <Fact name="mandate.maxPremiumBps" />), measured as a share of the oracle price, returns `PREMIUM_TOO_HIGH`. The gap counts in both directions: a pool price below the oracle is refused the same way as one above it. See `test_refusesPremium`, `test_premiumTooHigh` and `test_premiumBps`.
+
+### Guard: balance and amount
+
+Reads the vault's USDC balance for a `BUY` and its balance of the stock for a `SELL`. An amount of zero, or one above the balance, returns `INSUFFICIENT_BALANCE`. It runs after check 7 so that a market reason wins. See `test_insufficientBalance` and `test_marketReasonTakesPrecedenceOverBalance`.
+
+### 8. Size limits
+
+Takes the trade's notional in USDC: the amount for a `BUY`, the stock amount valued at the oracle price for a `SELL`. It returns `SIZE_LIMIT` when the notional is above the per-trade cap (default <Fact name="mandate.perTradeCapUsd" />), or when today's spending plus the notional would go over the daily cap (default <Fact name="mandate.dailyCapUsd" />). The day is a UTC day, and bill payments count toward the same daily cap. See `test_perTradeCap`, `test_dailyCap` and `test_dailyCapResetsOnUtcDayRollover`.
+
+### 9. Concentration
+
+Applies to a `BUY` only. The vault adds up its net equity (USDC, every listed stock it holds and every stock supplied as collateral, minus any credit debt, so borrowing cannot loosen the cap) and returns `CONCENTRATION` when the bought stock's weight after the buy would be above its `maxWeightBps` (default <Fact name="mandate.maxWeightBps" />). A holding that is not allowed, or whose price is stale or unreadable, counts as zero. An unreadable position or debt amount, or debt at or above the assets, counts as a weight above any cap. See `test_concentration`, `test_concentrationNetsCreditDebt` and `test_unreadableCollateralFailsConcentrationClosed`; the last two are in [MandateVaultCredit.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol).
+
+## After the checks pass
+
+The vault swaps with a minimum output it computes itself from the oracle price and `maxSlippageBps` (default <Fact name="mandate.maxSlippageBps" />), whatever `minOut` the agent sent. The agent can ask for a higher minimum, never a lower one: the vault uses the larger of the two (`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`, `test_agentMinOutAboveFloorIsUsed`). A swap or transfer that fails is recorded as `SWAP_FAILED` or `TRANSFER_FAILED`, and `execute` still does not revert (`test_swapRevertIsRecorded`).
+
+## Other actions
+
+`PAY_EXPENSE`, `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` run their own subsets of these checks. The pause flag applies to all of them except `REPAY`.
+
+| Action | What the vault checks | Works when the market is closed? | Works when the vault is paused? |
+| --- | --- | --- | --- |
+| `PAY_EXPENSE` | The payee is on the allowlist, the amount is non-zero and within the USDC balance, and it fits the per-trade and daily caps | Yes | No |
+| `SUPPLY` | The token is allowed and the credit adapter supports it, the token is not paused, the transfer path passes the policy registry, and the amount is non-zero and within the stock balance | Yes | No |
+| `WITHDRAW_COLLATERAL` | The token is listed and supported, not paused, and the path passes the policy registry; the amount is non-zero and within what is supplied. With debt outstanding it also needs an open market, a live feed and a stable multiplier on every supplied stock, and the adapter's own health check after the withdrawal | Yes with no debt, no with debt | No |
+| `BORROW` | The token is USDC and the amount is non-zero; the market is open; every supplied stock is allowed, not paused, and has a live feed and a stable multiplier; the projected [health factor](/docs/help/glossary#health-factor) stays at or above the floor (the target inside the [de-risk window](/docs/help/glossary#de-risk-window)) | No | No |
+| `REPAY` | The token is USDC, and the amount is non-zero and within the USDC balance | Yes | Yes |
+
+The four credit actions return `ACTION_NOT_SUPPORTED` when the mandate has no credit adapter. They are not limited by the per-trade or daily caps; the health factor bounds them instead. [Credit and the health factor](/docs/concepts/credit-and-health-factor) covers them.
+
+## What the checks do not do
+
+They do not judge whether a trade is a good idea. A trade inside every limit is allowed, even a bad one;
+the limits bound how much a bad trade can cost. They also do not predict how a swap will go: `previewIntent` returns the verdict of the checks, not the execution result, so it cannot see `SWAP_FAILED` or `TRANSFER_FAILED`. See [the threat model](/docs/security/threat-model).

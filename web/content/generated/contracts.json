@@ -1,0 +1,2533 @@
+{
+  "contracts": [
+    {
+      "name": "AaveV4CreditAdapter",
+      "kind": "contract",
+      "file": "contracts/src/adapters/AaveV4CreditAdapter.sol",
+      "notice": "AaveV4CreditAdapter — one Aave V4 spoke position owned by one MandateVault. The adapter is the Aave user: it holds the collateral and the debt, and only its vault can move them. Everything withdrawn or borrowed goes straight to the vault. borrow() and withdraw() re-read the health factor after the action and revert below the vault's minimum, so the minimum holds even if a projection was off.",
+      "functions": [
+        {
+          "name": "borrow",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint256",
+              "name": "minHealthFactor"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "vault",
+          "notice": ""
+        },
+        {
+          "name": "collateralCustodian",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "collateralOperator",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "collaterals",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address[]",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "debt",
+          "kind": "function",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "hasPosition",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "healthFactor",
+          "kind": "function",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "hub",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "Holds every supplied collateral token; the spoke pulls supplies into it and it sends withdrawals out."
+        },
+        {
+          "name": "projectedHealthFactorAfterBorrow",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "HF = collateral value x avgCF / debt value, with the new debt valued at the spoke oracle's USDC price. Matched Aave's own post-borrow HF on a Base fork. Existing debt is rounded up."
+        },
+        {
+          "name": "repay",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "repaid"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "vault",
+          "notice": ""
+        },
+        {
+          "name": "spoke",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "IAaveV4Spoke",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "suppliedOf",
+          "kind": "function",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "supply",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "vault",
+          "notice": ""
+        },
+        {
+          "name": "supportsToken",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "usdc",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "usdcReserveId",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "vault",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "withdraw",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint256",
+              "name": "minHealthFactor"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "withdrawn"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "vault",
+          "notice": ""
+        }
+      ],
+      "events": [],
+      "errors": [
+        {
+          "name": "HealthFactorTooLow",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "healthFactor"
+            },
+            {
+              "type": "uint256",
+              "name": "minHealthFactor"
+            }
+          ],
+          "notice": "Raised by borrow/withdraw when the health factor after the action is below the minimum."
+        },
+        {
+          "name": "LengthMismatch",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "NotVault",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "ReserveMismatch",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "reserveId"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "TransferFailed",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "UnsupportedToken",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "ZeroAddress",
+          "params": [],
+          "notice": ""
+        }
+      ]
+    },
+    {
+      "name": "AerodromeSwapAdapter",
+      "kind": "contract",
+      "file": "contracts/src/adapters/AerodromeSwapAdapter.sol",
+      "notice": "Exact-input swaps directly against an Aerodrome Slipstream pool (no router).",
+      "functions": [
+        {
+          "name": "swapExactIn",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "pool"
+            },
+            {
+              "type": "address",
+              "name": "tokenIn"
+            },
+            {
+              "type": "uint256",
+              "name": "amountIn"
+            },
+            {
+              "type": "uint256",
+              "name": "minOut"
+            },
+            {
+              "type": "address",
+              "name": "recipient"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "amountOut"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "uniswapV3SwapCallback",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "int256",
+              "name": "amount0Delta"
+            },
+            {
+              "type": "int256",
+              "name": "amount1Delta"
+            },
+            {
+              "type": "bytes",
+              "name": "data"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "activePool",
+          "notice": ""
+        }
+      ],
+      "events": [],
+      "errors": [
+        {
+          "name": "BadCallback",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "InsufficientOutput",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amountOut"
+            },
+            {
+              "type": "uint256",
+              "name": "minOut"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "TokenNotInPool",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "TransferFailed",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "notice": ""
+        }
+      ]
+    },
+    {
+      "name": "ICreditAdapter",
+      "kind": "interface",
+      "file": "contracts/src/adapters/ICreditAdapter.sol",
+      "notice": "One lending position owned by one MandateVault. Stock amounts are raw units, USDC has 6 decimals, health factors are WAD (1e18 = 1.00; type(uint256).max with no debt). be bound to the vault). Mutations are low-level calls whose return data is ignored, so neither a revert nor malformed return data can revert the vault's execute().",
+      "functions": [
+        {
+          "name": "borrow",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint256",
+              "name": "minHealthFactor"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": "Borrows USDC to the vault. Reverts HealthFactorTooLow if HF ends below `minHealthFactor`."
+        },
+        {
+          "name": "collateralCustodian",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "Holds supplied `token` and sends it out on withdraw (B20 sender / receiver / executor legs)."
+        },
+        {
+          "name": "collateralOperator",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "Pulls supplied tokens from the adapter (B20 executor leg)."
+        },
+        {
+          "name": "debt",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "hasPosition",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "True while any debt or supplied collateral remains; the vault refuses to switch adapters then."
+        },
+        {
+          "name": "healthFactor",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "projectedHealthFactorAfterBorrow",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "repay",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "repaid"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": "Pulls min(amount, debt) USDC from the vault (approve `amount` first) and repays it."
+        },
+        {
+          "name": "suppliedOf",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "Returns 0 (never reverts) for tokens the adapter does not support; the vault reads it for every listed token."
+        },
+        {
+          "name": "supply",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": "Pulls `amount` of `token` from the vault (approve first), supplies it and enables it as collateral."
+        },
+        {
+          "name": "supportsToken",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "usdc",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "vault",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "withdraw",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "uint256",
+              "name": "minHealthFactor"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "withdrawn"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": "Withdraws collateral to the vault. Reverts HealthFactorTooLow if HF ends below `minHealthFactor`."
+        }
+      ],
+      "events": [],
+      "errors": [
+        {
+          "name": "HealthFactorTooLow",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "healthFactor"
+            },
+            {
+              "type": "uint256",
+              "name": "minHealthFactor"
+            }
+          ],
+          "notice": "Raised by borrow/withdraw when the health factor after the action is below the minimum."
+        },
+        {
+          "name": "NotVault",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "UnsupportedToken",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "notice": ""
+        }
+      ]
+    },
+    {
+      "name": "IMandateVaultEvents",
+      "kind": "interface",
+      "file": "contracts/src/IMandateVaultEvents.sol",
+      "notice": "",
+      "functions": [],
+      "events": [
+        {
+          "name": "ChangeCancelled",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "Decision",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "intentId",
+              "indexed": true
+            },
+            {
+              "type": "Action",
+              "name": "action"
+            },
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            },
+            {
+              "type": "Reason",
+              "name": "reason"
+            },
+            {
+              "type": "bytes32",
+              "name": "rationaleHash"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "ExecutorSet",
+          "params": [
+            {
+              "type": "address",
+              "name": "executor",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "Funded",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "MandateApplied",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "mandateHash",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "MandateChangeQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            },
+            {
+              "type": "Mandate",
+              "name": "mandate"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "MultiplierChangeDetected",
+          "params": [
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "oldMultiplier"
+            },
+            {
+              "type": "uint256",
+              "name": "newMultiplier"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PausedSet",
+          "params": [
+            {
+              "type": "bool",
+              "name": "paused"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PayeeApplied",
+          "params": [
+            {
+              "type": "address",
+              "name": "payee",
+              "indexed": true
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PayeeChangeQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            },
+            {
+              "type": "address",
+              "name": "payee",
+              "indexed": true
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PolicyHashUpdated",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "policyHash"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "RevenueReceived",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "TokenConfigApplied",
+          "params": [
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "TokenConfig",
+              "name": "config"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "TokenConfigChangeQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            },
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "TokenConfig",
+              "name": "config"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "Withdrawn",
+          "params": [
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "notice": ""
+        }
+      ],
+      "errors": []
+    },
+    {
+      "name": "ISwapAdapter",
+      "kind": "interface",
+      "file": "contracts/src/adapters/ISwapAdapter.sol",
+      "notice": "",
+      "functions": [
+        {
+          "name": "swapExactIn",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "pool"
+            },
+            {
+              "type": "address",
+              "name": "tokenIn"
+            },
+            {
+              "type": "uint256",
+              "name": "amountIn"
+            },
+            {
+              "type": "uint256",
+              "name": "minOut"
+            },
+            {
+              "type": "address",
+              "name": "recipient"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "amountOut"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": "Pulls `amountIn` of `tokenIn` from msg.sender, swaps it in `pool`, sends the output and any unused input to `recipient`. Reverts if the output is below `minOut`."
+        }
+      ],
+      "events": [],
+      "errors": []
+    },
+    {
+      "name": "MandateVault",
+      "kind": "contract",
+      "file": "contracts/src/MandateVault.sol",
+      "notice": "MandateVault — \"LLM proposes, contract decides.\" Holds an agent's USDC + tokenized-stock treasury. The executor submits intents; the vault applies the mandate and market guards and records every verdict, including refusals, as a Decision event.",
+      "functions": [
+        {
+          "name": "allowedPayee",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "applyMandate",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "Mandate",
+              "name": "m"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "applyPayee",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "payee"
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "applyTokenConfig",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "TokenConfig",
+              "name": "c"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "cancelChange",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "execute",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "Intent",
+              "name": "intent"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": "allowed"
+            },
+            {
+              "type": "Reason",
+              "name": "reason"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "executor",
+          "notice": ""
+        },
+        {
+          "name": "executor",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "fund",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": "Owner capital injection. Pulls USDC from the owner (approve first) and records it so it is not reported as revenue by notifyRevenue(). Revenue that was already pending stays pending."
+        },
+        {
+          "name": "GRACE_PERIOD",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "A queued change must be applied within this window after its eta, or it expires."
+        },
+        {
+          "name": "lastMultiplier",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "mandate",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "Mandate",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "mandateChangeHash",
+          "kind": "function",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "Mandate",
+              "name": "m"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "mutability": "pure",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "mandateHash",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "multiplierChangedAt",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "notifyRevenue",
+          "kind": "function",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "owner",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "paused",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "payeeChangeHash",
+          "kind": "function",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": "payee"
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "mutability": "pure",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "payees",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address[]",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "policyHash",
+          "kind": "function",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "Commitment to the whole policy: keccak256(abi.encode(mandate, tokens, configs, payees)), where configs[i] = tokenConfig[tokens[i]] (tokens in listing order, delisted ones included) and payees is the current allowlist in payees() order. Emitted as PolicyHashUpdated on construction and every apply."
+        },
+        {
+          "name": "policyRegistry",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "previewIntent",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "Intent",
+              "name": "intent"
+            }
+          ],
+          "returns": [
+            {
+              "type": "Reason",
+              "name": "reason"
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": "Same verdict execute() would reach before acting. Cannot predict SWAP_FAILED / TRANSFER_FAILED / CREDIT_FAILED, nor the adapter's own post-action health check on WITHDRAW_COLLATERAL against debt."
+        },
+        {
+          "name": "queuedAt",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "queueMandate",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "Mandate",
+              "name": "m"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": "Timelocked changes are queued with their full parameters (emitted in the event) and can be applied with exactly those parameters between eta = queuedAt + TIMELOCK and eta + GRACE_PERIOD."
+        },
+        {
+          "name": "queuePayee",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "payee"
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "queueTokenConfig",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "TokenConfig",
+              "name": "c"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            }
+          ],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "recordedUsdc",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "setExecutor",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "newExecutor"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "setPaused",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "bool",
+              "name": "p"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "spentOnDay",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "utcDay"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "syncMultiplier",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "TIMELOCK",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "today",
+          "kind": "function",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "tokenChangeHash",
+          "kind": "function",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "TokenConfig",
+              "name": "c"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "mutability": "pure",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "tokenConfig",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": "allowed"
+            },
+            {
+              "type": "address",
+              "name": "feed"
+            },
+            {
+              "type": "address",
+              "name": "pool"
+            },
+            {
+              "type": "uint16",
+              "name": "maxWeightBps"
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "tokens",
+          "kind": "function",
+          "visibility": "external",
+          "params": [],
+          "returns": [
+            {
+              "type": "address[]",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "usdc",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "usedIntent",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": ""
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "withdraw",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        }
+      ],
+      "events": [
+        {
+          "name": "ChangeCancelled",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "Decision",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "intentId",
+              "indexed": true
+            },
+            {
+              "type": "Action",
+              "name": "action"
+            },
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            },
+            {
+              "type": "Reason",
+              "name": "reason"
+            },
+            {
+              "type": "bytes32",
+              "name": "rationaleHash"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "ExecutorSet",
+          "params": [
+            {
+              "type": "address",
+              "name": "executor",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "Funded",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "MandateApplied",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "mandateHash",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "MandateChangeQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            },
+            {
+              "type": "Mandate",
+              "name": "mandate"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "MultiplierChangeDetected",
+          "params": [
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "oldMultiplier"
+            },
+            {
+              "type": "uint256",
+              "name": "newMultiplier"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PausedSet",
+          "params": [
+            {
+              "type": "bool",
+              "name": "paused"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PayeeApplied",
+          "params": [
+            {
+              "type": "address",
+              "name": "payee",
+              "indexed": true
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PayeeChangeQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            },
+            {
+              "type": "address",
+              "name": "payee",
+              "indexed": true
+            },
+            {
+              "type": "bool",
+              "name": "allowed"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "PolicyHashUpdated",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "policyHash"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "RevenueReceived",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "TokenConfigApplied",
+          "params": [
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "TokenConfig",
+              "name": "config"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "TokenConfigChangeQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            },
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "TokenConfig",
+              "name": "config"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "Withdrawn",
+          "params": [
+            {
+              "type": "address",
+              "name": "token",
+              "indexed": true
+            },
+            {
+              "type": "uint256",
+              "name": "amount"
+            }
+          ],
+          "notice": ""
+        }
+      ],
+      "errors": [
+        {
+          "name": "BadUsdcDecimals",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "ChangeExpired",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "ChangeNotQueued",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "ChangeNotReady",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "changeHash"
+            },
+            {
+              "type": "uint256",
+              "name": "eta"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "CreditPositionOpen",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "IntentAlreadyUsed",
+          "params": [
+            {
+              "type": "bytes32",
+              "name": "id"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "InvalidConfig",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "LengthMismatch",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "NotExecutor",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "NotOwner",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "TransferFailed",
+          "params": [
+            {
+              "type": "address",
+              "name": "token"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "ZeroAddress",
+          "params": [],
+          "notice": ""
+        }
+      ]
+    },
+    {
+      "name": "MarketCalendar",
+      "kind": "contract",
+      "file": "contracts/src/MarketCalendar.sol",
+      "notice": "US equity session calendar in America/New_York time. The owner can only make it stricter; loosening means deploying a new calendar through the vault timelock.",
+      "functions": [
+        {
+          "name": "addHoliday",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "y"
+            },
+            {
+              "type": "uint256",
+              "name": "m"
+            },
+            {
+              "type": "uint256",
+              "name": "d"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        },
+        {
+          "name": "earlyCloseMin",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "etDay"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint16",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "etOffsetSeconds",
+          "kind": "function",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "ts"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": ""
+            }
+          ],
+          "mutability": "pure",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "isHoliday",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "etDay"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "isOpen",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "ts"
+            },
+            {
+              "type": "SessionMode",
+              "name": "mode"
+            }
+          ],
+          "returns": [
+            {
+              "type": "bool",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "localTime",
+          "kind": "function",
+          "visibility": "public",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "ts"
+            }
+          ],
+          "returns": [
+            {
+              "type": "uint256",
+              "name": "etDay"
+            },
+            {
+              "type": "uint256",
+              "name": "weekday"
+            },
+            {
+              "type": "uint256",
+              "name": "minuteOfDay"
+            }
+          ],
+          "mutability": "pure",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "owner",
+          "kind": "getter",
+          "visibility": "public",
+          "params": [],
+          "returns": [
+            {
+              "type": "address",
+              "name": ""
+            }
+          ],
+          "mutability": "view",
+          "access": "anyone",
+          "notice": ""
+        },
+        {
+          "name": "setEarlyClose",
+          "kind": "function",
+          "visibility": "external",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "y"
+            },
+            {
+              "type": "uint256",
+              "name": "m"
+            },
+            {
+              "type": "uint256",
+              "name": "d"
+            },
+            {
+              "type": "uint16",
+              "name": "closeMin"
+            }
+          ],
+          "returns": [],
+          "mutability": "nonpayable",
+          "access": "owner",
+          "notice": ""
+        }
+      ],
+      "events": [
+        {
+          "name": "EarlyCloseSet",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "etDay",
+              "indexed": true
+            },
+            {
+              "type": "uint16",
+              "name": "closeMin"
+            }
+          ],
+          "notice": ""
+        },
+        {
+          "name": "HolidayAdded",
+          "params": [
+            {
+              "type": "uint256",
+              "name": "etDay",
+              "indexed": true
+            }
+          ],
+          "notice": ""
+        }
+      ],
+      "errors": [
+        {
+          "name": "InvalidClose",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "NotOwner",
+          "params": [],
+          "notice": ""
+        },
+        {
+          "name": "ZeroAddress",
+          "params": [],
+          "notice": ""
+        }
+      ]
+    }
+  ],
+  "enums": [
+    {
+      "name": "Action",
+      "file": "contracts/src/Types.sol",
+      "members": [
+        "BUY",
+        "SELL",
+        "SUPPLY",
+        "WITHDRAW_COLLATERAL",
+        "BORROW",
+        "REPAY",
+        "PAY_EXPENSE"
+      ]
+    },
+    {
+      "name": "Reason",
+      "file": "contracts/src/Types.sol",
+      "members": [
+        "OK",
+        "VAULT_PAUSED",
+        "ACTION_NOT_SUPPORTED",
+        "TOKEN_NOT_ALLOWED",
+        "TOKEN_PAUSED",
+        "POLICY_BLOCKED",
+        "MARKET_CLOSED",
+        "FEED_STALE",
+        "BAD_PRICE",
+        "MULTIPLIER_COOLDOWN",
+        "PREMIUM_TOO_HIGH",
+        "SIZE_LIMIT",
+        "CONCENTRATION",
+        "PAYEE_NOT_ALLOWED",
+        "INSUFFICIENT_BALANCE",
+        "SWAP_FAILED",
+        "TRANSFER_FAILED",
+        "CREDIT_FAILED",
+        "HEALTH_FACTOR_LOW",
+        "DERISK_WINDOW"
+      ]
+    },
+    {
+      "name": "SessionMode",
+      "file": "contracts/src/Types.sol",
+      "members": [
+        "REGULAR",
+        "FEED_24_5"
+      ]
+    }
+  ],
+  "structs": [
+    {
+      "name": "Intent",
+      "file": "contracts/src/Types.sol",
+      "fields": [
+        {
+          "type": "bytes32",
+          "name": "id"
+        },
+        {
+          "type": "Action",
+          "name": "action"
+        },
+        {
+          "type": "address",
+          "name": "token"
+        },
+        {
+          "type": "uint256",
+          "name": "amount"
+        },
+        {
+          "type": "uint256",
+          "name": "minOut"
+        },
+        {
+          "type": "address",
+          "name": "payee"
+        },
+        {
+          "type": "bytes32",
+          "name": "rationaleHash"
+        }
+      ],
+      "notice": "BUY: amount = USDC in (6 decimals). SELL / SUPPLY / WITHDRAW_COLLATERAL: token = stock, amount = raw stock amount. BORROW / REPAY: token = USDC, amount = USDC. PAY_EXPENSE: USDC to `payee`."
+    },
+    {
+      "name": "Mandate",
+      "file": "contracts/src/Types.sol",
+      "fields": [
+        {
+          "type": "SessionMode",
+          "name": "sessionMode"
+        },
+        {
+          "type": "uint16",
+          "name": "maxPremiumBps"
+        },
+        {
+          "type": "uint16",
+          "name": "maxSlippageBps"
+        },
+        {
+          "type": "uint32",
+          "name": "maxStaleness"
+        },
+        {
+          "type": "uint32",
+          "name": "multiplierCooldown"
+        },
+        {
+          "type": "uint32",
+          "name": "twapWindow"
+        },
+        {
+          "type": "uint128",
+          "name": "perTradeCapUsd"
+        },
+        {
+          "type": "uint128",
+          "name": "dailyCapUsd"
+        },
+        {
+          "type": "address",
+          "name": "calendar"
+        },
+        {
+          "type": "address",
+          "name": "swapAdapter"
+        },
+        {
+          "type": "address",
+          "name": "creditAdapter"
+        },
+        {
+          "type": "uint64",
+          "name": "minHealthFactor"
+        },
+        {
+          "type": "uint64",
+          "name": "targetHealthFactor"
+        },
+        {
+          "type": "uint32",
+          "name": "deriskWindow"
+        }
+      ],
+      "notice": "USD amounts are USDC units (6 decimals)."
+    },
+    {
+      "name": "TokenConfig",
+      "file": "contracts/src/Types.sol",
+      "fields": [
+        {
+          "type": "bool",
+          "name": "allowed"
+        },
+        {
+          "type": "address",
+          "name": "feed"
+        },
+        {
+          "type": "address",
+          "name": "pool"
+        },
+        {
+          "type": "uint16",
+          "name": "maxWeightBps"
+        }
+      ],
+      "notice": ""
+    }
+  ]
+}

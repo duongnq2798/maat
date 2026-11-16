@@ -1,0 +1,166 @@
+{
+  "env": [
+    {
+      "name": "BASE_RPC_URL",
+      "example": "https://mainnet.base.org",
+      "note": "RPC for Base mainnet (archive not required for the agent itself).",
+      "readBy": "agent",
+      "default": null,
+      "required": true,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_VAULT",
+      "example": "0x0000000000000000000000000000000000000000",
+      "note": "From the deploy logs (deployments/README.md).",
+      "readBy": "agent",
+      "default": null,
+      "required": true,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_EXECUTOR",
+      "example": "0x0000000000000000000000000000000000000000",
+      "note": "The CDP Server Wallet account address; the vault owner must setExecutor() to it.",
+      "readBy": "agent",
+      "default": null,
+      "required": true,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_EXPENSE_PAYEE",
+      "example": "0x0000000000000000000000000000000000000000",
+      "note": "",
+      "readBy": "agent",
+      "default": null,
+      "required": true,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_MODE",
+      "example": "dry-run",
+      "note": "dry-run (default): read, ask Claude, preview, journal; never send. live: also send through CDP.",
+      "readBy": "agent",
+      "default": "dry-run",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_BUILDER_CODE",
+      "example": "",
+      "note": "Builder Code from base.dev (required in live mode).",
+      "readBy": "agent",
+      "default": null,
+      "required": false,
+      "requiredInLive": true
+    },
+    {
+      "name": "MAAT_LOOP_MODEL",
+      "example": "claude-sonnet-5-5",
+      "note": "",
+      "readBy": "agent",
+      "default": "claude-sonnet-5-5",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_DATA_DIR",
+      "example": "./data",
+      "note": "",
+      "readBy": "agent",
+      "default": "./data",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_MAX_TX_PER_DAY",
+      "example": "40",
+      "note": "",
+      "readBy": "agent",
+      "default": "40",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_DEFAULT_DAILY_COMPUTE_USD",
+      "example": "0.5",
+      "note": "",
+      "readBy": "agent",
+      "default": "0.5",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "ANTHROPIC_API_KEY",
+      "example": "",
+      "note": "Anthropic API key (the SDK reads it).",
+      "readBy": "sdk",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "CDP_ACCOUNT_NAME",
+      "example": "maat-executor",
+      "note": "CDP Server Wallet (see agent/README.md)",
+      "readBy": "agent",
+      "default": "maat-executor",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "CDP_API_KEY_ID",
+      "example": "",
+      "note": "",
+      "readBy": "sdk",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "CDP_API_KEY_SECRET",
+      "example": "",
+      "note": "",
+      "readBy": "sdk",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "CDP_WALLET_SECRET",
+      "example": "",
+      "note": "",
+      "readBy": "sdk",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    }
+  ],
+  "scripts": [
+    {
+      "name": "gen:abi",
+      "command": "tsx scripts/gen-abis.ts"
+    },
+    {
+      "name": "typecheck",
+      "command": "tsc --noEmit"
+    },
+    {
+      "name": "test",
+      "command": "vitest run"
+    },
+    {
+      "name": "test:integration",
+      "command": "vitest run --config vitest.integration.config.ts"
+    },
+    {
+      "name": "agent",
+      "command": "node --env-file-if-exists=.env --import tsx src/main.ts"
+    }
+  ],
+  "scriptFiles": [
+    "cdp-setup.ts",
+    "gen-abis.ts",
+    "smoke-claude.ts"
+  ]
+}

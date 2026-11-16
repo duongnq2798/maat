@@ -1,8 +1,9 @@
 import { SITE } from "@/lib/site";
 
 const LINKS = [
+  { href: SITE.docsUrl, label: "Docs" },
   { href: SITE.repoUrl, label: "Source on GitHub" },
-  { href: SITE.evaluateUrl, label: "Verify in 5 minutes" },
+  { href: SITE.quickstartUrl, label: "Verify in 5 minutes" },
   { href: SITE.forkEvidenceUrl, label: "Fork evidence" },
   { href: SITE.licenseUrl, label: "MIT License" },
   { href: SITE.xUrl, label: SITE.xHandle },

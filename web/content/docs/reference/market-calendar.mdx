@@ -1,0 +1,103 @@
+---
+title: MarketCalendar
+description: The calendar contract's functions, the holidays and early closes it ships with, and the rule that it can only get stricter.
+type: reference
+audience: [developer, builder]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/lib/DateLib.sol
+  - contracts/test/MarketCalendar.t.sol
+next: [concepts/market-hours, reference/events]
+---
+
+`MarketCalendar` answers one question for the vault: is the market open at this moment? It works in New York time, applies daylight saving by rule, and ships with a few holidays and early closes. Its owner can only make it stricter, by adding a holiday or moving a close earlier. A calendar that is looser has to be a new contract, switched in through the mandate and its [timelock](/docs/help/glossary#timelock). This page lists each function and the dates the constructor ships. The contract is built and fork-tested, and nothing is deployed yet.
+
+<FunctionIndex contract="MarketCalendar" />
+
+## Functions
+
+The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol). `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules.
+
+### addHoliday
+
+<Fn contract="MarketCalendar" name="addHoliday" />
+
+Only the owner may call it, and any other caller reverts with `NotOwner`. It marks the New York calendar day given by `y`, `m` and `d` (year, month, day) as a holiday and emits `HolidayAdded` with the day number. A holiday closes the day in both [session modes](/docs/help/glossary#session-mode). Nothing removes a holiday, which is one half of why the calendar can only get stricter. Adding a day that is already a holiday emits the event again and changes nothing, and the function does not validate the date.
+
+### setEarlyClose
+
+<Fn contract="MarketCalendar" name="setEarlyClose" />
+
+Only the owner may call it. It sets the early close of one New York day to `closeMin` minutes after midnight and emits `EarlyCloseSet`. The value must be after the open (<Fact name="nyseOpen" />) and before the regular close (<Fact name="nyseClose" />) of the [NYSE session](/docs/help/glossary#nyse-session), and earlier than the day's existing early close if it has one. Otherwise the call reverts with `InvalidClose`, so a close can only move earlier. An early close applies to the `REGULAR` mode only: `FEED_24_5` ignores it.
+
+### etOffsetSeconds
+
+<Fn contract="MarketCalendar" name="etOffsetSeconds" />
+
+Returns the seconds to subtract from a UTC timestamp to get New York time: <Fact name="etOffsetHours.dst" /> during US daylight saving time and <Fact name="etOffsetHours.standard" /> otherwise. Daylight saving runs from the second Sunday in March to the first Sunday in November, and the contract writes the two switch instants in UTC. The rule is fixed in the code, so it needs no yearly update, and it takes the year from the UTC date of the timestamp. [Market hours](/docs/concepts/market-hours#new-york-time-onchain) explains it further.
+
+### localTime
+
+<Fn contract="MarketCalendar" name="localTime" />
+
+Converts a UTC timestamp to New York calendar terms. It returns `etDay`, the day number counted from the Unix epoch in New York time, the weekday with zero for Sunday and six for Saturday, and the minute of the day, counted from local midnight. `isOpen` uses it, and so does the vault when it works out whether the [de-risk window](/docs/help/glossary#de-risk-window) is on. It is a pure function, so it can be called with any timestamp.
+
+### isOpen
+
+<Fn contract="MarketCalendar" name="isOpen" />
+
+Returns true when the market is open at the UTC timestamp `ts` under `mode`. A holiday is closed in both modes. `REGULAR` is open on weekdays from <Fact name="nyseOpen" /> up to, but not including, the close, which is the day's early close if one is set and <Fact name="nyseClose" /> otherwise. `FEED_24_5` is closed all Saturday, open on Sunday from <Fact name="feedEdge" />, open all day from Monday to Thursday, and open on Friday until <Fact name="feedEdge" />. The vault calls it inside a try/catch, so a calendar that reverts counts as closed.
+
+### owner
+
+<Fn contract="MarketCalendar" name="owner" />
+
+The address that may call `addHoliday` and `setEarlyClose`. It is set in the constructor and cannot be changed, and the constructor reverts with `ZeroAddress` for the zero address. The calendar's owner is separate from the vault's owner.
+
+### isHoliday
+
+<Fn contract="MarketCalendar" name="isHoliday" />
+
+True when the New York day with this day number is a holiday. `localTime` gives the number for a timestamp, and `HolidayAdded` logs it. The vault also reads it for the next day, to find the last session day before a holiday.
+
+### earlyCloseMin
+
+<Fn contract="MarketCalendar" name="earlyCloseMin" />
+
+The early close of a New York day, in minutes after midnight, or zero when the day has none. `isOpen` uses it as the close in `REGULAR` mode whenever it is not zero.
+
+## Shipped holidays and early closes
+
+The constructor ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes, so the calendar is useful the day it is deployed. Each early close is at <Fact name="earlyClose" />. The table lists them by date, and the excerpt below is the constructor they come from.
+
+| Date | Kind | Close time |
+| --- | --- | --- |
+| 2026-11-26 | Holiday (Thanksgiving) | Closed all day |
+| 2026-11-27 | Early close | <Fact name="earlyClose" /> |
+| 2026-12-24 | Early close | <Fact name="earlyClose" /> |
+| 2026-12-25 | Holiday (Christmas) | Closed all day |
+| 2027-01-01 | Holiday (New Year) | Closed all day |
+
+```solidity title="contracts/src/MarketCalendar.sol#L30-L38"
+    constructor(address owner_) {
+        if (owner_ == address(0)) revert ZeroAddress();
+        owner = owner_;
+        _addHoliday(2026, 11, 26); // Thanksgiving
+        _addHoliday(2026, 12, 25); // Christmas
+        _addHoliday(2027, 1, 1); // New Year
+        _setEarlyClose(2026, 11, 27, 780); // 13:00
+        _setEarlyClose(2026, 12, 24, 780);
+    }
+```
+
+No other date is in the contract. The owner adds later ones with `addHoliday` and `setEarlyClose`, and a day that is missing counts as an ordinary session, as [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing) explains.
+
+## Related
+
+- [Market hours](/docs/concepts/market-hours): how the two session modes, daylight saving, holidays and the feed edge decide a refusal.
+- [Events](/docs/reference/events#holidayadded): `HolidayAdded` and `EarlyCloseSet`.
+- [Errors](/docs/reference/errors#invalidclose): `InvalidClose`, `NotOwner` and `ZeroAddress` as the calendar raises them.
+- [Types](/docs/reference/types#sessionmode): the `SessionMode` enum.
+- [The nine checks](/docs/concepts/nine-checks): check 4 asks this calendar whether the market is open.

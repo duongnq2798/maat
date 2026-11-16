@@ -1,0 +1,80 @@
+---
+title: Changelog
+description: "Maat's milestones, newest first: what each one added, when, and where to read the code and the spec behind it."
+type: help
+audience: [newcomer, evaluator, developer]
+status: fork-tested
+lastReviewed: 2026-11-07
+sources:
+  - README.md
+  - docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md
+  - docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md
+  - docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md
+  - docs/superpowers/plans/2026-11-07-maat-web-w1.md
+  - docs/superpowers/plans/2026-11-07-maat-docs-center.md
+  - docs/superpowers/specs/2026-11-07-maat-docs-center-design.md
+next: [get-started/status, help/faq]
+---
+
+This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and none is live. No Maat contract is deployed to Base mainnet and the agent has not run live, so each entry says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
+
+Dates are the author dates that `git log --date=short` prints for the first and last commit of each milestone. A commit is cited only after checking that `main` contains it. Work on branches that have not been merged into `main` is not listed, except the docs center, which is the work this site is part of and is marked as not merged.
+
+| Milestone | First commit | Last commit | Merged into `main` |
+| --- | --- | --- | --- |
+| [Docs center](/docs/help/changelog#docs-center) | 2026-11-07 | 2026-11-08, so far | Not yet |
+| [Website](/docs/help/changelog#website) | 2026-11-07 | 2026-11-07 | 2026-11-07 |
+| [Agent runtime](/docs/help/changelog#agent-runtime) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
+| [Credit](/docs/help/changelog#credit) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
+| [Core contracts](/docs/help/changelog#core-contracts) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
+| [Project start](/docs/help/changelog#project-start) | 2026-11-06 | 2026-11-06 | Root commit |
+
+## Docs center
+
+**Dates.** From 2026-11-07 to 2026-11-08, still in progress. This work is on the branch `feat/docs-center` and is not merged into `main` yet, so it has no commit to cite.
+
+**Scope.** The documentation center you are reading: a docs section of the website with guides, concepts, reference, security and help pages, search, and tests that check each page's numbers and code excerpts against the code.
+
+**Read.** [The docs center design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-docs-center-design.md), [the plan](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-07-maat-docs-center.md) and [`web/content/docs`](https://github.com/duongnq2798/maat/tree/main/web/content/docs) (available once this branch is merged).
+
+## Website
+
+**Dates.** 2026-11-07. The first commit is `8ff47e4`. The landing page and its tests were merged in `a189f21`. A later commit, `93f91ca`, was merged in `723283e`, also on 2026-11-07.
+
+**Scope.** The static landing page in `web/`: the interactive Decision engine, the labeled fork ledger, the brand assets, and parity tests that check each number on the page against the contracts and the fork-run gas log. The later commit made the page verifiable and readable for a first visit.
+
+**Read.** [Plan W1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-07-maat-web-w1.md), [the web design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-web-design.md) and [`web/`](https://github.com/duongnq2798/maat/tree/main/web).
+
+## Agent runtime
+
+**Dates.** 2026-11-06. The first commit is `16903ae`, the plan, and the last is `1193248`. The branch was merged in `4700f47` on 2026-11-07.
+
+**Scope.** The TypeScript agent in `agent/`: a vault reader pinned to one block, a rule-based policy, the Claude proposer, a [preview](/docs/help/glossary#preview) from the [executor](/docs/help/glossary#executor), a guarded sender that adds the [Builder Code](/docs/help/glossary#builder-code-erc-8021), the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) sender, the journal, the scheduler and a [fork test](/docs/help/glossary#fork-test) that runs the whole round. The Claude proposer and the CDP sender are tested against fakes only, and the fork run uses a scripted proposer and a local sender.
+
+**Read.** [Plan 2B](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) and [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent).
+
+## Credit
+
+**Dates.** 2026-11-06. The first commit is `c93c9e0`, the plan, and the last is `bcfac11`. The branch was merged in `afedbf7` on 2026-11-07.
+
+**Scope.** Four credit actions, `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`, through an adapter for the [Aave V4](/docs/help/glossary#aave-v4) Equities Hub, with the [health factor](/docs/help/glossary#health-factor) floor and the [de-risk window](/docs/help/glossary#de-risk-window), unit tests and fork tests, and the adapter in the deploy script.
+
+**Read.** [Plan 2A](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) and [`contracts/src/adapters`](https://github.com/duongnq2798/maat/tree/main/contracts/src/adapters).
+
+## Core contracts
+
+**Dates.** 2026-11-06. The first commit is `a5a82ab` and the last is `3af1ad8`. The branch was merged in `55e25b5` on 2026-11-07.
+
+**Scope.** `MarketCalendar`, `PriceLib`, `GuardLib`, the Aerodrome swap adapter and `MandateVault` with its [`Decision`](/docs/help/glossary#decision) log and [timelock](/docs/help/glossary#timelock), the Base mainnet deploy script, unit tests and fork tests.
+
+**Read.** [Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) and [`contracts/`](https://github.com/duongnq2798/maat/tree/main/contracts).
+
+## Project start
+
+**Dates.** 2026-11-06. The first commit is `009577d`, "docs: research, Maat design spec and Plan 1".
+
+**Scope.** The design spec and Plan 1, with a `.gitignore`. The README says all code in the repository was written during the Stocks Maxxing Season Builder Quest, and `009577d` is the first commit.
+
+**Later, across the project.** Some changes on 2026-11-07 belong to no single milestone. Three of them are `159158d`, which checks text files out with LF (see [Troubleshooting](/docs/help/troubleshooting#windows-line-endings-break-two-agent-tests)), `4492eed`, which adds the root README, and `a3ec9dd`, which adds the MIT license.
+
+**Read.** [The design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) and [the README](https://github.com/duongnq2798/maat/blob/main/README.md).
