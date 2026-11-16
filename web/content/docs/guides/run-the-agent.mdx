@@ -378,7 +378,7 @@ cast call "$ADAPTER" "healthFactor()(uint256)" --rpc-url "$BASE_RPC_URL"
 | --- | --- |
 | `paused()` | `true` while the owner has paused the vault. |
 | `executor()` | The address the vault accepts. It must be `MAAT_EXECUTOR`. |
-| `today()` | The UTC day number: the `<DAY>` for the next call, and the `day` of the journal and of `state.json`. |
+| `today()` | The UTC day number: the `<DAY>` for the next call, and the `day` of the journal, of a pending entry and of the `compute` and `txByDay` keys in `state.json`. |
 | `spentOnDay(<DAY>)` | How much of the daily cap the day's trades and bill payments used, in USDC units. The cap is <Fact name="mandate.dailyCapUsd" /> by default. Credit actions do not count. |
 | `debt()` | The adapter's USDC debt, in USDC units. |
 | `healthFactor()` | The position's [health factor](/docs/help/glossary#health-factor) in [WAD](/docs/help/glossary#wad), so `1e18` reads as 1.0. |
@@ -420,7 +420,7 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 
 Git ignores `agent/data/`. Stop the agent before you edit either file: it holds the contents of `state.json` in memory and writes them back after each round.
 
-The folder belongs to one vault. `state.json` does not record which, so when `MAAT_VAULT` changes, the unpaid bill, the refusals logged and the transactions counted per day, and any pending send carry over to the new vault. A round on the new vault then skips a refusal log for a reason the old vault already logged that day.
+The folder belongs to one vault. `state.json` does not record which, so when `MAAT_VAULT` changes, the unpaid bill, the refusals logged per NYSE date, the transactions counted per UTC day, and any pending send carry over to the new vault. A round on the new vault then skips a refusal log for a key the old vault already logged, such as the same reason on the same NYSE date.
 
 ### Journal format
 
@@ -429,9 +429,9 @@ Every line is one JSON object. Its first field is `ts`, the ISO time at which th
 ```typescript title="agent/src/ledger/journal.ts#L8-L18"
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
-  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
+  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; note?: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
   /** Written right after the send returns, before the receipt: with `intent` it brackets the pending window. */
-  | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash: Hex; gas: bigint }
+  | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; note?: string; txHash: Hex; gas: bigint }
   /** A send from an earlier round, settled (applied / dropped) or still pending at round start. */
   | { kind: "reconcile"; runId: string; intentId: Hex; action: string; txHash?: Hex; outcome: "applied" | "pending" | "dropped"; decision?: Decision; note?: string }
   | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
@@ -448,7 +448,7 @@ export type JournalEntry =
 
 `state.json` holds one object of the `Data` shape below, and `pending` holds the sends that are not settled yet:
 
-```typescript title="agent/src/ledger/store.ts#L6-L29"
+```typescript title="agent/src/ledger/store.ts#L6-L31"
 /** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
 export interface PendingTx {
   intentId: Hex;
@@ -456,9 +456,11 @@ export interface PendingTx {
   action: string;
   amount: string;
   gateKind: "execute" | "log-refusal";
-  /** The preview verdict at send time; a log-refusal records this reason as logged. */
+  /** The preview verdict at send time; a log-refusal stored without `refusal` records this reason as logged. */
   preview: string;
   day: string;
+  /** The key a log-refusal records on settle. Older code stored none: such an entry records `day` and `preview`. */
+  refusal?: RefusalKey;
   /** The state block the round read before sending: the getLogs lower bound, and the age origin without `timestamp`. */
   block: string;
   /** That block's timestamp (unix seconds): the age origin of the pending window. Older code stored none. */
@@ -469,14 +471,15 @@ interface Data {
   version: 1;
   compute: Record<string, string>; // day -> usd6
   paidUsd6: string;
-  refusals: Record<string, ReasonName[]>; // day -> reasons logged onchain
+  refusals: Record<string, string[]>; // RefusalKey day (NYSE date, or UTC day number) -> reasons logged onchain
   txByDay: Record<string, number>;
   pending: PendingTx[];
 }
 ```
 
 - `version` must be 1. Any other value stops startup with `unsupported state version N`, and a file that is not valid JSON stops startup too. A missing file starts empty.
-- The keys of `compute`, `refusals` and `txByDay` are UTC day numbers, written as strings.
+- The keys of `compute` and `txByDay` are UTC day numbers, written as strings.
+- The keys of `refusals` are NYSE dates such as `2026-11-26`, and each holds the reasons logged on that date, a `MARKET_CLOSED` with its closed phase after a colon, such as `MARKET_CLOSED:holiday`. A refusal logged while the calendar could not be read, or by an older agent, is keyed by its UTC day number instead.
 - The daily compute cost behind the runway is the average of the recorded days among the 7 UTC days before today. With none recorded, it is `MAAT_DEFAULT_DAILY_COMPUTE_USD`, <Fact name="dailyComputeUsd" /> by default ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
 - The unpaid bill is the total of `compute` minus `paidUsd6`, and never less than zero.
 
@@ -525,17 +528,17 @@ Nobody has run this procedure. It is written from the code that settles a send, 
 
 </Callout>
 
-When the agent settles a send, it does more than clear the entry. For an allowed `PAY_EXPENSE` it adds the amount to `paidUsd6`, and for a logged refusal it records the reason for that day. If you only delete the entry, neither happens: the next round can pay the same bill again, or log the same refusal again. Do this instead:
+When the agent settles a send, it does more than clear the entry. For an allowed `PAY_EXPENSE` it adds the amount to `paidUsd6`, and for a logged refusal it records the refusal key that the entry stores. If you only delete the entry, neither happens: the next round can pay the same bill again, or log the same refusal again. Do this instead:
 
 1. Stop the agent.
 2. Read whether the vault used the intent, with the `usedIntent` call in [Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent) and the entry's `intentId`. If it prints `false`, leave the entry: the agent drops it on its own when the transaction reverts, or after <Fact name="pendingWindowMinutes" /> of chain time with no trace of it. An entry that an older agent wrote has no `timestamp` and is aged in blocks instead. If the transaction was mined and did not revert but `usedIntent` stays `false`, the agent never drops the entry. An `execute` that does not revert marks its intent used, so unless your RPC lags, the transaction was not sent to this vault: see the row for a mined transaction whose intent is not yet used in the table above.
 3. If it prints `true`, the transaction took effect. Find its `Decision` with the `cast logs` command in the same step, from the entry's `block`. Pass `--query-size` if your provider limits the block range: free RPCs cap one query at about 10,000 blocks, and the agent asks for at most <Fact name="logWindowBlocks" />. Compare its reason with the entry's `preview` ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)): if they differ, the agent would also have recorded a mismatch.
 4. Do in `state.json` what the agent would have done:
    - If the entry's `action` is `PAY_EXPENSE` and the `Decision` has `allowed` true, add the entry's `amount` to `paidUsd6`. Both are decimal strings in USDC units, with <Fact name="usdcDecimals" />.
-   - If its `gateKind` is `log-refusal`, add its `preview` reason to `refusals["<day>"]`, where `<day>` is the entry's `day`.
+   - If its `gateKind` is `log-refusal`, add the entry's `refusal.reason` to `refusals["<day>"]`, where `<day>` is its `refusal.day`. An entry that an older agent wrote has no `refusal`: add its `preview` reason to `refusals["<day>"]`, where `<day>` is the entry's `day`.
 5. Delete the entry from `pending`, then start the agent.
 
-A pending entry looks like this, with placeholders for the values that vary. `txHash` is missing until the send has returned a hash. `block` is the block the round read before sending, and `timestamp` is that block's time in Unix seconds; an entry that an older agent wrote has no `timestamp`. `amount` is the intent's amount: USDC units for a `BUY`, `BORROW`, `REPAY` or `PAY_EXPENSE`, and the stock's own units ([raw amount](/docs/help/glossary#raw-amount)) for a `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL`.
+A pending entry looks like this, with placeholders for the values that vary. `txHash` is missing until the send has returned a hash. `block` is the block the round read before sending, and `timestamp` is that block's time in Unix seconds; an entry that an older agent wrote has no `timestamp`. A `log-refusal` entry also has `refusal`, the key it records when it settles, such as `{ "day": "2026-11-26", "reason": "MARKET_CLOSED:holiday" }`. `amount` is the intent's amount: USDC units for a `BUY`, `BORROW`, `REPAY` or `PAY_EXPENSE`, and the stock's own units ([raw amount](/docs/help/glossary#raw-amount)) for a `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL`.
 
 ```json
 {

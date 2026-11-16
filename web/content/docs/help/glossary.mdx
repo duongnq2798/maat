@@ -191,7 +191,7 @@ A read-only call, `previewIntent`, made with `eth_call` as the executor, that re
 
 ### Rationale
 
-The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. Only its `keccak256` goes onchain, as `rationaleHash` in the [Decision](/docs/help/glossary#decision), and the vault does not check it; the text itself is in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
+The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. When the agent logs a `MARKET_CLOSED` refusal, it appends the closed phase to Claude's text, for example `(market closed, weekend)`. Only its `keccak256` goes onchain, as `rationaleHash` in the [Decision](/docs/help/glossary#decision), and the vault does not check it; the text itself is in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
 
 ### Raw amount
 

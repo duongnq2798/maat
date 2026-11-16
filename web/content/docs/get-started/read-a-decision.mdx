@@ -27,7 +27,7 @@ Each row of the ledger is one `Decision`: the vault's verdict on one [intent](/d
 - **`REFUSED · <reason>`.** The vault said no, or the action failed inside it. The intent moved no funds, and the [reason](/docs/help/glossary#reason) is on the public record. [Reading a refusal](#reading-a-refusal) explains the reasons.
 - **Allowed does not mean a good trade.** It only means the intent stayed inside the [mandate](/docs/help/glossary#mandate).
 
-The ledger holds only the intents that were sent. The agent is built to [preview](/docs/help/glossary#preview) each intent first and to send a refusal only for some reasons, at most once per reason per UTC day, and in a [dry run](/docs/help/glossary#dry-run), the default, it sends nothing ([How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts)). A quiet ledger therefore does not mean the agent did nothing. The fork run's four rows are under [From a ledger row to its reasoning](#from-a-ledger-row-to-its-reasoning).
+The ledger holds only the intents that were sent. The agent is built to [preview](/docs/help/glossary#preview) each intent first and to send a refusal only for some reasons, at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in a [dry run](/docs/help/glossary#dry-run), the default, it sends nothing ([How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts)). A quiet ledger therefore does not mean the agent did nothing. The fork run's four rows are under [From a ledger row to its reasoning](#from-a-ledger-row-to-its-reasoning).
 
 ## The Decision event
 
