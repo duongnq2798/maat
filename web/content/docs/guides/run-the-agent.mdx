@@ -348,16 +348,18 @@ A halted round does not stop the loop. The loop prints `round <runId>: halted, s
 
 ## What to watch while it runs
 
-The agent sends no alerts, and the loop keeps going after a halted round. Nothing in this section has run against an agent in live mode. Watch these yourself:
+The agent sends no notification to any outside service, and the loop keeps going after a halted round. Its one alert is the journal's `alert` line with the code `llm-unfunded`: with `MAAT_LLM_PROVIDER=bankr`, when Bankr's gateway answers 402, the agent writes that line and prints `alert llm-unfunded:` followed by the same message. Nothing in this section has run against an agent in live mode. Watch these yourself:
 
 - **The line after each round.** It is `round <runId>: <status>, sent N, skipped M`, or `round failed:` and the error when a round throws. Any status other than `done` needs a look: see [Recover from a halted round](#recover-from-a-halted-round).
-- **The journal's `halted:` and `mismatch` lines.** The two commands below list them.
+- **The journal's `halted:` and `mismatch` lines.** The first two commands below list them.
+- **The journal's `alert` lines.** Each one means the Bankr key's credits or daily budget ran out, and its message says whether the round failed over to the Claude API ([MAAT_LLM_PROVIDER](/docs/reference/agent-configuration#maat_llm_provider)). The third command below lists them.
 - **The executor's ETH.** Nothing tops it up ([Operational costs](/docs/security/not-claimed#operational-costs)), and without gas a send fails and the round halts. `cast balance` prints the balance in wei.
 - **The data folder.** `data/state.json` must persist across restarts, so keep the folder when you restart or move the agent. `data/journal.jsonl` grows without limit, because nothing rotates it.
 
 ```bash title="agent/"
 grep '"kind":"mismatch"' data/journal.jsonl
 grep '"message":"halted:' data/journal.jsonl
+grep '"kind":"alert"' data/journal.jsonl
 cast balance <EXECUTOR_ADDRESS> --rpc-url "$BASE_RPC_URL"
 ```
 
