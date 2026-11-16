@@ -604,7 +604,8 @@ plans are in [`docs/superpowers`](docs/superpowers), and every commit carries a 
 trailer.
 
 Maat holds only its own treasury. It gives no investment advice, confers no shareholder rights and is not
-offered to US persons.
+offered to US persons. Not affiliated with or endorsed by Base, Coinbase, Bankr, Anthropic, Chainlink, Aave or
+Aerodrome.
 
 ## License
 

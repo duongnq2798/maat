@@ -53,6 +53,21 @@ describe("links into the README", () => {
   });
 });
 
+describe("disclaimer", () => {
+  const NOT_AFFILIATED = "affiliated with or endorsed by Base, Coinbase, Bankr, Anthropic, Chainlink, Aave or Aerodrome.";
+  // The README is hard-wrapped, so whitespace is compared as single spaces.
+  const flat = (path: string) => readRepo(path).replace(/\s+/g, " ");
+
+  it("keeps the footer's first sentences and names who Maat is not affiliated with", () => {
+    expect(SITE.disclaimer).toContain("gives no investment advice, confers no shareholder rights and is not offered to US persons.");
+    expect(SITE.disclaimer.endsWith(`Not ${NOT_AFFILIATED}`)).toBe(true);
+  });
+
+  it.each(["README.md", "web/content/docs/get-started/what-is-maat.mdx"])("%s says the same", (path) => {
+    expect(flat(path).includes(NOT_AFFILIATED), path).toBe(true);
+  });
+});
+
 describe("links into the source", () => {
   it.each(["contracts/src/MarketCalendar.sol", "contracts/src/MandateVault.sol"])("%s exists and links at main", (path) => {
     expect(repoFileUrl(path)).toBe(`${SITE.repoUrl}/blob/main/${path}`);

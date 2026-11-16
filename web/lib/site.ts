@@ -16,7 +16,7 @@ export const SITE = {
   forkEvidenceUrl: `${REPO}#base-mainnet-fork-evidence`,
   licenseUrl: `${REPO}/blob/main/LICENSE`,
   disclaimer:
-    "Maat is an experiment built for Base Stocks Maxxing. It holds only its own treasury, gives no investment advice, confers no shareholder rights and is not offered to US persons.",
+    "Maat is an experiment built for Base Stocks Maxxing. It holds only its own treasury, gives no investment advice, confers no shareholder rights and is not offered to US persons. Not affiliated with or endorsed by Base, Coinbase, Bankr, Anthropic, Chainlink, Aave or Aerodrome.",
   tagline: "Every trade is weighed.",
 } as const;
 
