@@ -9,6 +9,7 @@ sources:
   - README.md
   - contracts/test/MandateVault.t.sol
   - contracts/foundry.toml
+  - contracts/test/invariant/MandateVaultInvariants.t.sol
   - contracts/.env.example
   - contracts/test/fork/MandateVaultFork.t.sol
 next: [guides/run-the-tests, guides/reproduce-the-fork-run, security/testing]
@@ -91,7 +92,7 @@ Your full trace shows two things that the ellipses hide here. First, an `emit De
 
 ### Run every contract unit test
 
-This covers the vault, the guards, the calendar, the price math and both adapters. Run it in the same `contracts` folder.
+This covers the vault, the guards, the calendar, the price math and both adapters, and it also runs the [invariant suite](/docs/security/testing#invariant-tests), which takes most of the run's time, about 30 to 40 seconds. Run it in the same `contracts` folder.
 
 ```bash title="contracts/"
 forge test --no-match-path "test/fork/*"

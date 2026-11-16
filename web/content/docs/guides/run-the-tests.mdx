@@ -8,6 +8,7 @@ lastReviewed: 2026-11-07
 sources:
   - README.md
   - contracts/foundry.toml
+  - contracts/test/invariant/MandateVaultInvariants.t.sol
   - agent/package.json
   - web/package.json
   - web/playwright.config.ts
@@ -61,7 +62,7 @@ This is the Development table of the README, with a Folder column and without it
 
 ### Contract unit tests
 
-Needs nothing. This runs the vault, the guards, the calendar, the price math and both adapters against mocks. The first run compiles the contracts.
+Needs nothing. This runs the vault, the guards, the calendar, the price math and both adapters against mocks, and the [invariant suite](/docs/security/testing#invariant-tests) on the same mocks, which takes most of the run's time, about 30 to 40 seconds. The first run compiles the contracts.
 
 ```bash
 cd contracts
