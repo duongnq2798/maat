@@ -1,4 +1,5 @@
 import { CreatePolicyBodySchema } from "@coinbase/cdp-sdk";
+import { zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
 import { executorPolicy } from "../src/exec/cdpPolicy.js";
 
@@ -36,7 +37,7 @@ describe("executorPolicy", () => {
     expect(p.rules[4]).toEqual({
       action: "reject",
       operation: "signEvmTypedData",
-      criteria: [{ type: "evmTypedDataVerifyingContract", addresses: [], operator: "not in" }],
+      criteria: [{ type: "evmTypedDataVerifyingContract", addresses: [zeroAddress], operator: "not in" }],
     });
   });
   it("matches every message, even if CDP anchors the pattern", () => {
