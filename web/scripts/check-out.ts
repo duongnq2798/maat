@@ -1,7 +1,16 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation, checkMarkdownCopies } from "../lib/check-out";
+import { gzipSync } from "node:zlib";
+import {
+  checkDocsIndexes,
+  checkDocsPage,
+  checkExport,
+  checkLandingIsolation,
+  checkMarkdownCopies,
+  checkSearchIndex,
+  SEARCH_INDEX_GZIP_BUDGET,
+} from "../lib/check-out";
 import { siteUrl } from "../lib/site";
 
 const OUT = fileURLToPath(new URL("../out/", import.meta.url));
@@ -15,7 +24,7 @@ const REQUIRED = [
   "apple-icon.png",
   "opengraph-image.png",
   "docs.html",
-  "api/search",
+  "api/search.json",
   "llms.txt",
   "llms-full.txt",
   "md/docs.md",
@@ -59,8 +68,18 @@ if (INDEXES.every((f) => existsSync(join(OUT, f)))) {
   problems.push(...checkDocsIndexes({ llms: read("llms.txt"), llmsFull: read("llms-full.txt"), sitemap: read("sitemap.xml") }, urls));
 }
 
+// The search index: within its gzipped budget, and every result opens an exported page and heading.
+let searchGzipped: number | undefined;
+if (existsSync(join(OUT, "api/search.json"))) {
+  const index = readFileSync(join(OUT, "api/search.json"));
+  searchGzipped = gzipSync(index).length;
+  const page = (path: string) => (known.has(path) ? read(`${path.slice(1)}.html`) : undefined);
+  problems.push(...checkSearchIndex(index.toString("utf8"), searchGzipped, page));
+}
+
 if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
 console.log(`out/ is ready to deploy (landing and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);
