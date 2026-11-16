@@ -49,7 +49,13 @@ describe("landing page", () => {
     expect(section).toHaveTextContent("A simulation of the default mandate, running in your browser.");
     expect(section).toHaveTextContent("The contract is the source of truth.");
     expect(within(section).getByText("default mandate · not the contract")).toBeInTheDocument();
-    expect(section).toHaveTextContent("Thanksgiving on Thu 26 Nov, Christmas on Fri 25 Dec and New Year on Fri 1 Jan");
+    expect(section).toHaveTextContent(
+      "Thanksgiving on Thu 26 Nov, Christmas on Fri 25 Dec, New Year on Fri 1 Jan, Martin Luther King Jr. Day on Mon 18 Jan, " +
+        "Washington's Birthday on Mon 15 Feb, Good Friday on Fri 26 Mar, Memorial Day on Mon 31 May, " +
+        "Juneteenth (observed) on Fri 18 Jun, Independence Day (observed) on Mon 5 Jul, Labor Day on Mon 6 Sep, " +
+        "Thanksgiving on Thu 25 Nov and Christmas (observed) on Fri 24 Dec; " +
+        "early closes at 13:00 on Fri 27 Nov, 13:00 on Thu 24 Dec and 13:00 on Fri 26 Nov",
+    );
     expect(section).toHaveTextContent("53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc");
     expect(section).toHaveTextContent(
       "an NVDAc feed answer 14 s old (the GOOGLc and AAPLc feeds are assumed fresh), multiplier unchanged",

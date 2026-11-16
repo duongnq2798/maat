@@ -57,7 +57,7 @@ The agent previews every intent first, and it sends a refusal onchain only when 
 
 ### What if the calendar misses a holiday?
 
-The calendar ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes up to 2027-01-01, and later holidays need `addHoliday` from the calendar owner. If one is missing, the calendar treats that day as a normal session, so the market check passes. The other checks still run, but the vault can still trade on the last published price until it is older than `maxStaleness`. See [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing).
+The calendar ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes up to 2027-12-24, and later holidays need `addHoliday` from the calendar owner. If one is missing, the calendar treats that day as a normal session, so the market check passes. The other checks still run, but the vault can still trade on the last published price until it is older than `maxStaleness`. See [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing).
 
 ## For developers
 
