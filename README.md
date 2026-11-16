@@ -214,7 +214,7 @@ author dates in `git log`:
 | --- | --- |
 | 2026-11-06 | Design spec and Plan 1; contracts scaffolded with a Base B20 fork smoke test |
 | 2026-11-06 | Core contracts: `MarketCalendar`, `PriceLib`, `GuardLib`, the Aerodrome Slipstream swap adapter and `MandateVault` with its `Decision` log and typed timelock; the deploy script; fork tests against live Base pools, feeds and B20 tokens |
-| 2026-11-06 | Aave V4 credit leg: `AaveV4CreditAdapter`, supply, borrow, repay and collateral withdrawal gated on the market, the collateral and the health factor; fork tests against the MAG7 Spoke, including the full vault credit loop |
+| 2026-11-06 | Aave V4 credit leg: `AaveV4CreditAdapter`; supply and repay through the vault, with borrowing and collateral withdrawal against debt gated on the market, the collateral and the health factor; fork tests against the MAG7 Spoke, including the full vault credit loop |
 | 2026-11-06 | Agent runtime: config, block-pinned vault reader, rule-based policy, Claude proposer, executor preview, journal, ERC-8021 Builder Code, CDP Server Wallet executor, scheduler and CLI; a Base fork run of the full loop |
 | 2026-11-07 | Landing page: facts with sources and parity tests, the fork ledger, the interactive decision engine, brand assets, SEO metadata, the export check and Playwright smoke tests |
 | 2026-11-07 | Contracts, credit, agent and website branches merged; the root README and the MIT license |
