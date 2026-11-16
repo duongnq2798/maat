@@ -436,13 +436,23 @@ session.
 | `sessionMode` | `REGULAR` | NYSE 09:30 to 16:00 ET, holidays and early closes applied |
 | `maxPremiumBps` | 100 | Pool TWAP may differ from the oracle by at most 1% |
 | `twapWindow` | 1800 s | 30-minute TWAP |
-| `maxSlippageBps` | 100 | Minimum swap output is 99% of the oracle-implied amount |
-| `maxStaleness` | 3600 s | Oracle answers older than one hour are stale |
+| `maxSlippageBps` | 150 | Minimum swap output is 98.5% of the oracle-implied amount |
+| `maxStaleness` | 90000 s | Oracle answers older than 25 hours (the feeds' 24 h heartbeat plus 1 h) are stale |
 | `multiplierCooldown` | 1 day | Wait after a corporate-action multiplier change |
 | `perTradeCapUsd` / `dailyCapUsd` | $50 / $100 | Per trade, and per UTC day across trades and bill payments |
 | `maxWeightBps` (per stock) | 4000 | No stock above 40% of net equity after a buy |
 | `minHealthFactor` / `targetHealthFactor` | 1.5 / 2.0 | Borrow floor, and the floor inside the de-risk window |
 | `deriskWindow` | 8 hours | 12:00 to 20:00 ET on Fridays and on weekdays before a market holiday |
+
+`maxStaleness` and `maxSlippageBps` come from Base mainnet, read-only, over the 10 NYSE sessions of Nov 2-6
+and Nov 9-13, 2026. The B20 equity feeds update on a 0.5% price move or a 24 h heartbeat: in session they
+were older than one hour for 45.9% of the time on AAPL, 37.6% on GOOGL and 9.8% on NVDA, and never older
+than 24 h. The worst BUY cost against the oracle (pool spot price plus fee, every 15 minutes) was 121 bps
+on NVDAc, p99 109 bps, so 150 bps costs at most $0.75 on a $50 trade. Simulated $50 BUYs passed
+81% / 60% / 53% of the time (NVDAc / GOOGLc / AAPLc) with the old limits (3600 s staleness, 100 bps
+slippage) and 93% / 98% / 99% with these. Most NVDAc refusals left are `PREMIUM_TOO_HIGH` in the first 45
+minutes after the open, while the 30-minute TWAP still reflects the overnight price. A dead feed is still
+caught, and the premium check is the guard against a frozen price.
 
 ## The agent runtime
 

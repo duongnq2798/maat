@@ -66,9 +66,9 @@ export const FACTS = {
   mandate: fact<MandateFacts>(
     {
       sessionMode: "REGULAR",
-      maxStalenessSec: 3600,
+      maxStalenessSec: 90_000,
       maxPremiumBps: 100,
-      maxSlippageBps: 100,
+      maxSlippageBps: 150,
       twapWindowSec: 1800,
       multiplierCooldownSec: 86_400,
       perTradeCapUsd: 50,

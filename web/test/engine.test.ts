@@ -36,7 +36,7 @@ describe("engine moments (spec §3)", () => {
       ["Token not paused", "transfers active"],
       ["Vault policy", "authorized"],
       ["Market session", "REGULAR · open"],
-      ["Feed freshness", "14s ≤ 3600s"],
+      ["Feed freshness", "14s ≤ 90000s"],
       ["Multiplier stable", "no change 24h"],
       ["DEX premium", "53 ≤ 100 bps"],
       ["Size limits", "$20 ≤ $50 · $100/day"],

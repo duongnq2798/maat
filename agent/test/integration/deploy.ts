@@ -41,7 +41,7 @@ export async function deployStack(url: string) {
   const swap = await deploy("AerodromeSwapAdapter.sol", "AerodromeSwapAdapter", []);
   const credit = await deploy("AaveV4CreditAdapter.sol", "AaveV4CreditAdapter", [predictedVault, USDC, SPOKE, USDC_RESERVE, BASKET.map((t) => t.address), RESERVE_IDS]);
   const mandate = {
-    sessionMode: 0, maxPremiumBps: 100, maxSlippageBps: 100, maxStaleness: 3600, multiplierCooldown: 86400, twapWindow: 1800,
+    sessionMode: 0, maxPremiumBps: 100, maxSlippageBps: 150, maxStaleness: 90000, multiplierCooldown: 86400, twapWindow: 1800,
     perTradeCapUsd: 50_000_000n, dailyCapUsd: 100_000_000n, calendar, swapAdapter: swap, creditAdapter: credit,
     minHealthFactor: 1_500_000_000_000_000_000n, targetHealthFactor: 2_000_000_000_000_000_000n, deriskWindow: 28800,
   };

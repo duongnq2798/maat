@@ -22,8 +22,13 @@ library MaatConfig {
             // 100 not 50: measured in-session TWAP(1800s)-vs-Chainlink premiums at BLOCK_SESSION were
             // NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps (measured in session on a Base fork).
             maxPremiumBps: 100,
-            maxSlippageBps: 100,
-            maxStaleness: 3600,
+            // Worst BUY cost against the oracle (pool spot plus fee, 15-min samples, NYSE sessions of Nov 2-6
+            // and 9-13 2026) was 121 bps on NVDAc, p99 109 bps. 150 costs at most $0.75 on a $50 trade.
+            maxSlippageBps: 150,
+            // The feeds' 24h heartbeat plus 1h. They update on a 0.5% move or every 24h; in those sessions
+            // they were older than 1h for up to 46% of the time (AAPL), never older than 24h. A dead feed is
+            // still caught; the TWAP-vs-oracle premium check is the guard against a frozen price.
+            maxStaleness: 25 hours,
             multiplierCooldown: 1 days,
             twapWindow: 1800,
             perTradeCapUsd: 50e6,

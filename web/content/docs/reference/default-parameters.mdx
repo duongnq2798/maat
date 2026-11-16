@@ -47,6 +47,8 @@ The rows named `mandate.*` are the defaults that `MaatConfig` and the deploy scr
 
 [The mandate](/docs/concepts/mandate) explains what each field limits and which check reads it, and [Configure a mandate](/docs/guides/configure-a-mandate) shows how to change one before you deploy.
 
+Three of the limits come from measurements on Base. `maxPremiumBps` sits above the pool premiums measured on the fork. `maxStaleness` is the feeds' 24-hour heartbeat plus one hour, and `maxSlippageBps` sits above the worst buy cost measured against the oracle, 121 bps, both measured on Base mainnet over ten NYSE sessions in November 2026. [Why these values](/docs/concepts/mandate#why-these-values) has the numbers.
+
 ## Calendar
 
 These come from `MarketCalendar.sol`. The session times and the feed edge are constants in New York time, and the offsets are the rule the contract uses to turn UTC into New York time. The early close is the time that the constructor gives to the early closes it ships. The owner can add holidays and move a close earlier, but cannot make the calendar looser. The dates it ships are listed on [MarketCalendar](/docs/reference/market-calendar#shipped-holidays-and-early-closes).
