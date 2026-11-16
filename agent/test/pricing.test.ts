@@ -34,7 +34,8 @@ describe("costUsd6", () => {
   });
   it("prices Bankr's dotted model id as the dashed one", () => {
     expect(costUsd6("claude-sonnet-5.5", { input_tokens: 10_000, output_tokens: 1_000 }, "bankr")).toBe(30_000n);
-    expect(costUsd6("claude-opus-4.8", MTOK_EACH, "bankr")).toBe(36_750_000n);
+    // $4 + $20 + $0.20 + $5: the opus 5.5 row, not the unknown-model rate an unread dotted id would get
+    expect(costUsd6("claude-opus-5.5", MTOK_EACH, "bankr")).toBe(29_200_000n);
   });
   it("never prices a Bankr call below the Anthropic list rate, token kind by token kind", () => {
     const kinds = [
