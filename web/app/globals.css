@@ -135,6 +135,57 @@
   .pill-line:hover {
     border-color: var(--color-ink);
   }
+  /* Time slider: the track shades the NYSE session of the chosen day, from --open to --close (set inline). */
+  .time-range {
+    --open: 0%;
+    --close: 0%;
+    appearance: none;
+    width: 100%;
+    height: 28px;
+    margin: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .time-range::-webkit-slider-runnable-track {
+    height: 10px;
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--color-line-soft) var(--open),
+      var(--color-accent-soft) var(--open) var(--close),
+      var(--color-line-soft) var(--close)
+    );
+  }
+  .time-range::-moz-range-track {
+    height: 10px;
+    border: 1px solid var(--color-line);
+    border-radius: 999px;
+    background: linear-gradient(
+      to right,
+      var(--color-line-soft) var(--open),
+      var(--color-accent-soft) var(--open) var(--close),
+      var(--color-line-soft) var(--close)
+    );
+  }
+  .time-range::-webkit-slider-thumb {
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    margin-top: -7px;
+    border: 3px solid var(--color-bg);
+    border-radius: 999px;
+    background: var(--color-ink);
+    box-shadow: 0 0 0 1px var(--color-ink);
+  }
+  .time-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: 3px solid var(--color-bg);
+    border-radius: 999px;
+    background: var(--color-ink);
+    box-shadow: 0 0 0 1px var(--color-ink);
+  }
   .navlink {
     padding: 10px 14px;
     border-radius: 999px;

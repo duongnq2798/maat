@@ -16,6 +16,8 @@ const GOOD = [
   '<div role="status" aria-live="polite" aria-atomic="true" class="s">',
   '<div data-verdict="refused" data-reason="MARKET_CLOSED" class="v"><span>Refused</span><span>MARKET_CLOSED</span></div>',
   "</div>",
+  '<section id="try"><div role="status" aria-live="polite" aria-atomic="true" class="s">',
+  '<div data-verdict="allowed" data-reason="OK" class="v"></div></div></section>',
   '<section id="ledger"></section>',
   "</body></html>",
 ].join("");
@@ -34,6 +36,12 @@ describe("checkExport", () => {
     ["the wrong verdict in the live region", GOOD.replace('data-verdict="refused"', 'data-verdict="allowed"'), /verdict/],
     ["a verdict outside the live region", GOOD.replace('role="status"', 'role="none"'), /verdict/],
     ["a wrong title", GOOD.replace(SITE.title, "Maat"), /title/],
+    ["no simulator section", GOOD.replace('id="try"', 'id="trial"'), /#try is missing/],
+    [
+      "the wrong simulator verdict",
+      GOOD.replace('data-verdict="allowed" data-reason="OK"', 'data-verdict="refused" data-reason="OK"'),
+      /simulator's default verdict/,
+    ],
   ])("flags %s", (_name, html, problem) => {
     expect(checkExport(html).join("\n")).toMatch(problem);
   });

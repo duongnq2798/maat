@@ -9,6 +9,7 @@ import { Nav } from "@/components/sections/Nav";
 import { Problem } from "@/components/sections/Problem";
 import { Refusals } from "@/components/sections/Refusals";
 import { TreasuryLoop } from "@/components/sections/TreasuryLoop";
+import { TryIt } from "@/components/sections/TryIt";
 
 export default function Page() {
   return (
@@ -24,6 +25,7 @@ export default function Page() {
         <Problem />
         <HowItWorks />
         <Refusals />
+        <TryIt />
         <Ledger />
         <Mandate />
         <TreasuryLoop />

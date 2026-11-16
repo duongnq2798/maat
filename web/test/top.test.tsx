@@ -28,6 +28,7 @@ describe("nav", () => {
       ["maat", "#top"],
       ["How it works", "#how"],
       ["Refusals", "#reasons"],
+      ["Try it", "#try"],
       ["Ledger", "#ledger"],
       ["Mandate", "#mandate"],
       ["View on GitHub ↗", SITE.repoUrl],
@@ -47,7 +48,7 @@ describe("hero", () => {
     expect(stat("TYPED REFUSALS")).toBe("19");
     expect(stat("RULE TIMELOCK")).toBe("24h");
     expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.evaluateUrl);
-    expect(screen.getByRole("link", { name: "How it weighs a trade" })).toHaveAttribute("href", "#how");
+    expect(screen.getByRole("link", { name: "Try to make it say no" })).toHaveAttribute("href", "#try");
     expect(screen.getByRole("group", { name: "Choose a moment" })).toBeInTheDocument();
     expect(document.getElementById("top")).not.toBeNull();
   });
