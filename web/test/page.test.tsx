@@ -53,13 +53,14 @@ describe("landing page", () => {
     expect(section).toHaveTextContent("53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc");
     // A yes means the simulated checks passed and the rest were assumed to, so the notes say which are which.
     expect(section).toHaveTextContent(
-      "Checks 2, 3, 5, 6 and 7, marked fork, are assumed to pass with the values measured on Base at block 53,551,627: token not paused",
+      "Checks 2, 3, 5, 6 and 7, marked fork when they run, are assumed to pass with the values measured on Base at block 53,551,627: token not paused",
     );
     expect(section).toHaveTextContent(
       "an NVDAc feed answer 14 s old (the GOOGLc and AAPLc feeds are assumed fresh), multiplier unchanged",
     );
-    expect(section).toHaveTextContent("Simulated. Checks 1, 4, 8 and 9, plus the balance check: the market session");
-    expect(section).toHaveTextContent("the token list, the per-trade and daily caps, the weight and the vault's USDC balance.");
+    // Listed in check order, so the numbers and the list line up.
+    expect(section).toHaveTextContent("Simulated. Checks 1, 4, 8 and 9, plus the balance check: the token list, the market session (NYSE");
+    expect(section).toHaveTextContent("), the per-trade and daily caps, the weight and the vault's USDC balance.");
     expect(section).toHaveTextContent("Each day starts with $200 USDC and no stock");
     expect(within(section).getByRole("link", { name: "MarketCalendar.sol" })).toHaveAttribute(
       "href",
