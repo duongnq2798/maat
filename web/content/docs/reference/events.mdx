@@ -12,7 +12,7 @@ sources:
 next: [guides/watch-decisions-onchain, get-started/read-a-decision]
 ---
 
-The vault and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested, and nothing is deployed yet.
+The [vault](/docs/help/glossary#vault) and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 | Event | Emitted by |
 | --- | --- |
@@ -40,7 +40,7 @@ The vault and the calendar are built to write their history to the chain as even
 
 <EventEntry contract="MandateVault" name="Decision" />
 
-Emitted once by every `execute` call that does not revert, whether the [intent](/docs/help/glossary#intent) was allowed or refused, so it is the vault's ledger of verdicts. `allowed` is true only when `reason` is `OK`, and otherwise `reason` names the check that refused or the kind of failure. `intentId` and `token` are indexed, so a log filter can follow one intent or one token. `rationaleHash` is the hash the intent carried: the vault records it without checking it. [Read a decision](/docs/get-started/read-a-decision#the-decision-event) explains every field and how to match a row to its transaction.
+Emitted once by every `execute` call that does not [revert](/docs/help/glossary#revert), whether the [intent](/docs/help/glossary#intent) was allowed or refused, so it is the vault's ledger of verdicts. `allowed` is true only when `reason` is `OK`, and otherwise `reason` names the check that refused or the kind of failure. `intentId` and `token` are indexed, so a log filter can follow one intent or one token. For a `PAY_EXPENSE`, `token` is whatever the intent carried and the vault does not check it, so read `action` too when you follow one token. `rationaleHash` is the hash the intent carried: the vault records it without checking it. In an `execute` receipt, `MultiplierChangeDetected` (from the sync, when the multiplier changed) and `RevenueReceived` (when the intent passed the checks and new USDC had arrived) come before `Decision`, and `Decision` is the last log the vault emits in that call. [Read a decision](/docs/get-started/read-a-decision#the-decision-event) explains every field and how to match a row to its transaction.
 
 ### ChangeCancelled
 

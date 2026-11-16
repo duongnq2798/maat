@@ -7,6 +7,8 @@ status: fork-tested
 lastReviewed: 2026-11-07
 sources:
   - contracts/src/MandateVault.sol
+  - contracts/src/IMandateVaultEvents.sol
+  - contracts/src/GuardLib.sol
   - contracts/test/MandateVaultAdmin.t.sol
   - contracts/test/fork/MandateVaultFork.t.sol
 next: [guides/change-a-rule, security/threat-model]
@@ -58,7 +60,7 @@ Three of the instant functions fit in one excerpt. None of them looks at a timer
     }
 ```
 
-`withdraw` sends only to the owner address, and it moves only what the vault holds. Collateral supplied to Aave stays in the position until a `WITHDRAW_COLLATERAL` brings it back. Every owner function emits an event. Other than refusing the zero address, the vault does not check a new executor. The transfer-policy check reads `tx.origin` as an executor leg, so a new executor needs to be an address that the stock's [B20](/docs/help/glossary#b20) policy lets through ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
+`withdraw` sends only to the owner address, and it moves only what the vault holds. Collateral supplied to Aave stays in the position until a `WITHDRAW_COLLATERAL` brings it back. Every owner function emits an event. Other than refusing the zero address, the vault does not check a new executor. The transfer-policy check reads `tx.origin` as an executor leg, so the address that sends the transaction (the executor itself when it is an EOA) needs to be one that each stock's [B20](/docs/help/glossary#b20) executor policy lets through ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
 
 ## What the executor can do
 
@@ -84,6 +86,8 @@ A call from any other address reverts with `NotExecutor`, and an intent id works
 `test_executorCannotUseOwnerFunctions` has the executor call `withdraw`, `queueMandate`, `queueTokenConfig`, `queuePayee`, `fund`, `setExecutor` and `setPaused`, and every call reverts with `NotOwner`. `test_nonOwnerCannotCancelChange` and `test_nonOwnerCannotApplyReadyChanges` show the same for `cancelChange` and the three `apply` functions, for the executor and for a stranger.
 
 ## The timelock
+
+The timelock is public notice, not a lock on the funds. Every rule change is announced in a queue event that carries its full new values, at least <Fact name="timelockHours" /> before it can be applied, so anyone who reads the vault's logs can see it coming. It does not protect the funds from the owner, because `withdraw`, `setPaused` and `setExecutor` take effect at once ([Escape hatches](#escape-hatches)). Nothing in this repository watches the queue events. [Queued changes give notice](/docs/guides/watch-decisions-onchain#queued-changes-give-notice) shows how to read them with `cast`.
 
 A rule change is one of three kinds: a new [mandate](/docs/help/glossary#mandate), new settings for one stock, or a payee added or removed. Each goes through the same four steps.
 
@@ -156,7 +160,7 @@ Three of the instant actions are what the README calls the owner's escape hatche
 - **`setExecutor`.** The owner swaps the executor key. The old key stops working at once (`test_rotatingExecutorRevokesOldOne`).
 - **`withdraw`.** The owner takes tokens out of the vault, to the owner address only (`test_withdrawOnlyGoesToOwner`).
 
-`withdraw` cannot reach collateral that is supplied to Aave. To unwind a position, the owner makes itself the executor, sends `REPAY` and then `WITHDRAW_COLLATERAL`, and withdraws; [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover) has the steps. Changing a rule is never instant: even a tighter limit waits for the timelock.
+`withdraw` cannot reach collateral that is supplied to Aave. To unwind a position, the owner makes itself the executor, sends `REPAY` and then `WITHDRAW_COLLATERAL`, and withdraws. `REPAY` goes through a pause, but `WITHDRAW_COLLATERAL` does not: if the vault is paused, unpause it before the withdrawal, or the vault refuses it with `VAULT_PAUSED` and its intent id is used up. Each stock it takes back must also not be paused by the token itself: a stock whose own transfers are paused, or whose pause flag cannot be read, returns `TOKEN_PAUSED` ([check 2](/docs/concepts/nine-checks#2-token-not-paused)). [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover#unwind-the-credit-position) has the steps. Changing a rule is never instant: even a tighter limit waits for the timelock.
 
 ## If a key leaks
 

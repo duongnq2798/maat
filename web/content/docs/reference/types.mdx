@@ -7,10 +7,12 @@ status: fork-tested
 lastReviewed: 2026-11-07
 sources:
   - contracts/src/Types.sol
+  - contracts/src/MandateVault.sol
+  - agent/src/units.ts
 next: [concepts/mandate, concepts/refusal-codes]
 ---
 
-The types in `Types.sol` form the vocabulary of the vault. An `Intent` is what the executor sends, a `Mandate` and a `TokenConfig` are the rules the vault applies to it, and `Action`, `Reason` and `SessionMode` are the enums they use. This page shows each field and member, with the unit of every field and the id of every enum member. The contracts are built and fork-tested, and nothing is deployed yet.
+The types in `Types.sol` form the vocabulary of the [vault](/docs/help/glossary#vault). An `Intent` is what the executor sends, a `Mandate` and a `TokenConfig` are the rules the vault applies to it, and `Action`, `Reason` and `SessionMode` are the enums they use. This page shows each field and member, with the unit of every field and the id of every enum member. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 | Type | Kind | What it is |
 | --- | --- | --- |
@@ -27,16 +29,38 @@ The types in `Types.sol` form the vocabulary of the vault. An `Intent` is what t
 
 <TypeEntry name="Intent" />
 
-An `Intent` is the one argument of `execute` and `previewIntent`. Its `token` and `amount` mean different things for each action, as the table shows, and amounts are always raw units: USDC has <Fact name="usdcDecimals" />, and a stock uses its own decimals.
+An `Intent` is the one argument of `execute` and `previewIntent`. Its `token` and `amount` mean different things for each action, as the table shows, and amounts are always [raw units](/docs/help/glossary#raw-amount): USDC has <Fact name="usdcDecimals" />, and a stock uses its own decimals.
 
 | Action | `token` | `amount` |
 | --- | --- | --- |
 | `BUY` | The stock to buy | USDC to spend |
 | `SELL`, `SUPPLY`, `WITHDRAW_COLLATERAL` | The stock | The raw stock amount |
 | `BORROW`, `REPAY` | USDC | USDC |
-| `PAY_EXPENSE` | Not used by the checks or the transfer, and the agent sends USDC | USDC, sent to `payee` |
+| `PAY_EXPENSE` | Not read by the checks or the transfer, but the `Decision` event logs it. The agent sends USDC | USDC, sent to `payee` |
 
-The other fields work as follows. `id` is unique per intent: the vault accepts each id once, whether the intent is allowed or refused, and reverts with `IntentAlreadyUsed` on a second use. `minOut` is the least the agent will accept from a swap, in raw units of the token it receives, and the vault uses the larger of it and its own floor, so a low `minOut` never loosens the floor. `payee` is read only for `PAY_EXPENSE`, and the address must be on the allowlist. `rationaleHash` is the hash of the agent's rationale text: the `Decision` event records it, and the vault does not check it.
+The other fields work as follows. `id` is unique per intent: the vault accepts each id once, whether the intent is allowed or refused, and [reverts](/docs/help/glossary#revert) with `IntentAlreadyUsed` on a second use. It puts no other condition on the value: any `bytes32` not used before is accepted, which is why [Deploy your own vault](/docs/guides/deploy-your-own-vault) builds its ids with `cast keccak`. `previewIntent` does not read `usedIntent`, so a reused id [previews](/docs/help/glossary#preview) normally and `execute` then reverts. The agent derives each id from its run id and the intent's place in the [round](/docs/help/glossary#round) (`intentId` in `agent/src/intent.ts`), records the send as pending before it goes out, and settles a send whose receipt it lost by reading `usedIntent(id)` in the next round ([Step 3: preview and send](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). `minOut` is the least the agent will accept from a swap, in raw units of the token it receives, and the vault uses the larger of it and its own floor, so a low `minOut` never loosens the floor. `payee` is read only for `PAY_EXPENSE`, and the address must be on the allowlist. `rationaleHash` is the hash of the agent's [rationale](/docs/help/glossary#rationale) text: the `Decision` event records it, and the vault does not check it.
+
+NVDAc reports 8 decimals: the [fork test](/docs/help/glossary#fork-test) `test_readsB20StateThroughPrecompile` in [B20Smoke.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/B20Smoke.t.sol) asserts it at block <Fact name="forkBlock" />. Read `decimals()` for any other stock. The vault values a raw stock amount with the [feed](/docs/help/glossary#chainlink-equity-feed) price of one whole token, which is `10 ** decimals()` raw units, and that price has <Fact name="priceDecimals" />. The agent converts with the formula of the vault's `_valueUsd` and its inverse:
+
+```typescript title="agent/src/units.ts#L15-L24"
+/** Mirrors MandateVault._valueUsd: raw stock units x 8-decimal price -> USDC units, truncating. */
+export function valueUsd6(raw: bigint, price8: bigint, decimals: number): bigint {
+  return (raw * price8) / 10n ** BigInt(decimals + 2);
+}
+
+/** Raw stock units worth at most `usd6` at `price8`. */
+export function rawForUsd6(usd6: bigint, price8: bigint, decimals: number): bigint {
+  if (price8 <= 0n) return 0n;
+  return (usd6 * 10n ** BigInt(decimals + 2)) / price8;
+}
+```
+
+[units.test.ts](https://github.com/duongnq2798/maat/blob/main/agent/test/units.test.ts) checks both directions with the NVDA feed answer at the fork block:
+
+```text
+valueUsd6(100000000, 18667486580, 8) = 100000000 * 18667486580 / 10^10 = 186674865  (one NVDAc, in USDC units)
+rawForUsd6(20000000, 18667486580, 8) = 20000000 * 10^10 / 18667486580  = 10713815   (raw NVDAc worth at most 20 USDC)
+```
 
 ### Mandate
 
@@ -68,7 +92,7 @@ A `TokenConfig` holds the settings of one stock token, and the vault stores one 
 | `pool` | The [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool of this token and USDC, which the vault swaps in and reads the pool price from |
 | `maxWeightBps` | The most the token may weigh in the vault's net equity after a `BUY`, in basis points |
 
-A token with a `feed` or a `pool` set still has a market when `allowed` is false. That is exit-only: the vault can still sell it, and a `BUY` or `SUPPLY` is refused. Clearing both `feed` and `pool` removes the market, and the vault can no longer sell the token.
+A token whose config keeps its `feed` and `pool` still has a market when `allowed` is false. That is [exit-only](/docs/help/glossary#exit-only): the vault can still sell it, and a `BUY` or `SUPPLY` is refused. A config that sets only one of the two is refused with `InvalidConfig` when it is applied, so the vault never stores one. Clearing both `feed` and `pool` removes the market, and the vault can no longer sell the token.
 
 ## Enums
 
@@ -76,7 +100,7 @@ A token with a `feed` or a `pool` set still has a market when `allowed` is false
 
 <TypeEntry name="Action" />
 
-An `Action` says what an intent asks for, and the `Decision` event logs the member's id. `BUY` and `SELL` are the two trades, and they run [the nine checks](/docs/concepts/nine-checks) (check 9 is for a `BUY` only). `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` are the credit actions, and an unpaused vault whose mandate has no credit adapter refuses them with `ACTION_NOT_SUPPORTED`. `PAY_EXPENSE` pays an allowlisted payee in USDC and counts toward the daily cap. Every action other than the two trades runs [its own checks](/docs/concepts/nine-checks#other-actions).
+An `Action` says what an intent asks for, and the `Decision` event logs the member's id. `BUY` and `SELL` are the two trades, and they run [the nine checks](/docs/concepts/nine-checks) (check 9 is for a `BUY` only). `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` are the credit actions, and an unpaused vault whose mandate has no credit adapter refuses them with `ACTION_NOT_SUPPORTED`. `PAY_EXPENSE` pays an allowlisted payee in USDC. Like a trade, it must fit the per-trade cap, and it counts toward the daily cap. Every action other than the two trades runs [its own checks](/docs/concepts/nine-checks#other-actions).
 
 ### Reason
 
