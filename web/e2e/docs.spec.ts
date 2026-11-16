@@ -1,4 +1,4 @@
-import { expect, type Page, test } from "@playwright/test";
+import { expect, type Locator, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
@@ -77,13 +77,25 @@ test.describe("search", () => {
     await expect(page).toHaveURL(/\/docs$/);
   });
 
-  test("a query with no match shows the empty state", async ({ page }) => {
+  test("a query with no match shows the empty state, with the FAQ and the Glossary to browse", async ({ page }) => {
     await page.goto("/docs");
     const dialog = await openSearch(page);
     await dialog.getByRole("combobox").fill("zzzzqqq");
-    await expect(dialog.getByRole("status").filter({ hasText: "No results" })).toHaveText(
-      'No results for "zzzzqqq". Try a reason code like MARKET_CLOSED.',
-    );
+    const empty = dialog.getByRole("status").filter({ hasText: "No results" });
+    await expect(empty).toHaveText('No results for "zzzzqqq". Try a reason code like MARKET_CLOSED, or browse the FAQ and the Glossary.');
+    await expect(empty.getByRole("link", { name: "FAQ" })).toHaveAttribute("href", "/docs/help/faq");
+    await empty.getByRole("link", { name: "Glossary" }).click();
+    await expect(page).toHaveURL(/\/docs\/help\/glossary$/);
+    await expect(dialog).toBeHidden();
+  });
+
+  test("the open dialog lists where to start before anything is typed", async ({ page }) => {
+    await page.goto("/docs");
+    const dialog = await openSearch(page);
+    await expect(dialog.getByRole("option").first()).toHaveText("What is Maat");
+    await expect(dialog.getByRole("option", { name: "Refusal codes" })).toBeVisible();
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(/\/docs\/get-started\/what-is-maat$/);
   });
 
   test("a slow index shows the loading state, then the results", async ({ page }) => {
@@ -112,7 +124,7 @@ test.describe("search", () => {
     await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
   });
 
-  test("the search index loads on the first search, not with the page", async ({ page }) => {
+  test("the search index loads when search opens, not with the page", async ({ page }) => {
     const requested: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/search")) requested.push(request.url());
@@ -123,6 +135,86 @@ test.describe("search", () => {
     await dialog.getByRole("combobox").fill("maat");
     await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
     expect(requested.length).toBeGreaterThan(0);
+  });
+
+  test("pointing at the search button starts the index download, and the search uses that one download", async ({ page }) => {
+    const requested: string[] = [];
+    page.on("request", (request) => {
+      if (request.url().includes("/api/search")) requested.push(request.url());
+    });
+    await page.goto("/docs", { waitUntil: "networkidle" });
+    expect(requested).toEqual([]);
+    await page.locator("button[data-search-full]").hover();
+    await expect.poll(() => requested).toEqual([expect.stringMatching(/\/api\/search\.json$/)]);
+    await page.locator("button[data-search-full]").click();
+    await page.getByRole("dialog").getByRole("combobox").fill("maat");
+    await expect(page.getByRole("dialog").getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
+    expect(requested).toHaveLength(1);
+  });
+});
+
+/**
+ * The pages a search lists, in order, once its results are in: a page's own option has the page URL as its id, and a
+ * heading, text or table row has that URL plus "-n". Undefined while the dialog still shows its start pages.
+ */
+async function resultPages(dialog: Locator): Promise<string[] | undefined> {
+  const ids = await dialog.getByRole("option").evaluateAll((options) => options.map((o) => o.id.replace(/^fd-search-option-/, "")));
+  if (!ids.some((id) => /-\d+$/.test(id))) return undefined;
+  return ids.filter((id) => !/-\d+$/.test(id));
+}
+
+async function searchFor(page: Page, query: string) {
+  await page.goto("/docs");
+  const dialog = await openSearch(page);
+  await dialog.getByRole("combobox").fill(query);
+  return dialog;
+}
+
+test.describe("search finds what readers type", () => {
+  for (const [query, url] of [
+    ["deploy", "/docs/guides/deploy-your-own-vault"],
+    ["split", "/docs/concepts/splits-and-multiplier"],
+    ["timelock", "/docs/concepts/timelock-and-roles"],
+    ["credit", "/docs/concepts/credit-and-health-factor"],
+    // Values only a component prints: the AddressTable rows.
+    ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "/docs/reference/base-addresses"],
+    ["AAVE_RESERVE_USDC", "/docs/reference/base-addresses"],
+  ] as const) {
+    test(`"${query}" lists ${url} first`, async ({ page }) => {
+      const dialog = await searchFor(page, query);
+      await expect.poll(async () => (await resultPages(dialog))?.[0]).toBe(url);
+    });
+  }
+
+  for (const [query, url] of [
+    ["agent", "/docs/guides/run-the-agent"],
+    ["reason code", "/docs/concepts/refusal-codes"],
+    ["environment variables", "/docs/reference/agent-configuration"],
+  ] as const) {
+    test(`"${query}" lists ${url} in the first three pages`, async ({ page }) => {
+      const dialog = await searchFor(page, query);
+      await expect.poll(async () => (await resultPages(dialog))?.slice(0, 3)).toContain(url);
+    });
+  }
+
+  test('"execute(Intent" finds the execute entry of MandateVault', async ({ page }) => {
+    const dialog = await searchFor(page, "execute(Intent");
+    await dialog.getByRole("option", { name: "execute", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/reference\/mandate-vault#execute$/);
+  });
+
+  test("the meaning of a reason, as its table prints it, finds Refusal codes and that row", async ({ page }) => {
+    const dialog = await searchFor(page, "or the calendar can't be read");
+    await expect.poll(async () => (await resultPages(dialog))?.[0]).toBe("/docs/concepts/refusal-codes");
+    await expect(dialog.getByRole("option").filter({ hasText: "MARKET_CLOSED" }).filter({ hasText: "or the calendar can't be read" })).toBeVisible();
+  });
+
+  test("a word that appears only inside a code block finds nothing", async ({ page }) => {
+    // The market-hours code excerpt calls DateLib.civilFromDays, and no prose on any page names it.
+    const markdown = await (await page.request.get("/md/docs/concepts/market-hours.md")).text();
+    expect(markdown).toContain("DateLib.civilFromDays(");
+    const dialog = await searchFor(page, "civilFromDays");
+    await expect(dialog.getByRole("status").filter({ hasText: "No results" })).toBeVisible();
   });
 });
 
@@ -151,7 +243,7 @@ test.describe("copy", () => {
     // The Windows clipboard stores line breaks as CRLF.
     const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
     expect(text).toMatch(/^# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/);
-    expect(text).toContain(`passes ${FACT_TEXT.checksPerTrade.text} checks`);
+    expect(text).toContain(`passes up to ${FACT_TEXT.checksPerTrade.text} checks`);
     expect(text).not.toContain("<Fact");
   });
 

@@ -9,10 +9,14 @@ sources:
   - README.md
   - contracts/test/MandateVault.t.sol
   - contracts/foundry.toml
+  - contracts/.env.example
+  - contracts/test/fork/MandateVaultFork.t.sol
 next: [guides/run-the-tests, guides/reproduce-the-fork-run, security/testing]
 ---
 
-By the end of this page you will have watched the vault refuse a Saturday buy without reverting, and run the contract, agent and website tests on your own machine. It is written for developers and evaluators, and it lets you check Maat's claims against its code yourself. You need no wallet, no RPC URL and no API key: every test runs against mocks and fakes, so nothing touches a chain. You do need network access to clone the repository and install packages.
+By the end of this page you will have watched the vault refuse a Saturday buy without reverting, and run the contract, agent and website tests on your own machine. It is written for developers and evaluators, and it lets you check Maat's claims against its code yourself. You need no wallet, no RPC URL and no API key: every test runs against mocks and fakes, so nothing touches a chain. You do need network access to clone the repository and install packages. The first compile in step 2 also downloads solc <Fact name="solidityVersion" />, the compiler version `contracts/foundry.toml` pins, if Foundry does not have it yet.
+
+Not a developer? [What is Maat](/docs/get-started/what-is-maat) explains the idea without code, and [Status and roadmap](/docs/get-started/status) says what is real today.
 
 ## Prerequisites
 
@@ -77,7 +81,9 @@ Expected output, trimmed from README.md, How to evaluate Maat in 5 minutes. An e
     │   └─ ← [Return] true
 ```
 
-Read the trace from the top. After taking a snapshot of the token's multiplier, the vault checks that the token is in the [mandate](/docs/help/glossary#mandate) (check 1, a storage read that the trace does not show), reads its pause flag (check 2) and its transfer-policy legs (check 3), then asks the calendar, which says the market is closed (check 4). `reason: 6` is `MARKET_CLOSED` in [Types.sol](https://github.com/duongnq2798/maat/blob/main/contracts/src/Types.sol). `execute` returned normally, so it did not revert. The vault's USDC balance read near the end still returns `200000000`, the amount it started with, and `usedIntent` returns `true`: the [intent](/docs/help/glossary#intent) id is spent, so the same request cannot be replayed.
+Read the trace from the top. After taking a snapshot of the token's multiplier, the vault checks that the token is in the [mandate](/docs/help/glossary#mandate) (check 1, a storage read that the trace does not show), reads its pause flag (check 2) and its four transfer-policy legs (check 3), then asks the calendar, which says the market is closed (check 4). `reason: 6` is `MARKET_CLOSED` in [Types.sol](https://github.com/duongnq2798/maat/blob/main/contracts/src/Types.sol). `execute` returned normally, so it did not revert. The vault's USDC balance read near the end still returns `200000000`, the amount it started with, and `usedIntent` returns `true`: the [intent](/docs/help/glossary#intent) id is spent, so the same request cannot be replayed.
+
+Your full trace shows two things that the ellipses hide here. First, an `emit Decision` line right after `VM::expectEmit` and before `execute` is called. That is the test declaring the [Decision](/docs/help/glossary#decision) event it expects, not the vault: the vault's own emit is the one inside `execute`. Second, four `policyId` reads where this trace shows one, one per leg of a buy: the pool as sender, the vault as receiver, the pool as the transfer's executor (the B20 term for the account that moves the tokens), and `tx.origin`, the account that sent the transaction, under the same executor policy.
 
 </Step>
 
@@ -87,7 +93,7 @@ Read the trace from the top. After taking a snapshot of the token's multiplier, 
 
 This covers the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list. Run it in the same `contracts` folder.
 
-```bash
+```bash title="contracts/"
 forge test --no-match-path "test/fork/*"
 ```
 
@@ -124,7 +130,7 @@ Expected output, from README.md, How to evaluate Maat in 5 minutes, with the cou
 
 ### Run the website's tests and build it
 
-The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: every number comes from a fact, most of them checked against the contracts, the agent or the fork-run gas log, and every code excerpt is compared with the file it quotes.
+The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if it types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
 
 ```bash
 cd ../web
@@ -155,11 +161,13 @@ out/ is ready to deploy (landing and … docs pages checked)
 - The refusal trace from step 2 shows `allowed: false, reason: 6`.
 - The last line of the website check starts with `out/ is ready to deploy`.
 
+To check one claim at a time, [How it is tested](/docs/security/testing) names the test behind each guarantee and shows how to run it alone. For a contract test, that is the same `--match-test` filter as step 2.
+
 If something else shows up, [Troubleshooting](/docs/help/troubleshooting) lists symptoms, causes and fixes.
 
 ## Optional: the fork tests
 
-The contract fork tests run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. Nothing is broadcast: Foundry forks the chain locally. Run these commands from the repository root. Step 5 ended in `web/`, so go back with `cd ..` first.
+The contract [fork tests](/docs/help/glossary#fork-test) run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. No archive RPC of your own? `contracts/.env.example` lists a public Base endpoint that served archive state when it was tested on 2026-11-06. Export that URL as `BASE_RPC_URL`, and if it answers with HTTP 429, use a free key from an RPC provider instead. Nothing is broadcast: Foundry forks the chain locally. Run these commands from the repository root. Step 5 ended in `web/`, so go back with `cd ..` first.
 
 ```bash
 cd contracts
@@ -172,6 +180,14 @@ Expected output, from README.md, How to evaluate Maat in 5 minutes, with the cou
 ```text
 Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
 ```
+
+To run only the fork test that plays a compromised [executor](/docs/help/glossary#executor) against real Base state, use the same filter as step 2, in the same shell:
+
+```bash title="contracts/"
+forge test --match-test test_compromisedExecutorIsBounded
+```
+
+It has the executor try to pay an address that is not a [payee](/docs/help/glossary#payee), buy above the per-trade cap and call `withdraw`. The vault refuses the first two, the third reverts, and the vault keeps its USDC.
 
 [Run the tests](/docs/guides/run-the-tests) covers every suite, including the agent's fork tests, and what each one needs.
 

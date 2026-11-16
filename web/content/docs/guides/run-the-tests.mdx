@@ -14,6 +14,9 @@ sources:
   - agent/test/integration/agent.fork.test.ts
   - agent/test/integration/deploy.ts
   - contracts/test/fork/DeployFork.t.sol
+  - contracts/.env.example
+  - contracts/test/utils/VaultFixture.sol
+  - contracts/test/utils/CreditFixture.sol
 next: [guides/reproduce-the-fork-run, security/testing]
 ---
 
@@ -27,8 +30,8 @@ This guide is for developers and evaluators who have cloned the repository. It a
 | --- | --- | --- |
 | [Foundry](https://getfoundry.sh) | 1.8.4 or newer | The contract suites. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
 | Node.js with npm | 24 | The website needs 24.x (`web/package.json`). The agent needs 22.9 or newer (`agent/package.json`). |
-| A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here | The fork suites only. |
-| `base-anvil` | v1.5.1 | The agent's fork test only. |
+| A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here, or the public endpoint in `contracts/.env.example`, which served archive state when it was tested on 2026-11-06 | The fork suites only. |
+| `base-anvil` | v1.5.1, installed as [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#install-the-base-build-of-anvil) shows | The agent's fork test only. |
 | Playwright's Chromium | `npx playwright install chromium` | The website's end-to-end tests only. |
 
 The fork tests ask Foundry for the `base` endpoint, which `contracts/foundry.toml` maps to the `BASE_RPC_URL` environment variable.
@@ -79,7 +82,7 @@ Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tes
 
 `forge build --sizes` prints the size of every compiled contract and how much room it leaves under the size limit for deployed contract code. The README singles out `MandateVault`, which has the least room of the contracts in the table.
 
-```bash
+```bash title="contracts/"
 forge build --sizes
 ```
 
@@ -101,9 +104,9 @@ Trimmed output from the run at commit `1c1dc4d`. An ellipsis marks removed rows.
 
 ### Contract fork tests
 
-These tests run the real B20 tokens, feeds, pools and Aave V4 at two pinned Base mainnet blocks. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your own archive RPC URL in place of the placeholder.
+These tests run the real B20 tokens, feeds, pools and Aave V4 at two pinned Base mainnet blocks. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your archive RPC URL, or the one in `contracts/.env.example`, in place of the placeholder.
 
-```bash
+```bash title="contracts/"
 export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
 forge test --match-path "test/fork/*"
 ```
@@ -147,7 +150,7 @@ Trimmed output from the run at commit `1c1dc4d`, with the counts replaced. The t
 
 This test needs a Base archive RPC and `base-anvil` v1.5.1. It starts a local fork, deploys the compiled contracts from `contracts/out` onto it, which steps 1 and 2 have just built, and runs the agent's round against it with a scripted proposer in place of Claude. Run it from `agent/`.
 
-```bash
+```bash title="agent/"
 export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
 npm run test:integration
 ```
@@ -185,7 +188,7 @@ out/ is ready to deploy (landing and … docs pages checked)
 
 The end-to-end tests drive a real browser against the static export, which Playwright serves itself from `out/`. Build first, which `npm run verify` has just done. Install the browser once, then run the tests.
 
-```bash
+```bash title="web/"
 npx playwright install chromium
 npm run e2e
 ```
@@ -199,6 +202,14 @@ Trimmed output from the same run, with the counts replaced:
 </Step>
 
 </Steps>
+
+## Build on the test setup
+
+To write your own tests against the vault, start from the setup the existing suites use. The repository has no sandbox that keeps a vault running between calls.
+
+- **`contracts/test/utils/VaultFixture.sol`.** The base of `MandateVault.t.sol` and `MandateVaultAdmin.t.sol`. Its `setUp` sets the clock to a Thursday in session and deploys a vault for one mock stock, with mocks for USDC, the stock, its feed, its pool, the swap adapter and the transfer-policy registry, and the real `MarketCalendar`. Its helpers build an [intent](/docs/help/glossary#intent) (`_intent`), send it as the [executor](/docs/help/glossary#executor) (`_exec`), and queue a [timelocked](/docs/help/glossary#timelock) change and wait out the delay (`_queueMandateAndWait`, `_queueTokenAndWait`, `_queuePayeeAndWait`).
+- **`contracts/test/utils/CreditFixture.sol`.** `VaultFixture` with credit turned on through a mock credit adapter. `MandateVaultCredit.t.sol` builds on it.
+- **`deployStack` in `agent/test/integration/deploy.ts`.** The deploy-and-fund sequence of the agent's fork test: the calendar, the swap adapter, the credit adapter, then the vault, which the [owner](/docs/help/glossary#owner) funds with `approve` and `fund`. It is a test helper, not a deploy tool. It refuses any host other than `127.0.0.1` or `localhost`, it uses the local node's unlocked accounts as owner, executor and [payee](/docs/help/glossary#payee), and only `agent.fork.test.ts` runs it. That test starts its own `base-anvil` node and stops it when it ends, and no script in the repository keeps a node running.
 
 ## Check it worked
 

@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { REASON_MEANING, REASONS } from "@/content/reasons";
+import { REASON_MEANING_DOCS, REASONS } from "@/content/reasons";
 import { decisionEventSource, forkLedger, GROUP_OF, mandateTable } from "@/lib/docs/content-data";
 import { READER_PATHS, type ReaderPath } from "@/lib/docs/reader-paths";
 
@@ -41,7 +41,7 @@ export function ReasonTable() {
             </td>
             <td>{i + 1}</td>
             <td>{GROUP_OF.get(code)}</td>
-            <td>{REASON_MEANING[code]}</td>
+            <td>{REASON_MEANING_DOCS[code]}</td>
           </tr>
         ))}
       </tbody>

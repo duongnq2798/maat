@@ -11,10 +11,23 @@ sources:
   - deployments/README.md
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
-next: [concepts/timelock-and-roles, reference/mandate-vault]
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/lib/DateLib.sol
+  - contracts/test/MarketCalendar.t.sol
+  - contracts/script/Deploy.s.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - agent/src/addresses.ts
+  - agent/src/llm/schema.ts
+  - agent/src/llm/prompt.ts
+  - agent/src/refusals.ts
+  - agent/src/policy.ts
+  - agent/src/chain/state.ts
+  - agent/src/main.ts
+  - agent/src/loop/runOnce.ts
+next: [guides/pause-withdraw-recover, reference/mandate-vault]
 ---
 
-The vault's rules never change in a single step. This guide walks the [owner](/docs/help/glossary#owner) through the only way to change them: queue the new values, wait out the [timelock](/docs/help/glossary#timelock), then apply exactly those values or cancel the change, and finally check the new hashes. It covers the three kinds of change: a new [mandate](/docs/help/glossary#mandate), new settings for one stock, and a [payee](/docs/help/glossary#payee) added or removed. It is written for a builder who owns a vault and wants to change its limits after the deploy.
+The vault's rules never change in a single step. This guide walks the [owner](/docs/help/glossary#owner) through the only way to change them: queue the new values, wait out the [timelock](/docs/help/glossary#timelock), then apply exactly those values or cancel the change, and finally check the new hashes. It covers the three kinds of change: a new [mandate](/docs/help/glossary#mandate), new settings for one stock, and a [payee](/docs/help/glossary#payee) added or removed. It also covers the market calendar, whose holidays and early closes change at once. It is written for a builder who owns a vault and wants to change its limits after the deploy.
 
 <Callout type="note" title="What is tested">
 
@@ -32,12 +45,13 @@ Every step that changes the vault is signed by the owner, the one address that i
 | `cast` | From [Foundry](https://getfoundry.sh). The logs commands were checked with the Foundry version noted in [Watch decisions onchain](/docs/guides/watch-decisions-onchain); an older `cast` may print raw logs. |
 | A vault and an RPC | Written `<VAULT_ADDRESS>` and `<BASE_RPC_URL>` here. The Maat team has deployed no vault, so there is nothing to read yet. |
 | The new values | The whole new mandate, or the new settings of one stock, or the payee and a flag. Check them against [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects) first. |
+| bash | Linux, macOS, or Git Bash on Windows, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). The commands use bash syntax (`export`, `NAME=value` and `$(...)` command substitution), which PowerShell and cmd do not run as written. |
 
 Time: the wait alone is <Fact name="timelockHours" />. After it you have <Fact name="gracePeriodDays" /> to apply. The Maat team has measured no durations for the commands.
 
 ## How a change moves
 
-Each kind of change goes through the same four stages. Pausing, rotating the [executor](/docs/help/glossary#executor) and withdrawing to the owner are instant ([Pause, withdraw and recover](/docs/guides/pause-withdraw-recover)). Changing a rule never is, and that includes a change that only tightens a limit.
+Each kind of change goes through the same four stages. Pausing, rotating the [executor](/docs/help/glossary#executor) and withdrawing to the owner are instant ([Pause, withdraw and recover](/docs/guides/pause-withdraw-recover)), and so is [adding a holiday or an earlier close](#keep-the-calendar-current) to the calendar. Changing the mandate, a stock's settings or a payee never is, and that includes a change that only tightens a limit.
 
 <TimelockFlow />
 
@@ -63,7 +77,7 @@ Every step emits an event. The queue events carry the full new values, so anyone
 
 ## Queue, wait and apply
 
-This is the whole path for a mandate. A stock or payee change follows the same steps with different arguments, shown after the steps.
+This is the whole path for a mandate. A stock or payee change follows the same steps with different arguments, shown in [Token and payee changes](#token-and-payee-changes).
 
 <Steps>
 
@@ -166,7 +180,7 @@ To drop the change instead, cancel it by its hash. The owner can cancel at any t
 cast send "$VAULT" "cancelChange(bytes32)" "$CHANGE_HASH" --rpc-url "$BASE_RPC_URL" --account maat-owner
 ```
 
-If the apply reverts, the table below says why. After `ChangeNotReady`, send the same apply command once `eta` has passed. After `ChangeExpired`, or after `ChangeNotQueued` for a change that was cancelled, repeat the queue command from step 3, and the wait starts over. After `ChangeNotQueued` for different values, change `NEW_MANDATE` back to what you queued (the queue event holds those values). After `InvalidConfig`, the change cannot succeed as written: cancel it, then queue corrected values.
+If the apply reverts, the table below says why. After `ChangeNotReady`, send the same apply command once `eta` has passed. After `ChangeExpired`, or after `ChangeNotQueued` for a change that was cancelled, repeat the queue command from [step 3](#queue-the-change), and the wait starts over. After `ChangeNotQueued` for different values, change `NEW_MANDATE` back to what you queued (the queue event holds those values). After `InvalidConfig`, the change cannot succeed as written: cancel it, then queue corrected values.
 
 </Callout>
 
@@ -179,6 +193,7 @@ A successful apply replaces the mandate, deletes the queue entry and emits `Mand
 | [`ChangeExpired`](/docs/reference/errors#changeexpired) | The block is later than `eta + GRACE_PERIOD`. |
 | [`InvalidConfig`](/docs/reference/errors#invalidconfig) | The queue was fine, but the vault rejects the new values when it applies them. See [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects). |
 | [`CreditPositionOpen`](/docs/reference/errors#creditpositionopen) | The change switches or removes the credit adapter while it still holds debt or collateral, or while its position cannot be read. |
+| [`ZeroAddress`](/docs/reference/errors#zeroaddress-mandatevault) | `applyPayee` adds the zero address (`true`), or `applyTokenConfig` names the zero token address. The queue accepts both, so the change fails only at the apply. |
 | [`NotOwner`](/docs/reference/errors#notowner-mandatevault) | The sender is not the owner. |
 
 </Step>
@@ -187,7 +202,7 @@ A successful apply replaces the mandate, deletes the queue entry and emits `Mand
 
 ### Check the new hashes
 
-These calls only read. Compare them with the two hashes you wrote down in the first step.
+These calls only read. Compare them with the two hashes you wrote down in [step 1](#read-the-current-rules).
 
 ```bash
 cast call "$VAULT" "mandate()($MANDATE_TYPE)" --rpc-url "$BASE_RPC_URL"
@@ -218,26 +233,57 @@ No Maat vault is deployed, so this page shows no output. Anyone can make the sam
 
 ## Token and payee changes
 
-The path is the same: queue, wait, apply or cancel, check. The arguments differ, and so do the hash helpers. Only the owner signs the queue, apply and cancel commands, so they sit in the box below. The read-only helpers `tokenChangeHash` and `payeeChangeHash` take the same arguments as the queue and apply calls and print the change hash, as `mandateChangeHash` does.
+The path is the same: queue, wait, apply or cancel, check. The arguments differ, and so do the hash helpers. Only the owner signs the queue, apply and cancel commands, so they sit in the box below. The read-only helpers `tokenChangeHash` and `payeeChangeHash` take the same arguments as the queue and apply calls and print the change hash, as `mandateChangeHash` does. Each change has a queue block and an apply block. Run the apply block once `eta` has passed, <Fact name="timelockHours" /> after the queue.
+
+<Callout type="warning" title="A new stock needs more than a token change">
+
+The agent's code names only NVDAc, GOOGLc and AAPLc: `BASKET` and the `TokenSymbol` type in `agent/src/addresses.ts`, `LLM_SYMBOLS` in `agent/src/llm/schema.ts`, and the system prompt in `agent/src/llm/prompt.ts`. A stock you list that is not in those lists still counts in the agent's net equity whenever its feed gives a price, but the policy gives it no target weight and Claude cannot propose it. Having the agent trade it takes a change to the agent's code. No test runs the agent with any other basket.
+
+The deployed credit adapter's collateral list is fixed in its constructor, so a `SUPPLY` of a stock that is not on that list, such as one listed after the deploy, is [refused](/docs/help/glossary#refusal) with `TOKEN_NOT_ALLOWED`. Using that stock as collateral needs a new credit adapter built for this vault, and a mandate change that switches to it. `applyMandate` reverts with `CreditPositionOpen` while the current adapter still holds debt or collateral.
+
+</Callout>
 
 <Callout type="warning" title="Owner only">
 
-These commands are signed by the owner wallet. They use the shell from step 1. Each `queue` starts a clock, and each `apply` must use exactly the values that were queued. The same `cancelChange` command from step 5 works for any change hash.
+These commands are signed by the owner wallet. They use `VAULT` and `BASE_RPC_URL` from [step 1](#read-the-current-rules). Each `queue` starts a clock, and each `apply` must use exactly the values that were queued. The same `cancelChange` command from [step 5](#apply-it-or-cancel-it) works for any change hash. In each apply block the first two calls only read: the first stores the change hash in `CHANGE_HASH`, and the second prints its `queuedAt`. A zero means the change is not queued. Otherwise `eta` is `queuedAt` plus `TIMELOCK`, as in [step 4](#wait-out-the-timelock), and the last line sends the apply.
 
-A payee, added (`true`) or removed (`false`):
+The apply runs after the timelock and may run in a new shell, so each apply block sets `PAYEE`, or `TOKEN` and `TOKEN_CONFIG`, again. Set them to exactly the queued values; the queue event holds them. In a new shell, run the two `export` lines of step 1 first.
+
+A payee, added (`true`) or removed (`false`).
+
+**Queue**
 
 ```bash
 PAYEE=<PAYEE_ADDRESS>
 cast send "$VAULT" "queuePayee(address,bool)" "$PAYEE" true --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+**Apply, after `eta`**
+
+```bash
+PAYEE=<PAYEE_ADDRESS>   # exactly the queued payee
+CHANGE_HASH=$(cast call "$VAULT" "payeeChangeHash(address,bool)(bytes32)" "$PAYEE" true --rpc-url "$BASE_RPC_URL")
+cast call "$VAULT" "queuedAt(bytes32)(uint256)" "$CHANGE_HASH" --rpc-url "$BASE_RPC_URL"
 cast send "$VAULT" "applyPayee(address,bool)" "$PAYEE" true --rpc-url "$BASE_RPC_URL" --account maat-owner
 ```
 
-One stock's settings, in the order `allowed`, `feed`, `pool`, `maxWeightBps`:
+One stock's settings, in the order `allowed`, `feed`, `pool`, `maxWeightBps`.
+
+**Queue**
 
 ```bash
 TOKEN=<TOKEN_ADDRESS>
 TOKEN_CONFIG='(true,<FEED_ADDRESS>,<POOL_ADDRESS>,<MAX_WEIGHT_BPS>)'
 cast send "$VAULT" "queueTokenConfig(address,(bool,address,address,uint16))" "$TOKEN" "$TOKEN_CONFIG" --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+**Apply, after `eta`**
+
+```bash
+TOKEN=<TOKEN_ADDRESS>   # exactly the queued token and settings
+TOKEN_CONFIG='(true,<FEED_ADDRESS>,<POOL_ADDRESS>,<MAX_WEIGHT_BPS>)'
+CHANGE_HASH=$(cast call "$VAULT" "tokenChangeHash(address,(bool,address,address,uint16))(bytes32)" "$TOKEN" "$TOKEN_CONFIG" --rpc-url "$BASE_RPC_URL")
+cast call "$VAULT" "queuedAt(bytes32)(uint256)" "$CHANGE_HASH" --rpc-url "$BASE_RPC_URL"
 cast send "$VAULT" "applyTokenConfig(address,(bool,address,address,uint16))" "$TOKEN" "$TOKEN_CONFIG" --rpc-url "$BASE_RPC_URL" --account maat-owner
 ```
 
@@ -247,7 +293,9 @@ A few facts about these two kinds:
 
 - **Adding and removing a payee are different changes.** The flag is part of the hash, so a queued add cannot be applied as a remove.
 - **The payee list is what the vault pays from.** The vault pays an expense only to an address on the list, and a payee change is the only way to change it after the deploy. [Timelock and roles](/docs/concepts/timelock-and-roles#three-roles) says who may do it.
-- **To delist a stock, queue its settings with `allowed` false.** If you keep its `feed` and `pool`, the stock is exit-only: the vault can still sell it but not buy it. If you clear both, the vault can no longer sell it. [Types](/docs/reference/types#tokenconfig) describes the fields.
+- **Replacing the agent's payee.** To replace the payee that `MAAT_EXPENSE_PAYEE` in `agent/.env` names, add and apply the new payee first, set `MAAT_EXPENSE_PAYEE` to it, and restart the agent (Ctrl+C, then start it again; it reads `.env` only when it starts). Queue the removal of the old payee only after that. While `MAAT_EXPENSE_PAYEE` names an address that is not on the payee list, each [compute bill](/docs/help/glossary#compute-bill) payment [previews](/docs/help/glossary#preview) as `PAYEE_NOT_ALLOWED`, which the agent writes only to its [journal](/docs/help/glossary#journal). The bill stays unpaid and keeps reducing what the policy may spend.
+- **To delist a stock, queue its settings with `allowed` false.** If you keep its `feed` and `pool`, the stock is [exit-only](/docs/help/glossary#exit-only): the vault can still sell it but not buy it. If you clear both, the vault can no longer sell it. [Types](/docs/reference/types#tokenconfig) describes the fields.
+- **Keep the feed and pool while the stock backs a loan.** If the stock is supplied as collateral and debt is open, clear its `feed` and `pool` only after that collateral is withdrawn. Without a feed, every withdrawal against debt is refused, whichever stock it names, until the debt is repaid in full. No vault test covers that case. [allowed](/docs/concepts/mandate#allowed) explains it.
 - **A stock must pass the same validation as at the deploy.** The rules are in [Configure a mandate](/docs/guides/configure-a-mandate#stock-rules). They run at apply time.
 - **A payee or stock change moves `policyHash()` but not `mandateHash()`.** Check the policy hash after such a change.
 
@@ -270,8 +318,69 @@ A few facts about these two kinds:
 - **Losing the queued values.** The vault keeps only the time. The queue event holds the values, so read them from there.
 - **Leaving the apply to the last second.** The vault reads the timestamp of the block that includes the transaction. An apply sent just before the window ends can land in a block after it and revert with `ChangeExpired`.
 
+## Keep the calendar current
+
+The vault asks its [market calendar](/docs/reference/market-calendar) whether the market is open. The calendar ships with <Fact name="calendarPreload.holidays" /> holidays, on 2026-11-26, 2026-12-25 and 2027-01-01, and <Fact name="calendarPreload.earlyCloses" /> early closes, on 2026-11-27 and 2026-12-24. It holds no date after 2027-01-01, and nothing adds one by itself. A holiday that is not on the calendar counts as an ordinary session ([What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing)), so the calendar's owner has to add each later holiday and early close before the day. This page lists no later dates, because the repository holds none.
+
+With credit on and a `deriskWindow` above zero, a missing holiday on a Tuesday to Friday also leaves the [de-risk window](/docs/help/glossary#de-risk-window) off on the session day before it. From Monday to Thursday the vault turns the window on only when `isHoliday` is true for the next day (`_inDeriskWindow` in `MandateVault.sol`). Every Friday is in the window anyway.
+
+`addHoliday` and `setEarlyClose` do not go through the timelock. They take effect in the block that includes them, and they can only make the calendar stricter: nothing removes a holiday, and an early close can only move earlier. To loosen the calendar, deploy a new one and switch the mandate's `calendar` to it through [the timelock](#queue-wait-and-apply). `test_ownerCanOnlyMakeItStricter` in `MarketCalendar.t.sol` covers the owner check, a later close that reverts, an earlier close and a new holiday. No test covers the bounds on a close or a date that wraps, and like the rest of this page, the `cast` commands below have not been run.
+
+### Find the calendar and its owner
+
+These calls only read, and the commands in this section use the shell from [step 1](#read-the-current-rules). The calendar's address is the `MarketCalendar` line of the deploy output. It is also the `calendar` field of `mandate()`, the ninth value in the tuple that step prints.
+
+```bash
+CALENDAR=<CALENDAR_ADDRESS>   # the MarketCalendar line of the deploy output
+cast call "$CALENDAR" "owner()(address)" --rpc-url "$BASE_RPC_URL"
+```
+
+`owner()` must be the address you sign with. The calendar's [owner](/docs/reference/market-calendar#owner) is its own role, fixed when the calendar is created. The deploy script gives it the vault owner's address (`new MarketCalendar(owner)` in `Deploy.s.sol`), so the same `maat-owner` account signs for both. Any other sender reverts with `NotOwner`.
+
+### Add a holiday
+
+<Callout type="warning" title="Owner only">
+
+This signs a transaction from the calendar owner's wallet and costs gas. It takes effect at once, and nothing can undo it.
+
+```bash
+cast send "$CALENDAR" "addHoliday(uint256,uint256,uint256)" <YEAR> <MONTH> <DAY> --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+</Callout>
+
+The year, month and day are the New York date, written as plain numbers. The calendar does not check them: a month of 13 becomes January of the next year, and a day past the end of a month rolls into the next month. A typo therefore closes another day for good, so read the date twice before you send. The transaction emits [`HolidayAdded`](/docs/reference/events#holidayadded) with the New York day number. A holiday closes the whole day in both [session modes](/docs/help/glossary#session-mode).
+
+### Set an early close
+
+<Callout type="warning" title="Owner only">
+
+This signs a transaction from the calendar owner's wallet and costs gas. It takes effect at once.
+
+```bash
+cast send "$CALENDAR" "setEarlyClose(uint256,uint256,uint256,uint16)" <YEAR> <MONTH> <DAY> <CLOSE_MIN> --rpc-url "$BASE_RPC_URL" --account maat-owner
+```
+
+</Callout>
+
+`<CLOSE_MIN>` is the close in minutes after midnight New York time: the shipped early closes use `780`, which is <Fact name="earlyClose" />. It must be after the open (`570`, <Fact name="nyseOpen" />), before the regular close (`960`, <Fact name="nyseClose" />), and earlier than any early close the day already has. Otherwise the call reverts with [`InvalidClose`](/docs/reference/errors#invalidclose). The date is not checked here either. An early close shortens `REGULAR` only, and `FEED_24_5` ignores it. The transaction emits [`EarlyCloseSet`](/docs/reference/events#earlycloseset) with the day number and the close.
+
+### Check the day
+
+These calls only read. `localTime` turns a Unix time in seconds during that New York day into the day number the next two reads take.
+
+```bash
+cast call "$CALENDAR" "localTime(uint256)(uint256,uint256,uint256)" <UNIX_TIME> --rpc-url "$BASE_RPC_URL"
+cast call "$CALENDAR" "isHoliday(uint256)(bool)" <ET_DAY> --rpc-url "$BASE_RPC_URL"
+cast call "$CALENDAR" "earlyCloseMin(uint256)(uint16)" <ET_DAY> --rpc-url "$BASE_RPC_URL"
+cast call "$CALENDAR" "isOpen(uint256,uint8)(bool)" <UNIX_TIME> 0 --rpc-url "$BASE_RPC_URL"
+```
+
+`localTime` prints the New York day number, the weekday (0 is Sunday) and the minute of the day. Pass the first value as `<ET_DAY>`, without any bracketed shorthand. `isHoliday` prints true once the holiday is added, and `earlyCloseMin` prints the close you set, or zero. `isOpen` asks about one moment under a session mode, `0` for `REGULAR` and `1` for `FEED_24_5`, and prints false at any moment of a holiday. The day number in `HolidayAdded` and `EarlyCloseSet` is the same number, so the logs of your transaction are a second check. No Maat calendar is deployed, so this page shows no output.
+
 ## Next steps
 
+- [Pause, withdraw and recover](/docs/guides/pause-withdraw-recover) covers the owner's instant actions: pausing, withdrawing and a new executor.
 - [Timelock and roles](/docs/concepts/timelock-and-roles) explains who can do what, and what a leaked key can reach.
 - [MandateVault](/docs/reference/mandate-vault) lists every owner function with its events and reverts.
 - [Configure a mandate](/docs/guides/configure-a-mandate) covers the validation rules your new values must pass.
