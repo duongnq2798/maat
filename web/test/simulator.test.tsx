@@ -196,7 +196,7 @@ describe("Simulator", () => {
     await ui.user.click(ui.button("Sat 7 Nov"));
     const url = new URL(screen.getByRole("link", { name: "Post on X" }).getAttribute("href") ?? "");
     expect(`${url.origin}${url.pathname}`).toBe("https://x.com/intent/post");
-    expect(url.searchParams.get("text")).toBe("I tried to buy $20 of NVDAc on Sat 7 Nov at 10:30 ET. Maat said no: MARKET_CLOSED.");
+    expect(url.searchParams.get("text")).toBe("I tried to buy $20 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED.");
     expect(url.searchParams.get("url")).toBe("http://localhost:3000/?day=2026-11-07&at=1030&buy=NVDAc-20#try");
   });
 

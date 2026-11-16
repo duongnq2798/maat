@@ -141,8 +141,8 @@ Two columns from about 1024 px, stacked below.
   - Verdicts are always recomputed, never read from the link, so a link cannot fake a result.
   - Invalid parameters fall back to the defaults; a tape longer than 10 entries is cut.
 - **Post on X:** a plain link to `https://x.com/intent/post` with the text prefilled (no script):
-  - Refused: "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat said no: MARKET_CLOSED."
-  - Allowed: "I asked Maat to buy $20 of NVDAc on Thu 5 Nov at 10:30 ET. All nine checks passed. Can you make it say no?"
+  - Refused: "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED."
+  - Allowed: "I asked Maat's simulator to buy $20 of NVDAc on Thu 5 Nov at 10:30 ET. All nine checks passed. Can you make it say no?"
   - Both followed by the share link.
 - **Copy link:** writes the share link to the clipboard; if the clipboard is unavailable, shows the link in a read-only field.
 

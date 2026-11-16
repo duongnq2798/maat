@@ -56,7 +56,7 @@ test("a share link reproduces its refusal, and a broken one falls back", async (
   await expect(ui.verdict).toHaveAttribute("data-reason", "MARKET_CLOSED");
   await expect(ui.checks.nth(3)).toContainText("Thanksgiving · NYSE closed");
   const post = new URL((await ui.root.getByRole("link", { name: "Post on X" }).getAttribute("href")) ?? "");
-  expect(post.searchParams.get("text")).toBe("I tried to buy $10 of GOOGLc on Thu 26 Nov at 10:30 ET. Maat said no: MARKET_CLOSED.");
+  expect(post.searchParams.get("text")).toBe("I tried to buy $10 of GOOGLc on Thu 26 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED.");
   expect(post.searchParams.get("url")).toBe(`${new URL(page.url()).origin}/?day=2026-11-26&at=1030&buy=GOOGLc-10#try`);
 
   await page.goto("/?day=1999-01-01&at=9999&buy=TSLA-x&tape=junk#try");

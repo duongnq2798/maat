@@ -393,13 +393,13 @@ export function decodeScenario(search: string): Scenario {
   };
 }
 
-/** The post a visitor shares on X. */
+/** The post a visitor shares on X. It names the simulator, so a reader does not take it for a refusal onchain. */
 export function postText(s: Scenario, r: Pick<SimResult, "allowed" | "reason">): string {
   const what = `${formatUsd(s.intent.usd6)} of ${s.intent.token === "OTHER" ? "a token outside the mandate" : s.intent.token}`;
   const when = `${dayLabel(isoOfDay(s.etDay))} at ${clockLabel(s.intent.minute)} ET`;
-  if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat said no: ${r.reason}.`;
+  if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat's simulator said no: ${r.reason}.`;
   const nine = numberWord(FACTS.checksPerTrade.value).toLowerCase();
-  return `I asked Maat to buy ${what} on ${when}. All ${nine} checks passed. Can you make it say no?`;
+  return `I asked Maat's simulator to buy ${what} on ${when}. All ${nine} checks passed. Can you make it say no?`;
 }
 
 /** X's web intent: a plain link, no script. The share link rides along once it is absolute (after hydration). */
