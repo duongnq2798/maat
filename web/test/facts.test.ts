@@ -165,10 +165,11 @@ describe("parity with the contracts and the fork run (spec §5.4)", () => {
       closeMin: Number(m[4]),
     }));
     expect(holidays.length * earlyCloses.length).toBeGreaterThan(0);
-    // Every call in the constructor must be read above: a holiday without its "// name" comment would otherwise be
-    // skipped by the matcher and go missing from the simulator.
-    expect(calendar.match(/_addHoliday\(\d/g)?.length ?? 0).toBe(holidays.length);
-    expect(calendar.match(/_setEarlyClose\(\d/g)?.length ?? 0).toBe(earlyCloses.length);
+    // Every call in the constructor must be read above: a holiday without its "// name" comment, or spaced as
+    // "_addHoliday( 2026", would otherwise be skipped by the matcher and go missing from the simulator. The calls
+    // that take variables are the owner's later additions, not the constructor's.
+    expect(calendar.match(/_addHoliday\s*\(\s*\d/g)?.length ?? 0).toBe(holidays.length);
+    expect(calendar.match(/_setEarlyClose\s*\(\s*\d/g)?.length ?? 0).toBe(earlyCloses.length);
     expect({ holidays, earlyCloses }).toEqual(FACTS.calendar.value);
   });
 
