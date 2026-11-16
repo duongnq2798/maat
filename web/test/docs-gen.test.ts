@@ -263,15 +263,24 @@ describe("parseAgentEnv", () => {
 });
 
 describe("parseBaseAddresses", () => {
-  it("applies a note to every constant in its group", () => {
+  it("gives a block above several constants to their group, and a block above one constant to that constant", () => {
     const parsed = parseBaseAddresses(
-      "library B {\n    /// Pools, token0 = USDC.\n    address internal constant POOL_A = 0xAbC;\n    address internal constant POOL_B = 0xDeF;\n\n    uint256 internal constant BLOCK = 53_551_627;\n    /// Weekend block.\n    uint256 internal constant WEEKEND = 1;\n}",
+      "/// @notice Library header.\nlibrary B {\n    /// Pools, token0 = USDC.\n    address internal constant POOL_A = 0xAbC;\n    address internal constant POOL_B = 0xDeF;\n\n    uint256 internal constant BLOCK = 53_551_627;\n    /// Session block.\n    uint256 internal constant SESSION = 2;\n    /// Weekend block.\n    uint256 internal constant WEEKEND = 1;\n}",
     );
     expect(parsed).toEqual([
-      { name: "POOL_A", type: "address", value: "0xAbC", note: "Pools, token0 = USDC." },
-      { name: "POOL_B", type: "address", value: "0xDeF", note: "Pools, token0 = USDC." },
-      { name: "BLOCK", type: "uint256", value: "53_551_627", note: "" },
-      { name: "WEEKEND", type: "uint256", value: "1", note: "Weekend block." },
+      { name: "POOL_A", type: "address", value: "0xAbC", note: "", group: "Pools, token0 = USDC." },
+      { name: "POOL_B", type: "address", value: "0xDeF", note: "", group: "Pools, token0 = USDC." },
+      { name: "BLOCK", type: "uint256", value: "53_551_627", note: "", group: "" },
+      { name: "SESSION", type: "uint256", value: "2", note: "Session block.", group: "" },
+      { name: "WEEKEND", type: "uint256", value: "1", note: "Weekend block.", group: "" },
     ]);
+  });
+
+  it("reads BaseAddresses.sol's two group comments once each, and gives the fork blocks their own notes", () => {
+    const parsed = generateDocsData(REPO_ROOT).addresses;
+    const groups = [...new Set(parsed.map((a) => a.group).filter(Boolean))];
+    expect(groups.map((g) => g.split(" ").slice(0, 3).join(" "))).toEqual(["Aerodrome Slipstream pools,", "Aave V4 Equities"]);
+    expect(parsed.filter((a) => a.group !== "").every((a) => a.note === "")).toBe(true);
+    expect(parsed.filter((a) => a.note !== "").map((a) => a.name)).toEqual(["BLOCK_SESSION", "BLOCK_WEEKEND"]);
   });
 });

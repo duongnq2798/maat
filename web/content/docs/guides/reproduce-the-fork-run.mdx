@@ -11,6 +11,9 @@ sources:
   - agent/test/integration/fork-gas.json
   - agent/README.md
   - agent/test/integration/deploy.ts
+  - contracts/script/MaatConfig.sol
+  - contracts/script/BaseAddresses.sol
+  - contracts/src/GuardLib.sol
   - agent/src/ledger/journal.ts
   - web/content/facts.ts
 next: [get-started/read-a-decision, security/testing]
@@ -39,7 +42,7 @@ The fork point is Base block <Fact name="forkBlock" />, which is Thursday <Fact 
 
 Time: 3 to 5 minutes on a public RPC, because the first swap on a cold fork is very slow (agent/README.md).
 
-The test runs only against a local Anvil at `127.0.0.1`. It deploys the contracts onto the fork from the compiled artifacts, wired the way the deploy script wires them, and funds the vault with `approve` and then `fund`. The Solidity deploy script itself runs on a fork in the contract test `test_deployWiresEverything`, not in this test.
+The test runs only against a local Anvil at `127.0.0.1`. It deploys the contracts onto the fork from the compiled artifacts and funds the vault with `approve` and then `fund`. The [mandate](/docs/help/glossary#mandate), the basket and the credit reserves are the deploy script's, copied by hand from `MaatConfig.sol` and `BaseAddresses.sol` into `deploy.ts`, with the deploy script's `REGULAR` session, and the [owner](/docs/help/glossary#owner), the [executor](/docs/help/glossary#executor) and the [payee](/docs/help/glossary#payee) are the local node's test accounts. Nothing compares the copy with `MaatConfig.sol` or `BaseAddresses.sol`, so after you change a value in either file, this test still runs the old one until you change `deploy.ts` too. The Solidity deploy script itself runs on a fork only in the contract test `test_deployWiresEverything`, not in this test.
 
 ## Run the fork test
 
@@ -50,6 +53,14 @@ The test runs only against a local Anvil at `127.0.0.1`. It deploys the contract
 ### Install the Base build of Anvil
 
 Do this once. `base-anvil` is Base's Foundry build of Anvil. It runs the full B20 precompile, while upstream Anvil 1.9 reverts on `uiMultiplier()`. The test starts it with the `--base` flag and `FOUNDRY_BASE=true`.
+
+`base-foundryup`, the installer of that build, comes from Base's [`base/base-anvil`](https://github.com/base/base-anvil) repository. If you do not have it yet, that repository's README installs it alongside an existing Foundry, without overwriting `foundryup`, `forge`, `cast`, `anvil` or `chisel`:
+
+```bash
+curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+```
+
+If `base-foundryup` is not found afterwards, open a new terminal, as the installer says. Then install the version that agent/README.md pins:
 
 ```bash
 base-foundryup --install v1.5.1
@@ -121,8 +132,8 @@ The test is a script of rounds. Each row of the ledger below is one transaction 
 
 | Round | What the test sends | What it checks |
 | --- | --- | --- |
-| First (`fork-1`) | One round with a BUY of NVDAc, a SUPPLY of NVDAc to [Aave V4](/docs/help/glossary#aave-v4) and a BORROW of USDC | The round finishes. Every transaction goes from the [executor](/docs/help/glossary#executor) to the vault, carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021), has an explicit gas limit at or above its floor, uses less gas than the limit and succeeds. For each intent the [preview](/docs/help/glossary#preview) says `OK` and the onchain `Decision` is allowed with reason `OK`. No mismatch is journaled, nothing is left pending, and the credit adapter's debt is within a few units of the amount borrowed. |
-| Second (`fork-2`) | The clock moves ahead <Fact name="weekendOffsetDays" /> days, to a Saturday, and the agent tries a BUY of GOOGLc | The agent sends the refusal once, on purpose, so that a `Decision` with `allowed` false exists onchain. Its reason equals the preview's reason and is `MARKET_CLOSED` or `FEED_STALE`. |
+| First (`fork-1`) | One round with a BUY of NVDAc, a SUPPLY of NVDAc to [Aave V4](/docs/help/glossary#aave-v4) and a BORROW of USDC | The round finishes. Every transaction goes from the executor to the vault, carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021), has an explicit gas limit at or above its floor, uses less gas than the limit and succeeds. For each intent the [preview](/docs/help/glossary#preview) says `OK` and the onchain `Decision` is allowed with reason `OK`. No mismatch is journaled, nothing is left pending, and the credit adapter's debt is within a few units of the amount borrowed. |
+| Second (`fork-2`) | The clock moves ahead <Fact name="weekendOffsetDays" /> days, to a Saturday, and the agent tries a BUY of GOOGLc | The agent sends the refusal once, on purpose, so that a `Decision` with `allowed` false exists onchain. Its reason equals the preview's reason. The test accepts either `MARKET_CLOSED` or `FEED_STALE`. The run behind the ledger, recorded in the README, got `MARKET_CLOSED`, as the [check order](/docs/concepts/nine-checks#the-order) predicts: the fork vault uses the `REGULAR` session, and the market check (4) runs before the feed check (5). |
 | Third (`fork-3`) | The same BUY again | The agent sends nothing, because it already logged that reason for that NYSE date, and for `MARKET_CLOSED` that closed phase, the weekend. The executor's transaction count does not change. |
 | Fourth (`fork-4`) | A SELL of NVDAc in [dry-run](/docs/help/glossary#dry-run) mode, with a fresh journal | Nothing is sent. The journal records what the agent would have done, as `dry-run: would execute` or `dry-run: would log-refusal`. |
 
@@ -175,7 +186,8 @@ BUY gas varies slightly between runs. In the two runs the README compares, the B
 - **An RPC that is not an archive node.** The fork block is old, so the RPC has to serve historical state.
 - **Upstream Anvil instead of `base-anvil`.** Upstream Anvil 1.9 reverts on `uiMultiplier()`, so the vault cannot be deployed. If the test cannot start the binary, it says `could not start base-anvil` (or the path you set) and tells you to set `MAAT_ANVIL_BIN` to the `base-anvil` binary.
 - **Port `8547` in use.** The test refuses to attach to a node it did not start: it stops with `port 8547 already answers JSON-RPC; stop that node first`. Stop the other node and run again.
-- **Missing or stale contract artifacts.** The test fails while reading a file under `contracts/out`. Run `forge build` in `contracts/`, and again after any contract change.
+- **Missing contract artifacts.** The test fails while reading a file under `contracts/out`. Run `forge build` in `contracts/`.
+- **Stale contract artifacts.** Nothing checks that `contracts/out` matches the sources, so the test deploys whatever bytecode is there, and the run may still pass. Run `forge build` after any contract change, or the run and its gas log describe the old code.
 - **Stopping the run during the first swap.** The first swap on a cold fork is very slow on a public RPC, and the test allows long waits on purpose. Give it the 3 to 5 minutes.
 - **Overwriting the committed gas log.** Do not point `MAAT_GAS_LOG` at `agent/test/integration/fork-gas.json` unless you also update `web/content/facts.ts`, because the website's parity test compares the two and fails if they differ.
 - **Looking for the transactions afterwards.** They ran on a local node that stopped with the test. Nothing was sent to Base.

@@ -8,6 +8,9 @@ lastReviewed: 2026-11-07
 sources:
   - README.md
   - contracts/src/Types.sol
+  - contracts/src/MandateVault.sol
+  - agent/src/loop/runOnce.ts
+  - agent/src/policy.ts
 next: [get-started/what-is-maat, help/faq]
 ---
 
@@ -15,18 +18,20 @@ This page defines terms used across the docs, each in one to three sentences, wi
 
 | Topic | Terms |
 | --- | --- |
-| The rules | [Mandate](/docs/help/glossary#mandate) · [Mandate hash](/docs/help/glossary#mandate-hash) · [Policy hash](/docs/help/glossary#policy-hash) · [Timelock](/docs/help/glossary#timelock) · [Owner](/docs/help/glossary#owner) · [Executor](/docs/help/glossary#executor) · [Payee](/docs/help/glossary#payee) |
-| A proposal and its verdict | [Action](/docs/help/glossary#action) · [Intent](/docs/help/glossary#intent) · [Preview](/docs/help/glossary#preview) · [Decision](/docs/help/glossary#decision) · [Reason](/docs/help/glossary#reason) · [Refusal](/docs/help/glossary#refusal) · [Fail closed](/docs/help/glossary#fail-closed) |
+| Basics | [Base](/docs/help/glossary#base) · [Tokenized stock](/docs/help/glossary#tokenized-stock) · [Vault](/docs/help/glossary#vault) · [Revert](/docs/help/glossary#revert) |
+| The rules | [Mandate](/docs/help/glossary#mandate) · [Mandate hash](/docs/help/glossary#mandate-hash) · [Policy hash](/docs/help/glossary#policy-hash) · [Change hash](/docs/help/glossary#change-hash) · [Timelock](/docs/help/glossary#timelock) · [Owner](/docs/help/glossary#owner) · [Executor](/docs/help/glossary#executor) · [Payee](/docs/help/glossary#payee) |
+| A proposal and its verdict | [Action](/docs/help/glossary#action) · [Intent](/docs/help/glossary#intent) · [Rationale](/docs/help/glossary#rationale) · [Preview](/docs/help/glossary#preview) · [Decision](/docs/help/glossary#decision) · [Reason](/docs/help/glossary#reason) · [Refusal](/docs/help/glossary#refusal) · [Fail closed](/docs/help/glossary#fail-closed) |
 | Prices and market hours | [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) · [Staleness](/docs/help/glossary#staleness) · [TWAP](/docs/help/glossary#twap) · [Premium](/docs/help/glossary#premium) · [Basis point (bps)](/docs/help/glossary#basis-point-bps) · [Slippage floor](/docs/help/glossary#slippage-floor) · [NYSE session](/docs/help/glossary#nyse-session) · [Session mode](/docs/help/glossary#session-mode) · [Feed edge](/docs/help/glossary#feed-edge) |
-| Tokens | [B20](/docs/help/glossary#b20) · [uiMultiplier](/docs/help/glossary#uimultiplier) · [WAD](/docs/help/glossary#wad) |
+| Tokens | [B20](/docs/help/glossary#b20) · [uiMultiplier](/docs/help/glossary#uimultiplier) · [WAD](/docs/help/glossary#wad) · [Raw amount](/docs/help/glossary#raw-amount) · [Exit-only](/docs/help/glossary#exit-only) |
 | Credit | [Aave V4](/docs/help/glossary#aave-v4) · [Health factor](/docs/help/glossary#health-factor) · [De-risk window](/docs/help/glossary#de-risk-window) |
-| Venue, wallet and testing | [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) · [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) · [Builder Code (ERC-8021)](/docs/help/glossary#builder-code-erc-8021) · [Dry run](/docs/help/glossary#dry-run) · [Fork test](/docs/help/glossary#fork-test) · [x402](/docs/help/glossary#x402) |
+| The agent | [Round](/docs/help/glossary#round) · [Journal](/docs/help/glossary#journal) · [Dry run](/docs/help/glossary#dry-run) · [Live mode](/docs/help/glossary#live-mode) · [Compute bill](/docs/help/glossary#compute-bill) · [Runway](/docs/help/glossary#runway) |
+| Venue, wallet and testing | [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) · [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) · [Builder Code (ERC-8021)](/docs/help/glossary#builder-code-erc-8021) · [Fork test](/docs/help/glossary#fork-test) · [Precompile](/docs/help/glossary#precompile) · [Cheat code](/docs/help/glossary#cheat-code) · [x402](/docs/help/glossary#x402) |
 
 ## A
 
 ### Aave V4
 
-The lending market on Base where the vault can supply a stock as collateral and borrow USDC against it. Maat uses the MAG7 Spoke and the Equities Hub, through a credit adapter that holds the position. See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
+The lending market on Base where the vault can supply a stock as collateral and borrow USDC against it. Maat uses it through a credit adapter that holds the position: the adapter calls the MAG7 Spoke to supply, borrow, repay and withdraw, and the Equities Hub is the custodian that holds the supplied collateral (the adapter's `collateralCustodian`). See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
 
 ### Action
 
@@ -42,6 +47,10 @@ The concentrated-liquidity pools on Base where each basket stock trades against 
 
 The token type behind the tokenized stocks Maat trades on Base (NVDAc, GOOGLc and AAPLc). A B20 token can pause transfers, enforce sender, receiver and executor transfer policies, and publish a [uiMultiplier](/docs/help/glossary#uimultiplier), and the vault reads all three before it trades. See [the transfer-policy check](/docs/concepts/nine-checks#3-transfer-policy) and [Splits and the multiplier](/docs/concepts/splits-and-multiplier).
 
+### Base
+
+An Ethereum layer-2 blockchain. Maat is built for Base mainnet, chain id `8453` (`BASE_CHAIN_ID` in `agent/src/addresses.ts`): the deploy script and the agent use its addresses, and the agent's chain client and its [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) are set to it. No Maat contract is deployed on it yet. See [Base addresses](/docs/reference/base-addresses).
+
 ### Basis point (bps)
 
 One hundredth of a percent. The mandate and the per-stock settings state their price tolerances and weight caps in basis points, for example the largest [premium](/docs/help/glossary#premium) and the slippage tolerance. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
@@ -54,11 +63,23 @@ A short code registered for a project, which ERC-8021 appends to a transaction's
 
 ### CDP Server Wallet
 
-The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in live mode. Its account policy allows only zero-value transactions to the vault on Base and rejects raw hash signing ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
+The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in [live mode](/docs/help/glossary#live-mode). Its account policy accepts only zero-value transactions to the vault, sending on Base only, and rejects raw hash signing ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
 
 ### Chainlink equity feed
 
-The oracle that publishes a stock's price on Base. It updates from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />, and the vault assumes its answer is the price of one raw token with the [uiMultiplier](/docs/help/glossary#uimultiplier) already applied, which has not been observed across a real split. See [Prices and premium](/docs/concepts/prices-and-premium#two-prices) and its [assumptions](/docs/concepts/prices-and-premium#assumptions).
+The oracle that publishes a stock's price on Base. The design assumes it updates from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />, which the repository has not measured. The vault takes its answer as the price of one whole token (`10 ** decimals()` units of `balanceOf`) with the [uiMultiplier](/docs/help/glossary#uimultiplier) already applied, which has not been observed across a real split. See [Prices and premium](/docs/concepts/prices-and-premium#two-prices) and its [assumptions](/docs/concepts/prices-and-premium#assumptions).
+
+### Change hash
+
+The key of a queued rule change: the `keccak256` of `abi.encode` of the kind (`"MANDATE"`, `"TOKEN"` or `"PAYEE"`) and the change's arguments, as `mandateChangeHash`, `tokenChangeHash` and `payeeChangeHash` return it. `queuedAt` maps it to the time of queueing, and `cancelChange` takes it. It is not the [mandate hash](/docs/help/glossary#mandate-hash) or the [policy hash](/docs/help/glossary#policy-hash) ([Change hashes](/docs/concepts/timelock-and-roles#change-hashes)).
+
+### Cheat code
+
+A function that only a test environment offers and that sets chain state directly, such as setting a balance or moving the clock. The vault's fork tests use Foundry's `deal` to give the vault USDC in place of an owner's `fund` call, and the agent's fork test moves the local node's clock ahead to a Saturday. See [Fork tests against real Base state](/docs/security/testing#fork-tests-against-real-base-state).
+
+### Compute bill
+
+What the agent owes for its Claude usage. The agent prices each Claude answer from its token counts (`agent/src/llm/pricing.ts`), and once at least <Fact name="billMinUsd" /> is unpaid, its own code, not Claude, puts a `PAY_EXPENSE` to the expense [payee](/docs/help/glossary#payee) first in the round's queue. The vault does not pay Anthropic: the payee is the wallet that pays for the Claude usage, the owner's for Agent #1 ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)).
 
 ## D
 
@@ -80,15 +101,19 @@ The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude,
 
 The one address allowed to call `execute` on the vault. It is set when the vault is created, the owner can replace it at once, and it can call no owner function. In live mode the agent is meant to use a [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the executor ([Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do)).
 
+### Exit-only
+
+A listed stock whose `allowed` flag is false while its feed or pool is still set. The vault can still sell it and withdraw it from collateral, but it cannot buy it or supply it, and a `BORROW` is refused while it is supplied as collateral. See [`allowed`](/docs/concepts/mandate#allowed).
+
 ## F
 
 ### Fail closed
 
-Treating a read that reverts or cannot be understood as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed and Aave reads all work this way. See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
+Treating a read that reverts as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed, pool [TWAP](/docs/help/glossary#twap) and Aave reads all work this way. It does not cover return data that fails to decode, or a few calls that run after a read returns: those revert `execute` instead ([Fail closed](/docs/security/model#fail-closed)). See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
 
 ### Feed edge
 
-The moment, <Fact name="feedEdge" />, at which the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) stop updating on a Friday and start again on a Sunday. The `FEED_24_5` [session mode](/docs/help/glossary#session-mode) follows it, and the [de-risk window](/docs/help/glossary#de-risk-window) is counted back from it. See [Market hours](/docs/concepts/market-hours#the-feed-edge).
+The moment, <Fact name="feedEdge" />, at which the design assumes the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) stop updating on a Friday and start again on a Sunday. The repository has not measured it, and the calendar and the vault keep it as a constant (`FEED_EDGE_MIN`, `FEED_FREEZE_MINUTE`). The `FEED_24_5` [session mode](/docs/help/glossary#session-mode) follows it, and the [de-risk window](/docs/help/glossary#de-risk-window) is counted back from it. See [Market hours](/docs/concepts/market-hours#the-feed-edge).
 
 ### Fork test
 
@@ -105,6 +130,18 @@ A number that measures how much room a loan has. The credit adapter reports it a
 ### Intent
 
 A request the agent sends to the vault's `execute`: an id, an [action](/docs/help/glossary#action), a token, an amount, a minimum output, a payee and the hash of the rationale. The agent builds one from each proposal, and each id works once, whether the vault allows or refuses it. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-2-the-policy-and-claude).
+
+## J
+
+### Journal
+
+The agent's local, append-only log: `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default). It has one JSON line per event of a [round](/docs/help/glossary#round), such as the round itself, each intent, send and reconcile, and any error, with the [rationale](/docs/help/glossary#rationale) text behind each `rationaleHash`. It stays on the operator's machine. See [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder).
+
+## L
+
+### Live mode
+
+`MAAT_MODE=live`. The agent then also sends the intents its gate lets through, to the vault through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) from `MAAT_BUILDER_CODE` appended, which live mode requires. The send path has run on a fork with a local sender in place of CDP, and the CDP code is tested against a fake CDP client only ([Go live](/docs/guides/run-the-agent#go-live)).
 
 ## M
 
@@ -138,6 +175,10 @@ An address on the vault's allowlist. `PAY_EXPENSE` can pay only a payee, and the
 
 One hash that commits to the whole policy: the [mandate](/docs/help/glossary#mandate), the list of stocks, each stock's settings and the payee list. The vault emits it as `PolicyHashUpdated` when it is created and after every applied change. See [The mandate](/docs/concepts/mandate#what-the-mandate-is).
 
+### Precompile
+
+Code built into the Base node at a fixed address, which runs in place of contract bytecode. Each [B20](/docs/help/glossary#b20) stock token is one: its code on Base is only the byte `0xef`, so a tool has to know Base's precompiles to run it. The contract tests need Foundry 1.8.4 or newer with `hardfork = "base:Cobalt"`, and the agent's fork run needs `base-anvil` ([Troubleshooting](/docs/help/troubleshooting#foundry-is-too-old-for-the-b20-hardfork)).
+
 ### Premium
 
 The gap between the pool's [TWAP](/docs/help/glossary#twap) and the oracle price, as a share of the oracle price, in [basis points](/docs/help/glossary#basis-point-bps). It counts in both directions, and the vault returns `PREMIUM_TOO_HIGH` when it is greater than `maxPremiumBps`, <Fact name="mandate.maxPremiumBps" /> by default. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
@@ -148,6 +189,14 @@ A read-only call, `previewIntent`, made with `eth_call` as the executor, that re
 
 ## R
 
+### Rationale
+
+The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. Only its `keccak256` goes onchain, as `rationaleHash` in the [Decision](/docs/help/glossary#decision), and the vault does not check it; the text itself is in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
+
+### Raw amount
+
+A token amount in its smallest units, as `balanceOf` returns it, not the display balance `balanceOfUI`. The `amount` of an intent and of a `Decision` is a raw amount: USDC has <Fact name="usdcDecimals" />, and NVDAc has 8, which the fork test `test_readsB20StateThroughPrecompile` checks. A [Chainlink](/docs/help/glossary#chainlink-equity-feed) price, by contrast, is for one whole token, `10 ** decimals()` raw units ([Types](/docs/reference/types#intent)).
+
 ### Reason
 
 The enum in `Types.sol` that says why the vault allowed or refused an action, and that every [Decision](/docs/help/glossary#decision) carries. `OK` means allowed, the other <Fact name="refusalCount" /> are refusals or failures, and the list only ever grows. See [Refusal codes](/docs/concepts/refusal-codes).
@@ -156,11 +205,23 @@ The enum in `Types.sol` that says why the vault allowed or refused an action, an
 
 A [Decision](/docs/help/glossary#decision) with `allowed` set to false: the vault records a [reason](/docs/help/glossary#reason) instead of reverting. Most refusals come from a failed check, while `SWAP_FAILED` and `TRANSFER_FAILED` mean the checks passed and the action then failed. See [Read a decision](/docs/get-started/read-a-decision#reading-a-refusal) and [Refusal codes](/docs/concepts/refusal-codes).
 
+### Revert
+
+A call that fails and undoes everything it did: it emits no event, though the transaction still costs gas. By design `execute` reverts only for a caller that is not the executor (`NotExecutor`) or a reused intent id (`IntentAlreadyUsed`) and records every other outcome as a [Decision](/docs/help/glossary#decision), but it also reverts when the transaction runs out of gas, and a few failures escape the design ([Refuse, do not revert](/docs/security/model#refuse-do-not-revert)). A reverted `execute` leaves its intent id unused, and the owner functions revert with their own errors, such as `NotOwner` or `ChangeNotReady` ([Errors](/docs/reference/errors)).
+
+### Round
+
+One pass of the agent's loop, `runOnce`: read the vault, settle any send left from an earlier round, ask Claude, then preview each intent and send it or only write it to the [journal](/docs/help/glossary#journal). The agent waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> otherwise. The agent's README (`agent/README.md`) calls a round a cycle ([Cadence](/docs/concepts/treasury-loop#cadence)).
+
+### Runway
+
+The USDC the agent's policy keeps back for compute: <Fact name="runwayDays" /> of the average daily compute cost, plus any unpaid [compute bill](/docs/help/glossary#compute-bill). The average covers the days of the previous week that have a record, and before there are any it is `MAAT_DEFAULT_DAILY_COMPUTE_USD` (<Fact name="dailyComputeUsd" />). The policy does not suggest spending the runway on buys or repayments, and when the vault's USDC falls short of it by at least <Fact name="minTradeUsd" /> while collateral is supplied and the vault is not paused, it suggests a `BORROW`: a policy rule in the agent, not a vault check ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
+
 ## S
 
 ### Session mode
 
-The `sessionMode` field of the mandate, which picks which hours count as open: `REGULAR`, the [NYSE session](/docs/help/glossary#nyse-session), or `FEED_24_5`, the window in which the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) update. The default mandate uses <Fact name="mandate.sessionMode" />. See [Market hours](/docs/concepts/market-hours#two-session-modes).
+The `sessionMode` field of the mandate, which picks which hours count as open: `REGULAR`, the [NYSE session](/docs/help/glossary#nyse-session), or `FEED_24_5`, the window in which the design assumes the [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) update. The default mandate uses <Fact name="mandate.sessionMode" />. See [Market hours](/docs/concepts/market-hours#two-session-modes).
 
 ### Slippage floor
 
@@ -176,6 +237,10 @@ How old the oracle's latest answer is. An answer older than the mandate's `maxSt
 
 The wait between queueing a rule change and applying it, <Fact name="timelockHours" /> in this vault. After the wait the owner has <Fact name="gracePeriodDays" /> to apply exactly the queued values, a change that is not applied in time expires, and the owner can cancel at any time. See [Timelock and roles](/docs/concepts/timelock-and-roles#the-timelock).
 
+### Tokenized stock
+
+A token that tracks the price of a listed company's stock. Maat is built to trade three on [Base](/docs/help/glossary#base), NVDAc, GOOGLc and AAPLc: [B20](/docs/help/glossary#b20) tokens that Maat does not issue, priced by the Chainlink NVDA, GOOGL and AAPL feeds. See [Base addresses](/docs/reference/base-addresses#what-each-group-is-for).
+
 ### TWAP
 
 The time-weighted average price: the pool's price averaged over the mandate's `twapWindow`, <Fact name="mandate.twapWindowSec" /> by default, so that one trade moves it only by its share of the window. The vault compares it with the oracle price in check 7. See [Prices and premium](/docs/concepts/prices-and-premium#the-twap).
@@ -185,6 +250,12 @@ The time-weighted average price: the pool's price averaged over the mandate's `t
 ### uiMultiplier
 
 A number, published as a [WAD](/docs/help/glossary#wad), that a [B20](/docs/help/glossary#b20) stock token changes on a split or a dividend. The vault does not use it to value anything, but a multiplier that differs from the vault's last snapshot, that cannot be read or that has a change scheduled blocks the stock at once, and after a recorded change the block lasts for a cooldown, <Fact name="mandate.multiplierCooldownSec" /> by default. The block covers `BUY`, `SELL`, and `BORROW` and `WITHDRAW_COLLATERAL` against debt ([Splits and the multiplier](/docs/concepts/splits-and-multiplier)).
+
+## V
+
+### Vault
+
+`MandateVault`, the contract that holds a treasury's USDC and stocks, runs the checks on every [intent](/docs/help/glossary#intent) and records each verdict as a [Decision](/docs/help/glossary#decision). The [executor](/docs/help/glossary#executor) can move funds only through `execute`, and the [owner](/docs/help/glossary#owner) can withdraw at any time. Stock supplied as collateral leaves the vault for the credit adapter's position on [Aave V4](/docs/help/glossary#aave-v4) until it is withdrawn. See [MandateVault](/docs/reference/mandate-vault).
 
 ## W
 

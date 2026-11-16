@@ -1,7 +1,10 @@
-import type { Fact } from "./facts";
+import { type Fact, FACTS } from "./facts";
 
 const fact = <T>(value: T, source: string): Fact<T> => ({ value, source });
 const SPEC = "docs/superpowers/specs/2026-11-06-mandate-treasury-design.md";
+const MANDATE = FACTS.mandate.value;
+/** Basis points in one whole: MandateVault.sol BPS. */
+const BPS = 10_000;
 
 /**
  * Numbers only the docs center cites (docs spec §2.4). They live apart from FACTS so the landing page's
@@ -39,8 +42,18 @@ export const DOCS_FACTS = {
   dailyComputeUsd: fact(0.5, "agent/src/config.ts MAAT_DEFAULT_DAILY_COMPUTE_USD default"),
   maxIntents: fact(6, "agent/src/llm/schema.ts MAX_INTENTS, intents per Claude proposal"),
   maxRationaleChars: fact(600, "agent/src/llm/schema.ts MAX_RATIONALE_CHARS, characters per intent rationale"),
+  maxSummaryChars: fact(1200, "agent/src/llm/schema.ts MAX_SUMMARY_CHARS, characters in the summary of a Claude proposal"),
+  maxAmountUsd: fact(
+    1_000_000,
+    "agent/src/llm/schema.ts MAX_AMOUNT_USD, the largest amountUsd the schema accepts in one proposed intent",
+  ),
   maxGas: fact(3_000_000, "agent/src/exec/calls.ts MAX_GAS, the gas limit cap on every transaction the agent sends"),
   executeGasFloor: fact(2_500_000, "agent/src/exec/calls.ts EXECUTE_GAS_FLOOR, the minimum gas limit for execute"),
+  syncGasFloor: fact(300_000, "agent/src/exec/calls.ts SYNC_GAS_FLOOR, the minimum gas limit for syncMultiplier"),
+  receiptTimeoutSec: fact(
+    120,
+    "agent/src/loop/runOnce.ts RECEIPT_TIMEOUT_MS = 120_000, how long a round waits for the receipt of a transaction it sent",
+  ),
   pendingWindowMinutes: fact(
     10,
     "agent/src/loop/runOnce.ts PENDING_WINDOW_SECONDS = 600n, the chain time after which a send with no onchain trace is recorded as dropped",
@@ -48,6 +61,18 @@ export const DOCS_FACTS = {
   logWindowBlocks: fact(
     9_000,
     "agent/src/chain/logWindows.ts MAX_LOG_RANGE = 9_000n, the most blocks one eth_getLogs query of the agent covers",
+  ),
+  lockStaleSec: fact(
+    60,
+    "agent/src/loop/lock.ts UNREADABLE_STALE_MS = 60_000, the age after which an agent.lock with no readable pid counts as stale",
+  ),
+  slippageLossPerTradeUsd: fact(
+    (MANDATE.perTradeCapUsd * MANDATE.maxSlippageBps) / BPS,
+    "derived from contracts/script/MaatConfig.sol defaultMandate(): perTradeCapUsd x maxSlippageBps / 10,000. MandateVault.sol _perform sets the swap floor maxSlippageBps below the oracle-implied output, so a trade at the per-trade cap fills at most this far below the oracle price",
+  ),
+  slippageLossPerDayUsd: fact(
+    (MANDATE.dailyCapUsd * MANDATE.maxSlippageBps) / BPS,
+    "derived from contracts/script/MaatConfig.sol defaultMandate(): dailyCapUsd x maxSlippageBps / 10,000. The daily cap counts buys, sells and bill payments, so the swaps of one UTC day fill at most this far below the oracle price",
   ),
   executorGasEth: fact(
     0.002,

@@ -8,16 +8,30 @@ lastReviewed: 2026-11-07
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
+  - contracts/src/MandateVault.sol
   - web/content/decisions.ts
   - agent/src/ledger/journal.ts
+  - agent/src/loop/runOnce.ts
+  - agent/src/llm/prompt.ts
+  - agent/test/integration/agent.fork.test.ts
 next: [concepts/refusal-codes, guides/watch-decisions-onchain]
 ---
 
-A [Decision](/docs/help/glossary#decision) event is the vault's public record of one verdict. This page explains the event field by field, shows how to read a refusal, and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. No Maat vault is deployed yet, so every example here is a row from the fork run. Once Maat is live, the same steps apply to its mainnet events.
+A [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/glossary#vault)'s public record of one verdict. This page shows how to read a row of the ledger, explains the event field by field, shows how to read a [refusal](/docs/help/glossary#refusal), and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. No Maat vault is deployed yet, so every example here is a row from the [fork run](/docs/help/glossary#fork-test). Once a vault is deployed on [Base](/docs/help/glossary#base) mainnet, the same steps apply to its events.
+
+## Read a ledger row
+
+Each row of the ledger is one `Decision`: the vault's verdict on one [intent](/docs/help/glossary#intent) that was sent to it. Read its Decision column first:
+
+- **`ALLOWED · OK`.** The intent passed every check for its [action](/docs/help/glossary#action), and the action ran.
+- **`REFUSED · <reason>`.** The vault said no, or the action failed inside it. The intent moved no funds, and the [reason](/docs/help/glossary#reason) is on the public record. [Reading a refusal](#reading-a-refusal) explains the reasons.
+- **Allowed does not mean a good trade.** It only means the intent stayed inside the [mandate](/docs/help/glossary#mandate).
+
+The ledger holds only the intents that were sent. The agent is built to [preview](/docs/help/glossary#preview) each intent first and to send a refusal only for some reasons, at most once per reason per UTC day, and in a [dry run](/docs/help/glossary#dry-run), the default, it sends nothing ([How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts)). A quiet ledger therefore does not mean the agent did nothing. The fork run's four rows are under [From a ledger row to its reasoning](#from-a-ledger-row-to-its-reasoning).
 
 ## The Decision event
 
-Every `execute` call that does not revert emits one `Decision`, whether the [intent](/docs/help/glossary#intent) was allowed or refused. The vault declares it in `contracts/src/IMandateVaultEvents.sol`:
+Every `execute` call that does not [revert](/docs/help/glossary#revert) emits one `Decision`, whether the intent was allowed or refused. The vault declares it in `contracts/src/IMandateVaultEvents.sol`:
 
 <EventSignature name="Decision" />
 
@@ -27,13 +41,13 @@ Every `execute` call that does not revert emits one `Decision`, whether the [int
 
 | Field | Type | Indexed | Meaning |
 | --- | --- | --- | --- |
-| `intentId` | `bytes32` | yes | The id of the intent. Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the round, and the vault only requires that it was never used before. |
+| `intentId` | `bytes32` | yes | The id of the intent. Each id executes once, refused or not. The agent builds it from its run id and the intent's position in the [round](/docs/help/glossary#round), and the vault only requires that it was never used before. |
 | `action` | `Action` | no | What the intent asked for, as an enum id (see the table below). |
-| `token` | `address` | yes | The token the intent names: a stock for a buy, a sell and the collateral actions, and USDC for borrowing, repaying and paying the compute bill. |
-| `amount` | `uint256` | no | The size in the token's own raw units, not dollars. For a buy it is USDC to spend, with 6 decimals. |
+| `token` | `address` | yes | The token the intent names: a stock for a buy, a sell and the collateral actions, and USDC for borrowing, repaying and paying the [compute bill](/docs/help/glossary#compute-bill). |
+| `amount` | `uint256` | no | The size in [raw units](/docs/help/glossary#raw-amount), not dollars. It is USDC units (<Fact name="usdcDecimals" />) for a buy, a borrow, a repay and a bill payment, even though a buy's `token` is the stock, and the stock's own units for a sell and the collateral actions. [The dollar value](#what-a-decision-does-not-tell-you) shows how to turn it into dollars. |
 | `allowed` | `bool` | no | `true` only when `reason` is `OK`. `false` means the vault refused or the action failed. |
 | `reason` | `Reason` | no | `OK` when allowed. Otherwise the first check that failed, or the kind of failure. |
-| `rationaleHash` | `bytes32` | no | `keccak256` of the rationale text the agent journals for the intent: Claude's text, with the closed phase appended for a `MARKET_CLOSED` log, or the agent's own text for a compute bill payment. The text itself is not onchain. |
+| `rationaleHash` | `bytes32` | no | `keccak256` of the intent's [rationale](/docs/help/glossary#rationale) text. Claude writes the text for the trades and credit actions it proposes, and when the agent logs a `MARKET_CLOSED` refusal it appends the closed phase to that text, for example `(market closed, weekend)`. The agent's own code writes it for a `PAY_EXPENSE`, as a line that starts `Compute bill:`. Whoever sends `execute` by hand as the [executor](/docs/help/glossary#executor) writes their own: the [owner](/docs/help/glossary#owner)'s smoke tests in the runbook, `deployments/README.md`, hash the word `smoke`. In the fork rows on this page, a scripted proposer stood in for Claude and wrote it. The vault only emits the hash: it neither checks nor stores it, and the text itself is not onchain. |
 
 `Action` is an enum, so the log carries its position in the list. The full definitions are in the [Types reference](/docs/reference/types).
 
@@ -45,7 +59,7 @@ Every `execute` call that does not revert emits one `Decision`, whether the [int
 | 3 | `WITHDRAW_COLLATERAL` | The stock to take back. Its raw amount. |
 | 4 | `BORROW` | USDC. The amount to borrow. |
 | 5 | `REPAY` | USDC. The amount to repay. |
-| 6 | `PAY_EXPENSE` | USDC. The amount to pay to an allowlisted payee, which is in the intent and not in the event. |
+| 6 | `PAY_EXPENSE` | USDC. The amount to pay to an allowlisted [payee](/docs/help/glossary#payee), which is in the intent and not in the event. |
 
 `Reason` works the same way. `OK` is 0, and the <Fact name="refusalCount" /> refusals have the ids 1 to <Fact name="refusalCount" />, in an enum that only ever grows. In the fork run you meet only two of them: `OK` (0) and `MARKET_CLOSED` (6). [Refusal codes](/docs/concepts/refusal-codes) lists every id with its meaning.
 
@@ -55,11 +69,13 @@ Start with `allowed`. When it is `true`, the checks passed and the action ran. W
 
 - **A check failed.** Most reasons name the check that refused, such as `MARKET_CLOSED` or `SIZE_LIMIT`. For a BUY or a SELL the vault stops at the first failure, in the fixed order of [the nine checks](/docs/concepts/nine-checks), so the reason is the earliest check the intent failed. Market checks come before balance and size checks, so an empty vault on a holiday still reports the holiday. The other actions run their own checks.
 - **The action itself failed.** `SWAP_FAILED` and `TRANSFER_FAILED` mean the checks passed but the swap or the token transfer failed inside the vault. `execute` still did not revert.
-- **A credit step failed or could not be read.** `CREDIT_FAILED` means the credit call failed, or a credit read that the checks needed could not be read, so the vault fails closed.
+- **A credit step failed or could not be read.** `CREDIT_FAILED` means the credit call failed, or a credit read that the checks needed could not be read, so the vault [fails closed](/docs/help/glossary#fail-closed).
 
 Either way the intent id is spent, so the same intent can never run again. The agent may propose the same trade later, with a new id.
 
-A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent is built to send a given refusal reason at most once per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date) and only journal the rest.
+A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent is built to send a given refusal reason at most once per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date) and only write the rest to its [journal](/docs/help/glossary#journal).
+
+The NYSE date is the date in New York that the mandate's calendar contract reports, so it follows the New York time the ledger shows. The day of the vault's daily cap is a UTC day instead. New York is <Fact name="etOffsetHours.dst" /> behind UTC during US daylight saving time and <Fact name="etOffsetHours.standard" /> behind otherwise, so a new UTC day starts at 20:00 or 19:00 New York time, and from then on the daily cap starts over. Only when the agent cannot read the calendar does it fall back to the UTC day for refusals too, and then one New York Saturday can show the same refusal twice.
 
 ## From a ledger row to its reasoning
 
@@ -71,27 +87,45 @@ Each column comes from the event or from the transaction around it:
 
 | Column | Where it comes from |
 | --- | --- |
-| Time (ET) | New York time of the round. |
-| Intent | The `action`, the symbol of the `token`, and the `amount` converted to dollars. |
+| Time (ET) | New York time of the round. The daily limits count UTC days ([Reading a refusal](#reading-a-refusal)). |
+| Intent | The `action`, the symbol of the `token`, and a dollar amount. The event's `amount` is in raw units ([The dollar value](#what-a-decision-does-not-tell-you)). For the fork rows, the dollar amount is the one the scripted proposal asked for, written into the site's data by hand. |
 | Decision | `allowed` and `reason`, with the reason by name. |
 | Gas | The gas the transaction used. It is on the transaction receipt, not in the event. |
-| Note | A short comment written for the site. It is not onchain. |
+| Note | A short comment written for the site. It is not onchain, and it is not the rationale. |
 
-The fork rows have no mainnet transaction, because they ran on a local fork and no Maat contract is deployed. The agent's journal is a file on the operator's machine, so only the operator holds it. Once Maat is live, this is how to match a mainnet decision to the reasoning behind it, and only the operator, or someone the operator shares the file with, can do steps 2 and 3:
+In the fork run a scripted proposer, `FixedProposer`, stood in for Claude. The four intents in the ledger carried these rationales, in order: `NVDAc underweight`, `use as collateral`, `compute runway` and `GOOGLc underweight` (`agent/test/integration/agent.fork.test.ts`). [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) shows the hash of the first.
+
+When Claude proposes, its instructions let it propose a trade the vault will refuse while the market is closed or a [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness), if the refusal itself is worth recording, and tell it to say so in the rationale:
+
+```typescript title="agent/src/llm/prompt.ts#L20-L21"
+When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
+itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
+```
+
+The real Claude API has never run in a Maat test, and no output from it is committed, so no rationale on this site or in the repository was written by Claude. The Saturday buy in the fork ledger came from the scripted proposer.
+
+The fork rows have no mainnet transaction, because they ran on a local fork and no Maat contract is deployed. The agent's journal is a file on the operator's machine, so only the operator holds it. Showing the rationale text on the site is [planned, not built](/docs/get-started/status#planned-not-built). Once a vault is deployed, this is how to match a mainnet decision to the reasoning behind it. Only the operator, or someone the operator shares the file with, can do steps 2 and 3:
 
 1. Open the transaction that emitted the `Decision` and read `intentId` and `rationaleHash` from the log.
-2. In the agent's journal, `data/journal.jsonl`, find the line of kind `intent` with the same `intentId`. It holds the `rationale` text, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result, and once the receipt is in, the `txHash`, `gasUsed` and the `decision`. A line of kind `sent` is written just before the receipt.
+2. In the agent's journal, `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default; see [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder)), find the lines with the same `intentId`:
+   - **Normally**, a line of kind `sent` is written when the transaction is sent, and a line of kind `intent` once the receipt is in. Both hold the `rationale` text, the `rationaleHash` and the preview result. The `intent` line adds `gasUsed` and the `decision`.
+   - **If the receipt did not come back in that round**, there is no `intent` line for that id. A later round writes a line of kind `reconcile` with `outcome: "applied"` and the `decision`, and the `rationale` is on the `sent` line.
+   - **If the send failed after the transaction was broadcast**, there is no `sent` line either. Only the later `reconcile` line records the `decision`, and the journal holds no `rationale` for that intent.
 3. Compute `keccak256` over the UTF-8 bytes of the `rationale` and compare it with `rationaleHash`. If they match, the text is what the agent committed to when it sent the intent.
+
+[Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) has the commands for steps 2 and 3.
 
 Two rows of the ledger above, read the same way:
 
-- **The first row (BUY NVDAc, ALLOWED · OK).** The log has `allowed = true` and `reason = 0`. Its journal line would carry `preview: "OK"` and `gate: "execute"`.
+- **The first row (BUY [NVDAc](/docs/help/glossary#b20), ALLOWED · OK).** The log has `allowed = true` and `reason = 0`. Its journal line would carry `preview: "OK"` and `gate: "execute"`.
 - **The last row (BUY GOOGLc, REFUSED · MARKET_CLOSED).** The log has `allowed = false` and `reason = 6`. Its journal line would carry `preview: "MARKET_CLOSED"` and `gate: "log-refusal"`: the agent sent the refusal on purpose, to put it onchain.
 
 ## What a decision does not tell you
 
-- **The reasoning.** The event holds only a hash. The text is in the journal.
-- **The gas or the Builder Code.** Both are on the transaction. The agent appends the [Builder Code](/docs/help/glossary#builder-code-erc-8021) to the calldata of every transaction it sends, and owner-signed transactions do not carry it.
-- **Whether the trade was a good idea.** `allowed` means the intent stayed inside the [mandate](/docs/help/glossary#mandate). A bad trade inside every limit is still allowed.
-- **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged for that NYSE date (for `MARKET_CLOSED`, for that closed phase). A missing `Decision` is therefore not proof that the agent did not try.
-- **The dollar value.** `amount` is in raw token units. The site's ledger converts it.
+- **The reasoning.** The event holds only a hash. For an intent the agent sent, the text is normally in its journal.
+- **The gas or the [Builder Code](/docs/help/glossary#builder-code-erc-8021).** Both are on the transaction, not in the event.
+- **Who sent it.** The event has no sender. Compare the transaction's `from` with the vault's `owner()`. The owner can call `execute` only while it also holds the executor role, as in its [smoke tests](/docs/guides/deploy-your-own-vault#run-the-smoke-test) and its [unwind](/docs/guides/pause-withdraw-recover#unwind-the-credit-position). An `ExecutorSet` event marks each later change of executor. The executor set at deploy emits none, so read it from the deploy's constructor arguments, or from `executor()` while no `ExecutorSet` has followed. In the runbook that first executor is the owner's own wallet, which signs the smoke tests. The agent appends the Builder Code to the calldata of every transaction it sends, and the owner's `cast send` commands in the runbook add none. The owner's intents in the runbook and in these guides stand out too: their ids hash labels such as `maat-smoke-1`, `maat-credit-1` or `maat-unwind-1`, with one more `maat-unwind` id for each stock in the unwind and retries such as `maat-smoke-3` or `maat-unwind-retry-1`, and their `rationaleHash` hashes the word `smoke` or `unwind`. On a mainnet vault, the agent's first decision is the first one signed through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) once it runs in [live mode](/docs/help/glossary#live-mode) ([Status](/docs/get-started/status#next-mainnet)).
+- **Whether the trade was a good idea.** `allowed` means the intent stayed inside the mandate. A bad trade inside every limit is still allowed.
+- **The fill.** For a `BUY` or a `SELL`, `amount` is what the intent put in, not what came back. The vault ignores the value the swap adapter returns, and no event in Maat's contracts carries the output or the price of a fill. With the [Aerodrome](/docs/help/glossary#aerodrome-slipstream) adapter in this repository, an allowed `BUY` or `SELL` received at least the [slippage floor](/docs/help/glossary#slippage-floor), because a smaller output fails the swap with `SWAP_FAILED`. For a `REPAY`, the [Aave V4](/docs/help/glossary#aave-v4) credit adapter in this repository takes at most the open debt, interest included, and the vault ignores the amount it reports as repaid. So less than `amount` can leave the vault while the event still shows the full `amount`: the runbook's [credit smoke test](/docs/guides/deploy-your-own-vault#run-the-credit-smoke-test) asks to repay more than it borrowed.
+- **Every proposal the agent considered.** The ledger holds only the intents that were sent ([Read a ledger row](#read-a-ledger-row)).
+- **The dollar value.** `amount` is in raw units. For a `BUY`, `BORROW`, `REPAY` and `PAY_EXPENSE` it is USDC, with <Fact name="usdcDecimals" />, so `20000000`, the raw amount of the fork run's first buy, is 20 USDC. For a `REPAY` it is the amount asked for, which can be more than what left the vault (The fill, above). For a `SELL`, `SUPPLY` and `WITHDRAW_COLLATERAL` it is the stock's own units. To value a stock amount, multiply it by the stock's feed price at that block, which has <Fact name="priceDecimals" />, and divide by 10 to the power of the stock's `decimals()` plus 2. The result is in USDC units, the same way the vault values a holding ([Splits and the multiplier](/docs/concepts/splits-and-multiplier#what-the-multiplier-is)). The dollar amounts in the fork ledger are the ones the scripted proposals asked for.

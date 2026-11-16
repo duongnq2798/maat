@@ -1,8 +1,8 @@
-import { REASON_MEANING, REASONS } from "../../content/reasons";
+import { REASON_MEANING_DOCS, REASONS } from "../../content/reasons";
 import { SITE } from "../site";
 import { forkLedger, GROUP_OF, decisionEventSource, mandateTable } from "./content-data";
 import { DATA_COMPONENTS, type DataComponent } from "./data-components";
-import { type FactName, factFor } from "./fact-text";
+import { codeParts, FACT_TABLE_HEAD, type FactCode, factTable } from "./fact-text";
 import { type FlowData, ARCHITECTURE, DECISION_LOOP, MARKET_WEEK_CAPTION, MARKET_WEEK_MODES, TIMELOCK_FLOW, TREASURY_LOOP } from "./flows";
 import { STATUS_LABEL, STATUSES, type DocStatus } from "./frontmatter";
 import { docsData } from "./generated";
@@ -51,6 +51,10 @@ function str(name: string, props: Props, key: string): string {
   const v = props[key];
   if (typeof v !== "string") throw new Error(`<${name} /> needs a plain-string "${key}"`);
   return v;
+}
+
+function optionalStr(name: string, props: Props, key: string): string | undefined {
+  return props[key] === undefined ? undefined : str(name, props, key);
 }
 
 function strings(name: string, props: Props, key: string): readonly string[] {
@@ -145,31 +149,39 @@ const scriptFile: Render = (props) => {
   return link(code(`agent/scripts/${name}`), `${SITE.repoUrl}/blob/main/agent/scripts/${name}`);
 };
 
+/** A group comment heads its rows once, as a one-cell row; a row's Note is only the constant's own comment. */
 const addressTable: Render = () =>
   mdTable(
     ["Name", "Value", "Note"],
-    docsData.addresses.map((a) => [
-      code(a.name),
-      a.type === "address" ? link(code(a.value), `https://basescan.org/address/${a.value}`) : code(a.value),
-      a.note,
-    ]),
-  );
-
-const factTable: Render = (props) =>
-  mdTable(
-    ["Name", "Value", "Source"],
-    strings("FactTable", props, "names").map((n) => {
-      const f = factFor(n as FactName);
-      return [code(n), f.text, f.source];
+    docsData.addresses.flatMap((a, i) => {
+      const row = [
+        code(a.name),
+        a.type === "address" ? link(code(a.value), `https://basescan.org/address/${a.value}`) : code(a.value),
+        a.note,
+      ];
+      return a.group !== "" && a.group !== docsData.addresses[i - 1]?.group ? [[a.group], row] : [row];
     }),
   );
+
+const inCode = (c: FactCode) => codeParts(c).map((p) => (p.code ? code(p.text) : p.text)).join("");
+
+const factTableText: Render = (props) => {
+  const { settings, rows } = factTable(strings("FactTable", props, "names"));
+  return blocks(
+    mdTable(
+      settings ? FACT_TABLE_HEAD.settings : FACT_TABLE_HEAD.figures,
+      rows.map((r) => (r.code ? [r.label, inCode(r.code), r.text, code(r.code.file)] : [r.label, r.text, r.source])),
+    ),
+    optionalStr("FactTable", props, "caption"),
+  );
+};
 
 // Tables of shared data
 
 const reasonTable: Render = () =>
   mdTable(
     ["Code", "Id", "Group", "Meaning"],
-    REASONS.map((c, i) => [link(code(c), `/docs/concepts/refusal-codes#${c.toLowerCase()}`), String(i + 1), GROUP_OF.get(c) ?? "", REASON_MEANING[c]]),
+    REASONS.map((c, i) => [link(code(c), `/docs/concepts/refusal-codes#${c.toLowerCase()}`), String(i + 1), GROUP_OF.get(c) ?? "", REASON_MEANING_DOCS[c]]),
   );
 
 const mandateTableText: Render = () => {
@@ -230,7 +242,7 @@ export const COMPONENT_TEXT: Readonly<Record<DataComponent, Render>> = {
   ScriptEntry: scriptEntry,
   ScriptFile: scriptFile,
   AddressTable: addressTable,
-  FactTable: factTable,
+  FactTable: factTableText,
   ReasonTable: reasonTable,
   MandateTable: mandateTableText,
   EventSignature: eventSignatureText,
