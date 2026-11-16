@@ -16,11 +16,11 @@ sources:
 next: [guides/configure-a-mandate, help/troubleshooting]
 ---
 
-A custom error is a revert with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the vault, the calendar and the two adapters, with the condition that raises it. The contracts are built and fork-tested, and nothing is deployed yet.
+A custom error is a [revert](/docs/help/glossary#revert) with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the [vault](/docs/help/glossary#vault), the calendar and the two adapters, with the condition that raises it. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 <Callout type="note" title="A refusal is not an error">
 
-When the vault stops a trade, it does not revert. By design `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` instead of reverting. A dependency can still make `execute` revert, with nothing recorded, in a few ways the vault does not catch: return data that does not fit the ABI, a revert in a read that no `try` guards (such as USDC's `balanceOf`), and a pool answer the TWAP cannot use. [Fail closed](/docs/security/model#fail-closed) lists them, and [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows each.
+When the vault stops a trade, it does not revert. By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. [Some failures escape](/docs/security/model#fail-closed): a dependency can still make `execute` revert, with nothing recorded, in a few ways the vault does not catch: return data that does not fit the ABI, a revert in a read that no `try` guards (such as the plain `balanceOf` and `decimals` reads on USDC and the stocks, which the [README](https://github.com/duongnq2798/maat/blob/main/README.md) names), and a pool answer the TWAP cannot use. [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows each. A transaction that runs out of gas reverts too. A reverted `execute` records nothing: `usedIntent` stays false, so the same id can be sent again. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `SWAP_FAILED` for the swap adapter, and `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` for the credit adapter, instead of reverting. A credit adapter view that reverts during a `BUY` (`suppliedOf` or `debt`) counts the stock's weight as above its cap, so that `BUY` is recorded as `CONCENTRATION`.
 
 </Callout>
 
@@ -152,7 +152,7 @@ Raised by `uniswapV3SwapCallback` when the caller is not the pool that the curre
 
 <ErrorEntry contract="AerodromeSwapAdapter" name="InsufficientOutput" />
 
-Raised by `swapExactIn` when the swap returns less than `minOut`. `amountOut` is what the pool gave and `minOut` is the minimum the caller asked for. When the vault is the caller, it catches this revert and records `SWAP_FAILED` instead of reverting.
+Raised by `swapExactIn` when the swap returns less than `minOut`. `amountOut` is what the pool gave and `minOut` is the minimum the caller asked for. A transaction ends with this error only when it calls the adapter directly: inside `execute` the vault catches it and records `SWAP_FAILED` instead of reverting.
 
 ### TokenNotInPool
 
@@ -172,7 +172,7 @@ Raised when a token returns false from a transfer the adapter makes: pulling the
 
 <ErrorEntry contract="AaveV4CreditAdapter" name="HealthFactorTooLow" />
 
-Declared in `ICreditAdapter` and raised here by `borrow` and `withdraw`. After the spoke has acted, the adapter reads the health factor again and reverts if it is below `minHealthFactor`, so the minimum holds even if the vault's projection was off. The vault catches the revert and records `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` in the `Decision`.
+Declared in `ICreditAdapter` and raised here by `borrow` and `withdraw`. After the spoke has acted, the adapter reads the health factor again and reverts if it is below `minHealthFactor`, so the minimum holds even if the vault's projection was off. Only the vault may call `borrow` and `withdraw` here, and inside `execute` it catches the revert and records `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` in the `Decision`, so no transaction ends with this error: it shows up only inside a trace of `execute`.
 
 ### LengthMismatch (AaveV4CreditAdapter)
 
@@ -218,7 +218,7 @@ These three errors belong to the interface, so every implementation shares them.
 
 <ErrorEntry contract="ICreditAdapter" name="HealthFactorTooLow" />
 
-The error for a `borrow` or `withdraw` that would leave the health factor below the minimum the caller passed. `healthFactor` is the value after the action, as a [WAD](/docs/help/glossary#wad). The vault reads only a well-formed `HealthFactorTooLow(healthFactor, minHealthFactor)` revert as a health reason, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`; empty data, a panic or any other error becomes `CREDIT_FAILED`.
+The error for a `borrow` or `withdraw` that would leave the health factor below the minimum the caller passed. `healthFactor` is the value after the action, as a [WAD](/docs/help/glossary#wad). The vault reads only a well-formed `HealthFactorTooLow(healthFactor, minHealthFactor)` revert as a health reason, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`; empty data, a panic or any other error becomes `CREDIT_FAILED`. A transaction ends with this error only when it calls an adapter directly, and only if that adapter lets the caller in: inside `execute` the vault catches it.
 
 ### NotVault (ICreditAdapter)
 

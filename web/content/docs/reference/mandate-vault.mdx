@@ -14,11 +14,11 @@ sources:
 next: [reference/events, concepts/timelock-and-roles]
 ---
 
-`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it reverts or refuses. The contract is built and fork-tested, and nothing is deployed yet, so there is no address to give.
+`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it [reverts](/docs/help/glossary#revert) or refuses. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet, so there is no address to give ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 <Callout type="note" title="Refusals are not reverts">
 
-By design `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks an action is a refusal: `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. A feed, token, pool or adapter can still make `execute` revert, with nothing recorded, in a few ways the vault does not catch ([Fail closed](/docs/security/model#fail-closed) lists them, and [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows each). The owner functions revert with the errors named under each entry, and [Errors](/docs/reference/errors) lists them all.
+By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. [Some failures escape](/docs/security/model#fail-closed): a feed, token, pool or adapter can still make `execute` revert, with nothing recorded, in a few ways the vault does not catch, such as a revert in the plain `balanceOf` and `decimals` reads on USDC and the stocks, which the [README](https://github.com/duongnq2798/maat/blob/main/README.md) names. [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows each. A transaction that runs out of gas reverts too. A reverted `execute` records nothing: `usedIntent` stays false, so the same id can be sent again. Everything else that blocks an action is a refusal: `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The owner functions revert with the errors named under each entry, and [Errors](/docs/reference/errors) lists them all.
 
 </Callout>
 
@@ -34,13 +34,17 @@ The [executor](/docs/help/glossary#executor) is the one address that can send in
 
 Only the current `executor` may call it: any other caller reverts with `NotExecutor`, and an intent `id` that was used before reverts with `IntentAlreadyUsed`, with nothing recorded. Otherwise the vault marks the id used, refreshes its multiplier snapshot of the intent's token when the token has a market (`MultiplierChangeDetected` if the value changed), and runs the checks for the action: [the nine checks](/docs/concepts/nine-checks) for a `BUY` or a `SELL` (check 9 is for a `BUY` only), and [their own checks](/docs/concepts/nine-checks#other-actions) for each other action. If they pass, the vault records any USDC that arrived since its last count (`RevenueReceived`) and acts: a swap, a transfer to the [payee](/docs/help/glossary#payee), or a call to the credit adapter. Every call that does not revert emits one `Decision`: a refusal comes back as `allowed = false` with a `Reason`, moves no funds and still uses up the id, and a swap, token call or credit call that fails after the checks is recorded the same way, as `SWAP_FAILED`, `TRANSFER_FAILED` or `CREDIT_FAILED` (a credit call can also be recorded as `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`).
 
+#### Gas
+
+The vault sets no gas requirement of its own. It catches failures inside the swap, token and credit calls, so a plain `eth_estimateGas` can return a limit that leaves those calls too little gas, and a low limit has been seen to record `SWAP_FAILED` for a swap that works with more gas ([Troubleshooting](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit)). A starved inner call is recorded and spends the id; a transaction that runs out of gas outside those calls reverts and leaves the id unused. The floor of <Fact name="executeGasFloor" /> and the cap of <Fact name="maxGas" /> are the agent's own choice, not a vault rule ([Gas estimation](/docs/security/not-claimed#gas-estimation)). From the code, not measured: a `BUY`, a `BORROW` and a `WITHDRAW_COLLATERAL` against debt read every listed token, delisted ones included, so their gas grows as `tokens()` grows.
+
+## Anyone
+
 ### previewIntent
 
 <Fn contract="MandateVault" name="previewIntent" />
 
-Anyone may call this read-only function. It returns the `Reason` that `execute` would reach for the same intent before acting, and `OK` means the checks pass: it is the check verdict, not the execution result. It cannot see a failure that happens while the vault acts (`SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED` from the adapter call itself) or the adapter's own health check after a `WITHDRAW_COLLATERAL` against debt, but it does return `CREDIT_FAILED` when a credit view that the checks read is unreadable. It does not look at `usedIntent`, so a reused id previews normally while `execute` reverts with `IntentAlreadyUsed`. The transfer-policy check reads `tx.origin`, so preview from the executor's address to get the verdict the executor would get.
-
-## Anyone
+The source comment above says less than the code does: the [preview](/docs/help/glossary#preview) cannot predict a `CREDIT_FAILED` from the adapter call itself, but it returns `CREDIT_FAILED` when a credit view that the checks read is unreadable. Anyone may call this read-only function. It returns the `Reason` that `execute` would reach for the same intent before acting, and `OK` means the checks pass: it is the check verdict, not the execution result. It cannot see a failure that happens while the vault acts (`SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED` from the adapter call) or the adapter's own health check after a `BORROW` or a `WITHDRAW_COLLATERAL` against debt (for a `BORROW` the preview reads only the adapter's projected [health factor](/docs/help/glossary#health-factor)). It does not look at `usedIntent`, so a reused id previews normally while `execute` reverts with `IntentAlreadyUsed`. The transfer-policy check reads `tx.origin`, so preview with `from` set to the address that sends the transaction, which is the executor itself when the executor is a plain account (an EOA), to get the verdict `execute` would reach ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
 
 ### notifyRevenue
 
@@ -84,7 +88,7 @@ Only the owner may call it, and the vault takes the USDC from the owner with `tr
 
 ## Owner, timelocked
 
-A change to the mandate, to a token's settings or to the payee list takes two calls: a `queue` call that starts the clock, and an `apply` call with exactly the same values once the wait is over. The wait is <Fact name="timelockHours" />, and the owner has <Fact name="gracePeriodDays" /> after it to apply. Every function here reverts with `NotOwner` for any other caller. [Timelock and roles](/docs/concepts/timelock-and-roles#the-timelock) walks through the steps, and [Change hashes](/docs/concepts/timelock-and-roles#change-hashes) explains the keys.
+A change to the mandate, to a token's settings or to the payee list takes two calls: a `queue` call that starts the clock, and an `apply` call with exactly the same values once the wait is over. `cancelChange` is listed here because it acts on the queue, but it takes effect at once. The wait is <Fact name="timelockHours" />, and the owner has <Fact name="gracePeriodDays" /> after it to apply. Every function here reverts with `NotOwner` for any other caller. [Timelock and roles](/docs/concepts/timelock-and-roles#the-timelock) walks through the steps, and [Change hashes](/docs/concepts/timelock-and-roles#change-hashes) explains the keys.
 
 ### queueMandate
 
@@ -120,7 +124,7 @@ Applies a queued mandate, and the values must be exactly the queued ones. The qu
 
 <Fn contract="MandateVault" name="applyTokenConfig" />
 
-Applies a queued `TokenConfig` with the same three queue errors as `applyMandate`. It then reverts with `ZeroAddress` for the zero address and with `InvalidConfig` when the token has no code or, for a token that has a market, when its feed or pool fails validation. It lists the token if it is new, stores the config, and emits `TokenConfigApplied` and `PolicyHashUpdated`. For a token with a market it also reads `uiMultiplier()`, and a revert there reverts the apply. The first snapshot starts no cooldown, and a later one records any change that was never synced (`MultiplierChangeDetected`), so re-applying cannot hide a split.
+Applies a queued `TokenConfig` with the same three queue errors as `applyMandate`. It then reverts with `ZeroAddress` for the zero address and with `InvalidConfig` when the token has no code or, for a token that has a market, when its feed or pool fails validation or the token's `decimals()` reverts or is above <Fact name="maxTokenDecimals" /> (the full list is under [`InvalidConfig`](/docs/reference/errors#invalidconfig)). It lists the token if it is new, stores the config, and emits `TokenConfigApplied` and `PolicyHashUpdated`. For a token with a market it also reads `uiMultiplier()`, and a revert there reverts the apply. The first snapshot starts no cooldown, and a later one records any change that was never synced (`MultiplierChangeDetected`), so re-applying cannot hide a split.
 
 ### applyPayee
 
@@ -224,7 +228,7 @@ True while the owner has paused the vault. It starts false, and only `setPaused`
 
 <Fn contract="MandateVault" name="tokenConfig" />
 
-Returns the four members of a token's `TokenConfig`: `allowed`, `feed`, `pool` and `maxWeightBps`. A token that was never listed returns false for `allowed` and zeros for the rest. A token with `allowed` set to false but a feed or a pool still set is exit-only: the vault can sell it but not buy it. [Types](/docs/reference/types#tokenconfig) describes the fields.
+Returns the four members of a token's `TokenConfig`: `allowed`, `feed`, `pool` and `maxWeightBps`. A token that was never listed returns false for `allowed` and zeros for the rest. A token whose config keeps its `feed` and `pool` while `allowed` is false is [exit-only](/docs/help/glossary#exit-only): the vault can still sell it, and a `BUY` or `SUPPLY` is refused. A config that sets only one of the two is refused with `InvalidConfig` when it is applied. Clearing both removes the market, and the vault can no longer sell the token. [Types](/docs/reference/types#tokenconfig) describes the fields.
 
 ### allowedPayee
 
@@ -266,7 +270,7 @@ The time a change hash was queued, or zero when it is not queued, which covers a
 
 <Fn contract="MandateVault" name="recordedUsdc" />
 
-The USDC balance the vault has accounted for. `notifyRevenue` reports any balance above it as revenue. `fund` raises it by the amount funded, and an allowed trade, an allowed bill payment and every allowed credit action set it to the real balance afterwards, so swap proceeds and borrowed USDC are not counted as revenue.
+The USDC balance the vault has accounted for. `notifyRevenue` reports any balance above it as revenue and then sets it to the balance; `execute` runs it for every intent that passes the checks, and `withdraw` runs it before sending USDC. `fund` raises it by the amount funded. `execute` sets it to the real balance again after an allowed trade or bill payment, and after every call to the credit adapter, including one that fails. `withdraw` does the same after sending USDC. So swap proceeds, borrowed USDC and withdrawals are not counted as revenue or as a loss.
 
 ### TIMELOCK
 

@@ -118,6 +118,33 @@ export function checkDocsIndexes(files: { llms: string; llmsFull: string; sitema
   return problems;
 }
 
+/**
+ * Gzipped bytes the search index may take: 691,009 when the budget was set, plus about 10%. A bigger index is a choice
+ * to make here, not an accident: every reader downloads it before their first result, often on a phone.
+ */
+export const SEARCH_INDEX_GZIP_BUDGET = 760_000;
+
+/**
+ * Problems with the exported search index (out/api/search.json): over its gzipped budget, empty, or with a result
+ * that opens a docs page that was not exported, or a heading its page does not have. `page` returns the HTML of an
+ * exported docs page by URL path (/docs, /docs/x), or undefined.
+ */
+export function checkSearchIndex(json: string, gzipped: number, page: (path: string) => string | undefined): string[] {
+  const problems: string[] = [];
+  if (gzipped > SEARCH_INDEX_GZIP_BUDGET) {
+    problems.push(`out/api/search.json is ${gzipped} bytes gzipped, over its budget of ${SEARCH_INDEX_GZIP_BUDGET}`);
+  }
+  const records = Object.values((JSON.parse(json) as { docs: { docs: Record<string, { url: string }> } }).docs.docs);
+  if (records.length === 0) problems.push("out/api/search.json holds no search records");
+  for (const url of new Set(records.map((r) => r.url))) {
+    const [path = "", id] = url.split("#");
+    const html = page(path);
+    if (html === undefined) problems.push(`out/api/search.json: result ${url} points to no exported docs page`);
+    else if (id !== undefined && !html.includes(` id="${id}"`)) problems.push(`out/api/search.json: result ${url} has no heading with that id on its page`);
+  }
+  return problems;
+}
+
 const DATA_TAG = new RegExp(`<(${DATA_COMPONENTS.join("|")})(?![\\w$])`, "g");
 
 /**

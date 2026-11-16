@@ -7,10 +7,33 @@ status: fork-tested
 lastReviewed: 2026-11-07
 sources:
   - contracts/script/BaseAddresses.sol
+  - contracts/script/Deploy.s.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - contracts/src/adapters/AerodromeSwapAdapter.sol
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - contracts/src/lib/PriceLib.sol
+  - contracts/test/fork/B20Smoke.t.sol
+  - contracts/test/fork/MandateVaultFork.t.sol
+  - contracts/test/fork/PriceLibFork.t.sol
+  - contracts/test/fork/AerodromeSwapAdapterFork.t.sol
+  - contracts/test/fork/AaveV4CreditAdapterFork.t.sol
+  - contracts/test/fork/DeployFork.t.sol
+  - agent/src/addresses.ts
+  - agent/src/exec/cdpSender.ts
+  - agent/src/exec/cdpPolicy.ts
+  - agent/src/exec/sender.ts
+  - agent/src/exec/builderCode.ts
+  - agent/src/llm/proposer.ts
+  - agent/test/cdpSender.test.ts
+  - agent/test/cdpPolicy.test.ts
+  - agent/test/proposer.test.ts
+  - agent/test/builderCode.test.ts
+  - agent/test/integration/agent.fork.test.ts
 next: [concepts/prices-and-premium, guides/deploy-your-own-vault]
 ---
 
-Maat does not deploy its own tokens, feeds or pools. It is built to read and call contracts that already exist on Base mainnet, and `contracts/script/BaseAddresses.sol` lists them for the deploy script and the fork tests. This page shows every constant in that file, with each address linked to Basescan, and explains the rows that are not addresses. The library header says the addresses were verified on <Fact name="addressesVerifiedOn" />. The vault and the agent are built and fork-tested, and nothing is deployed, so no Maat contract is on this page. The owner records the addresses of a deployment in `deployments/README.md`.
+Maat does not deploy its own tokens, feeds or pools. It is built to read and call contracts that already exist on Base mainnet, and `contracts/script/BaseAddresses.sol` lists them for the deploy script and the [fork tests](/docs/help/glossary#fork-test). This page shows every constant in that file, with each address linked to Basescan, and explains the rows that are not addresses. Where a comment in the file covers several constants, the table shows it once, as a row above them; a row's Note is that constant's own comment. The library header says the addresses were verified on <Fact name="addressesVerifiedOn" />. The vault and the agent are built and fork-tested, and nothing is deployed, so no Maat contract is on this page. The owner records the addresses of a deployment in `deployments/README.md`.
 
 <AddressTable />
 
@@ -21,12 +44,19 @@ Maat does not deploy its own tokens, feeds or pools. It is built to read and cal
 | Quote asset | `USDC` | The treasury and the quote asset |
 | Stocks | `NVDAC`, `GOOGLC`, `AAPLC` | The basket. They are [B20](/docs/help/glossary#b20) tokens, and the vault reads `isPaused`, `policyId`, `uiMultiplier` and `effectiveAt` from each |
 | Transfer policy | `POLICY_REGISTRY` | The B20 policy registry, which authorizes the transfer path (the [transfer-policy check](/docs/concepts/nine-checks#3-transfer-policy)) |
-| Prices | `NVDA_FEED`, `GOOGL_FEED`, `AAPL_FEED` | The [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) for each stock. The vault reads the price per raw token, which it assumes already includes the multiplier, and the age of the answer |
+| Prices | `NVDA_FEED`, `GOOGL_FEED`, `AAPL_FEED` | The [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) for each stock. The vault reads the price of one whole token (`10 ** decimals()` units of `balanceOf`), which it assumes has the [uiMultiplier](/docs/help/glossary#uimultiplier) already applied, and the age of the answer |
 | Swaps | `NVDAC_USDC_POOL`, `GOOGLC_USDC_POOL`, `AAPLC_USDC_POOL` | The [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool for each stock: the swap venue, and the source of the [TWAP](/docs/help/glossary#twap) that the vault compares with the feed. The adapter calls the pool directly, with no router |
 | Credit | `AAVE_MAG7_SPOKE`, `AAVE_EQUITIES_HUB`, `AAVE_MAG7_ORACLE`, `AAVE_RESERVE_*` | [Aave V4](/docs/help/glossary#aave-v4): stocks as collateral and USDC borrowing. The credit adapter is the Aave user, and only its vault can move the position |
 | Fork blocks | `BLOCK_SESSION`, `BLOCK_WEEKEND` | The blocks the fork tests start from |
 
-All three pools have USDC as `token0`, as the table's note says. The deploy script uses the spoke, the USDC reserve id and the stock reserve ids to build the credit adapter. Nothing in the contracts, the deploy script or the tests of this repository uses `AAVE_MAG7_ORACLE`. The agent keeps its own copy of the USDC and basket addresses in `agent/src/addresses.ts`. [Prices and premium](/docs/concepts/prices-and-premium#two-prices) explains how the feeds and the pools combine, and [Adapters](/docs/reference/adapters) documents the two adapters.
+All three pools have USDC as `token0`, as the row above them in the table says. The row above the Aave constants names the Equities Hub, but each Aave row has its own role:
+
+- `AAVE_MAG7_SPOKE` is the contract the credit adapter supplies to, withdraws from, borrows from and repays. The deploy script builds the credit adapter on it.
+- `AAVE_EQUITIES_HUB` is not passed to any contract. The credit adapter reads its hub from the spoke's USDC reserve, and the fork tests check that it equals this constant.
+- No contract, script or test in this repository reads `AAVE_MAG7_ORACLE`; the credit adapter asks the spoke for its oracle instead.
+- The `AAVE_RESERVE_*` rows are reserve ids, not addresses ([The Aave reserve ids](#the-aave-reserve-ids)).
+
+The agent keeps its own copy of the USDC and basket addresses in `agent/src/addresses.ts`. [Prices and premium](/docs/concepts/prices-and-premium#two-prices) explains how the feeds and the pools combine, and [Adapters](/docs/reference/adapters) documents the two adapters.
 
 ## The pinned fork blocks
 
@@ -34,7 +64,7 @@ The last two rows of the table are `uint256` values, not addresses, so they have
 
 `BLOCK_SESSION` is block <Fact name="forkBlock" />, mined on <Fact name="forkDay" /> at <Fact name="forkTimeEt" />, during a regular market session. Most contract fork tests start from it, and so does the agent's fork test. The NVDA feed's answer was <Fact name="feedAgeSec" /> old at that block, so the price checks see a fresh price. The default mandate's premium limit, <Fact name="mandate.maxPremiumBps" />, sits above the premiums measured at that block, which compare the pool's <Fact name="mandate.twapWindowSec" /> TWAP with the feed: <Fact name="premiumsBps.NVDAc" /> for NVDAc, <Fact name="premiumsBps.GOOGLc" /> for GOOGLc and <Fact name="premiumsBps.AAPLc" /> for AAPLc. See [Prices and premium](/docs/concepts/prices-and-premium#premium-in-basis-points).
 
-`BLOCK_WEEKEND` is a block from a Saturday, when the market is closed. The table's note gives its time and the last update of the NVDA feed, which was on the Friday before. The fork test `test_weekendBuyIsRefusedInBothModes` deploys the vault at this block, once in each [session mode](/docs/help/glossary#session-mode), and checks that a `BUY` is refused with `MARKET_CLOSED` and that the vault's USDC balance does not change. See [Market hours](/docs/concepts/market-hours).
+`BLOCK_WEEKEND` is a block from a Saturday, when the market is closed. Its note in the table gives its time and the last update of the NVDA feed, which was on the Friday before. The fork test `test_weekendBuyIsRefusedInBothModes` deploys the vault at this block, once in each [session mode](/docs/help/glossary#session-mode), and checks that a `BUY` is refused with `MARKET_CLOSED` and that the vault's USDC balance does not change. See [Market hours](/docs/concepts/market-hours).
 
 ## The Aave reserve ids
 
@@ -44,9 +74,34 @@ The four `AAVE_RESERVE_*` rows are Aave V4 reserve ids: the numbers the MAG7 spo
 
 AMZNc is not in the basket: its pool held only <Fact name="amzncPoolLiquidityUsd" /> of liquidity when the basket was chosen. The README gives this reason under [Base integrations](https://github.com/duongnq2798/maat/blob/main/README.md#base-integrations).
 
+## How each integration was exercised
+
+Each protocol Maat is built on has code in this repository that calls it and a test that exercised that code. The contract tests below run in Foundry on a fork of Base at [`BLOCK_SESSION`](#the-pinned-fork-blocks), and the agent's fork test runs on an anvil fork at the same block. None of them ran on Base mainnet.
+
+| Integration | Code that calls it | Test that exercised it | Where it ran |
+| --- | --- | --- | --- |
+| [B20](/docs/help/glossary#b20) stocks | `GuardLib` reads `isPaused`, `policyId`, `uiMultiplier` and `effectiveAt`, and, for a nonzero policy id, asks the policy registry's `isAuthorized`. `MandateVault` reads balances and decimals and moves the tokens | `test_buyAndSellNvdacInSession` and `test_basketBuysInSession` in `contracts/test/fork/MandateVaultFork.t.sol`, which buy and sell through `execute` and so run these reads; `test_readsB20StateThroughPrecompile` and `test_transfersNvdacOnFork` in `contracts/test/fork/B20Smoke.t.sol`, which read and move NVDAc directly | Fork of Base |
+| [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) | `PriceLib.readFeed`, called by `GuardLib` and `MandateVault` | `test_liveBasketTradesNearNav` in `contracts/test/fork/PriceLibFork.t.sol`, which reads all three feeds | Fork of Base |
+| [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pools | `AerodromeSwapAdapter.swapExactIn` swaps, and `PriceLib.twapPrice` reads the TWAP with `observe` | `test_buyAndSellNvdac` in `contracts/test/fork/AerodromeSwapAdapterFork.t.sol`, and `test_liveBasketTradesNearNav` for the TWAP of all three pools | Fork of Base |
+| [Aave V4](/docs/help/glossary#aave-v4) | `AaveV4CreditAdapter`, through the MAG7 spoke | `test_reservesMatchOnchain` and `test_fullCreditLoopOnAave` in `contracts/test/fork/AaveV4CreditAdapterFork.t.sol` | Fork of Base |
+| All of the above, wired together | `contracts/script/Deploy.s.sol` | `test_deployWiresEverything` in `contracts/test/fork/DeployFork.t.sol` | Fork of Base; nothing was broadcast |
+| [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) | `agent/src/exec/cdpSender.ts`, with the policy in `agent/src/exec/cdpPolicy.ts` | `agent/test/cdpSender.test.ts` and `agent/test/cdpPolicy.test.ts` | Tested against a fake only. The agent's fork test sent from an anvil account instead |
+| Claude API | `ClaudeProposer` in `agent/src/llm/proposer.ts` | `agent/test/proposer.test.ts` | Tested against a fake only. The agent's fork test used a scripted proposer instead |
+| [Builder Codes](/docs/help/glossary#builder-code-erc-8021) | `GuardedSender` in `agent/src/exec/sender.ts` adds the suffix from `agent/src/exec/builderCode.ts` to every transaction | `agent/test/builderCode.test.ts`, and the agent's fork test, which checks the suffix on every transaction it sent | Test vector; no code registered. The fork test used the code `bc_maattest` |
+
 ## Check an address yourself
 
-The library header says when the addresses were verified, not how, and a contract can change after that date. Open an address from the table on Basescan and check that it is the contract you expect before you rely on it. The deploy script uses these constants, so run its dry run on a fork before you broadcast anything. [Deploy your own vault](/docs/guides/deploy-your-own-vault) covers that.
+The library header says when the addresses were verified, not how, and a contract can change after that date. The calls below only read. They repeat checks the vault makes when a stock is configured (`_requireValidTokenConfig` in `MandateVault.sol`): the pool's two tokens must be the stock and USDC, in either order; the feed must report <Fact name="priceDecimals" />; and the stock may have at most <Fact name="maxTokenDecimals" />. Replace `<POOL>`, `<STOCK>` and `<FEED>` with the pool, the stock and the feed of one stock from the table.
+
+```bash
+export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet RPC URL
+cast call <POOL> "token0()(address)" --rpc-url "$BASE_RPC_URL"
+cast call <POOL> "token1()(address)" --rpc-url "$BASE_RPC_URL"
+cast call <FEED> "decimals()(uint8)" --rpc-url "$BASE_RPC_URL"
+cast call <STOCK> "decimals()(uint8)" --rpc-url "$BASE_RPC_URL"
+```
+
+These calls have not been run by the Maat team, so this page shows no output. The first two should return `USDC` and the stock, in that order, as the row above the pools says. The fork test `test_readsB20StateThroughPrecompile` found 8 decimals for NVDAc at `BLOCK_SESSION`. A matching answer shows that a contract has the shape the vault expects, not that it is the right contract, so open the address on Basescan as well. The deploy script uses these constants, so run its dry run on a fork before you broadcast anything. [Deploy your own vault](/docs/guides/deploy-your-own-vault) covers that.
 
 ## Related
 
