@@ -130,12 +130,14 @@ describe("the dialog's start pages", () => {
   const titles = new Map(docsPages().map((p) => [p.slug, /^title: "?(.+?)"?$/m.exec(p.source)?.[1]]));
 
   it("lists each reader's first page, then four pages people look things up in", () => {
-    expect(SEARCH_START_PAGES.slice(0, READER_PATHS.length)).toEqual(READER_PATHS.map((p) => ({ label: p.cta, url: `/docs/${p.slug}` })));
+    expect(SEARCH_START_PAGES.slice(0, READER_PATHS.length).map((p) => p.url)).toEqual(READER_PATHS.map((p) => `/docs/${p.slug}`));
     expect(SEARCH_START_PAGES[0]).toEqual({ label: "What is Maat", url: "/docs/get-started/what-is-maat" });
-    for (const { label, url } of SEARCH_START_PAGES.slice(READER_PATHS.length)) {
-      expect(titles.get(url.slice("/docs/".length)), url).toBe(label);
-    }
     expect(SEARCH_START_PAGES).toHaveLength(READER_PATHS.length + 4);
+  });
+
+  it("labels each page with its title, as a result names it, not with a call to action", () => {
+    for (const { label, url } of SEARCH_START_PAGES) expect(label, url).toBe(titles.get(url.slice("/docs/".length)));
+    expect(SEARCH_START_PAGES.map((p) => p.label)).toContain("Quickstart: verify Maat in five minutes");
   });
 
   it("names only pages that exist", () => {

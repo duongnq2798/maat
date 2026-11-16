@@ -1,6 +1,5 @@
 import type { SortedResult } from "fumadocs-core/search";
 import { components, type Tokenizer } from "zbsearch";
-import { READER_PATHS } from "./reader-paths";
 
 /** Where the build writes the search index (app/api/search.json/route.ts) and the dialog downloads it. */
 export const SEARCH_INDEX_URL = "/api/search.json";
@@ -23,9 +22,17 @@ export function searchTokenizer(): Tokenizer {
  */
 export const SEARCH_PARAMS = { limit: 80, groupBy: { properties: ["page_id"], maxResult: 4 } };
 
-/** What the dialog lists before anything is typed: each reader's first page, then four pages people look things up in. */
+/**
+ * What the dialog lists before anything is typed: each reader's first page, in the order of READER_PATHS, then four
+ * pages people look things up in. Each is labelled with its page title, as a result names it, not with the home page's
+ * call to action; test/search.test.ts checks the order and every title.
+ */
 export const SEARCH_START_PAGES: readonly { label: string; url: string }[] = [
-  ...READER_PATHS.map((p) => ({ label: p.cta, url: `/docs/${p.slug}` })),
+  { label: "What is Maat", url: "/docs/get-started/what-is-maat" },
+  { label: "Read a decision", url: "/docs/get-started/read-a-decision" },
+  { label: "Quickstart: verify Maat in five minutes", url: "/docs/get-started/quickstart" },
+  { label: "Deploy your own vault", url: "/docs/guides/deploy-your-own-vault" },
+  { label: "Security model", url: "/docs/security/model" },
   { label: "Refusal codes", url: "/docs/concepts/refusal-codes" },
   { label: "MandateVault", url: "/docs/reference/mandate-vault" },
   { label: "Agent configuration", url: "/docs/reference/agent-configuration" },

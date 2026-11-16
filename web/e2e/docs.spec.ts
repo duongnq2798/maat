@@ -132,21 +132,31 @@ test.describe("search", () => {
     await page.goto("/docs", { waitUntil: "networkidle" });
     expect(requested).toEqual([]);
     const dialog = await openSearch(page);
+    // Before anything is typed: opening search is what starts the download.
+    await expect.poll(() => requested.length).toBeGreaterThan(0);
     await dialog.getByRole("combobox").fill("maat");
     await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
-    expect(requested.length).toBeGreaterThan(0);
   });
 
-  test("pointing at the search button starts the index download, and the search uses that one download", async ({ page }) => {
+  test("pointing at or focusing the search button downloads nothing; opening search downloads the index once", async ({ page }) => {
     const requested: string[] = [];
     page.on("request", (request) => {
       if (request.url().includes("/api/search")) requested.push(request.url());
     });
     await page.goto("/docs", { waitUntil: "networkidle" });
     expect(requested).toEqual([]);
-    await page.locator("button[data-search-full]").hover();
+    const button = page.locator("button[data-search-full]");
+    // A download would start inside the pointer or focus event; a second is ample time for its request to show.
+    const early = page.waitForRequest(/\/api\/search/, { timeout: 1_000 }).then(
+      () => true,
+      () => false,
+    );
+    await button.hover();
+    await button.focus();
+    expect(await early).toBe(false);
+    expect(requested).toEqual([]);
+    await button.click();
     await expect.poll(() => requested).toEqual([expect.stringMatching(/\/api\/search\.json$/)]);
-    await page.locator("button[data-search-full]").click();
     await page.getByRole("dialog").getByRole("combobox").fill("maat");
     await expect(page.getByRole("dialog").getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
     expect(requested).toHaveLength(1);

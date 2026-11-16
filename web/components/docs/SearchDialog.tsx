@@ -88,27 +88,12 @@ export default function DocsSearchDialog(props: SharedProps) {
   const run = useCallback(async (query: string) => titleFirst(await client.search(query), query, tokenize), [client]);
   const search = useIndexSearch(run);
 
-  // The index downloads when the reader reaches for search: the dialog opens, or the pointer or the focus reaches a
-  // search button. Never with the page. A blank query loads it into the client's cache and matches nothing.
+  // The index downloads when search opens, so it loads while the reader types; never with the page, and not when the
+  // pointer or the focus only passes a search button. A blank query loads it into the client's cache, which keeps one
+  // download per URL, and matches nothing. A failed download shows when the reader searches, with "Try again".
   const { open } = props;
   useEffect(() => {
-    let started = false;
-    const start = () => {
-      if (started) return;
-      started = true;
-      // A failed download shows when the reader searches, with "Try again".
-      Promise.resolve(client.search(" ")).catch(() => {});
-    };
-    if (open) start();
-    const onIntent = (e: Event) => {
-      if (e.target instanceof Element && e.target.closest("[data-search], [data-search-full]")) start();
-    };
-    document.addEventListener("pointerover", onIntent);
-    document.addEventListener("focusin", onIntent);
-    return () => {
-      document.removeEventListener("pointerover", onIntent);
-      document.removeEventListener("focusin", onIntent);
-    };
+    if (open) Promise.resolve(client.search(" ")).catch(() => {});
   }, [client, open]);
 
   return (

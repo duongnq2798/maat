@@ -71,10 +71,10 @@ if (INDEXES.every((f) => existsSync(join(OUT, f)))) {
 // The search index: within its gzipped budget, and every result opens an exported page and heading.
 let searchGzipped: number | undefined;
 if (existsSync(join(OUT, "api/search.json"))) {
-  const index = readFileSync(join(OUT, "api/search.json"));
-  searchGzipped = gzipSync(index).length;
+  const searchIndex = readFileSync(join(OUT, "api/search.json"));
+  searchGzipped = gzipSync(searchIndex).length;
   const page = (path: string) => (known.has(path) ? read(`${path.slice(1)}.html`) : undefined);
-  problems.push(...checkSearchIndex(index.toString("utf8"), searchGzipped, page));
+  problems.push(...checkSearchIndex(searchIndex.toString("utf8"), searchGzipped, page));
 }
 
 if (problems.length > 0) {
