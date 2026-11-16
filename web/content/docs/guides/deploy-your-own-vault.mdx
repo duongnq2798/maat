@@ -21,6 +21,10 @@ sources:
   - agent/src/chain/state.ts
   - agent/test/integration/deploy.ts
   - agent/test/integration/agent.fork.test.ts
+  - contracts/test/Deploy.t.sol
+  - agent/src/config.ts
+  - agent/src/intent.ts
+  - agent/src/main.ts
 next: [guides/configure-a-mandate, guides/run-the-agent]
 ---
 
@@ -41,20 +45,23 @@ You need the pieces below. Your wallet is the [owner](/docs/help/glossary#owner)
 | [Foundry](https://getfoundry.sh) | 1.8.4 or newer. It provides `forge script` and `cast`. |
 | A Base mainnet RPC | Your own URL, written `<BASE_RPC_URL>` here, in `contracts/.env`. The dry run forks it. |
 | A deployer wallet | A Foundry keystore account, named `maat-owner` in the runbook. It needs enough ETH on Base to pay gas for the deploy. |
-| Four addresses | `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE`, read by the deploy script. |
+| Four addresses, and an optional fifth | `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE`, read by the deploy script, and an optional second payee, `MAAT_EXPENSE_PAYEE_2`. |
 | An Etherscan v2 API key | `ETHERSCAN_API_KEY` in `contracts/.env`, for `--verify`. A v2 key works for Basescan. |
 | USDC on Base | What you fund the vault with. |
 
-`contracts/.env.example` lists `BASE_RPC_URL` and the four addresses; add `ETHERSCAN_API_KEY` yourself. Git ignores `contracts/.env`. The deploy script reads the four addresses like this:
+`contracts/.env.example` lists `BASE_RPC_URL` and the five addresses, the optional one at the zero address; add `ETHERSCAN_API_KEY` yourself. Git ignores `contracts/.env`. The deploy script reads the addresses like this:
 
-```solidity title="contracts/script/Deploy.s.sol#L23-L26"
+```solidity title="contracts/script/Deploy.s.sol#L23-L27"
         address deployer = vm.envAddress("MAAT_DEPLOYER");
         address owner = vm.envAddress("MAAT_OWNER");
         address executor = vm.envAddress("MAAT_EXECUTOR");
         address payee = vm.envAddress("MAAT_EXPENSE_PAYEE");
+        address payee2 = vm.envOr("MAAT_EXPENSE_PAYEE_2", address(0)); // optional: unset or zero adds none
 ```
 
 In the runbook the owner is your wallet, the [executor](/docs/help/glossary#executor) is temporarily your wallet until the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) takes over, and the [payee](/docs/help/glossary#payee) is the compute-expense wallet, the address the vault's `PAY_EXPENSE` action may pay. Its `.env` step sets all three to your wallet address. The deploy uses [`MaatConfig.defaultMandate`](/docs/concepts/mandate#the-default-mandate) with the `REGULAR` session and the three-stock basket. To change a limit, a token or the payee, read [Configure a mandate](/docs/guides/configure-a-mandate) before you deploy.
+
+`MAAT_EXPENSE_PAYEE_2` is optional. Set it when you already know a second address the vault should be able to pay, for example an agent's Bankr wallet: the deploy puts it on the list at once, while adding it later takes `queuePayee` and the <Fact name="timelockHours" /> wait. The agent pays one address only: its own [`MAAT_EXPENSE_PAYEE`](/docs/reference/agent-configuration#maat_expense_payee) setting, which it reads at startup and puts in the `payee` field of every `PAY_EXPENSE` intent. It never reads the vault's list, so with two payees on it you choose in the agent's settings which one it pays, and moving it to the other takes a restart, not a timelock.
 
 Time: not measured. No mainnet deploy has been run, and the runbook gives no durations.
 
@@ -79,19 +86,20 @@ forge script script/Deploy.s.sol --fork-url "$BASE_RPC_URL"
 
 deployments/README.md prints no output for the dry run, so none is shown. It has worked when the script finishes without an error. The script ends by logging these lines:
 
-```solidity title="contracts/script/Deploy.s.sol#L55-L63"
+```solidity title="contracts/script/Deploy.s.sol#L55-L64"
         // Check these before broadcasting: owner is immutable on the vault and the calendar.
         console2.log("deployer            ", deployer);
         console2.log("owner (immutable)   ", owner);
         console2.log("executor            ", executor);
         console2.log("expense payee       ", payee);
+        console2.log("expense payee 2     ", payee2 == address(0) ? "none" : vm.toString(payee2));
         console2.log("MarketCalendar      ", address(calendar));
         console2.log("AerodromeSwapAdapter", address(swapAdapter));
         console2.log("AaveV4CreditAdapter ", address(creditAdapter));
         console2.log("MandateVault        ", address(vault));
 ```
 
-The first four logged lines show the placeholders you passed, not real addresses, and the contract addresses will be different on mainnet. The runbook says to read the total estimated gas at the end of the output when you decide how much ETH the deployer needs. Foundry writes the dry-run files under `contracts/broadcast/*/*/dry-run/`, which Git ignores.
+The first four logged lines show the placeholders you passed, not real addresses. The `expense payee 2` line comes from your `.env`, and reads `none` when it is unset or zero. The contract addresses will be different on mainnet. The runbook says to read the total estimated gas at the end of the output when you decide how much ETH the deployer needs. Foundry writes the dry-run files under `contracts/broadcast/*/*/dry-run/`, which Git ignores.
 
 </Step>
 
@@ -109,7 +117,7 @@ Go through this list before step 5.
 
 - **Gas.** The deployer wallet has enough ETH on Base to deploy the calendar, the swap adapter, the credit adapter and the vault. Fund extra, because gas prices change.
 - **The deployer.** `MAAT_DEPLOYER` is exactly the address of the `--account` wallet that you broadcast with. The next paragraph says why.
-- **The other addresses.** `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` are correct. They can be changed later: the executor at once with `setExecutor`, and the payee only through the [timelock](/docs/help/glossary#timelock), which is <Fact name="timelockHours" /> long.
+- **The other addresses.** `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` and, if you set it, `MAAT_EXPENSE_PAYEE_2` are correct. They can be changed later: the executor at once with `setExecutor`, and a payee only through the [timelock](/docs/help/glossary#timelock), which is <Fact name="timelockHours" /> long.
 - **Verification.** `--verify` needs `ETHERSCAN_API_KEY` in `contracts/.env`. If the deploy finishes but verification fails, do not redeploy. The resume command is in step 5.
 - **Funding.** Fund the vault with `approve` and then `fund(amount)` (step 6), never with a plain USDC transfer.
 - **Later changes.** After the deploy, every change to the configuration is queued with `queueMandate`, `queueTokenConfig` or `queuePayee`, which publishes all parameters in an event. You wait <Fact name="timelockHours" />, then apply it within <Fact name="gracePeriodDays" /> after that. Past that deadline the change expires (`ChangeExpired`) and must be queued again. See [The timelock](/docs/concepts/timelock-and-roles#the-timelock).
@@ -145,6 +153,7 @@ The second command only prints the wallet's address. It signs nothing and sends 
 
 - Set `MAAT_DEPLOYER` to the address just printed.
 - Set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address.
+- Leave `MAAT_EXPENSE_PAYEE_2` at the zero address, unless you want a second payee.
 - Add `ETHERSCAN_API_KEY`.
 
 </Step>
@@ -162,7 +171,7 @@ forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL"
 
 Read the output yourself. It has worked only when both conditions hold:
 
-- The `deployer`, `owner (immutable)`, `executor` and `expense payee` lines match your wallet address character for character.
+- The `deployer`, `owner (immutable)`, `executor` and `expense payee` lines match your wallet address character for character, and `expense payee 2` reads `none` or the second payee you set.
 - The simulation finishes, with no `vault address mismatch`.
 
 If the simulation stops at `vault address mismatch` or a nonce error, fix the cause (use the right wallet, send no other transaction from the deployer wallet) and simulate again. No transaction has been sent at this step. deployments/README.md prints no output for this command, so none is shown.
@@ -270,7 +279,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 ## Check it worked
 
 - The simulation with your real `.env` printed your own address on the `owner (immutable)`, `executor` and `expense payee` lines, and no `vault address mismatch`.
-- After the broadcast, a read-only call returns your addresses from the vault: `cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"` prints the owner, and `cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"` prints the executor.
+- After the broadcast, a read-only call returns your addresses from the vault: `cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"` prints the owner, `cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"` prints the executor, and `cast call "$VAULT" "payees()(address[])" --rpc-url "$BASE_RPC_URL"` prints the payee list, with one address or two.
 - `previewIntent` returned `0`, and the allowed BUY emitted a `Decision` with `allowed=true`.
 - The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A refusal moves no funds.
 - The table in deployments/README.md has your four addresses.
@@ -281,6 +290,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - **A deployer that does not match the account.** `MAAT_DEPLOYER` must be the address of the `--account` wallet, and that wallet must send no other transaction between the simulation and the broadcast.
 - **A plain USDC transfer instead of `fund`.** It is counted as revenue the next time `notifyRevenue` runs. Approve, then `fund`.
 - **A smoke test out of session.** A BUY on a weekend or a holiday, or after the close, is refused with `MARKET_CLOSED` instead of returning `OK`. That is the vault working, but it is not the first smoke test. The refused intent still uses its id, so retry with a new one, such as `maat-smoke-3`.
+- **A second payee equal to the first.** The script stops with `MAAT_EXPENSE_PAYEE_2 equals MAAT_EXPENSE_PAYEE` in the simulation, before anything is sent. For one payee, leave `MAAT_EXPENSE_PAYEE_2` at the zero address.
 - **Redeploying because verification failed.** Run the resume command instead.
 - **Handing the executor role over too early.** After `setExecutor` points at the CDP Server Wallet, your wallet's `execute` calls revert with `NotExecutor`.
 - **Treating the dry-run addresses as yours.** The contract addresses in the dry run differ from mainnet, and the four address lines are placeholders.

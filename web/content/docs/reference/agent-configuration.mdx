@@ -9,6 +9,8 @@ sources:
   - agent/src/config.ts
   - agent/.env.example
   - agent/README.md
+  - agent/src/intent.ts
+  - contracts/script/Deploy.s.sol
 next: [guides/run-the-agent, reference/agent-scripts]
 ---
 
@@ -44,7 +46,7 @@ The address of the [executor](/docs/help/glossary#executor), the one address the
 
 <EnvVar name="MAAT_EXPENSE_PAYEE" />
 
-The address the agent pays its compute bill to. It goes into the `payee` field of each `PAY_EXPENSE` intent. The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: the payee given to the deploy script, or one the owner added later through the [timelock](/docs/help/glossary#timelock). For any other address the vault refuses with [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed). The agent needs this setting even in [dry-run](/docs/help/glossary#dry-run) mode.
+The address the agent pays its compute bill to. It goes into the `payee` field of each `PAY_EXPENSE` intent. The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: a payee given to the deploy script (its own `MAAT_EXPENSE_PAYEE`, or its optional `MAAT_EXPENSE_PAYEE_2`), or one the owner added later through the [timelock](/docs/help/glossary#timelock). The agent pays only this address and does not read the vault's list, so with two payees allowlisted, this setting picks which one it pays. For any other address the vault refuses with [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed). The agent needs this setting even in [dry-run](/docs/help/glossary#dry-run) mode.
 
 ### MAAT_MODE
 

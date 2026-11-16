@@ -16,6 +16,7 @@ sources:
   - contracts/test/fork/DeployFork.t.sol
   - contracts/src/adapters/AaveV4CreditAdapter.sol
   - web/test/facts.test.ts
+  - contracts/test/Deploy.t.sol
 next: [guides/deploy-your-own-vault, guides/change-a-rule]
 ---
 
@@ -65,7 +66,7 @@ Open `contracts/script/MaatConfig.sol`. The table says where each setting is set
 | `deriskWindow` | The constant `DERISK_WINDOW` | Seconds, which the code writes as `8 hours`. It is the length of the [de-risk window](/docs/help/glossary#de-risk-window) | <Fact name="mandate.deriskWindowSec" /> |
 | Each stock's `allowed`, `feed`, `pool` and `maxWeightBps` | `basket()` | Booleans, addresses, basis points | Allowed, with a `maxWeightBps` of <Fact name="mandate.maxWeightBps" /> |
 | Each stock's Aave reserve | `creditReserves()`, in the same order as the basket | Reserve ids | None |
-| [Payees](/docs/help/glossary#payee) | `Deploy.s.sol` builds a one-entry list from `MAAT_EXPENSE_PAYEE` | Addresses | None |
+| [Payees](/docs/help/glossary#payee) | `Deploy.s.sol` builds a list of one or two from `MAAT_EXPENSE_PAYEE` and the optional `MAAT_EXPENSE_PAYEE_2` | Addresses | None |
 | Owner and [executor](/docs/help/glossary#executor) | The `MAAT_OWNER` and `MAAT_EXECUTOR` environment variables | Addresses | None |
 
 The credit constants sit at the top of the library:
@@ -133,7 +134,7 @@ Edit the line and keep the unit. For example, this halves both caps:
 +            dailyCapUsd: 50e6,
 ```
 
-To change which stocks the vault trades, edit `basket()`. A stock you add has to be a [B20](/docs/help/glossary#b20) token, because the vault reads its `uiMultiplier()` when it lists the stock. It needs a Chainlink feed that reports <Fact name="priceDecimals" /> and a pool of that stock and USDC (the default swap adapter works with Aerodrome Slipstream pools). To use it as collateral, also add its Aave reserve id to `creditReserves()`: the credit adapter only handles the stocks listed there, and its constructor rejects a reserve whose underlying token is not the stock (`ReserveMismatch`). To start with more than one payee, edit the payee list in `Deploy.s.sol`. The vault allows any other change to the payees later through the timelock.
+To change which stocks the vault trades, edit `basket()`. A stock you add has to be a [B20](/docs/help/glossary#b20) token, because the vault reads its `uiMultiplier()` when it lists the stock. It needs a Chainlink feed that reports <Fact name="priceDecimals" /> and a pool of that stock and USDC (the default swap adapter works with Aerodrome Slipstream pools). To use it as collateral, also add its Aave reserve id to `creditReserves()`: the credit adapter only handles the stocks listed there, and its constructor rejects a reserve whose underlying token is not the stock (`ReserveMismatch`). To start with two payees, set `MAAT_EXPENSE_PAYEE_2` as well as `MAAT_EXPENSE_PAYEE` ([Deploy your own vault](/docs/guides/deploy-your-own-vault#before-you-start) says when); for more, edit `expensePayees` in `Deploy.s.sol`. The vault allows any other change to the payees later through the timelock.
 
 </Step>
 
@@ -152,7 +153,7 @@ MAAT_EXPENSE_PAYEE=0x0000000000000000000000000000000000000003 \
 forge script script/Deploy.s.sol --fork-url "$BASE_RPC_URL"
 ```
 
-deployments/README.md prints no output for the dry run, so none is shown. It has worked when the script finishes and logs the owner, executor, payee and contract addresses. A rejected value makes it fail with the vault's error, usually `InvalidConfig`. That error carries no parameters, so it does not say which rule failed: compare your values with the table, one at a time.
+deployments/README.md prints no output for the dry run, so none is shown. It has worked when the script finishes and logs the owner, executor, payees and contract addresses. A rejected value makes it fail with the vault's error, usually `InvalidConfig`. That error carries no parameters, so it does not say which rule failed: compare your values with the table, one at a time.
 
 </Step>
 
@@ -285,7 +286,7 @@ The tests that pin the rules are `test_constructorRejectsCalendarWithoutCode`, `
 - **A de-risk window over the cap, or a floor below one WAD.** With credit on, either value makes the deploy fail with `InvalidConfig`.
 - **A zero `twapWindow`.** It deploys, and then every trade that reaches the premium check is refused.
 - **A stock without a pair.** The pool has to be that stock against USDC, and the feed has to report <Fact name="priceDecimals" />.
-- **A zero address in `.env`.** A zero `MAAT_OWNER`, `MAAT_EXECUTOR` or `MAAT_EXPENSE_PAYEE` makes the constructor revert with `ZeroAddress`.
+- **A zero address in `.env`.** A zero `MAAT_OWNER`, `MAAT_EXECUTOR` or `MAAT_EXPENSE_PAYEE` makes the constructor revert with `ZeroAddress`. A zero `MAAT_EXPENSE_PAYEE_2` is not an error: it means no second payee.
 
 ## Next steps
 
