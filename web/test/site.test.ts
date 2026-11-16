@@ -63,8 +63,9 @@ describe("disclaimer", () => {
     expect(SITE.disclaimer.endsWith(`Not ${NOT_AFFILIATED}`)).toBe(true);
   });
 
+  // The negation is pinned too, whichever case the sentence puts it in.
   it.each(["README.md", "web/content/docs/get-started/what-is-maat.mdx"])("%s says the same", (path) => {
-    expect(flat(path).includes(NOT_AFFILIATED), path).toBe(true);
+    expect([`Not ${NOT_AFFILIATED}`, `not ${NOT_AFFILIATED}`].some((s) => flat(path).includes(s)), path).toBe(true);
   });
 });
 
