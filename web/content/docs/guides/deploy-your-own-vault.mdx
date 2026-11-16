@@ -80,6 +80,7 @@ What each step needs, and where it goes:
 | USDC on Base | The owner's wallet | Funding the vault |
 | `MAAT_VAULT`, `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` | `agent/.env` | Every agent run, from the dry run on |
 | `ANTHROPIC_API_KEY` | `agent/.env` | Every agent round that reaches Claude, the dry run included |
+| `MAAT_LLM_PROVIDER=bankr` and `BANKR_API_KEY` | `agent/.env` | Only to ask Claude through Bankr's LLM gateway instead. The Anthropic key is then optional and serves only the failover ([MAAT_LLM_PROVIDER](/docs/reference/agent-configuration#maat_llm_provider)) |
 | `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET` | `agent/.env` | `cdp-setup.ts` and live mode |
 | `MAAT_BUILDER_CODE` and `MAAT_MODE=live` | `agent/.env` | Live mode: the first round and the loop |
 | ETH on Base for the executor | The CDP account | Every transaction the agent sends in live mode |

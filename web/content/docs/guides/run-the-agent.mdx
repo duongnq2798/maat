@@ -54,12 +54,12 @@ The first part of this guide is for any builder with a vault address. The part m
 | Node.js 22.9 or newer | With npm. `agent/package.json` sets the minimum. |
 | bash | Linux, macOS, or Git Bash on Windows. The commands are written for bash, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). They use `export`, `$VAR` and `grep`, which PowerShell and cmd do not run as written. The `cast` lines need [Foundry](https://getfoundry.sh). |
 | A Base RPC URL | Written `<BASE_RPC_URL>` here and set as `BASE_RPC_URL`. The agent only reads through it, and it does not need an archive node. |
-| An Anthropic API key | `ANTHROPIC_API_KEY`, from your own account. Every round that reaches Claude is billed, in dry-run mode too. |
+| An Anthropic API key | `ANTHROPIC_API_KEY`, from your own account. Every round that reaches Claude is billed, in dry-run mode too. To ask Claude through Bankr's LLM gateway instead, set `MAAT_LLM_PROVIDER=bankr` and a `BANKR_API_KEY` with the LLM Gateway enabled: the Anthropic key is then optional and serves only the failover ([MAAT_LLM_PROVIDER](/docs/reference/agent-configuration#maat_llm_provider)). |
 | Live mode only | A registered [Builder Code](/docs/help/glossary#builder-code-erc-8021) and three CDP credentials. The owner section lists them. |
 
 The dry run reads a deployed vault, so it comes after the deploy. It runs the read, Claude and preview steps of a round against your vault. It does not exercise the send path, the CDP wallet or the Builder Code, because a dry run never builds a sender. Before you deploy, `npx tsx scripts/smoke-claude.ts` in `agent/`, after `npm ci` there, checks your Anthropic key: it makes one paid Claude call on a fixed test vault built from the test fakes, with no RPC and no deployed vault, and it reads `ANTHROPIC_API_KEY` from your shell, not from `.env` ([smoke-claude.ts](/docs/reference/agent-scripts#smoke-claudets)). The [fork test](/docs/help/glossary#fork-test) in [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) is the only end-to-end run, with a scripted proposer and a local sender.
 
-Time: not measured. No run of the real Claude API or the CDP wallet is committed, and the runbook gives no durations. The dry run calls Claude, so it costs real API fees. `agent/README.md` estimates about one cent per round. Each round that reaches the proposal step calls Claude once. The loop waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> after any other, so under a [mandate](/docs/help/glossary#mandate) in the `REGULAR` [session mode](/docs/help/glossary#session-mode) it runs at most about 43 rounds on a full weekday and 24 on a weekend day or a holiday. The `costUsd6` of each `run` line is what the agent books for that round: it is computed from the response's token counts with the price table in `agent/src/llm/pricing.ts`, and a model the table does not list is booked at the `claude-opus-4-8` rate, the highest in the table. Your Anthropic billing is the real figure.
+Time: not measured. No run of the real Claude API or the CDP wallet is committed, and the runbook gives no durations. The dry run calls Claude, so it costs real API fees. `agent/README.md` estimates about one cent per round. Each round that reaches the proposal step calls Claude once. The loop waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> after any other, so under a [mandate](/docs/help/glossary#mandate) in the `REGULAR` [session mode](/docs/help/glossary#session-mode) it runs at most about 43 rounds on a full weekday and 24 on a weekend day or a holiday. The `costUsd6` of each `run` line is what the agent books for that round: it is computed from the response's token counts with the price table in `agent/src/llm/pricing.ts`, and a model the table does not list is booked at the `claude-opus-4-8` rate, the highest in the table. A call through Bankr is booked at the same rates, because Bankr does not publish its own. Your Anthropic billing, or Bankr's usage report for calls through Bankr, is the real figure.
 
 ## Run a dry run
 
@@ -85,7 +85,7 @@ agent/README.md prints no output for these commands, so none is shown. They have
 
 ### Fill in the settings
 
-A dry run needs the four required settings and an Anthropic key. This is the smallest `.env` for it, with placeholders where your values go. [Agent configuration](/docs/reference/agent-configuration) says what each setting changes.
+A dry run needs the four required settings and an Anthropic key, or the two Bankr settings that [What each mode needs](/docs/reference/agent-configuration#what-each-mode-needs) shows. This is the smallest `.env` for it, with placeholders where your values go. [Agent configuration](/docs/reference/agent-configuration) says what each setting changes.
 
 ```text
 BASE_RPC_URL=<BASE_RPC_URL>
@@ -426,9 +426,12 @@ The folder belongs to one vault. `state.json` does not record which, so when `MA
 
 Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
 
-```typescript title="agent/src/ledger/journal.ts#L8-L18"
+```typescript title="agent/src/ledger/journal.ts#L9-L22"
 export type JournalEntry =
-  | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
+  /** `provider` answered (or was asked last); `failover` says why a Bankr call was asked again of the Claude API. */
+  | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string; provider?: LlmProvider; failover?: string }
+  /** Something the operator must act on. llm-unfunded: Bankr answered 402, its credits or daily budget ran out. */
+  | { kind: "alert"; runId: string; code: "llm-unfunded"; message: string }
   | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
   /** Written right after the send returns, before the receipt: with `intent` it brackets the pending window. */
   | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash: Hex; gas: bigint }
@@ -443,6 +446,7 @@ export type JournalEntry =
 - Every `bigint` field is written as a decimal string.
 - Amounts that end in `Usd6` are USDC units, with <Fact name="usdcDecimals" />.
 - `day` is the UTC day number: the whole days from 1970-01-01 to the timestamp of the block the round read. It is the same number the vault's `today()` returns.
+- `provider` is missing from a `run` line when the proposer names none, as the scripted proposer of the tests and the fork run does, and `failover` is there only after a failover from Bankr.
 
 ### State file format
 
@@ -556,8 +560,8 @@ A pending entry looks like this, with placeholders for the values that vary. `tx
 
 ## Common mistakes
 
-- **Treating the dry run as free.** It calls Claude in every round that reaches the proposal step, and Anthropic bills each request. It sends no transaction, and it still costs money.
-- **No `ANTHROPIC_API_KEY`.** The agent does not check for it at startup. The SDK reports the missing key when the round asks Claude, and the round's `run` line then has `ok` false with the error.
+- **Treating the dry run as free.** It calls Claude in every round that reaches the proposal step, and Anthropic bills each request, or Bankr charges the key's credits with `MAAT_LLM_PROVIDER=bankr`. It sends no transaction, and it still costs money.
+- **No `ANTHROPIC_API_KEY`.** The agent does not check for it at startup. With the default provider, the SDK reports the missing key when the round asks Claude, and the round's `run` line then has `ok` false with the error. With `MAAT_LLM_PROVIDER=bankr` the agent needs `BANKR_API_KEY` instead and stops at startup without it, and a Bankr call that fails is then not asked again of the Claude API.
 - **Starting the agent in a shell that sourced `contracts/.env`.** The deploy guide's `set -a; source .env; set +a` exports `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` from `contracts/.env`. Node's `--env-file` does not replace a variable that is already set, so the agent uses those values instead of the ones in `agent/.env`. After the handover, the `MAAT_EXECUTOR` from `contracts/.env` is still the owner's wallet, so every dry-run round ends with `wrong-executor`, and a start in live mode stops at the CDP check below. Start the agent in a new terminal, and check the executor in its `maat agent: mode=` line.
 - **A `MAAT_EXECUTOR` that is not the vault's executor.** Every round ends with `wrong-executor`, in every mode, and the journal's `error` line reads `vault executor is <ADDRESS>, agent is <ADDRESS>`. In live mode the agent also stops at startup if it is not the CDP account's address, with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`. That check is tested against a fake CDP client only.
 - **Going live before the vault points at the CDP account.** [Point the vault at the new executor](#point-the-vault-at-the-new-executor) has to come before the first live round.

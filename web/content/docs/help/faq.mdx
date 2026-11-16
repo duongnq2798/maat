@@ -190,9 +190,10 @@ The owner queues the change, waits <Fact name="timelockHours" />, and then appli
 
 ### What does the agent cost to run?
 
-**Claude API fees in every mode, plus gas in [live mode](/docs/help/glossary#live-mode). The vault does not pay Anthropic.**
+**Claude API fees in every mode, or Bankr credits when the agent asks Claude through Bankr, plus gas in [live mode](/docs/help/glossary#live-mode). The vault pays neither Anthropic nor Bankr.**
 
 - A [dry run](/docs/help/glossary#dry-run) still calls Claude, so it costs real API fees even though it sends nothing. The README estimates roughly one cent of Claude usage per round. That is an estimate: the Claude proposer is tested against a fake client, and no output from the real Claude API is committed yet.
+- With `MAAT_LLM_PROVIDER=bankr` the agent asks Claude through Bankr's LLM gateway, and each call is charged to the credits of the Bankr key instead. The agent books those calls at the Anthropic list rates, because Bankr does not publish its prices per token ([MAAT_LLM_PROVIDER](/docs/reference/agent-configuration#maat_llm_provider)).
 - In live mode the executor also needs ETH on Base for gas, <Fact name="executorGasEth" /> by the agent README's estimate.
 - The agent is built to track its own [compute bill](/docs/help/glossary#compute-bill) and pay it from the vault in USDC with `PAY_EXPENSE`. The vault pays an allowlisted [payee](/docs/help/glossary#payee), the wallet that pays for the Claude usage (for Agent #1, the owner's). Each payment counts toward the same per-trade and daily caps as trades.
 
@@ -202,13 +203,14 @@ See [Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill).
 
 **The round goes on without Claude's proposals, and the next round asks Claude again.**
 
-- The request turns on the API's server-side fallback (`fallbacks: "default"`), so when the requested model declines, the answer may come from another model ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). The round loses Claude's proposals only in the cases below.
-- A call that fails before Claude answers comes back as the error `claude: <message>` with a cost of zero. An answer that arrives but cannot be used, such as a refusal, a cut-off answer or invalid JSON, is billed at its token cost. A malformed response, one with no usage or content, comes back as `claude: malformed response: <message>`, also with a cost of zero.
+- The Claude API request turns on the API's server-side fallback (`fallbacks: "default"`), so when the requested model declines, the answer may come from another model ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). The round loses Claude's proposals only in the cases below.
+- With `MAAT_LLM_PROVIDER=bankr`, a Bankr call that fails with 402, 403, 408, 429 or a 5xx status, times out or cannot connect is asked once of the Claude API when `ANTHROPIC_API_KEY` is set. A 402 means the Bankr key's credits or daily budget ran out, and the agent also writes an `alert` line with the code `llm-unfunded` ([MAAT_LLM_PROVIDER](/docs/reference/agent-configuration#maat_llm_provider)).
+- A call that fails before Claude answers comes back as the error `claude: <message>`, or `bankr: <message>` from Bankr's gateway, with a cost of zero. An answer that arrives but cannot be used, such as a refusal, a cut-off answer or invalid JSON, is billed at its token cost. A malformed response, one with no usage or content, comes back as `claude: malformed response: <message>` (`bankr:` from Bankr's gateway), also with a cost of zero.
 - The round writes `ok: false` and the error on its `run` line in the journal.
 - A compute bill that is due is still queued as a `PAY_EXPENSE`, then previewed and gated like any other intent.
 - The next round follows the normal [cadence](/docs/concepts/treasury-loop#cadence).
 
-This is tested against fakes only: the proposer test `never throws on an API error` covers a failed call, and the `runOnce` test `bills a failed Claude call and still settles bills` covers the `run` line with `ok: false` and the error. See [Step 2: the policy and Claude](/docs/get-started/how-a-decision-is-made#step-2-the-policy-and-claude).
+This is tested against fakes only: the proposer test `never throws on an API error` covers a failed call, and the `runOnce` test `bills a failed Claude call and still settles bills` covers the `run` line with `ok: false` and the error. The Bankr failover is tested the same way, against fakes built from the shapes in Bankr's documentation (`on a 402 insufficient_credits, asks the Claude API once with today's request and bills both attempts`). See [Step 2: the policy and Claude](/docs/get-started/how-a-decision-is-made#step-2-the-policy-and-claude).
 
 ## Trust and safety
 

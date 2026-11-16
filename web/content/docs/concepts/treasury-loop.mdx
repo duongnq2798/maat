@@ -115,7 +115,7 @@ Each round that reaches the proposal step asks Claude, and each answer has a cos
 
 The price table is a few lines of code:
 
-```typescript title="agent/src/llm/pricing.ts#L13-L26"
+```typescript title="agent/src/llm/pricing.ts#L18-L38"
 /**
  * Cents per million tokens (claude-api skill: model table cached 2026-10-06, prompt-caching economics). Cache read =
  * 0.1 x input (0.05 x on claude-opus-5-5); cache write = 1.25 x input (5 min TTL). claude-sonnet-5 and claude-opus-4-8
@@ -130,9 +130,16 @@ const CENTS: Record<string, { input: number; output: number; cacheRead: number; 
 // The bill is what the vault pays back for Claude usage, so an unknown model takes the dearest row (claude-opus-4-8
 // today): pricing it too low would leave the expense wallet covering the difference.
 const FALLBACK = CENTS["claude-opus-4-8"]!;
+
+const PRICES: Record<LlmProvider, typeof CENTS> = {
+  anthropic: CENTS,
+  // Bankr does not publish its per-token prices (GET /v1/models needs a key), so a Bankr call is booked at the
+  // Anthropic list rates, never below: a conservative placeholder until the owner reconciles with Bankr's GET /v1/usage.
+  bankr: CENTS,
+};
 ```
 
-The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate of 200 means $2.00 per million input tokens. The agent prices each answer at the model that produced it. When the requested model declines and the API's server-side fallback hands the request to another model, the response lists each attempt in `usage.iterations`, and the agent prices each attempt at the model that ran it and adds them up, so the declined attempt is billed too. It prices any name that is not in the table at the `claude-opus-4-8` rate, the highest in the table ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). It rounds the cost of each call up to the next micro-dollar. `pricing.test.ts` checks these rules against responses written by hand. The table is fixed in the code and dated 2026-10-06 in its comment. The agent does not read prices from Anthropic, so if Anthropic's prices change, the bill is off until `pricing.ts` is updated. These are the rates the code bills, not a price list.
+The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate of 200 means $2.00 per million input tokens. The agent prices each answer at the model that produced it. When the requested model declines and the API's server-side fallback hands the request to another model, the response lists each attempt in `usage.iterations`, and the agent prices each attempt at the model that ran it and adds them up, so the declined attempt is billed too. It prices any name that is not in the table at the `claude-opus-4-8` rate, the highest in the table ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). A call through Bankr's LLM gateway is priced from the same table: Bankr answers with a dotted model name, such as `claude-sonnet-5.5`, which the agent reads as the dashed one in the table, and Bankr does not publish its prices per token, so the Anthropic list rates stand in for them until the owner reconciles the bill with Bankr's usage report (`never prices a Bankr call below the Anthropic list rate, token kind by token kind` in `pricing.test.ts`, and [`MAAT_LLM_PROVIDER`](/docs/reference/agent-configuration#maat_llm_provider)). It rounds the cost of each call up to the next micro-dollar. `pricing.test.ts` checks these rules against responses written by hand. The table is fixed in the code and dated 2026-10-06 in its comment. The agent does not read prices from Anthropic, so if Anthropic's prices change, the bill is off until `pricing.ts` is updated. These are the rates the code bills, not a price list.
 
 Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment at the front of the round's queue:
 
