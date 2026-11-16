@@ -1,0 +1,18 @@
+# The build context is agent/ and it is uploaded to the builder: secrets and local state never go in it.
+.env
+.env.*
+data
+node_modules
+# Not needed at runtime.
+test
+coverage
+logs
+*.log
+scripts
+README.md
+vitest.config.ts
+vitest.integration.config.ts
+fly.toml
+Dockerfile
+.dockerignore
+.gitignore
