@@ -56,7 +56,7 @@ The image holds `src/`, the package files and `tsconfig.json`, with production d
 
 ```bash
 # From the repository root, on the VPS.
-docker build -t maat-agent agent/
+sudo docker build -t maat-agent agent/
 
 # Settings and secrets in a root-only file outside the repository, in the format of .env.example.
 sudo install -d -m 700 /etc/maat
@@ -82,7 +82,7 @@ sudo docker start maat-agent
 
 ### On Fly.io
 
-Save this as `agent/fly.toml`, next to the Dockerfile (`.dockerignore` keeps it out of the image). The settings that are not secret go in `[env]`.
+Save this as `agent/fly.toml`, next to the Dockerfile (`.dockerignore` keeps it out of the image). The settings that are not secret go in `[env]`. `CDP_ACCOUNT_NAME` must be the name `cdp-setup.ts` created the executor under. On a Machine, Fly's init starts tini as its child, so tini is not PID 1: `TINI_SUBREAPER` lets it reap zombies there too, and stops it from logging a warning about that at each boot.
 
 ```toml
 app = "<APP_NAME>"
@@ -95,6 +95,8 @@ kill_timeout = 300
   MAAT_EXECUTOR = "<EXECUTOR_ADDRESS>"
   MAAT_EXPENSE_PAYEE = "<PAYEE_ADDRESS>"
   MAAT_BUILDER_CODE = "<BUILDER_CODE>"
+  CDP_ACCOUNT_NAME = "maat-executor"
+  TINI_SUBREAPER = "1"
 
 [mounts]
   source = "maat_data"
