@@ -4,7 +4,6 @@ pragma solidity 0.8.28;
 import {VaultFixture} from "./utils/VaultFixture.sol";
 import {Deploy} from "../script/Deploy.s.sol";
 import {MandateVault} from "../src/MandateVault.sol";
-import {TokenConfig} from "../src/Types.sol";
 
 contract DeployHarness is Deploy {
     function expensePayeesOf(address first, address second) external pure returns (address[] memory) {
@@ -34,13 +33,7 @@ contract DeployTest is VaultFixture {
         assertEq(list, want);
 
         // both are on the allowlist from construction, in this order, with no timelocked change
-        address[] memory toks = new address[](1);
-        toks[0] = address(nvda);
-        TokenConfig[] memory cfgs = new TokenConfig[](1);
-        cfgs[0] = TokenConfig({allowed: true, feed: address(feed), pool: address(pool), maxWeightBps: 4000});
-        MandateVault v = new MandateVault(
-            owner, executor, address(usdc), address(registry), defaultMandate(), toks, cfgs, list
-        );
+        MandateVault v = _deployVault(defaultMandate(), list);
         assertEq(v.payees(), want);
         assertTrue(v.allowedPayee(payee));
         assertTrue(v.allowedPayee(payee2));
