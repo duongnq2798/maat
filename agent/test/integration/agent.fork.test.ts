@@ -127,7 +127,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(debt).toBeLessThanOrEqual(5_000_010n);
   });
 
-  it("logs a market-closed refusal onchain once per day, with preview == Decision", async () => {
+  it("logs a market-closed refusal onchain once per NYSE date and closed phase, with preview == Decision", async () => {
     // Saturday: market closed, equity feeds frozen.
     const test = createTestClient({ chain: base, transport: http(anvil.url, { timeout: 600_000 }), mode: "anvil" });
     const now = (await pub.getBlock()).timestamp;
