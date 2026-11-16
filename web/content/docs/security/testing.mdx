@@ -268,7 +268,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | Not tested | Why it matters |
 | --- | --- |
 | **No audit** | Nobody independent has reviewed the code. See [What Maat does not claim](/docs/security/not-claimed) |
-| **Fuzzing beyond the mocks** | The invariant suite runs on mocks only, no fuzz test runs on a fork, and [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the suite leaves out |
+| **Fuzzing beyond the mocks** | The invariant suite runs on mocks only and is the only randomized test: every other contract test, fork tests included, takes fixed inputs, and [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the suite leaves out |
 | **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
 | **Mainnet** | No Maat contract is deployed, so every test is a unit test or a fork |
