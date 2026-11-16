@@ -12,7 +12,7 @@
 [![Tests: 535, 511 offline](https://img.shields.io/badge/tests-535%20(511%20offline)-15803d?style=flat-square)](#development)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
-**[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
+**[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[Quest Period log](#built-during-the-quest-period)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
 
 <sub>Built for Base "Stocks Maxxing Season" (Agentic Stock Finance) · Solidity 0.8.28 on Base (Foundry, <code>hardfork = "base:Cobalt"</code>) · B20 stocks · Chainlink equity feeds · Aerodrome Slipstream · Aave V4 · Coinbase CDP Server Wallet · ERC-8021 Builder Codes · Claude</sub>
 
@@ -45,6 +45,7 @@ a public, typed record. If the executor key leaks, the attacker gets exactly the
 
 - [How to evaluate Maat in 5 minutes](#how-to-evaluate-maat-in-5-minutes)
 - [Status](#status)
+- [Built during the Quest Period](#built-during-the-quest-period)
 - [The problem](#the-problem)
 - [Why it is different](#why-it-is-different)
 - [What Maat does](#what-maat-does)
@@ -203,6 +204,24 @@ What exists at this commit, and what does not.
 | Guard Service HTTP API, MCP server, Bankr Skill | **Planned** | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | `MandateFactory`: any agent deploys its own vault | **Planned** (stretch goal) | [spec §3.7](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Third-party audit | **None**. Treat the contracts as unaudited | |
+
+## Built during the Quest Period
+
+The Base "Stocks Maxxing Season" Quest Period runs from 5 November to 5 December 2026. What shipped, by the
+author dates in `git log`:
+
+| Date | What shipped |
+| --- | --- |
+| 2026-11-06 | Design spec and Plan 1; contracts scaffolded with a Base B20 fork smoke test |
+| 2026-11-06 | Core contracts: `MarketCalendar`, `PriceLib`, `GuardLib`, the Aerodrome Slipstream swap adapter and `MandateVault` with its `Decision` log and typed timelock; the deploy script; fork tests against live Base pools, feeds and B20 tokens |
+| 2026-11-06 | Aave V4 credit leg: `AaveV4CreditAdapter`, supply, borrow, repay and collateral withdrawal gated on the market, the collateral and the health factor; fork tests against the MAG7 Spoke, including the full vault credit loop |
+| 2026-11-06 | Agent runtime: config, block-pinned vault reader, rule-based policy, Claude proposer, executor preview, journal, ERC-8021 Builder Code, CDP Server Wallet executor, scheduler and CLI; a Base fork run of the full loop |
+| 2026-11-07 | Landing page: facts with sources and parity tests, the fork ledger, the interactive decision engine, brand assets, SEO metadata, the export check and Playwright smoke tests |
+| 2026-11-07 | Contracts, credit, agent and website branches merged; the root README and the MIT license |
+| 2026-11-07 | Docs center: its own layout, search, numbers rendered from the facts at build time, the Get started and concept pages |
+| 2026-11-08 | Docs center: glossary and FAQ, contract and agent reference generated from the sources, guides, security and help pages, `llms.txt`, accessibility checks in both themes |
+| 2026-11-08 | Simulator "Try to make it say no": `MarketCalendar` ported to TypeScript and checked against its Foundry vectors, the default mandate's BUY checks over one day, share links, e2e tests |
+| 2026-11-16 | The landing page links to the docs and the five-minute quickstart; simulator fixes for half-typed amounts and the X post |
 
 ## The problem
 
