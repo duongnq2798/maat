@@ -133,19 +133,48 @@ describe("reference entries", () => {
   it("AddressTable links an address to Basescan and prints a number as it is", () => {
     const out = lines(text("AddressTable"));
     expect(out[0]).toBe("| Name | Value | Note |");
-    expect(out).toHaveLength(2 + docsData.addresses.length);
+    const groups = new Set(docsData.addresses.map((a) => a.group).filter(Boolean));
+    expect(out).toHaveLength(2 + groups.size + docsData.addresses.length);
     expect(out).toContain("| `USDC` | [`0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913`](https://basescan.org/address/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |  |");
+  });
+
+  it("AddressTable heads a group with its comment once, in a row of its own, above rows with no note", () => {
+    const out = lines(text("AddressTable"));
+    const pools = docsData.addresses.find((a) => a.name === "NVDAC_USDC_POOL")!.group;
+    expect(out.filter((l) => l.includes(pools))).toEqual([`| ${pools} |`]);
+    const head = out.indexOf(`| ${pools} |`);
+    expect(out[head + 1]).toMatch(/^\| `NVDAC_USDC_POOL` \| .+ \|  \|$/);
   });
 });
 
 describe("tables of shared data", () => {
-  it("FactTable gives each fact's name, text and source", () => {
+  it("FactTable gives a figure's plain name, text and source", () => {
     const f = factFor("checksPerTrade");
     expect(lines(text("FactTable", { names: ["checksPerTrade"], label: "Counts" }))).toEqual([
-      "| Name | Value | Source |",
+      "| Figure | Value | Source |",
       "| --- | --- | --- |",
-      `| \`checksPerTrade\` | ${f.text} | ${f.source} |`,
+      `| Checks per trade | ${f.text} | ${f.source} |`,
     ]);
+  });
+
+  it("FactTable gives a setting's plain name, its name in the code, its text and its file, then the caption", () => {
+    expect(text("FactTable", { names: ["mandate.maxStalenessSec", "maxTokenDecimals", "timelockHours"], caption: "Shared source." })).toBe(
+      [
+        "| Setting | In code | Value | Source file |",
+        "| --- | --- | --- | --- |",
+        "| Oldest feed answer accepted | `Mandate.maxStaleness` in `defaultMandate` | 3,600 s | `contracts/script/MaatConfig.sol` |",
+        "| Most decimals a stock may have | literal `18` in `_requireValidTokenConfig` | 18 decimals | `contracts/src/MandateVault.sol` |",
+        "| Timelock delay | `MandateVault.TIMELOCK` | 24 hours | `contracts/src/MandateVault.sol` |",
+        "",
+        "Shared source.",
+      ].join("\n"),
+    );
+  });
+
+  it("FactTable refuses a table that mixes settings and figures", () => {
+    expect(() => text("FactTable", { names: ["timelockHours", "checksPerTrade"] })).toThrow(
+      "<FactTable /> mixes settings and figures; rows with no place in the code: checksPerTrade",
+    );
   });
 
   it("ReasonTable lists every refusal with its id, its group and a link to its entry", () => {
