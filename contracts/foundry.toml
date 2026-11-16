@@ -16,3 +16,15 @@ base = "${BASE_RPC_URL}"
 
 [fmt]
 line_length = 110
+
+# test/invariant: 32 runs of 512 calls take well under a minute. The handlers never revert, so a revert is a
+# handler bug and fails the run. For a longer search: FOUNDRY_PROFILE=deep forge test --match-path "test/invariant/*"
+[invariant]
+runs = 32
+depth = 512
+fail_on_revert = true
+
+[profile.deep.invariant]
+runs = 256
+depth = 1024
+fail_on_revert = true
