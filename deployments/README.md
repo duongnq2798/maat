@@ -21,6 +21,10 @@ It uses `maxSlippageBps = 150` and `maxStaleness = 90000` (25 hours), measured o
 
 Credit (Aave V4 MAG7 Spoke): `minHealthFactor = 1.5`, `targetHealthFactor = 2.0` (buffer included), `deriskWindow = 8h` (from 12:00 ET on Friday until 20:00 ET, when the feed stops; for a REGULAR session this is 12:00–16:00). The window also applies to the last session before a day off: Monday–Thursday when the next day is a holiday in `MarketCalendar`, for example Thursday 2026-12-24 (early close at 13:00, so the in-session window is 12:00–13:00) and Thursday 2026-12-31, which come before two holidays that fall on Fridays; also Wednesday 2026-11-25, before Thanksgiving. Borrowing is allowed only when the market is open and the HF after the borrow is ≥ 1.5 (≥ 2.0 inside the window). Repay and adding collateral are allowed even when the market is closed. When the vault is paused with `setPaused(true)`, REPAY still runs so that debt can always be reduced; SUPPLY, BORROW, WITHDRAW_COLLATERAL (along with BUY, SELL, PAY_EXPENSE) are refused with `VAULT_PAUSED`.
 
+## Foundry
+
+The B20 stocks are precompiles, and the `MandateVault` constructor reads `uiMultiplier()` from each basket token, so the dry-run, the simulation and the broadcast below all need a Foundry that runs the B20 precompile. Foundry 1.8.4 or newer does when it runs in `contracts/`, where `foundry.toml` sets `hardfork = "base:Cobalt"`: the contract fork test `test_deployWiresEverything` runs this script on a Base fork that way (the README's runs used 1.9.0). Upstream Anvil 1.9 does not, because it reverts on `uiMultiplier()`, so do not point the script at a local upstream Anvil node. A local node must be Base's build, `base-anvil` v1.5.1, described in [`agent/README.md`](../agent/README.md#test).
+
 ## Dry-run (no broadcast, no key needed)
 
 Run it in `contracts/`. It uses placeholder addresses, for simulation only. The contract addresses printed here will be **different** on mainnet, and the four lines `deployer`, `owner`, `executor`, `expense payee` are only placeholder addresses, not your real addresses:

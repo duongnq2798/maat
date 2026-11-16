@@ -38,7 +38,7 @@ You need the pieces below. Your wallet is the [owner](/docs/help/glossary#owner)
 
 | Need | Detail |
 | --- | --- |
-| [Foundry](https://getfoundry.sh) | 1.8.4 or newer. It provides `forge script` and `cast`. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer, run in `contracts/`. It provides `forge script` and `cast`. The script must run on a Foundry that executes the [B20](/docs/help/glossary#b20) precompile, because the vault's constructor reads each stock's [uiMultiplier](/docs/help/glossary#uimultiplier). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` for that, and the contract fork test `test_deployWiresEverything` runs the script this way on a Base fork. |
 | A Base mainnet RPC | Your own URL, written `<BASE_RPC_URL>` here, in `contracts/.env`. The dry run forks it. |
 | A deployer wallet | A Foundry keystore account, named `maat-owner` in the runbook. It needs enough ETH on Base to pay gas for the deploy. |
 | Four addresses | `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE`, read by the deploy script. |
@@ -283,6 +283,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - **A smoke test out of session.** A BUY on a weekend or a holiday, or after the close, is refused with `MARKET_CLOSED` instead of returning `OK`. That is the vault working, but it is not the first smoke test. The refused intent still uses its id, so retry with a new one, such as `maat-smoke-3`.
 - **Redeploying because verification failed.** Run the resume command instead.
 - **Handing the executor role over too early.** After `setExecutor` points at the CDP Server Wallet, your wallet's `execute` calls revert with `NotExecutor`.
+- **A local upstream Anvil as the RPC.** Upstream Anvil 1.9 reverts on `uiMultiplier()`, so the vault's constructor fails on it. Fork Base through your RPC URL, as the commands do. A local node must be Base's build, `base-anvil`, which [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) installs.
 - **Treating the dry-run addresses as yours.** The contract addresses in the dry run differ from mainnet, and the four address lines are placeholders.
 
 ## Next steps
