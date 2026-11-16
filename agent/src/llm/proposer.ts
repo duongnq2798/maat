@@ -2,7 +2,7 @@ import Anthropic, { type ClientOptions } from "@anthropic-ai/sdk";
 import type { PolicyView } from "../policy.js";
 import type { VaultState } from "../chain/state.js";
 import type { Proposal } from "../intent.js";
-import { dottedModelId } from "./modelId.js";
+import { dashedModelId, dottedModelId } from "./modelId.js";
 import { costUsd6, type LlmProvider, type Usage } from "./pricing.js";
 import { renderUserMessage, SYSTEM_PROMPT } from "./prompt.js";
 import { BATCH_JSON_SCHEMA, BatchSchema, type Batch } from "./schema.js";
@@ -49,9 +49,13 @@ function defaultCreate(): CreateMessage {
   };
 }
 
-/** The Bankr gateway call: the plain Messages endpoint with the Bankr key (bk_...) as the API key. */
+/**
+ * The Bankr gateway call: the plain Messages endpoint with the Bankr key (bk_...) as the API key. The SDK default of
+ * 10 minutes per attempt and 2 retries would hold a hung gateway for half an hour before the failover, and the round
+ * waits on it; a 4,000-token answer fits in 2 minutes, so a hung call ends after about 4.
+ */
 export function bankrCreate(apiKey: string, fetch?: ClientOptions["fetch"]): CreateMessage {
-  const client = new Anthropic({ apiKey, baseURL: BANKR_BASE_URL, ...(fetch ? { fetch } : {}) });
+  const client = new Anthropic({ apiKey, baseURL: BANKR_BASE_URL, timeout: 120_000, maxRetries: 1, ...(fetch ? { fetch } : {}) });
   return (params) => client.messages.create(params as never) as never;
 }
 
@@ -94,7 +98,8 @@ export class ClaudeProposer implements Proposer {
     };
     const direct = () =>
       this.ask("anthropic", this.create, {
-        model: this.opts.model,
+        // The Claude API serves only the dashed id, also when the setting uses Bankr's dotted one.
+        model: dashedModelId(this.opts.model),
         max_tokens: 16000,
         ...shared,
         betas: ["server-side-fallback-2026-07-01"],

@@ -1,8 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
 import { SYSTEM_PROMPT } from "../src/llm/prompt.js";
-import { bankrCreate, ClaudeProposer, FixedProposer, type CreateMessage } from "../src/llm/proposer.js";
+import { bankrCreate, ClaudeProposer, FixedProposer, type CreateMessage, type ProposerOutput } from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 
@@ -29,6 +29,13 @@ describe("ClaudeProposer", () => {
     expect(seen).not.toHaveProperty("temperature");
     expect(seen).not.toHaveProperty("tool_choice");
     expect(seen).not.toHaveProperty("thinking");
+  });
+
+  it("sends the Claude API the dashed model id when the setting uses Bankr's dotted one", async () => {
+    let seen: Record<string, unknown> = {};
+    const create: CreateMessage = async (p) => ((seen = p), { model: "claude-sonnet-5-5", stop_reason: "end_turn", content: [{ type: "text", text: '{"summary":"hold","intents":[]}' }], usage });
+    await new ClaudeProposer({ model: "claude-sonnet-5.5", create }).propose(await input());
+    expect(seen).toMatchObject({ model: "claude-sonnet-5-5" });
   });
 
   it("asks for no prompt caching", async () => {
@@ -136,13 +143,13 @@ describe("ClaudeProposer on Bankr's LLM gateway", () => {
   const BATCH = '{"summary":"hold","intents":[]}';
   const answer = (model: string, text = BATCH, stop = "end_turn") => ({ model, stop_reason: stop, content: [{ type: "text", text }], usage });
   // The SDK error a gateway response turns into, built the way the SDK builds it from the status and JSON body.
-  const apiError = (status: number, type: string, message = "recorded") =>
+  const apiError = (status: number, type: string, message = "fake") =>
     Anthropic.APIError.generate(status, { type: "error", error: { type, message } }, undefined, new Headers());
   /** One injected create per provider, each recording what it was asked. */
-  const providers = (o: { bankr: () => unknown; failover?: boolean }) => {
+  const providers = (o: { bankr: () => unknown; failover?: boolean; model?: string }) => {
     const asked = { bankr: [] as Record<string, unknown>[], anthropic: [] as Record<string, unknown>[] };
     const proposer = new ClaudeProposer({
-      model: "claude-sonnet-5-5",
+      model: o.model ?? "claude-sonnet-5-5",
       create: async (p) => (asked.anthropic.push(p), answer("claude-sonnet-5-5")),
       bankr: {
         create: async (p) => {
@@ -258,6 +265,42 @@ describe("ClaudeProposer on Bankr's LLM gateway", () => {
     expect(out).toMatchObject({ ok: true, provider: "anthropic", failover: why });
     expect(out).not.toHaveProperty("unfunded");
     expect(t.asked.anthropic).toHaveLength(1);
+  });
+
+  it("fails over with the Claude API's dashed model id when the setting uses the dotted one", async () => {
+    const t = providers({ bankr: throws(apiError(429, "rate_limit_error")), model: "claude-sonnet-5.5" });
+    expect(await t.proposer.propose(await input())).toMatchObject({ ok: true, provider: "anthropic" });
+    expect(t.asked.bankr[0]).toMatchObject({ model: "claude-sonnet-5.5" });
+    expect(t.asked.anthropic[0]).toMatchObject({ model: "claude-sonnet-5-5" });
+  });
+
+  it("gives a gateway that never answers two minutes per attempt and one retry, then fails over", async () => {
+    const inp = await input();
+    let calls = 0;
+    // The connection opens and no answer comes: only the client's own timeout ends the call, as with a real fetch.
+    const fetch = ((_url: string | URL | Request, init?: RequestInit) => {
+      calls++;
+      return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError"))));
+    }) as typeof globalThis.fetch;
+    vi.useFakeTimers();
+    try {
+      let out: ProposerOutput | undefined;
+      void new ClaudeProposer({
+        model: "claude-sonnet-5-5",
+        create: async () => answer("claude-sonnet-5-5"),
+        bankr: { create: bankrCreate("bk_test", fetch), failover: true },
+      })
+        .propose(inp)
+        .then((o) => (out = o));
+      await vi.advanceTimersByTimeAsync(119_000);
+      expect(calls).toBe(1);
+      // Past the first timeout, the retry backoff (under a second) and the second timeout.
+      await vi.advanceTimersByTimeAsync(122_000);
+      expect(calls).toBe(2);
+      expect(out).toMatchObject({ ok: true, provider: "anthropic", failover: "bankr timeout" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("keeps the failover reason when the Claude API fails too", async () => {
