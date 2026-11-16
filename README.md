@@ -264,7 +264,7 @@ flowchart LR
     C --> Z["zod re-validates,<br/>agent clamps amounts"]
     Z --> V["previewIntent<br/>eth_call as executor"]
     V --> G["GuardedSender<br/>vault-only calldata,<br/>Builder Code, gas cap"]
-    G --> W["CDP Server Wallet<br/>policy: vault only,<br/>value 0, Base only"]
+    G --> W["CDP Server Wallet<br/>policy: vault only,<br/>value 0, sends only on Base"]
     W --> E["MandateVault.execute<br/>nine checks"]
     E -->|all pass| A["Aerodrome swap<br/>or Aave V4 action"]
     E -->|any fails| R["Decision(allowed=false, reason)<br/>no funds move"]
@@ -420,7 +420,7 @@ All addresses are Base mainnet, from [`contracts/script/BaseAddresses.sol`](cont
 | **Chainlink equity feeds** | Oracle price per raw token (multiplier already included), staleness | [NVDA](https://basescan.org/address/0x04689a41629776563E6822F76f2e57D148d28513), [GOOGL](https://basescan.org/address/0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2), [AAPL](https://basescan.org/address/0x787f13dEa48Db0897CbCDD985de77809D837F988) |
 | **Aerodrome Slipstream** | Swap venue and 30-minute TWAP; called directly, no router | [NVDAc/USDC](https://basescan.org/address/0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC), [GOOGLc/USDC](https://basescan.org/address/0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3), [AAPLc/USDC](https://basescan.org/address/0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6) |
 | **Aave V4 (MAG7 Spoke, Equities Hub)** | Stocks as collateral, USDC borrowing; the adapter is the Aave user and only its vault can move the position | [Spoke](https://basescan.org/address/0x17905Db0e4A3514467539956c084180616AE7B8D), [Hub](https://basescan.org/address/0xa4d5947Eb727A052bae69C593FfC84247EC9864E) |
-| **Coinbase CDP Server Wallet** | The executor key, with an account policy (vault only, value 0, Base only). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
+| **Coinbase CDP Server Wallet** | The executor key, with an account policy (vault only, value 0, sends only on Base). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
 | **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
 | **Claude** | `claude-sonnet-5-5` with structured output proposes the round's intents | [`agent/src/llm/proposer.ts`](agent/src/llm/proposer.ts) |
 

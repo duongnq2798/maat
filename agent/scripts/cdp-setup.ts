@@ -17,7 +17,7 @@ const account = await cdp.evm.getOrCreateAccount({ name });
 const policy = await cdp.policies.createPolicy({ policy: executorPolicy(vault) });
 await cdp.evm.updateAccount({ address: account.address, update: { accountPolicy: policy.id } });
 console.log(`executor account "${name}": ${account.address}`);
-console.log(`policy ${policy.id} attached (vault ${vault}, Base only, zero value)`);
+console.log(`policy ${policy.id} attached (vault ${vault}, zero value, sends only on Base)`);
 console.log("Next, from the owner wallet:");
 console.log(`  1. MandateVault(${vault}).setExecutor(${account.address})`);
 console.log(`  2. send ~0.002 ETH on Base to ${account.address} for gas`);

@@ -54,7 +54,7 @@ A short code registered for a project, which ERC-8021 appends to a transaction's
 
 ### CDP Server Wallet
 
-The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in live mode. Its account policy allows only zero-value transactions to the vault on Base and rejects signing a hash, a message or typed data ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
+The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in live mode. Its account policy allows only zero-value transactions to the vault, sent only on Base, and rejects signing a hash, a message or typed data ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
 
 ### Chainlink equity feed
 

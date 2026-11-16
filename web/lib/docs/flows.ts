@@ -37,7 +37,7 @@ export const ARCHITECTURE: FlowData = {
   steps: [
     { title: "Claude", detail: "Proposes intents as JSON that must match a schema." },
     { title: "Agent", detail: "Validates, previews and sends only vault calls, with the Builder Code." },
-    { title: "CDP wallet", detail: "Live-mode signer: only zero-value transactions to the vault, on Base." },
+    { title: "CDP wallet", detail: "Live-mode signer: only zero-value transactions to the vault, sent only on Base." },
     { title: "MandateVault", detail: "Runs the checks and records every decision." },
     { title: "Base protocols", detail: "Aerodrome swaps, Aave V4 credit, Chainlink prices." },
   ],

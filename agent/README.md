@@ -43,7 +43,7 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 ## Safety
 
 - The contract is the final gate: $50 per-trade cap, $100 daily cap, slippage floor, session hours, feed, premium, HF. The agent cannot exceed these limits.
-- `GuardedSender` sends only `execute`, `syncMultiplier` and `notifyRevenue` to the vault, and always attaches the Builder Code. The CDP policy adds one more layer, for the target, the network and the value, not for the function.
+- `GuardedSender` sends only `execute`, `syncMultiplier` and `notifyRevenue` to the vault, and always attaches the Builder Code. The CDP policy adds one more layer, for the target and the value (and the network when sending), not for the function.
 - `MAAT_MAX_TX_PER_DAY` (default 40) stops gas from being burned on a repeating error.
 - If the RPC fails, that cycle does nothing. If a tx fails or reverts, the cycle stops immediately.
 - Every tx has an explicit gas limit: `min(3,000,000, max(floor, estimate × 1.3))`. The floor is 2,500,000 for `execute` and 300,000 for `syncMultiplier`. The agent does not use `eth_estimateGas` directly, because the vault swallows inner errors (swap, transfer, credit), so the estimate can be too low and the vault would record `SWAP_FAILED`. If the estimate fails, the cycle stops.
