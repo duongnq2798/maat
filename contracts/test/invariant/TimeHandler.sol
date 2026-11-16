@@ -20,10 +20,7 @@ contract TimeHandler is CommonBase, StdUtils {
     MockFeed[2] internal feeds;
 
     /// Coverage, read by MandateVaultInvariants.afterInvariant.
-    uint256 public moves;
     uint256 public openLandings; // landed inside a regular session
-    uint256 public closedWeekdayLandings; // landed on a Monday to Friday holiday or after an early close
-    uint256 public utcMidnights; // UTC day boundaries crossed
 
     constructor(MarketCalendar calendar_, MockFeed[2] memory feeds_) {
         calendar = calendar_;
@@ -41,7 +38,7 @@ contract TimeHandler is CommonBase, StdUtils {
         while (target <= now_ || _weekday(day) == 0 || _weekday(day) == 6) {
             target = _etToUtc(++day, minute);
         }
-        _moveTo(now_, target, seed >> 16);
+        _moveTo(target, seed >> 16);
     }
 
     /// @dev Mostly a short step; otherwise a landing just before or just after UTC midnight, or one to three days
@@ -58,23 +55,20 @@ contract TimeHandler is CommonBase, StdUtils {
         else if (k == 6) target = midnight + r % 10 minutes;
         else target = now_ + 1 days + r % 2 days;
         if (target <= now_) target = now_ + 1;
-        _moveTo(now_, target, seed >> 64);
+        _moveTo(target, seed >> 64);
     }
 
-    function _moveTo(uint256 now_, uint256 target, uint256 seed) internal {
+    function _moveTo(uint256 target, uint256 seed) internal {
         vm.warp(target);
-        ++moves;
-        utcMidnights += target / 1 days - now_ / 1 days;
-        (, uint256 wd, uint256 minute) = calendar.localTime(target);
         if (calendar.isOpen(target, SessionMode.REGULAR)) ++openLandings;
-        else if (wd != 0 && wd != 6 && minute >= OPEN_MIN && minute < CLOSE_MIN) ++closedWeekdayLandings;
         for (uint256 f; f < 2; ++f) {
             uint256 s = seed >> (32 * f);
             if (s % 32 == 0) continue; // keeps its last answer, which may go stale
-            // within 30 bps of the pool, or 60 to 90 bps off it one time in 32 (the mandates allow 50)
+            // within 30 bps of the pool, or 60 to 90 bps off it one time in 32 (the mandates allow 50); bit 4 picks
+            // the side, apart from bits 5 to 9, which pick the band
             uint256 bps = (s >> 5) % 32 == 0 ? _bound(s >> 10, 60, 90) : _bound(s >> 10, 0, 30);
             int256 drift = int256(bps) * PRICE / 10_000;
-            feeds[f].set((s >> 5) % 2 == 0 ? PRICE + drift : PRICE - drift, target);
+            feeds[f].set((s >> 4) % 2 == 0 ? PRICE + drift : PRICE - drift, target);
         }
     }
 

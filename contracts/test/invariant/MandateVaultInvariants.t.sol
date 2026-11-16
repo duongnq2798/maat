@@ -202,7 +202,8 @@ contract MandateVaultInvariants is Test {
         assertGe(creditActions.allowedSends(), 25, "allowed credit actions");
         assertGe(ownerActions.applied(), 1, "applied mandate changes");
         assertGe(ownerActions.refusedApplies(), 1, "refused mandate changes");
-        assertGe(ghosts.expectedReverts(), 5, "NotExecutor and IntentAlreadyUsed reverts");
+        assertGe(ghosts.notExecutorReverts(), 3, "NotExecutor reverts");
+        assertGe(ghosts.replayReverts(), 3, "IntentAlreadyUsed reverts");
         assertGe(ghosts.adjacentSpendDays(), 1, "spends on both sides of a UTC midnight");
         assertGe(time.openLandings(), 10, "landings in a session");
 

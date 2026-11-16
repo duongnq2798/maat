@@ -5,7 +5,7 @@ import {CommonBase} from "forge-std/Base.sol";
 import {StdUtils} from "forge-std/StdUtils.sol";
 import {Vm} from "forge-std/Vm.sol";
 import {MandateVault} from "../../src/MandateVault.sol";
-import {Action, Reason, Intent} from "../../src/Types.sol";
+import {Action, Reason, Intent, Mandate} from "../../src/Types.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockB20} from "../mocks/MockB20.sol";
 import {MockFeed} from "../mocks/MockFeed.sol";
@@ -38,7 +38,8 @@ contract Ghosts {
     uint256 public strayOutflows;
     string public lastViolation;
 
-    uint256 public expectedReverts;
+    uint256 public notExecutorReverts;
+    uint256 public replayReverts; // IntentAlreadyUsed
     uint256 public adjacentSpendDays; // spends on a UTC day that follows a day with spends
     bytes32 public lastId;
     uint256 internal _nonce;
@@ -71,8 +72,9 @@ contract Ghosts {
         spentModel[day] += notional;
     }
 
-    function expectedRevert() external {
-        ++expectedReverts;
+    function expectedRevert(bool replay) external {
+        if (replay) ++replayReverts;
+        else ++notExecutorReverts;
     }
 
     function revertViolation(string calldata what) external {
@@ -114,7 +116,6 @@ abstract contract VaultHandler is CommonBase, StdUtils {
     Ghosts public immutable ghosts;
 
     /// Coverage, read by MandateVaultInvariants.afterInvariant.
-    uint256 public sends;
     uint256 public allowedSends;
     uint256 public refusedReasons; // bit r is set once execute returned allowed = false with Reason r
 
@@ -125,14 +126,16 @@ abstract contract VaultHandler is CommonBase, StdUtils {
 
     /// @dev Previews `i` as the executor, with tx.origin the executor too as for the agent, then sends it. One send
     /// in 16 comes from a stranger and one in 16 replays the last used id: those must revert with NotExecutor and
-    /// IntentAlreadyUsed. Nothing else may revert while every mock follows its ABI.
+    /// IntentAlreadyUsed. Nothing else may revert: these mocks fail in none of the ways the vault does not catch,
+    /// which test/MandateVaultMalformed.t.sol shows.
     function _send(Intent memory i, uint256 seed) internal {
         Ghosts g = ghosts;
         MandateVault v = env.vault;
         address caller = env.executor;
         bytes memory mustRevert;
         uint256 k = seed % 16;
-        if (k == 1 && g.lastId() != bytes32(0)) {
+        bool replay = k == 1 && g.lastId() != bytes32(0);
+        if (replay) {
             i.id = g.lastId();
             mustRevert = abi.encodeWithSelector(MandateVault.IntentAlreadyUsed.selector, i.id);
         } else {
@@ -156,7 +159,6 @@ abstract contract VaultHandler is CommonBase, StdUtils {
                 return;
             }
             g.used(i.id);
-            ++sends;
             if (allowed) ++allowedSends;
             else refusedReasons |= 1 << uint8(reason);
             if (allowed && notional != 0) g.spend(day, notional);
@@ -176,7 +178,7 @@ abstract contract VaultHandler is CommonBase, StdUtils {
         } catch (bytes memory err) {
             vm.getRecordedLogs();
             if (mustRevert.length != 0 && keccak256(err) == keccak256(mustRevert)) {
-                g.expectedRevert();
+                g.expectedRevert(replay);
             } else {
                 g.revertViolation(
                     string.concat("execute reverted for ", _describe(i), ": ", vm.toString(err))
@@ -198,12 +200,15 @@ abstract contract VaultHandler is CommonBase, StdUtils {
     }
 
     /// @dev The outcomes only execute can reach, after the checks passed: the ones previewIntent's NatSpec names.
-    function _decidedWhileActing(Action a, Reason preview, Reason r) internal pure returns (bool) {
+    function _decidedWhileActing(Action a, Reason preview, Reason r) internal view returns (bool) {
         if (preview != Reason.OK) return false;
         if (r == Reason.SWAP_FAILED || r == Reason.TRANSFER_FAILED || r == Reason.CREDIT_FAILED) return true;
-        // the adapter's own health check after a borrow or a withdrawal
-        return (a == Action.BORROW || a == Action.WITHDRAW_COLLATERAL)
-            && (r == Reason.HEALTH_FACTOR_LOW || r == Reason.DERISK_WINDOW);
+        if (a != Action.BORROW && a != Action.WITHDRAW_COLLATERAL) return false;
+        // the adapter's own check after the action: the mock reverts with nextHf, which the vault maps to this reason
+        Mandate memory m = env.vault.mandate();
+        uint256 hf = env.credit.nextHf();
+        if (hf < m.minHealthFactor) return r == Reason.HEALTH_FACTOR_LOW;
+        return hf < m.targetHealthFactor && r == Reason.DERISK_WINDOW;
     }
 
     /// @dev What an allowed `i` adds to spentOnDay, computed the vault's way: the USDC of a BUY or a payment, the
