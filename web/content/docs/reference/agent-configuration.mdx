@@ -4,16 +4,17 @@ description: "Every environment variable the agent reads: whether it is required
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-16
 sources:
   - agent/src/config.ts
   - agent/.env.example
   - agent/README.md
   - agent/src/llm/pricing.ts
+  - agent/src/llm/proposer.ts
 next: [guides/run-the-agent, reference/agent-scripts]
 ---
 
-The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
+The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real. The agent can also ask Claude through Bankr's LLM gateway, and that path is tested against recorded response shapes only: a live dry run on either provider is an owner step that has not been run.
 
 <EnvTable />
 
@@ -63,7 +64,7 @@ A Builder Code that you registered for your project. Live mode requires it, and 
 
 <EnvVar name="MAAT_LOOP_MODEL" />
 
-The model the agent asks for its proposals. The name goes to the Claude API as written, and the agent does not check it against a list. The agent books the cost of each answer at the price of the model that produced it. If that model declines and the API hands the request to a fallback model, the agent books the declined attempt and the fallback attempt each at its own model's price. It has prices for `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-opus-5-5` and `claude-opus-4-8`, and it books any other name at the `claude-opus-4-8` rate, the highest of the four. A model that costs more than that, such as `claude-fable-5-1`, is billed too low. That cost becomes the compute bill the agent pays, as [The treasury loop](/docs/concepts/treasury-loop#paying-its-own-bill) explains.
+The model the agent asks for its proposals. The name goes to the Claude API as written, and the agent does not check it against a list. With `MAAT_LLM_PROVIDER=bankr` the name goes to Bankr in the gateway's dotted form, so `claude-sonnet-5-5` is sent as `claude-sonnet-5.5`, and a dotted name in the answer is read back in the dashed form. The agent books the cost of each answer at the price of the model that produced it. If that model declines and the API hands the request to a fallback model, the agent books the declined attempt and the fallback attempt each at its own model's price. The Bankr request asks for no fallback model. The agent has prices for `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-opus-5-5` and `claude-opus-4-8`, and it books any other name at the `claude-opus-4-8` rate, the highest of the four. A model that costs more than that, such as `claude-fable-5-1`, is billed too low. That cost becomes the compute bill the agent pays, as [The treasury loop](/docs/concepts/treasury-loop#paying-its-own-bill) explains.
 
 ### MAAT_DATA_DIR
 
@@ -83,6 +84,32 @@ The most transactions the agent sends in one UTC day, by default <Fact name="max
 
 The daily compute cost, in US dollars, that the agent assumes until it has a history of its own. The default is <Fact name="dailyComputeUsd" />, and it must be a positive number. The policy keeps <Fact name="runwayDays" /> of that cost as USDC: it spends only the USDC above that runway and the unpaid bill when it buys. It suggests a `BORROW` when USDC falls below the runway plus the unpaid bill, but only if some stock is already supplied as collateral. As soon as one of the days before today, up to a week back, has a recorded cost, the agent uses the average of the recorded days instead of this setting.
 
+### MAAT_LLM_PROVIDER
+
+<EnvVar name="MAAT_LLM_PROVIDER" />
+
+Which service the agent asks for its proposals. The only values are `anthropic` and `bankr`, and anything else stops the start. The default, `anthropic`, sends the request to the Claude API, paid with `ANTHROPIC_API_KEY`. `bankr` sends it to Bankr's LLM gateway at `https://llm.bankr.bot`, which serves Claude through the same Messages API and charges each call to the credits of a Bankr key. Bankr passes the request on to Vertex AI first and to OpenRouter after it, so the Bankr request leaves out what Vertex does not support: it has no beta header and asks for no fallback model. It caps the answer at 4,000 output tokens, where the Claude API request allows 16,000, and Bankr refuses a request with 402 when the prompt plus that cap could cost more than the key has left. The system prompt, the user message, the effort and the JSON schema of the answer are the same as on the Claude API.
+
+When the Bankr call fails with 402, 403, 408, 429 or a 5xx status, times out or cannot connect, and `ANTHROPIC_API_KEY` is set, the agent asks the Claude API once for the same proposal, with the same request as the `anthropic` provider. It does not fail over when Claude refuses, when the answer is cut off or does not match the schema, or on any other status. The round's `run` line in the journal names the provider that answered, `bankr` or `anthropic`, and after a failover its `failover` field says why, for example `bankr 429 rate_limit_error`. The cost booked for the round is the sum of both attempts, and a Bankr call that fails costs nothing.
+
+A 402 from Bankr means the key's credits or its daily budget ran out, with the error type `insufficient_credits` or `daily_budget_exceeded`. The agent then writes an `alert` line with the code `llm-unfunded` to the journal and prints it, once per round, whether or not the failover answered. Bankr allows 60 requests a minute per key.
+
+Bankr does not publish its prices per token, so the agent books a Bankr call at the Anthropic list rates of the same model, and never below them. That is a placeholder: the owner reconciles it with Bankr's own usage report, `GET /v1/usage`. The agent has not run on Bankr: this path is tested against recorded response shapes only, and the live dry run is an owner step that has not been run.
+
+### BANKR_API_KEY
+
+<EnvVar name="BANKR_API_KEY" />
+
+A Bankr API key, which starts with `bk_`, with the LLM Gateway enabled on it. Without that, Bankr answers 403. The agent requires the key when `MAAT_LLM_PROVIDER` is `bankr` and stops at startup if it is missing or blank. The Required column says No because the default provider does not use it. The agent sends it to `llm.bankr.bot` as the key of each request and never writes it to the journal or the console. Treat it as a secret: whoever holds it spends its credits.
+
+### ANTHROPIC_API_KEY
+
+<EnvVar name="ANTHROPIC_API_KEY" />
+
+An API key from your own Anthropic account. The Anthropic SDK reads it from the environment the first time the agent asks the Claude API for a proposal, and `agent/src/config.ts` only notes whether it is set. With the default provider, every round that reaches the proposal step needs it, in dry-run mode as well as in live mode, and Anthropic bills each request. A round that ends earlier does not use the key, for example one that ends with the status `no-state`, `wrong-executor` or `pending-tx`. Without a key the request fails, and the agent is built to record the failure in the round's `run` line in the journal, as `ok: false` with the error. That round then has no proposals from Claude. `smoke-claude.ts` needs the key as well.
+
+With `MAAT_LLM_PROVIDER=bankr` the key is optional. When it is set, a Bankr call that fails for one of the reasons under [MAAT_LLM_PROVIDER](#maat_llm_provider) is asked again of the Claude API and billed to this key. When it is not set, such a round has no proposals.
+
 ### CDP_ACCOUNT_NAME
 
 <EnvVar name="CDP_ACCOUNT_NAME" />
@@ -91,20 +118,9 @@ The name of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) accou
 
 ## Read by the SDKs
 
-The agent's own code never reads these settings. The Anthropic SDK and the Coinbase CDP SDK read them from the environment when the agent first uses the SDK. Because `agent/src/config.ts` does not check them, the agent does not check for them at startup, and the Required column says No. That No does not mean a run can do without them. Which run needs which one:
-
-| Setting | Which run needs it |
-| --- | --- |
-| `ANTHROPIC_API_KEY` | Every run that reaches the Claude step, in dry-run and in live mode |
-| `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET` | Live mode only. `cdp-setup.ts` needs them too |
+The agent's own code never reads these settings. The Coinbase CDP SDK reads them from the environment when the agent first uses the SDK. Because `agent/src/config.ts` does not check them, the agent does not check for them at startup, and the Required column says No. That No does not mean a run can do without them: live mode needs all three, and `cdp-setup.ts` needs them too. Dry-run mode uses none of them.
 
 A missing credential is reported by the SDK, not by the agent, when the call that needs it is made. Keep the values in `.env`. Never paste one into an issue, a log or a chat.
-
-### ANTHROPIC_API_KEY
-
-<EnvVar name="ANTHROPIC_API_KEY" />
-
-An API key from your own Anthropic account. The agent builds its Claude client the first time it asks for a proposal, and the SDK reads the key then. Every round that reaches the proposal step needs it, in dry-run mode as well as in live mode, and Anthropic bills each request. A round that ends earlier does not use the key, for example one that ends with the status `no-state`, `wrong-executor` or `pending-tx`. Without a key the request fails, and the agent is built to record the failure in the round's `run` line in the journal, as `ok: false` with the error. That round then has no proposals from Claude. `smoke-claude.ts` needs the key as well.
 
 ### CDP_API_KEY_ID
 
@@ -134,6 +150,13 @@ MAAT_VAULT=<VAULT_ADDRESS>
 MAAT_EXECUTOR=<EXECUTOR_ADDRESS>
 MAAT_EXPENSE_PAYEE=<PAYEE_ADDRESS>
 ANTHROPIC_API_KEY=<ANTHROPIC_API_KEY>
+```
+
+To get the proposals through Bankr's gateway instead, add the provider and a Bankr key. Keep the Anthropic key only if you want a failed Bankr call to fail over to the Claude API.
+
+```text
+MAAT_LLM_PROVIDER=bankr
+BANKR_API_KEY=<BANKR_API_KEY>
 ```
 
 Live mode adds a mode, a Builder Code and the three CDP credentials. `CDP_ACCOUNT_NAME` is needed only if you named the account something other than the default.

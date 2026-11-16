@@ -17,6 +17,30 @@ describe("loadConfig", () => {
     expect(c.defaultDailyComputeUsd).toBe(0.5);
     expect(c.dataDir).toBe("./data");
     expect(c.vault).toBe("0x1111111111111111111111111111111111111111");
+    expect(c.llmProvider).toBe("anthropic");
+    expect(c.bankrApiKey).toBeUndefined();
+    expect(c.anthropicApiKeySet).toBe(false);
+  });
+  it("needs a Bankr key when the provider is bankr, and only then", () => {
+    expect(() => loadConfig({ ...base, MAAT_LLM_PROVIDER: "bankr" })).toThrow(/BANKR_API_KEY/);
+    expect(() => loadConfig({ ...base, MAAT_LLM_PROVIDER: "bankr", BANKR_API_KEY: "" })).toThrow(/BANKR_API_KEY/);
+    expect(() => loadConfig({ ...base, MAAT_LLM_PROVIDER: "bankr", BANKR_API_KEY: "   " })).toThrow(/BANKR_API_KEY/);
+    const c = loadConfig({ ...base, MAAT_LLM_PROVIDER: "bankr", BANKR_API_KEY: "bk_test" });
+    expect(c.llmProvider).toBe("bankr");
+    expect(c.bankrApiKey).toBe("bk_test");
+  });
+  it("rejects an unknown provider", () => {
+    expect(() => loadConfig({ ...base, MAAT_LLM_PROVIDER: "openrouter" })).toThrow(/MAAT_LLM_PROVIDER/);
+  });
+  it("never repeats a key in its error", () => {
+    const keys = { BANKR_API_KEY: "bk_secret_1", ANTHROPIC_API_KEY: "sk-ant-secret-2" };
+    expect(() => loadConfig({ ...base, ...keys, MAAT_LLM_PROVIDER: "nope", MAAT_VAULT: "0x123" })).toThrow(/^(?!.*secret).*$/s);
+  });
+  it("notes whether an Anthropic key is set, without keeping it", () => {
+    const c = loadConfig({ ...base, ANTHROPIC_API_KEY: "sk-ant-test" });
+    expect(c.anthropicApiKeySet).toBe(true);
+    expect(JSON.stringify(c)).not.toContain("sk-ant-test");
+    expect(loadConfig({ ...base, ANTHROPIC_API_KEY: "" }).anthropicApiKeySet).toBe(false);
   });
   it("checksums addresses", () => {
     const c = loadConfig({ ...base, MAAT_VAULT: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" });
@@ -38,8 +62,14 @@ describe("loadConfig", () => {
       MAAT_DATA_DIR: "",
       MAAT_MAX_TX_PER_DAY: "",
       MAAT_DEFAULT_DAILY_COMPUTE_USD: "",
+      MAAT_LLM_PROVIDER: "",
+      BANKR_API_KEY: "",
+      ANTHROPIC_API_KEY: "",
       CDP_ACCOUNT_NAME: "",
     });
+    expect(c.llmProvider).toBe("anthropic");
+    expect(c.bankrApiKey).toBeUndefined();
+    expect(c.anthropicApiKeySet).toBe(false);
     expect(c.mode).toBe("dry-run");
     expect(c.builderCode).toBeUndefined();
     expect(c.loopModel).toBe("claude-sonnet-5-5");

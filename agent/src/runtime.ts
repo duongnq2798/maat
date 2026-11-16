@@ -1,3 +1,4 @@
+import type { ClientOptions } from "@anthropic-ai/sdk";
 import { createPublicClient, http, type Address, type PublicClient } from "viem";
 import { base } from "viem/chains";
 import type { AgentConfig } from "./config.js";
@@ -6,9 +7,16 @@ import { CdpSender } from "./exec/cdpSender.js";
 import { GuardedSender, type TxSender } from "./exec/sender.js";
 import { Journal } from "./ledger/journal.js";
 import { Store } from "./ledger/store.js";
-import { ClaudeProposer, type Proposer } from "./llm/proposer.js";
+import { bankrCreate, ClaudeProposer, type Proposer } from "./llm/proposer.js";
 import type { RunDeps } from "./loop/runOnce.js";
 import { usdToUsdc6 } from "./units.js";
+
+function proposerFor(cfg: AgentConfig, bankrFetch?: ClientOptions["fetch"]): Proposer {
+  if (cfg.llmProvider === "anthropic") return new ClaudeProposer({ model: cfg.loopModel });
+  // loadConfig requires the Bankr key with this provider. A failed Bankr call can only fail over with an Anthropic key.
+  const create = bankrCreate(cfg.bankrApiKey!, bankrFetch);
+  return new ClaudeProposer({ model: cfg.loopModel, bankr: { create, failover: cfg.anthropicApiKeySet } });
+}
 
 export async function buildRuntime(
   cfg: AgentConfig,
@@ -16,6 +24,8 @@ export async function buildRuntime(
     forceDryRun?: boolean;
     connectCdp?: (opts: { accountName: string; expectedAddress: Address }) => Promise<TxSender>;
     proposer?: Proposer;
+    /** Stands in for the network under the Bankr gateway client (tests). */
+    bankrFetch?: ClientOptions["fetch"];
   } = {},
 ): Promise<RunDeps> {
   const mode = o.forceDryRun ? "dry-run" : cfg.mode;
@@ -38,7 +48,7 @@ export async function buildRuntime(
     stateClient: client,
     previewClient: client,
     txClient: client,
-    proposer: o.proposer ?? new ClaudeProposer({ model: cfg.loopModel }),
+    proposer: o.proposer ?? proposerFor(cfg, o.bankrFetch),
     sender,
     store: await Store.open(cfg.dataDir),
     journal: new Journal(cfg.dataDir),

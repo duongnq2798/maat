@@ -27,11 +27,19 @@ const schema = z
     MAAT_DATA_DIR: field(z.string().default("./data")),
     MAAT_MAX_TX_PER_DAY: field(z.coerce.number().int().positive().default(40)),
     MAAT_DEFAULT_DAILY_COMPUTE_USD: field(z.coerce.number().positive().default(0.5)),
+    MAAT_LLM_PROVIDER: field(z.enum(["anthropic", "bankr"]).default("anthropic")),
+    // The keys are never echoed: a zod issue names the setting, not the value.
+    BANKR_API_KEY: field(z.string().trim().min(1).optional()),
+    // The Anthropic SDK reads the key itself; the agent only notes whether one is set (the Bankr failover needs it).
+    ANTHROPIC_API_KEY: field(z.string().optional()),
     CDP_ACCOUNT_NAME: field(z.string().default("maat-executor")),
   })
   .superRefine((v, ctx) => {
     if (v.MAAT_MODE === "live" && !v.MAAT_BUILDER_CODE) {
       ctx.addIssue({ code: "custom", path: ["MAAT_BUILDER_CODE"], message: "MAAT_BUILDER_CODE is required in live mode" });
+    }
+    if (v.MAAT_LLM_PROVIDER === "bankr" && !v.BANKR_API_KEY) {
+      ctx.addIssue({ code: "custom", path: ["BANKR_API_KEY"], message: "BANKR_API_KEY is required when MAAT_LLM_PROVIDER is bankr" });
     }
   });
 
@@ -46,6 +54,10 @@ export interface AgentConfig {
   dataDir: string;
   maxTxPerDay: number;
   defaultDailyComputeUsd: number;
+  llmProvider: "anthropic" | "bankr";
+  /** Set whenever llmProvider is "bankr". Never logged. */
+  bankrApiKey: string | undefined;
+  anthropicApiKeySet: boolean;
   cdpAccountName: string;
 }
 
@@ -67,6 +79,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     dataDir: v.MAAT_DATA_DIR,
     maxTxPerDay: v.MAAT_MAX_TX_PER_DAY,
     defaultDailyComputeUsd: v.MAAT_DEFAULT_DAILY_COMPUTE_USD,
+    llmProvider: v.MAAT_LLM_PROVIDER,
+    bankrApiKey: v.BANKR_API_KEY,
+    anthropicApiKeySet: v.ANTHROPIC_API_KEY !== undefined,
     cdpAccountName: v.CDP_ACCOUNT_NAME,
   };
 }

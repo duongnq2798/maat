@@ -91,10 +91,28 @@
       "requiredInLive": false
     },
     {
+      "name": "MAAT_LLM_PROVIDER",
+      "example": "anthropic",
+      "note": "Who serves Claude: anthropic (default, the Claude API) or bankr (Bankr's LLM gateway, paid from Bankr credits).",
+      "readBy": "agent",
+      "default": "anthropic",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "BANKR_API_KEY",
+      "example": "",
+      "note": "Bankr API key (bk_...) with LLM Gateway enabled. Required when MAAT_LLM_PROVIDER=bankr.",
+      "readBy": "agent",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
       "name": "ANTHROPIC_API_KEY",
       "example": "",
-      "note": "Anthropic API key (the SDK reads it).",
-      "readBy": "sdk",
+      "note": "Anthropic API key (the SDK reads it). With MAAT_LLM_PROVIDER=bankr it is optional: when set, a failed Bankr call fails over to the Claude API.",
+      "readBy": "agent",
       "default": null,
       "required": false,
       "requiredInLive": false
