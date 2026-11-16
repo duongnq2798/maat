@@ -28,14 +28,14 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 
 `MAAT_LLM_PROVIDER` chooses who serves Claude:
 
-- `anthropic` (default): the Claude API, paid with `ANTHROPIC_API_KEY`. The request uses the server-side fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) and `max_tokens` 16000.
+- `anthropic` (default): the Claude API, paid with `ANTHROPIC_API_KEY`. The request uses the server-side fallback (`fallbacks: "default"`, beta `server-side-fallback-2026-07-01`) and `max_tokens` 16000. It names the model in the API's dashed form (`claude-sonnet-5-5`), even when `MAAT_LOOP_MODEL` uses the dotted one.
 - `bankr`: Bankr's LLM gateway at `https://llm.bankr.bot` (the Anthropic Messages API), paid from the credits of `BANKR_API_KEY` (`bk_...`, with LLM Gateway enabled; required with this provider). The request is the plain Messages call with the same prompt, effort and JSON schema, the gateway's dotted model id (`claude-sonnet-5.5`) and `max_tokens` 4000. It has no betas and no fallbacks, because Bankr serves Claude through Vertex AI first and OpenRouter after it.
 
-On Bankr, a call that fails with 402, 403, 408, 429, 5xx, a timeout or a connection error is asked once of the Claude API with the `anthropic` request, but only when `ANTHROPIC_API_KEY` is set. A refusal, a truncated answer or one that fails the schema is not failed over. The round's `run` line in `data/journal.jsonl` names the `provider` that answered and, after a failover, the `failover` reason; the cost is the sum of both attempts. A 402 (`insufficient_credits` or `daily_budget_exceeded`) also writes an `alert` line with the code `llm-unfunded` and prints it once per round.
+On Bankr, a call that fails with 402, 403, 408, 429, 5xx, a timeout or a connection error is asked once of the Claude API with the `anthropic` request, but only when `ANTHROPIC_API_KEY` is set. Each Bankr attempt waits at most 2 minutes, and the SDK retries a timeout, a connection error, 408, 409, 429 or 5xx once, so a gateway that never answers reaches the failover after about 4 minutes. A refusal, a truncated answer or one that fails the schema is not failed over. The round's `run` line in `data/journal.jsonl` names the `provider` that answered and, after a failover, the `failover` reason; the cost is the sum of both attempts. A 402 (`insufficient_credits` or `daily_budget_exceeded`) also writes an `alert` line with the code `llm-unfunded` and prints it once per round.
 
 Bankr does not publish its per-token prices, so a Bankr call is booked at the Anthropic list rates, never below them. That is a placeholder: reconcile it with Bankr's `GET /v1/usage`.
 
-Not run yet: the live dry run on each provider is an owner step. The Bankr path is tested only against recorded response shapes, so the agent has not run on Bankr.
+Not run yet: the live dry run on each provider is an owner step. The Bankr path is tested only against fake responses built from the shapes in Bankr's documentation, so the agent has not run on Bankr.
 
 ## Live run (owner only)
 

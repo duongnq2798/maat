@@ -144,7 +144,8 @@ A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Cl
 
 | `kind` | When the agent writes it |
 | --- | --- |
-| `run` | Once per round that reaches the proposal step: the summary, the cost of the Claude call, the number of suggestions and proposals, and `ok`. |
+| `run` | Once per round that reaches the proposal step: the summary, the cost of the Claude call, the number of suggestions and proposals, and `ok`. It also names the `provider` that answered, `anthropic` or `bankr`, and after a failover from Bankr a `failover` field says why. See [Agent configuration](/docs/reference/agent-configuration#maat_llm_provider). |
+| `alert` | When Bankr's gateway answered the Claude call with 402, with the code `llm-unfunded`: the Bankr key's credits or daily budget ran out. The agent also prints it, and writes it at most once per round. |
 | `intent` | For each proposal that became an [intent](/docs/help/glossary#intent). It holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result and a `gate` that says what the agent did with it. For a proposal that was not sent, it is one line with the `gate`. For a sent one, the line is written after the receipt, with the `txHash`, `gasUsed` and `decision`, and the `sent` line comes before it. |
 | `sent` | Right after a send returns, before the receipt arrives. |
 | `skip` | For a proposal that could not become an intent, for example an amount that rounds to zero. |
