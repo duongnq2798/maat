@@ -152,7 +152,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(second).toMatchObject({ status: "done", sent: [] });
     const [again] = await intents(journal, "fork-3");
     expect(again?.preview).toBe(row?.preview);
-    // The fork block is Thursday 2026-11-05 10:30 ET, so both rounds fall on NYSE date 2026-11-07.
+    // The fork block is Thursday 2026-11-05 10:30 ET and the clock moved 2 days ahead, so both rounds fall on Saturday, NYSE date 2026-11-07.
     const phase = row?.preview === "MARKET_CLOSED" ? " (weekend)" : "";
     expect(again?.gate).toBe(`${row?.preview} already logged for NYSE date 2026-11-07${phase}`);
     expect(again?.txHash).toBeUndefined();
