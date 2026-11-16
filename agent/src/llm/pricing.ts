@@ -1,3 +1,8 @@
+import { dashedModelId } from "./modelId.js";
+
+/** Where a proposal is asked: the Claude API directly, or Bankr's LLM gateway in front of it. */
+export type LlmProvider = "anthropic" | "bankr";
+
 interface Tokens {
   input_tokens: number;
   output_tokens: number;
@@ -25,8 +30,16 @@ const CENTS: Record<string, { input: number; output: number; cacheRead: number; 
 // today): pricing it too low would leave the expense wallet covering the difference.
 const FALLBACK = CENTS["claude-opus-4-8"]!;
 
-function cents(model: string, u: Tokens): bigint {
-  const p = CENTS[model] ?? FALLBACK;
+const PRICES: Record<LlmProvider, typeof CENTS> = {
+  anthropic: CENTS,
+  // Bankr does not publish its per-token prices (GET /v1/models needs a key), so a Bankr call is booked at the
+  // Anthropic list rates, never below: a conservative placeholder until the owner reconciles with Bankr's GET /v1/usage.
+  bankr: CENTS,
+};
+
+function cents(table: typeof CENTS, model: string, u: Tokens): bigint {
+  // Bankr answers with the dotted id (claude-sonnet-5.5); the rows are keyed by the dashed one.
+  const p = table[dashedModelId(model)] ?? FALLBACK;
   return (
     BigInt(u.input_tokens) * BigInt(p.input) +
     BigInt(u.output_tokens) * BigInt(p.output) +
@@ -40,7 +53,10 @@ function cents(model: string, u: Tokens): bigint {
  * response's. With iterations, the top-level usage covers only the attempt that produced the message, so the cost
  * is the sum of the attempts, each at the model that ran it (the response's when the entry names none).
  */
-export function costUsd6(model: string, u: Usage): bigint {
-  const total = u.iterations?.length ? u.iterations.reduce((s, it) => s + cents(it.model ?? model, it), 0n) : cents(model, u);
+export function costUsd6(model: string, u: Usage, provider: LlmProvider = "anthropic"): bigint {
+  const table = PRICES[provider];
+  const total = u.iterations?.length
+    ? u.iterations.reduce((s, it) => s + cents(table, it.model ?? model, it), 0n)
+    : cents(table, model, u);
   return (total + 99n) / 100n;
 }

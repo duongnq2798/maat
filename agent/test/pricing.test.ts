@@ -32,6 +32,19 @@ describe("costUsd6", () => {
     ];
     for (const u of kinds) for (const m of KNOWN) expect(costUsd6("claude-x", u)).toBeGreaterThanOrEqual(costUsd6(m, u));
   });
+  it("prices Bankr's dotted model id as the dashed one", () => {
+    expect(costUsd6("claude-sonnet-5.5", { input_tokens: 10_000, output_tokens: 1_000 }, "bankr")).toBe(30_000n);
+    expect(costUsd6("claude-opus-4.8", MTOK_EACH, "bankr")).toBe(36_750_000n);
+  });
+  it("never prices a Bankr call below the Anthropic list rate, token kind by token kind", () => {
+    const kinds = [
+      { input_tokens: 1_000_000, output_tokens: 0 },
+      { input_tokens: 0, output_tokens: 1_000_000 },
+      { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 },
+      { input_tokens: 0, output_tokens: 0, cache_creation_input_tokens: 1_000_000 },
+    ];
+    for (const u of kinds) for (const m of [...KNOWN, "claude-x"]) expect(costUsd6(m, u, "bankr")).toBeGreaterThanOrEqual(costUsd6(m, u, "anthropic"));
+  });
 });
 
 describe("costUsd6 with usage.iterations", () => {
