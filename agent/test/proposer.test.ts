@@ -1,7 +1,8 @@
+import Anthropic from "@anthropic-ai/sdk";
 import { describe, expect, it } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
 import { SYSTEM_PROMPT } from "../src/llm/prompt.js";
-import { ClaudeProposer, FixedProposer, type CreateMessage } from "../src/llm/proposer.js";
+import { bankrCreate, ClaudeProposer, FixedProposer, type CreateMessage } from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 
@@ -49,6 +50,7 @@ describe("ClaudeProposer", () => {
       proposals: [{ action: "BUY", symbol: "NVDAc", amountUsd: 20, rationale: "underweight" }],
       costUsd6: 30_000n,
       model: "claude-sonnet-5-5",
+      provider: "anthropic",
     });
   });
 
@@ -126,7 +128,169 @@ describe("ClaudeProposer", () => {
       throw new Error("529 overloaded");
     };
     const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
-    expect(out).toEqual({ ok: false, error: "claude: 529 overloaded", costUsd6: 0n });
+    expect(out).toEqual({ ok: false, error: "claude: 529 overloaded", costUsd6: 0n, provider: "anthropic" });
+  });
+});
+
+describe("ClaudeProposer on Bankr's LLM gateway", () => {
+  const BATCH = '{"summary":"hold","intents":[]}';
+  const answer = (model: string, text = BATCH, stop = "end_turn") => ({ model, stop_reason: stop, content: [{ type: "text", text }], usage });
+  // The SDK error a gateway response turns into, built the way the SDK builds it from the status and JSON body.
+  const apiError = (status: number, type: string, message = "recorded") =>
+    Anthropic.APIError.generate(status, { type: "error", error: { type, message } }, undefined, new Headers());
+  /** One injected create per provider, each recording what it was asked. */
+  const providers = (o: { bankr: () => unknown; failover?: boolean }) => {
+    const asked = { bankr: [] as Record<string, unknown>[], anthropic: [] as Record<string, unknown>[] };
+    const proposer = new ClaudeProposer({
+      model: "claude-sonnet-5-5",
+      create: async (p) => (asked.anthropic.push(p), answer("claude-sonnet-5-5")),
+      bankr: {
+        create: async (p) => {
+          asked.bankr.push(p);
+          return o.bankr() as Awaited<ReturnType<CreateMessage>>;
+        },
+        failover: o.failover ?? true,
+      },
+    });
+    return { proposer, asked };
+  };
+  const throws = (e: unknown) => () => {
+    throw e;
+  };
+
+  it("asks Bankr with the plain Messages request: the dotted model, max_tokens 4000, no betas, no fallbacks", async () => {
+    const t = providers({ bankr: () => answer("claude-sonnet-5.5") });
+    await t.proposer.propose(await input());
+    const direct: Record<string, unknown>[] = [];
+    await new ClaudeProposer({ model: "claude-sonnet-5-5", create: async (p) => (direct.push(p), answer("claude-sonnet-5-5")) }).propose(await input());
+    const [sent] = t.asked.bankr;
+    expect(sent).toMatchObject({ model: "claude-sonnet-5.5", max_tokens: 4000 });
+    expect(sent).not.toHaveProperty("betas");
+    expect(sent).not.toHaveProperty("fallbacks");
+    expect(JSON.stringify(sent)).not.toContain("cache_control");
+    // The same prompt, user message, effort and output schema as the direct request.
+    for (const k of ["system", "messages", "output_config"]) expect(sent?.[k]).toEqual(direct[0]?.[k]);
+    expect(Object.keys(sent ?? {}).sort()).toEqual(["max_tokens", "messages", "model", "output_config", "system"]);
+    expect(t.asked.anthropic).toEqual([]);
+  });
+
+  it("prices an answer with the gateway's dotted model id at that model's rate", async () => {
+    const t = providers({ bankr: () => answer("claude-sonnet-5.5") });
+    expect(await t.proposer.propose(await input())).toEqual({
+      ok: true,
+      summary: "hold",
+      proposals: [],
+      costUsd6: 30_000n,
+      model: "claude-sonnet-5.5",
+      provider: "bankr",
+    });
+  });
+
+  it("sends the request to https://llm.bankr.bot/v1/messages with the Bankr key and no beta header", async () => {
+    const seen: { url: string; headers: Headers; body: Record<string, unknown> }[] = [];
+    const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), headers: new Headers(init?.headers), body: JSON.parse(String(init?.body)) });
+      // Bankr's documented response: the Anthropic message shape with the dotted model id.
+      const body = { id: "msg_1", type: "message", role: "assistant", model: "claude-sonnet-5.5", content: [{ type: "text", text: BATCH }], stop_reason: "end_turn", stop_sequence: null, usage };
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof globalThis.fetch;
+    const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", bankr: { create: bankrCreate("bk_test", fetch), failover: false } }).propose(await input());
+    expect(out).toMatchObject({ ok: true, provider: "bankr", costUsd6: 30_000n });
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.url).toBe("https://llm.bankr.bot/v1/messages");
+    expect(seen[0]?.headers.get("authorization")).toBe("Bearer bk_test");
+    expect(seen[0]?.headers.get("anthropic-beta")).toBeNull();
+    expect(seen[0]?.body).toMatchObject({ model: "claude-sonnet-5.5", max_tokens: 4000 });
+  });
+
+  it("reads a 402 from the gateway as unfunded, with Bankr's error type", async () => {
+    const fetch = (async () =>
+      new Response(JSON.stringify({ type: "error", error: { type: "insufficient_credits", message: "Insufficient credits" } }), {
+        status: 402,
+        headers: { "content-type": "application/json" },
+      })) as typeof globalThis.fetch;
+    const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", bankr: { create: bankrCreate("bk_test", fetch), failover: false } }).propose(await input());
+    expect(out).toMatchObject({ ok: false, provider: "bankr", unfunded: "insufficient_credits", costUsd6: 0n });
+    expect(!out.ok && out.error).toMatch(/^bankr: 402/);
+  });
+
+  it("on a 402 insufficient_credits, asks the Claude API once with today's request and bills both attempts", async () => {
+    const t = providers({ bankr: throws(apiError(402, "insufficient_credits")) });
+    const out = await t.proposer.propose(await input());
+    expect(out).toEqual({
+      ok: true,
+      summary: "hold",
+      proposals: [],
+      costUsd6: 30_000n, // the refused Bankr call cost nothing
+      model: "claude-sonnet-5-5",
+      provider: "anthropic",
+      failover: "bankr 402 insufficient_credits",
+      unfunded: "insufficient_credits",
+    });
+    expect(t.asked.bankr).toHaveLength(1);
+    expect(t.asked.anthropic).toHaveLength(1);
+    expect(t.asked.anthropic[0]).toMatchObject({
+      model: "claude-sonnet-5-5",
+      max_tokens: 16000,
+      betas: ["server-side-fallback-2026-07-01"],
+      fallbacks: "default",
+    });
+  });
+
+  it("on a 402 with no Anthropic key, returns the unfunded result and does not fail over", async () => {
+    const t = providers({ bankr: throws(apiError(402, "daily_budget_exceeded")), failover: false });
+    const out = await t.proposer.propose(await input());
+    expect(out).toMatchObject({ ok: false, provider: "bankr", unfunded: "daily_budget_exceeded", costUsd6: 0n });
+    expect(out).not.toHaveProperty("failover");
+    expect(t.asked.anthropic).toEqual([]);
+  });
+
+  it.each([
+    ["403", apiError(403, "auth_error"), "bankr 403 auth_error"],
+    ["429", apiError(429, "rate_limit_error"), "bankr 429 rate_limit_error"],
+    ["500", apiError(500, "api_error"), "bankr 500 api_error"],
+    ["529", apiError(529, "overloaded_error"), "bankr 529 overloaded_error"],
+    ["a timeout", new Anthropic.APIConnectionTimeoutError(), "bankr timeout"],
+    ["a connection error", new Anthropic.APIConnectionError({ message: "fetch failed" }), "bankr connection error"],
+  ])("fails over on %s", async (_name, error, why) => {
+    const t = providers({ bankr: throws(error) });
+    const out = await t.proposer.propose(await input());
+    expect(out).toMatchObject({ ok: true, provider: "anthropic", failover: why });
+    expect(out).not.toHaveProperty("unfunded");
+    expect(t.asked.anthropic).toHaveLength(1);
+  });
+
+  it("keeps the failover reason when the Claude API fails too", async () => {
+    const asked: number[] = [];
+    const out = await new ClaudeProposer({
+      model: "claude-sonnet-5-5",
+      create: async () => (asked.push(1), throws(new Error("529 overloaded"))()),
+      bankr: { create: async () => throws(apiError(402, "insufficient_credits"))(), failover: true },
+    }).propose(await input());
+    expect(out).toEqual({
+      ok: false,
+      error: "claude: 529 overloaded",
+      costUsd6: 0n,
+      provider: "anthropic",
+      failover: "bankr 402 insufficient_credits",
+      unfunded: "insufficient_credits",
+    });
+    expect(asked).toHaveLength(1);
+  });
+
+  it.each([
+    ["a refusal", () => answer("claude-sonnet-5.5", "", "refusal"), "claude refused"],
+    ["a truncation", () => answer("claude-sonnet-5.5", '{"summ', "max_tokens"), "claude output truncated"],
+    ["a schema failure", () => answer("claude-sonnet-5.5", '{"summary":"x","intents":[{"action":"PAY_EXPENSE","symbol":"USDC","amountUsd":1,"rationale":"r"}]}'), "invalid proposal JSON"],
+    ["a 400", throws(apiError(400, "invalid_request_error")), "bankr: 400"],
+    ["a 401", throws(apiError(401, "authentication_error")), "bankr: 401"],
+  ])("does not fail over on %s", async (_name, bankr, error) => {
+    const t = providers({ bankr });
+    const out = await t.proposer.propose(await input());
+    expect(out).toMatchObject({ ok: false, provider: "bankr" });
+    expect(!out.ok && out.error).toContain(error);
+    expect(out).not.toHaveProperty("failover");
+    expect(t.asked.anthropic).toEqual([]);
   });
 });
 
