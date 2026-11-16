@@ -251,7 +251,7 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 | --- | --- |
 | `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the rationale text behind each `rationaleHash`. |
 | `data/state.json` | The compute bills, the refusals logged per day, the transaction count per day, and the sends that are still `pending`. The agent needs it to survive a restart. |
-| `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and recent, counts as held. |
+| `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock that names a process that is no longer running is taken over, and so is one that names the agent's own process ID, because a restarted container often gives the new agent the ID the old one wrote. A lock file that is empty or garbled, and recent, counts as held. |
 
 Git ignores `agent/data/`.
 
