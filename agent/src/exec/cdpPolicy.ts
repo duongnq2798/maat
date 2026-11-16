@@ -3,7 +3,7 @@ import { zeroAddress, type Address } from "viem";
 
 /**
  * CDP policy for the executor account. Accept-only rules make each listed operation default-deny.
- * An operation no rule names is accepted, so every signing path the agent does not use gets a reject rule.
+ * An operation no rule names is accepted, so hash, message and typed-data signing each get a reject rule.
  */
 export function executorPolicy(vault: Address): CreatePolicyBody {
   return {
