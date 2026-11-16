@@ -122,7 +122,7 @@ minute each).
    [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the vault still holds its 200 USDC,
    and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list):
 
    ```bash
    forge test --no-match-path "test/fork/*"
@@ -485,7 +485,7 @@ contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork ba
     lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
     interfaces/            B20, Aave V4, Chainlink and pool interfaces
   script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
-  test/                    8 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
+  test/                    9 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
 agent/                     TypeScript agent runtime
   src/chain/               vault state reader, previewIntent
   src/llm/                 Claude proposer, prompt, schema, pricing
