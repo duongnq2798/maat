@@ -9,6 +9,8 @@ sources:
   - README.md
   - docs/superpowers/specs/2026-11-06-mandate-treasury-design.md
   - contracts/test/fork/MandateVaultFork.t.sol
+  - contracts/test/MandateVault.t.sol
+  - contracts/test/MandateVaultCredit.t.sol
   - agent/src/exec/cdpPolicy.ts
   - contracts/src/MandateVault.sol
   - agent/src/exec/cdpSender.ts
@@ -74,6 +76,16 @@ This is the case the vault is built for. Say an attacker controls the server tha
 | Stop sending intents | Change the mandate, withdraw, unpause, or keep the key once the owner replaces it |
 
 Two things in the left column are worth reading twice. The caps bound each UTC day and not the whole episode: a stolen key can spend up to the daily cap every day until the owner notices, so the total depends on how fast that is. And a borrow is checked when it is made. A loan at the floor is still a loan with interest, and a fall in the stock's price afterwards lowers its health factor without the vault doing anything.
+
+**Blast radius.** This is what a stolen executor key can cost on each path, with the default mandate. Each row follows from the vault's code, and the tests named in it show the rule it rests on.
+
+| Path | What it can cost | Why, in the code | Shown by |
+| --- | --- | --- | --- |
+| **Trades** (`BUY`, `SELL`) | Roughly the slippage limit (<Fact name="mandate.maxSlippageBps" />) on the daily cap (<Fact name="mandate.dailyCapUsd" />) per UTC day, measured against the oracle | Every swap must return at least the oracle-implied amount less `maxSlippageBps`, whatever `minOut` the intent carries (`_perform`). A `BUY` counts its USDC and a `SELL` the oracle value of its stock toward `spentOnDay`, which cannot pass the daily cap (`_withinCaps`). So an attacker who also trades against the pool can take at most the slippage on at most the daily cap. It is rough because the reference is the oracle: it may lag the market for up to `maxStaleness`, and the pool's TWAP may sit up to `maxPremiumBps` away from it | [`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [`test_dailyCap`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) |
+| **`PAY_EXPENSE`** | Up to the daily cap per UTC day, if an allowlisted payee's key sits on the agent's host | A payment needs an allowlisted payee, then counts toward the same per-trade cap (<Fact name="mandate.perTradeCapUsd" />) and daily cap as a trade (`_checkExpense`). A payee the attacker also controls, such as a wallet kept on the same server, can receive the whole daily cap every day in pieces no larger than the per-trade cap. Trades and payments share one daily cap, so this row and the one above do not add up | [`test_payExpenseRejectsUnknownPayee`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [`test_payExpenseSharesDailyCapWithTrades`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) |
+| **Credit** (`BORROW`, and `WITHDRAW_COLLATERAL` against debt) | No size cap: debt down to the minimum health factor (<Fact name="mandate.minHealthFactor" />), or to the target (<Fact name="mandate.targetHealthFactor" />) inside the de-risk window | Credit actions count toward neither cap (`_checkCredit`). A borrow needs an open market, healthy collateral and a projected health factor at or above the floor, and the adapter checks the floor again after a borrow or a withdrawal. The borrowed USDC lands in the vault, where only the two rows above can move it out, but the debt accrues interest, and a later fall in the stock's price can bring the position to liquidation | [`test_borrowRefusals`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol), [`test_borrowSendsUsdcToVault`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) |
+
+The day in these rows is a UTC day, not a rolling 24 hours, so the daily cap can be spent just before midnight and again just after it. The [invariant suite](/docs/security/testing#invariant-tests) checks the daily cap on every UTC day it touches, midnight crossings included, and that USDC leaves the vault only to an adapter or an allowlisted payee.
 
 **Response.** The owner replaces the executor, which is instant and stops the old key at once ([`test_rotatingExecutorRevokesOldOne`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol)), or pauses the vault. A paused vault still accepts `REPAY`, so debt can be paid down ([`test_repayIsAllowedWhileVaultPaused`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol)). The steps are in the guide above.
 

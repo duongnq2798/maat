@@ -98,7 +98,7 @@ Two guards protect the round itself. The agent stores each `execute` as pending 
 
 Read it top to bottom:
 
-- Only the executor can call it, and each intent id works once, refused or not. These two cases are the only reverts by design, so a refused intent still uses up its id and cannot be replayed.
+- Only the executor can call it, and each intent id works once, refused or not. With dependencies that follow their ABI, these two cases are the only reverts, so a refused intent still uses up its id and cannot be replayed. A dependency that breaks its ABI can still make `execute` revert ([`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol)).
 - `_check` runs the checks in a fixed order, and the first failure decides the reason. For a BUY or a SELL they are the checks listed on [The nine checks](/docs/concepts/nine-checks). The other actions run their own checks.
 - If every check passes, `_perform` carries out the swap or the credit action. For a swap the vault computes its own slippage floor from the oracle price and the mandate's `maxSlippageBps` (<Fact name="mandate.maxSlippageBps" /> by default), whatever `minOut` the agent sent. The agent always sends 0.
 - The last line emits `Decision`, whether the intent was allowed or not. A refusal does not revert: it records `allowed=false` and the reason, and moves no money.

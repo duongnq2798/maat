@@ -86,7 +86,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 cast call "$VAULT" "usedIntent(bytes32)(bool)" "$INTENT_ID" --rpc-url "$BASE_RPC_URL"
 ```
 
-An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts (`NotExecutor` or `IntentAlreadyUsed`) emits nothing.
+An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts emits nothing: a call from another address (`NotExecutor`), a used id (`IntentAlreadyUsed`), or a feed, token or adapter that breaks its ABI ([`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol)).
 
 </Step>
 

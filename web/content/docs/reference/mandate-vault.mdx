@@ -10,6 +10,7 @@ sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/test/MandateVault.t.sol
   - contracts/test/MandateVaultAdmin.t.sol
+  - contracts/test/MandateVaultMalformed.t.sol
 next: [reference/events, concepts/timelock-and-roles]
 ---
 
@@ -17,7 +18,7 @@ next: [reference/events, concepts/timelock-and-roles]
 
 <Callout type="note" title="Refusals are not reverts">
 
-`execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks an action is a refusal: `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The owner functions revert with the errors named under each entry, and [Errors](/docs/reference/errors) lists them all.
+With dependencies that follow their ABI, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks an action is a refusal: `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. A feed, token or adapter that breaks its ABI can still make `execute` revert, with nothing recorded ([`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol)). The owner functions revert with the errors named under each entry, and [Errors](/docs/reference/errors) lists them all.
 
 </Callout>
 

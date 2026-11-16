@@ -79,7 +79,7 @@ The executor has one entry point. It can send an intent to `execute`, and nothin
     }
 ```
 
-A call from any other address reverts with `NotExecutor`, and an intent id works once, whether the intent was allowed or refused. By design only those two cases revert. A refusal, including the refusal of a paused vault, is recorded as a `Decision` instead (the README notes that this assumes plain ERC-20 balance and decimals reads do not revert). The vault runs the checks for the intent's action itself, so the executor chooses what to try and the vault decides ([The nine checks](/docs/concepts/nine-checks)).
+A call from any other address reverts with `NotExecutor`, and an intent id works once, whether the intent was allowed or refused. By design only those two cases revert. A refusal, including the refusal of a paused vault, is recorded as a `Decision` instead. That holds while the feeds, tokens and adapters follow their ABI: one that returns too little data, or a plain `balanceOf` read that reverts, makes `execute` revert with nothing recorded ([`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol)). The vault runs the checks for the intent's action itself, so the executor chooses what to try and the vault decides ([The nine checks](/docs/concepts/nine-checks)).
 
 `test_executorCannotUseOwnerFunctions` has the executor call `withdraw`, `queueMandate`, `queueTokenConfig`, `queuePayee`, `fund`, `setExecutor` and `setPaused`, and every call reverts with `NotOwner`. `test_nonOwnerCannotCancelChange` and `test_nonOwnerCannotApplyReadyChanges` show the same for `cancelChange` and the three `apply` functions, for the executor and for a stranger.
 

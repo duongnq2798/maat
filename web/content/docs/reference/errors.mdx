@@ -12,6 +12,7 @@ sources:
   - contracts/src/adapters/AaveV4CreditAdapter.sol
   - contracts/src/adapters/ICreditAdapter.sol
   - contracts/src/lib/TokenTransfer.sol
+  - contracts/test/MandateVaultMalformed.t.sol
 next: [guides/configure-a-mandate, help/troubleshooting]
 ---
 
@@ -19,7 +20,7 @@ A custom error is a revert with a name and parameters, and a transaction that ra
 
 <Callout type="note" title="A refusal is not an error">
 
-When the vault stops a trade, it does not revert. `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` instead of reverting.
+When the vault stops a trade, it does not revert. With dependencies that follow their ABI, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` instead of reverting. A dependency that breaks its ABI can still make `execute` revert, with nothing recorded: [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows it for a feed and a token that return too little data and for a USDC `balanceOf` that reverts.
 
 </Callout>
 
