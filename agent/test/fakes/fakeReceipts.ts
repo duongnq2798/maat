@@ -35,6 +35,8 @@ export class FakeReceipts {
   estimates: { account: unknown; to: unknown; data: Hex }[] = [];
   /** syncMultiplier emits MultiplierChangeDetected (false: the vault's try uiMultiplier() failed silently). */
   syncEvent = true;
+  /** An execute's receipt carries its Decision log (false: only getLogs finds it). */
+  decisionInReceipt = true;
 
   constructor(
     private readonly sender: FakeSender,
@@ -51,20 +53,24 @@ export class FakeReceipts {
     return { address: this.vault, topics, data, blockNumber: 1n, blockHash: ZERO32, transactionHash: hash, transactionIndex: 0, logIndex: 0, removed: false };
   }
 
+  /** The vault's Decision log for an execute that succeeded with a verdict; null for anything else. */
+  private decisionLog(hash: Hex) {
+    const call = this.calls()[Number(hash) - 1]!;
+    const v = call.functionName === "execute" ? this.verdict(call.args[0] as OnchainIntent) : null;
+    if (!v || this.status !== "success") return null;
+    const i = call.args[0] as OnchainIntent;
+    return this.log(
+      hash,
+      encodeEventTopics({ abi: mandateVaultAbi, eventName: "Decision", args: { intentId: i.id, token: i.token } }) as Hex[],
+      encodeAbiParameters(parseAbiParameters("uint8, uint256, bool, uint8, bytes32"), [i.action, i.amount, v.allowed, v.reason, i.rationaleHash]),
+    );
+  }
+
   receipt(hash: Hex): TransactionReceipt {
     const call = this.calls()[Number(hash) - 1]!;
     const logs = [];
-    const v = call.functionName === "execute" ? this.verdict(call.args[0] as OnchainIntent) : null;
-    if (call.functionName === "execute" && v && this.status === "success") {
-      const i = call.args[0] as OnchainIntent;
-      logs.push(
-        this.log(
-          hash,
-          encodeEventTopics({ abi: mandateVaultAbi, eventName: "Decision", args: { intentId: i.id, token: i.token } }) as Hex[],
-          encodeAbiParameters(parseAbiParameters("uint8, uint256, bool, uint8, bytes32"), [i.action, i.amount, v.allowed, v.reason, i.rationaleHash]),
-        ),
-      );
-    }
+    const decision = this.decisionLog(hash);
+    if (decision && this.decisionInReceipt) logs.push(decision);
     if (call.functionName === "syncMultiplier" && this.syncEvent) {
       const token = call.args[0] as Address;
       logs.push(
@@ -98,7 +104,7 @@ export class FakeReceipts {
         this.logQueries.push({ fromBlock, intentId: args.intentId });
         return this.mined()
           .filter((x) => x.id === args.intentId)
-          .flatMap((x) => this.receipt(x.hash).logs);
+          .flatMap((x) => this.decisionLog(x.hash) ?? []);
       }) as never,
       getTransaction: (async ({ hash }: { hash: Hex }) => {
         if (Number(hash) < 1 || Number(hash) > this.sender.sent.length) throw new TransactionNotFoundError({ hash });

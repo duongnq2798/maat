@@ -268,10 +268,11 @@ What the next round does with a pending send:
 
 | What it finds | Journal `outcome` | What it does |
 | --- | --- | --- |
-| The vault says the intent is used | `applied` | Reads the intent's `Decision` from the logs and settles it. If it finds no `Decision`, the round halts. |
+| The transaction is mined and its receipt holds the intent's `Decision` | `applied` | Settles it from the receipt, without searching the logs. |
+| The vault says the intent is used, and no receipt settled it | `applied` | Reads the intent's `Decision` from the vault's logs and settles it. If it finds no `Decision`, the round halts. |
 | The transaction is in the mempool | `pending` | Waits and sends nothing. |
 | The transaction is mined and reverted | `dropped` | Clears the entry. The intent was not used. |
-| The transaction is mined but the intent is not yet used | `pending` | Waits, because the RPC may lag. |
+| The transaction is mined, its receipt holds no `Decision` for the intent, and the intent is not yet used | `pending` | Waits, because the RPC may lag. |
 | There is no trace of the transaction, and less than <Fact name="pendingWindowMinutes" /> have passed since the block the send was prepared at | `pending` | Waits. |
 | There is no trace, and <Fact name="pendingWindowMinutes" /> or more have passed | `dropped` | Records it and continues. |
 

@@ -135,9 +135,9 @@ function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | u
 }
 ```
 
-A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how the agent finds a `Decision` by intent id when it did not see the receipt: it asks the vault whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at.
+A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how a later round finds a `Decision` when the round that sent the intent did not see its receipt. If the agent stored the transaction hash and the transaction is mined, it reads that receipt and decodes it with the function above. Otherwise it asks the vault whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at.
 
-```typescript title="agent/src/loop/runOnce.ts#L175-L178"
+```typescript title="agent/src/loop/runOnce.ts#L184-L187"
     const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
     if (used) {
       const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });

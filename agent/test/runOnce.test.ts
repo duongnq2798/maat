@@ -265,8 +265,25 @@ describe("runOnce", () => {
       expect(t.receipts.calls()).toHaveLength(1);
       expect(t.store.unpaidUsd6()).toBe(0n);
       expect(t.store.pending()).toEqual([]);
-      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({ runId: "run-2", outcome: "applied", decision: { allowed: true, reason: "OK" } });
-      expect(t.receipts.logQueries[0]).toMatchObject({ fromBlock: 100n });
+      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({
+        runId: "run-2",
+        outcome: "applied",
+        decision: { allowed: true, reason: "OK" },
+        note: "Decision read from the tx receipt",
+      });
+      expect(t.receipts.logQueries).toEqual([]); // the mined tx's receipt settles it: no eth_getLogs
+    });
+
+    it("searches the logs when the mined tx's receipt holds no Decision for the intent", async () => {
+      const t = await setup({ store: await billed() });
+      t.receipts.timeout = true;
+      await runOnce(t.deps);
+      t.receipts.timeout = false;
+      t.receipts.decisionInReceipt = false;
+      expect(await runOnce({ ...t.deps, runId: "run-2" })).toMatchObject({ status: "done", sent: [] });
+      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({ outcome: "applied", note: "Decision found in the vault's logs" });
+      expect(t.receipts.logQueries).toHaveLength(1);
+      expect(t.store.unpaidUsd6()).toBe(0n);
     });
 
     it("reconciles a send that threw after broadcast instead of sending again", async () => {

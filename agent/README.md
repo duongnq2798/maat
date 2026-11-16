@@ -47,7 +47,7 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 - `MAAT_MAX_TX_PER_DAY` (default 40) stops gas from being burned on a repeating error.
 - If the RPC fails, that cycle does nothing. If a tx fails or reverts, the cycle stops immediately.
 - Every tx has an explicit gas limit: `min(3,000,000, max(floor, estimate × 1.3))`. The floor is 2,500,000 for `execute` and 300,000 for `syncMultiplier`. The agent does not use `eth_estimateGas` directly, because the vault swallows inner errors (swap, transfer, credit), so the estimate can be too low and the vault would record `SWAP_FAILED`. If the estimate fails, the cycle stops.
-- Every `execute` is recorded in `pending` in `data/state.json` before it is sent. The next cycle reconciles against `usedIntent(id)` before doing anything else, so even a lost receipt cannot cause a bill to be paid twice.
+- Every `execute` is recorded in `pending` in `data/state.json` before it is sent. The next cycle reconciles it before doing anything else, from the tx receipt once the tx is mined, otherwise against `usedIntent(id)`, so even a lost receipt cannot cause a bill to be paid twice.
 - If the preview reports OK but the vault refuses, or the receipt has no `Decision`, the agent records `mismatch` and stops the cycle.
 - Each `data/` directory allows only one agent process at a time (the `agent.lock` file). The agent takes the lock before it opens the Store or connects to CDP. A lock file that is empty or corrupt but newer than 60 seconds is treated as held.
 
@@ -55,7 +55,8 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 
 1. Read `data/journal.jsonl` (the `error`, `mismatch`, `sent` and `reconcile` lines), then look up the tx hash on Basescan.
 2. `pending-tx` means a tx was sent and its outcome is still unknown. The next cycle reconciles it first, on its own:
-   - the intent was used: apply its `Decision`;
+   - the tx is mined and its receipt holds the intent's `Decision`: apply it, with no log search;
+   - otherwise, the intent was used: find its `Decision` in the vault's logs and apply it;
    - the tx is still in the mempool, or less than 10 minutes of chain time have passed since the block the send was prepared at: keep waiting and send nothing;
    - 10 minutes or more have passed with no trace of it: record `dropped` and continue.
 

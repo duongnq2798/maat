@@ -102,7 +102,7 @@ Each round that reaches the proposal step asks Claude, and each answer has a cos
 
 Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment at the front of the round's queue:
 
-```typescript title="agent/src/loop/runOnce.ts#L254-L258"
+```typescript title="agent/src/loop/runOnce.ts#L260-L264"
     const queue: Proposal[] = [];
     if (unpaid >= BILL_MIN_USD6) {
       const usd = usdc6ToUsd(unpaid);
@@ -113,7 +113,7 @@ Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment 
 - **Claude does not propose it.** The proposal schema has no `PAY_EXPENSE` action, and the system prompt says bills are settled automatically.
 - **It goes to the expense payee.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's payee list.
 - **The vault limits it.** `PAY_EXPENSE` needs a payee on the allowlist and an amount within the balance and under the per-trade and daily caps, which it shares with trades. It works when the market is closed and it is refused while the vault is paused ([The nine checks](/docs/concepts/nine-checks#other-actions)).
-- **It is paid once.** The agent stores a send as pending before it leaves, and the next round checks `usedIntent` first. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
+- **It is paid once.** The agent stores a send as pending before it leaves, and the next round settles it first, from the transaction's receipt once it is mined, or else from `usedIntent`. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
 - **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows.
 
 ## Cadence

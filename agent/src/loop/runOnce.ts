@@ -162,6 +162,11 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await j.append({ ...base, outcome: "pending", note });
       return "pending" as const;
     };
+    const apply = async (decision: Decision, note: string) => {
+      await j.append({ ...base, outcome: "applied", decision, note });
+      await settle(p, decision);
+      return "settled" as const;
+    };
 
     // A known transaction is looked up first, so it cannot be mined between the usedIntent read and this one.
     let tx: { blockNumber: bigint | null } | null = null;
@@ -172,18 +177,19 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         if (!(e instanceof TransactionNotFoundError)) throw e;
       }
     }
+    // A mined send carries its own Decision: its receipt is read before any log search.
+    const receipt = tx && tx.blockNumber !== null ? await receiptOf(p.txHash!) : null;
+    const mined = receipt ? decisionIn(receipt.logs, d.vault, p.intentId) : undefined;
+    if (mined) return apply(mined, "Decision read from the tx receipt");
     const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
     if (used) {
       const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });
       const decision = decisionIn(logs, d.vault, p.intentId);
       if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block}`);
-      await j.append({ ...base, outcome: "applied", decision });
-      await settle(p, decision);
-      return "settled";
+      return apply(decision, "Decision found in the vault's logs");
     }
-    if (tx && tx.blockNumber !== null) {
-      const r = await receiptOf(p.txHash!);
-      if (r.status === "reverted") return drop("tx reverted; the intent was not used");
+    if (receipt) {
+      if (receipt.status === "reverted") return drop("tx reverted; the intent was not used");
       return wait("tx mined but usedIntent is still false; the RPC may lag");
     }
     if (tx) return wait("tx is still in the mempool");

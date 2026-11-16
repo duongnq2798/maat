@@ -35,7 +35,7 @@ The agent-side steps save gas and keep a readable journal. None of them is trust
 
 The agent reads the vault, its tokens, their feeds and its Aave position at one pinned block, so every number in the round comes from the same moment. If a required read fails, the agent does nothing and writes the failure to its journal. It also stops if the vault's [executor](/docs/help/glossary#executor) is not its own address.
 
-Before it asks for any proposal, the agent settles any send that an earlier round left pending, by looking the intent up with `usedIntent` and reading its `Decision`. In live mode it also sends `syncMultiplier` for any stock whose [uiMultiplier](/docs/help/glossary#uimultiplier) changed, so the vault records the change.
+Before it asks for any proposal, the agent settles any send that an earlier round left pending, by reading its `Decision` from the transaction's receipt, or by looking the intent up with `usedIntent` and finding its `Decision` in the vault's logs. In live mode it also sends `syncMultiplier` for any stock whose [uiMultiplier](/docs/help/glossary#uimultiplier) changed, so the vault records the change.
 
 ## Step 2: the policy and Claude
 
