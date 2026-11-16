@@ -435,6 +435,18 @@ describe("runOnce", () => {
       expect(r).toMatchObject({ status: "halted", haltReason: "HTTP request failed." });
       expect(JSON.stringify(await t.journal.read())).not.toContain("SECRET-KEY");
     });
+
+    it("halts and journals a thrown value that is not an Error", async () => {
+      const store = await billed();
+      store.addPending(pendingEntry());
+      const t = await setup({ store });
+      const readContract = (async () => {
+        throw "rate limited\nby https://rpc.example.org";
+      }) as never;
+      const r = await runOnce({ ...t.deps, txClient: { ...t.deps.txClient, readContract } });
+      expect(r).toMatchObject({ status: "halted", haltReason: "rate limited" });
+      expect((await t.journal.read()).at(-1)).toMatchObject({ kind: "error", message: "halted: rate limited" });
+    });
   });
 
   describe("preview / Decision mismatch", () => {

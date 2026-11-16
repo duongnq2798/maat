@@ -70,7 +70,7 @@ type Decision = { allowed: boolean; reason: string };
 class Halt extends Error {}
 
 const DECISION_EVENT = getAbiItem({ abi: mandateVaultAbi, name: "Decision" });
-const firstLine = (e: unknown) => (e as Error).message.split("\n")[0];
+const firstLine = (e: unknown) => (e instanceof Error ? e.message : String(e)).split("\n")[0];
 
 function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
