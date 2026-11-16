@@ -121,9 +121,9 @@ Clone the repository and run the tests. The refusal test, the contract suites, t
 
 ### How is Maat tested?
 
-**Unit tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
+**Unit and invariant tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
 
-- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math and both adapters against mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
+- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math and both adapters against mocks, an invariant suite checks the vault's rules over random sequences of calls on the same mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
 - **Agent.** Its tests use fakes, and its fork run uses a scripted proposer and a local sender.
 - **Website.** Its tests read the Solidity sources and the fork-run gas log, so most numbers on a page fail them if they drift from the code.
 
