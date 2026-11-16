@@ -8,6 +8,8 @@ hardfork = "base:Cobalt"
 via_ir = true
 optimizer = true
 optimizer_runs = 200
+# MarketCalendarVectors.t.sol reads the committed JSON vectors
+fs_permissions = [{ access = "read", path = "./test/vectors" }]
 
 [rpc_endpoints]
 base = "${BASE_RPC_URL}"

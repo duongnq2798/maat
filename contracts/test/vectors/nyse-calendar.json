@@ -1,0 +1,1034 @@
+{
+  "description": "NYSE closures preloaded by MarketCalendar's constructor, and the expected isOpen at fixed ET times on each date.",
+  "generator": "contracts/test/vectors/gen-vectors.mjs",
+  "firstDay": 20454,
+  "firstDate": "2026-01-01",
+  "lastDay": 21183,
+  "lastDate": "2027-12-31",
+  "holidays": [
+    {
+      "date": "2026-11-26",
+      "etDay": 20783,
+      "name": "Thanksgiving"
+    },
+    {
+      "date": "2026-12-25",
+      "etDay": 20812,
+      "name": "Christmas"
+    },
+    {
+      "date": "2027-01-01",
+      "etDay": 20819,
+      "name": "New Year"
+    },
+    {
+      "date": "2027-01-18",
+      "etDay": 20836,
+      "name": "Martin Luther King Jr. Day"
+    },
+    {
+      "date": "2027-02-15",
+      "etDay": 20864,
+      "name": "Washington's Birthday"
+    },
+    {
+      "date": "2027-03-26",
+      "etDay": 20903,
+      "name": "Good Friday"
+    },
+    {
+      "date": "2027-05-31",
+      "etDay": 20969,
+      "name": "Memorial Day"
+    },
+    {
+      "date": "2027-06-18",
+      "etDay": 20987,
+      "name": "Juneteenth (observed)"
+    },
+    {
+      "date": "2027-07-05",
+      "etDay": 21004,
+      "name": "Independence Day (observed)"
+    },
+    {
+      "date": "2027-09-06",
+      "etDay": 21067,
+      "name": "Labor Day"
+    },
+    {
+      "date": "2027-11-25",
+      "etDay": 21147,
+      "name": "Thanksgiving"
+    },
+    {
+      "date": "2027-12-24",
+      "etDay": 21176,
+      "name": "Christmas (observed)"
+    }
+  ],
+  "earlyCloses": [
+    {
+      "closeMin": 780,
+      "date": "2026-11-27",
+      "etDay": 20784
+    },
+    {
+      "closeMin": 780,
+      "date": "2026-12-24",
+      "etDay": 20811
+    },
+    {
+      "closeMin": 780,
+      "date": "2027-11-26",
+      "etDay": 21148
+    }
+  ],
+  "sessionChecks": [
+    {
+      "date": "2026-11-26",
+      "et": "09:29",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1795703340
+    },
+    {
+      "date": "2026-11-26",
+      "et": "09:30",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1795703400
+    },
+    {
+      "date": "2026-11-26",
+      "et": "10:30",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1795707000
+    },
+    {
+      "date": "2026-11-26",
+      "et": "12:59",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1795715940
+    },
+    {
+      "date": "2026-11-26",
+      "et": "13:00",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1795716000
+    },
+    {
+      "date": "2026-11-26",
+      "et": "15:59",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1795726740
+    },
+    {
+      "date": "2026-11-26",
+      "et": "16:00",
+      "etDay": 20783,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1795726800
+    },
+    {
+      "date": "2026-11-27",
+      "et": "09:29",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1795789740
+    },
+    {
+      "date": "2026-11-27",
+      "et": "09:30",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 570,
+      "regularOpen": true,
+      "ts": 1795789800
+    },
+    {
+      "date": "2026-11-27",
+      "et": "10:30",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 630,
+      "regularOpen": true,
+      "ts": 1795793400
+    },
+    {
+      "date": "2026-11-27",
+      "et": "12:59",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 779,
+      "regularOpen": true,
+      "ts": 1795802340
+    },
+    {
+      "date": "2026-11-27",
+      "et": "13:00",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1795802400
+    },
+    {
+      "date": "2026-11-27",
+      "et": "15:59",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1795813140
+    },
+    {
+      "date": "2026-11-27",
+      "et": "16:00",
+      "etDay": 20784,
+      "feedOpen": true,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1795813200
+    },
+    {
+      "date": "2026-12-24",
+      "et": "09:29",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1798122540
+    },
+    {
+      "date": "2026-12-24",
+      "et": "09:30",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 570,
+      "regularOpen": true,
+      "ts": 1798122600
+    },
+    {
+      "date": "2026-12-24",
+      "et": "10:30",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 630,
+      "regularOpen": true,
+      "ts": 1798126200
+    },
+    {
+      "date": "2026-12-24",
+      "et": "12:59",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 779,
+      "regularOpen": true,
+      "ts": 1798135140
+    },
+    {
+      "date": "2026-12-24",
+      "et": "13:00",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1798135200
+    },
+    {
+      "date": "2026-12-24",
+      "et": "15:59",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1798145940
+    },
+    {
+      "date": "2026-12-24",
+      "et": "16:00",
+      "etDay": 20811,
+      "feedOpen": true,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1798146000
+    },
+    {
+      "date": "2026-12-25",
+      "et": "09:29",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1798208940
+    },
+    {
+      "date": "2026-12-25",
+      "et": "09:30",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1798209000
+    },
+    {
+      "date": "2026-12-25",
+      "et": "10:30",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1798212600
+    },
+    {
+      "date": "2026-12-25",
+      "et": "12:59",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1798221540
+    },
+    {
+      "date": "2026-12-25",
+      "et": "13:00",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1798221600
+    },
+    {
+      "date": "2026-12-25",
+      "et": "15:59",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1798232340
+    },
+    {
+      "date": "2026-12-25",
+      "et": "16:00",
+      "etDay": 20812,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1798232400
+    },
+    {
+      "date": "2027-01-01",
+      "et": "09:29",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1798813740
+    },
+    {
+      "date": "2027-01-01",
+      "et": "09:30",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1798813800
+    },
+    {
+      "date": "2027-01-01",
+      "et": "10:30",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1798817400
+    },
+    {
+      "date": "2027-01-01",
+      "et": "12:59",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1798826340
+    },
+    {
+      "date": "2027-01-01",
+      "et": "13:00",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1798826400
+    },
+    {
+      "date": "2027-01-01",
+      "et": "15:59",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1798837140
+    },
+    {
+      "date": "2027-01-01",
+      "et": "16:00",
+      "etDay": 20819,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1798837200
+    },
+    {
+      "date": "2027-01-18",
+      "et": "09:29",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1800282540
+    },
+    {
+      "date": "2027-01-18",
+      "et": "09:30",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1800282600
+    },
+    {
+      "date": "2027-01-18",
+      "et": "10:30",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1800286200
+    },
+    {
+      "date": "2027-01-18",
+      "et": "12:59",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1800295140
+    },
+    {
+      "date": "2027-01-18",
+      "et": "13:00",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1800295200
+    },
+    {
+      "date": "2027-01-18",
+      "et": "15:59",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1800305940
+    },
+    {
+      "date": "2027-01-18",
+      "et": "16:00",
+      "etDay": 20836,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1800306000
+    },
+    {
+      "date": "2027-02-15",
+      "et": "09:29",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1802701740
+    },
+    {
+      "date": "2027-02-15",
+      "et": "09:30",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1802701800
+    },
+    {
+      "date": "2027-02-15",
+      "et": "10:30",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1802705400
+    },
+    {
+      "date": "2027-02-15",
+      "et": "12:59",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1802714340
+    },
+    {
+      "date": "2027-02-15",
+      "et": "13:00",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1802714400
+    },
+    {
+      "date": "2027-02-15",
+      "et": "15:59",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1802725140
+    },
+    {
+      "date": "2027-02-15",
+      "et": "16:00",
+      "etDay": 20864,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1802725200
+    },
+    {
+      "date": "2027-03-26",
+      "et": "09:29",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1806067740
+    },
+    {
+      "date": "2027-03-26",
+      "et": "09:30",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1806067800
+    },
+    {
+      "date": "2027-03-26",
+      "et": "10:30",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1806071400
+    },
+    {
+      "date": "2027-03-26",
+      "et": "12:59",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1806080340
+    },
+    {
+      "date": "2027-03-26",
+      "et": "13:00",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1806080400
+    },
+    {
+      "date": "2027-03-26",
+      "et": "15:59",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1806091140
+    },
+    {
+      "date": "2027-03-26",
+      "et": "16:00",
+      "etDay": 20903,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1806091200
+    },
+    {
+      "date": "2027-05-31",
+      "et": "09:29",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1811770140
+    },
+    {
+      "date": "2027-05-31",
+      "et": "09:30",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1811770200
+    },
+    {
+      "date": "2027-05-31",
+      "et": "10:30",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1811773800
+    },
+    {
+      "date": "2027-05-31",
+      "et": "12:59",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1811782740
+    },
+    {
+      "date": "2027-05-31",
+      "et": "13:00",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1811782800
+    },
+    {
+      "date": "2027-05-31",
+      "et": "15:59",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1811793540
+    },
+    {
+      "date": "2027-05-31",
+      "et": "16:00",
+      "etDay": 20969,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1811793600
+    },
+    {
+      "date": "2027-06-18",
+      "et": "09:29",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1813325340
+    },
+    {
+      "date": "2027-06-18",
+      "et": "09:30",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1813325400
+    },
+    {
+      "date": "2027-06-18",
+      "et": "10:30",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1813329000
+    },
+    {
+      "date": "2027-06-18",
+      "et": "12:59",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1813337940
+    },
+    {
+      "date": "2027-06-18",
+      "et": "13:00",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1813338000
+    },
+    {
+      "date": "2027-06-18",
+      "et": "15:59",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1813348740
+    },
+    {
+      "date": "2027-06-18",
+      "et": "16:00",
+      "etDay": 20987,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1813348800
+    },
+    {
+      "date": "2027-07-05",
+      "et": "09:29",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1814794140
+    },
+    {
+      "date": "2027-07-05",
+      "et": "09:30",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1814794200
+    },
+    {
+      "date": "2027-07-05",
+      "et": "10:30",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1814797800
+    },
+    {
+      "date": "2027-07-05",
+      "et": "12:59",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1814806740
+    },
+    {
+      "date": "2027-07-05",
+      "et": "13:00",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1814806800
+    },
+    {
+      "date": "2027-07-05",
+      "et": "15:59",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1814817540
+    },
+    {
+      "date": "2027-07-05",
+      "et": "16:00",
+      "etDay": 21004,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1814817600
+    },
+    {
+      "date": "2027-09-06",
+      "et": "09:29",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1820237340
+    },
+    {
+      "date": "2027-09-06",
+      "et": "09:30",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1820237400
+    },
+    {
+      "date": "2027-09-06",
+      "et": "10:30",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1820241000
+    },
+    {
+      "date": "2027-09-06",
+      "et": "12:59",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1820249940
+    },
+    {
+      "date": "2027-09-06",
+      "et": "13:00",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1820250000
+    },
+    {
+      "date": "2027-09-06",
+      "et": "15:59",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1820260740
+    },
+    {
+      "date": "2027-09-06",
+      "et": "16:00",
+      "etDay": 21067,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1820260800
+    },
+    {
+      "date": "2027-11-25",
+      "et": "09:29",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1827152940
+    },
+    {
+      "date": "2027-11-25",
+      "et": "09:30",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1827153000
+    },
+    {
+      "date": "2027-11-25",
+      "et": "10:30",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1827156600
+    },
+    {
+      "date": "2027-11-25",
+      "et": "12:59",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1827165540
+    },
+    {
+      "date": "2027-11-25",
+      "et": "13:00",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1827165600
+    },
+    {
+      "date": "2027-11-25",
+      "et": "15:59",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1827176340
+    },
+    {
+      "date": "2027-11-25",
+      "et": "16:00",
+      "etDay": 21147,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1827176400
+    },
+    {
+      "date": "2027-11-26",
+      "et": "09:29",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1827239340
+    },
+    {
+      "date": "2027-11-26",
+      "et": "09:30",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 570,
+      "regularOpen": true,
+      "ts": 1827239400
+    },
+    {
+      "date": "2027-11-26",
+      "et": "10:30",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 630,
+      "regularOpen": true,
+      "ts": 1827243000
+    },
+    {
+      "date": "2027-11-26",
+      "et": "12:59",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 779,
+      "regularOpen": true,
+      "ts": 1827251940
+    },
+    {
+      "date": "2027-11-26",
+      "et": "13:00",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1827252000
+    },
+    {
+      "date": "2027-11-26",
+      "et": "15:59",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1827262740
+    },
+    {
+      "date": "2027-11-26",
+      "et": "16:00",
+      "etDay": 21148,
+      "feedOpen": true,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1827262800
+    },
+    {
+      "date": "2027-12-24",
+      "et": "09:29",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 569,
+      "regularOpen": false,
+      "ts": 1829658540
+    },
+    {
+      "date": "2027-12-24",
+      "et": "09:30",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 570,
+      "regularOpen": false,
+      "ts": 1829658600
+    },
+    {
+      "date": "2027-12-24",
+      "et": "10:30",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 630,
+      "regularOpen": false,
+      "ts": 1829662200
+    },
+    {
+      "date": "2027-12-24",
+      "et": "12:59",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 779,
+      "regularOpen": false,
+      "ts": 1829671140
+    },
+    {
+      "date": "2027-12-24",
+      "et": "13:00",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 780,
+      "regularOpen": false,
+      "ts": 1829671200
+    },
+    {
+      "date": "2027-12-24",
+      "et": "15:59",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 959,
+      "regularOpen": false,
+      "ts": 1829681940
+    },
+    {
+      "date": "2027-12-24",
+      "et": "16:00",
+      "etDay": 21176,
+      "feedOpen": false,
+      "minute": 960,
+      "regularOpen": false,
+      "ts": 1829682000
+    }
+  ]
+}
