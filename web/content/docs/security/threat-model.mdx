@@ -218,7 +218,7 @@ It holds three kinds of input, all numbers, flags, addresses, fixed names or tex
 - **The agent's own unpaid Claude bill**, from its data folder.
 - **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers. Each suggestion's `why` is built from numbers and fixed symbols.
 
-Token names come from a fixed list (`BASKET` in `agent/src/addresses.ts`), and a token that is not on it appears as its address. The agent fetches no news, social post or web page: its only network clients are the RPC, the Claude API (or Bankr's LLM gateway, with `MAAT_LLM_PROVIDER=bankr`) and, in [live mode](/docs/help/glossary#live-mode), CDP. So the way to mislead Claude is with wrong numbers, for example from a dishonest RPC, not with written instructions. Its answer must match the proposal schema, or the whole answer is rejected. This describes the code: the agent has never run against the real Claude API or Bankr's gateway.
+Token names come from a fixed list (`BASKET` in `agent/src/addresses.ts`), and a token that is not on it appears as its address. The agent fetches no news, social post or web page: its only network clients are the RPC, the Claude API, Bankr's LLM gateway when `MAAT_LLM_PROVIDER=bankr` (the Claude API is then its failover, when `ANTHROPIC_API_KEY` is set) and, in [live mode](/docs/help/glossary#live-mode), CDP. So the way to mislead Claude is with wrong numbers, for example from a dishonest RPC, not with written instructions. Its answer must match the proposal schema, or the whole answer is rejected. This describes the code: the agent has never run against the real Claude API or Bankr's gateway.
 
 ## Mitigations you run
 

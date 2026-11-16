@@ -19,7 +19,7 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 
 | Entry | What it does | What it needs | Outside services |
 | --- | --- | --- | --- |
-| `npm run agent` | Runs one round or the loop | The settings in [Agent configuration](/docs/reference/agent-configuration) | Your Base RPC, Claude (paid) in every mode, through the Claude API or, with `MAAT_LLM_PROVIDER=bankr`, Bankr's LLM gateway, and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) in live mode |
+| `npm run agent` | Runs one round or the loop | The settings in [Agent configuration](/docs/reference/agent-configuration) | Your Base RPC; Claude (paid) in every mode, through the Claude API, or with `MAAT_LLM_PROVIDER=bankr` through Bankr's LLM gateway and the Claude API as its failover when `ANTHROPIC_API_KEY` is set; and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) in live mode |
 | `npm test` | Runs the unit tests | Nothing | None |
 | `npm run test:integration` | Runs the fork test | A Base archive RPC and the Base build of Anvil | Your Base RPC. No Claude call and no CDP call |
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |

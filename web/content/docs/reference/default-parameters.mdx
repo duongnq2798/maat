@@ -115,7 +115,7 @@ Some agent values are written in more than one file. Change one copy alone and t
 
 - **The policy and the system prompt.** The system prompt in `agent/src/llm/prompt.ts` restates the cash target (<Fact name="cashReservePct" />), the drift (<Fact name="rebalanceDriftPct" />) and the runway (<Fact name="runwayDays" />) to Claude. If you change `DEFAULT_POLICY` alone, the policy computes one target and the prompt tells Claude another. `agent/test/prompt.test.ts` checks that the prompt says <Fact name="cashReservePct" />, so a new cash target changes that test too.
 - **The basket.** The agent lists its stocks in three files: `agent/src/addresses.ts`, `LLM_SYMBOLS` in `agent/src/llm/schema.ts`, and the system prompt in `agent/src/llm/prompt.ts`. The vault's own list is separate, and [Configure a mandate](/docs/guides/configure-a-mandate) covers it.
-- **The model.** `agent/src/llm/pricing.ts` has prices for `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-opus-5-5` and `claude-opus-4-8`, and it bills any other model at the `claude-opus-4-8` rate, the highest of the four ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)).
+- **The model.** `agent/src/llm/pricing.ts` has prices for `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-opus-5-5` and `claude-opus-4-8`, and it bills any other model at the `claude-opus-4-8` rate, the highest of the four ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). A dotted name, such as `claude-sonnet-5.5` from Bankr's gateway, is read as the dashed one first.
 
 No agent with changed defaults has been tested. After a change, run `npm test` and `npm run typecheck` in `agent/`.
 
