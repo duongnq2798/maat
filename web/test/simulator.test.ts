@@ -6,6 +6,7 @@ import { FACTS } from "@/content/facts";
 import { minuteOfClock } from "@/content/format";
 import {
   AMOUNT_CHIPS_USD,
+  amountPending,
   amountText,
   DEFAULT_SCENARIO,
   daySummary,
@@ -235,6 +236,15 @@ describe("simulator: presets and copy", () => {
     expect(good.map((t) => parseUsd(t))).toEqual([12.5e6, 12.5e6, 1e6, 1000.5e6, 12_345_678.5e6, 20e6, 20e6, 1000e6, 1000e6, 12_505e6]);
     for (const bad of ["5 0", "1,0,0", "20$", "1,00,000", "$$20", "12,50.5", "1,", "1,000,", "1,234,567,890", "$"]) {
       expect(parseUsd(bad), bad).toBeUndefined();
+    }
+  });
+
+  it("holds an amount typed up to a comma as pending, not wrong, while a keystroke can still finish it", () => {
+    for (const half of ["1,", "$1,", " 12, ", "123456789,", "1,000,", "1,000,0", "1,000,00", "999,999,"]) {
+      expect(amountPending(half), half).toBe(true);
+    }
+    for (const not of ["1", "1,0", "1,000", "", "$", "x", "1,0,", "1,00,", "1,,", ",", "1234567890,", "999,999,999,", "1,000.5,"]) {
+      expect(amountPending(not), not).toBe(false);
     }
   });
 

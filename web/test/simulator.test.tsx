@@ -124,6 +124,26 @@ describe("Simulator", () => {
     expect(ui.reason()).toBe("INSUFFICIENT_BALANCE");
   });
 
+  it("does not flag an amount typed up to a thousands comma, and keeps Execute off until it parses", async () => {
+    const ui = setup();
+    const amount = screen.getByRole("textbox", { name: "Amount in US dollars" });
+    const error = "Use dollars with up to two decimals, like 50 or 12.50.";
+    await ui.user.clear(amount);
+    for (const half of ["1,", "000,", "0"]) {
+      await ui.user.type(amount, half);
+      expect(amount, half).not.toHaveAttribute("aria-invalid");
+      expect(screen.queryByText(error), half).toBeNull();
+      expect(ui.button("Execute"), half).toBeDisabled();
+    }
+    await ui.user.type(amount, "00");
+    expect(amount).toHaveValue("1,000,000");
+    expect(ui.button("Execute")).toBeEnabled();
+    expect(ui.reason()).toBe("INSUFFICIENT_BALANCE");
+    await ui.user.type(amount, ",");
+    expect(amount).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByText(error)).toBeInTheDocument();
+  });
+
   it("tells the time in New York on the slider, and closes at 16:00", () => {
     const ui = setup();
     const time = screen.getByRole("slider", { name: "Time" });

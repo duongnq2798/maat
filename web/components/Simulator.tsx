@@ -8,6 +8,7 @@ import { clockLabel, dayLabel } from "@/content/format";
 import { REASON_MEANING } from "@/content/reasons";
 import {
   AMOUNT_CHIPS_USD,
+  amountPending,
   amountText,
   DEFAULT_SCENARIO,
   daySummary,
@@ -131,7 +132,9 @@ export function Simulator() {
   const result = evaluate(day, s.intent);
   const summary = daySummary(day);
   const link = `${origin}${encodeScenario(s)}#try`;
-  const invalid = parseUsd(amount) === undefined;
+  const parsed = parseUsd(amount) !== undefined;
+  // "1," on the way to "1,000" keeps Execute off but is not flagged: the next keystroke may finish it.
+  const invalid = !parsed && !amountPending(amount);
   const full = s.tape.length >= MAX_TAPE;
   const session = sessionWindow(s.etDay);
   const dayInvalid = dayDraft !== undefined && dayDraft !== isoOfDay(s.etDay);
@@ -170,7 +173,7 @@ export function Simulator() {
   };
   // The entry gets the verdict the box shows now, so the notice reports it.
   const run = () => {
-    if (invalid || full) return;
+    if (!parsed || full) return;
     setS((p) => (p.tape.length >= MAX_TAPE ? p : { ...p, tape: [...p.tape, p.intent] }));
     setNotice(
       `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${result.reason}`}`,
@@ -222,7 +225,7 @@ export function Simulator() {
             {AMOUNT_CHIPS_USD.map((usd) => (
               <Chip
                 key={usd}
-                on={!invalid && s.intent.usd6 === usd * USD6}
+                on={parsed && s.intent.usd6 === usd * USD6}
                 onClick={() => {
                   setAmount(String(usd));
                   setIntent({ usd6: usd * USD6 });
@@ -371,7 +374,7 @@ export function Simulator() {
           <button
             type="button"
             onClick={run}
-            disabled={invalid || full}
+            disabled={!parsed || full}
             className="pill-dark cursor-pointer border-0 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-ink"
           >
             Execute

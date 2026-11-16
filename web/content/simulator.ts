@@ -101,18 +101,39 @@ export function amountText(usd6: number): string {
   return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
 }
 
+const MAX_WHOLE_DIGITS = 9;
+
+function bareAmount(text: string): string {
+  return text.trim().replace(/^\$\s*/, "");
+}
+
 /**
  * An amount as people type it, in USDC with 6 decimals, or undefined. Spaces around it, one leading "$" ("$ 20"),
  * commas only as thousands groups ("1,000", "12,345,678.5") and, when there is no period, one decimal comma with
  * one or two digits ("12,50", "12,5") for keypads in comma-decimal locales. Anything else is not an amount.
  */
 export function parseUsd(text: string): number | undefined {
-  const amount = text.trim().replace(/^\$\s*/, "");
+  const amount = bareAmount(text);
   const match = /^(\d+|\d{1,3}(?:,\d{3})+)(?:\.(\d{0,2}))?$/.exec(amount) ?? /^(\d+),(\d{1,2})$/.exec(amount);
   if (!match) return undefined;
   const whole = (match[1] ?? "").replace(/,/g, "");
-  if (whole.length > 9) return undefined;
+  if (whole.length > MAX_WHOLE_DIGITS) return undefined;
   return Number(whole) * USD6 + Number((match[2] ?? "").padEnd(2, "0")) * 10_000;
+}
+
+/**
+ * True for an amount caught halfway at a comma, like "1," on the way to "1,000" or "1,50", and "1,000,0" on the way
+ * to "1,000,000": not an amount yet, and not a mistake to flag either. False once it parses, and false when no
+ * keystroke could finish it into an amount.
+ */
+export function amountPending(text: string): boolean {
+  if (parseUsd(text) !== undefined) return false;
+  const amount = bareAmount(text);
+  const decimal = /^(\d+),$/.exec(amount);
+  if (decimal) return (decimal[1] ?? "").length <= MAX_WHOLE_DIGITS;
+  // After a thousands comma only another full group can follow, three more whole digits.
+  const group = /^(\d{1,3}(?:,\d{3})+),\d{0,2}$/.exec(amount);
+  return group !== null && (group[1] ?? "").replace(/,/g, "").length + 3 <= MAX_WHOLE_DIGITS;
 }
 
 const pct = (bps: number) => `${bps / 100}%`;
