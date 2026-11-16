@@ -1,4 +1,5 @@
 import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
+import { hostname } from "node:os";
 import { join } from "node:path";
 
 /** An unreadable lock younger than this may belong to an agent that has not written its pid yet. */
@@ -21,12 +22,14 @@ export async function acquireLock(dir: string): Promise<() => Promise<void>> {
   await mkdir(dir, { recursive: true });
   // The real path is one key per file, whatever case, symlink or junction spells the dir.
   const file = join(await realpath(dir), "agent.lock");
+  // A restarted container keeps its host name; a second container on the same volume has another.
+  const host = hostname();
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const h = await open(file, "wx");
       // Mark it held before the pid lands, so a concurrent acquire in this process never reads our pid as stale.
       held.add(file);
-      await h.writeFile(String(process.pid));
+      await h.writeFile(`${process.pid} ${host}`);
       await h.close();
       return async () => {
         await unlink(file).catch(() => {});
@@ -35,8 +38,15 @@ export async function acquireLock(dir: string): Promise<() => Promise<void>> {
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "EEXIST") throw e;
       const text = (await readFile(file, "utf8")).trim();
-      const pid = /^\d+$/.test(text) ? Number(text) : NaN;
+      // "<pid> <host>", or a bare pid from before the host was recorded.
+      const m = /^(\d+)(?: (.+))?$/.exec(text);
+      const pid = m ? Number(m[1]) : NaN;
+      const owner = m?.[2];
       if (Number.isSafeInteger(pid) && pid > 0) {
+        // Same image, same pid: our pid from another host is a live agent we cannot probe, so fail closed.
+        if (pid === process.pid && owner !== undefined && owner !== host) {
+          throw new Error(`another agent (pid ${pid} on ${owner}) may be running; delete ${file} if no other container uses this data dir`);
+        }
         // A container restart often reuses the pid the crashed agent wrote, so our own pid alone proves nothing.
         if (pid === process.pid ? held.has(file) : alive(pid)) throw new Error(`another agent (pid ${pid}) is running; lock ${file}`);
       } else if (Date.now() - (await stat(file)).mtimeMs <= UNREADABLE_STALE_MS) {

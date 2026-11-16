@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, symlink, utimes, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, symlink, utimes, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ describe("acquireLock", () => {
   it("holds and releases", async () => {
     const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
     const release = await acquireLock(d);
-    expect(existsSync(join(d, "agent.lock"))).toBe(true);
+    expect(await readFile(join(d, "agent.lock"), "utf8")).toBe(`${process.pid} ${hostname()}`);
     await expect(acquireLock(d)).rejects.toThrow(/another agent \(pid \d+\) is running/);
     await release();
     expect(existsSync(join(d, "agent.lock"))).toBe(false);
@@ -34,6 +34,21 @@ describe("acquireLock", () => {
     expect(existsSync(f)).toBe(false);
     await (await acquireLock(d))();
     expect(existsSync(f)).toBe(false);
+  });
+  it("takes over a lock that names this process's pid on this host", async () => {
+    // A restarted container keeps its host name.
+    const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
+    await writeFile(join(d, "agent.lock"), `${process.pid} ${hostname()}`);
+    const release = await acquireLock(d);
+    await release();
+  });
+  it("treats a lock that names this process's pid on another host as held", async () => {
+    // A second container on the same volume runs the same image, so it gets the same pid in its own namespace.
+    const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
+    const f = join(d, "agent.lock");
+    await writeFile(f, `${process.pid} other-host`);
+    await expect(acquireLock(d)).rejects.toThrow(`another agent (pid ${process.pid} on other-host) may be running`);
+    expect(existsSync(f)).toBe(true);
   });
   it("rejects a second acquire through another path to the same dir", async () => {
     const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
