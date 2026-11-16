@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
+  codedTestTitles,
   docsLinks,
   excerpts,
   factNames,
@@ -63,16 +64,29 @@ const SOLIDITY_TESTS = new Set(
     .flatMap(([, tests]) => Object.keys(tests)),
 );
 
+const testSources = new Map<string, string>();
+/** Whether the test file holds `text` as a double-quoted string, as a title or as a value such as a rationale. */
+const quotes = (file: string, text: string) => {
+  if (!testSources.has(file)) testSources.set(file, readRepo(file));
+  return testSources.get(file)?.includes(JSON.stringify(text)) ?? false;
+};
+
 /**
  * Every test a page cites that does not exist (test gate): a Solidity test name in inline code, a quoted Vitest title
- * beside a link to its file, and a link whose text is a test name but whose file does not define that test, which
- * remarkTestAnchors could then not point at the test's line.
+ * beside a link to its file, a phrase in inline code beside an agent test file that is neither a title nor a string of
+ * that file, and a link whose text is a test name but whose file does not define that test, which remarkTestAnchors
+ * could then not point at the test's line.
  */
 function missingTests(slug: string, source: string): string[] {
   const bad = unknownTestNames(source, SOLIDITY_TESTS).map((f) => at(slug, f));
   for (const q of quotedTestTitles(source, SITE.repoUrl)) {
     if (!q.files.some((file) => TESTS[file]?.[q.text] !== undefined)) {
       bad.push(at(slug, { line: q.line, text: `"${q.text}" is no it() or describe() title in ${q.files.join(" or ")}` }));
+    }
+  }
+  for (const c of codedTestTitles(source, SITE.repoUrl, Object.keys(TESTS))) {
+    if (!c.files.some((file) => TESTS[file]?.[c.text] !== undefined || quotes(file, c.text))) {
+      bad.push(at(slug, { line: c.line, text: `\`${c.text}\` is no it() or describe() title, nor a string, in ${c.files.join(" or ")}` }));
     }
   }
   for (const l of testNameLinks(source, SITE.repoUrl)) {
@@ -89,6 +103,10 @@ describe("the test gate", () => {
     const page = [
       `[\`test_replayReverts\`](${vault}) and the other \`test_reverting*FailsClosed\` tests, and the two \`test_priceFromSqrt\` tests.`,
       `[\`runOnce.test.ts\`](${runOnce}): "halts when the preview said OK but the vault refused"`,
+      "The test `all cash: buys each token toward 23.33%, capped by spendable cash` in `agent/test/policy.test.ts`, then `npm test`.",
+      "(`bills a failed Claude call and still settles bills` in `runOnce.test.ts`)",
+      // A string the test holds, not a title: the fork test's rationales.
+      "`NVDAc underweight` and `use as collateral` (`agent/test/integration/agent.fork.test.ts`)",
     ].join("\n");
     expect(missingTests("x", page)).toEqual([]);
   });
@@ -98,10 +116,12 @@ describe("the test gate", () => {
       "A replay reverts (`test_replayRevert`).",
       `[\`runOnce.test.ts\`](${runOnce}): "halts when the preview said ok but the vault refused"`,
       `[\`test_executorCannotUseOwnerFunctions\`](${vault})`,
+      "The policy caps a buy (`caps a buy at perTradeCap` in `agent/test/policy.test.ts`).",
     ].join("\n");
     expect(missingTests("x", page)).toEqual([
       "content/docs/x.mdx:1 test_replayRevert",
       'content/docs/x.mdx:2 "halts when the preview said ok but the vault refused" is no it() or describe() title in agent/test/runOnce.test.ts',
+      "content/docs/x.mdx:4 `caps a buy at perTradeCap` is no it() or describe() title, nor a string, in agent/test/policy.test.ts",
       "content/docs/x.mdx:3 test_executorCannotUseOwnerFunctions is not defined in contracts/test/MandateVault.t.sol",
     ]);
   });

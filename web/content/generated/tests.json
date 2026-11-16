@@ -45,6 +45,7 @@
     "reports a blank required address as required": 54
   },
   "agent/test/integration/agent.fork.test.ts": {
+    "agent on a Base fork": 25,
     "buys, supplies and borrows in one round; every tx carries the Builder Code and explicit gas; preview matches execute": 98,
     "logs a market-closed refusal onchain once per day, with preview == Decision": 129,
     "dry-run would send but sends nothing": 157

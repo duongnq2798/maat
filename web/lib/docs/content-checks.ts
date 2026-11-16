@@ -127,6 +127,9 @@ export function unknownTestNames(source: string, names: ReadonlySet<string>): Fi
   return out;
 }
 
+/** A link to a test file under agent/test on main; the group is its repo path. */
+const agentTestLink = (repoUrl: string) => new RegExp(`${escapeRegExp(repoUrl)}/blob/main/(agent/test/[^)\\s"'#?]+\\.test\\.ts)`, "g");
+
 export interface QuotedTitle extends Finding {
   /** The test files under agent/test that the line, or the table cell, links. */
   readonly files: readonly string[];
@@ -137,7 +140,7 @@ export interface QuotedTitle extends Finding {
  * agent/test, with the files it links. Code, JSX tags and frontmatter are skipped, and so is a quote in another cell.
  */
 export function quotedTestTitles(source: string, repoUrl: string): QuotedTitle[] {
-  const testFile = new RegExp(`${escapeRegExp(repoUrl)}/blob/main/(agent/test/[^)\\s"'#?]+\\.test\\.ts)`, "g");
+  const testFile = agentTestLink(repoUrl);
   const out: QuotedTitle[] = [];
   prose(source)
     .split("\n")
@@ -146,6 +149,38 @@ export function quotedTestTitles(source: string, repoUrl: string): QuotedTitle[]
         const files = [...unit.matchAll(testFile)].map((m) => m[1] ?? "");
         if (files.length === 0) continue;
         for (const [, text = ""] of unit.matchAll(/"([^"\n]+)"/g)) out.push({ line: i + 1, text, files });
+      }
+    });
+  return out;
+}
+
+/** A span that runs a program, such as `npm test` or `npm run test:integration`: an instruction, not a quote. */
+const COMMAND = /^(?:cd|npm|npx|node|tsx|vitest|forge|cast|anvil|git)\s/;
+
+/**
+ * Vitest titles a page cites in inline code: each span with a space in it, in a prose line or in one cell of a table
+ * row, that also names a test file under agent/test, either linked or in code as its path or its file name alone
+ * (`agent/test/policy.test.ts`, `runOnce.test.ts`), with the files named. `testFiles` are the repo's test files, by path.
+ * Commands such as `npm test` are skipped, and so are fences, frontmatter and JSX tags.
+ */
+export function codedTestTitles(source: string, repoUrl: string, testFiles: readonly string[]): QuotedTitle[] {
+  const linked = agentTestLink(repoUrl);
+  const agentFiles = testFiles.filter((f) => f.startsWith("agent/test/"));
+  const named = (code: string) => (code.endsWith(".test.ts") ? agentFiles.filter((f) => f === code || f.endsWith(`/${code}`)) : []);
+  const out: QuotedTitle[] = [];
+  source
+    .replace(/^---\n[\s\S]*?\n---\n/, blank)
+    .replace(FENCE, blank)
+    .replace(/<[A-Za-z][^>]*>/g, blank)
+    .split("\n")
+    .forEach((line, i) => {
+      for (const unit of line.trimStart().startsWith("|") ? line.split(/(?<!\\)\|/) : [line]) {
+        const spans = [...unit.matchAll(/`([^`\n]+)`/g)].map((m) => m[1] ?? "");
+        const files = [...new Set([...[...unit.matchAll(linked)].map((m) => m[1] ?? ""), ...spans.flatMap(named)])];
+        if (files.length === 0) continue;
+        for (const text of spans) {
+          if (/\s/.test(text.trim()) && !COMMAND.test(text)) out.push({ line: i + 1, text, files });
+        }
       }
     });
   return out;

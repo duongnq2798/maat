@@ -35,6 +35,23 @@ describe("testLinesIn", () => {
     ].join("\n");
     expect(testLinesIn("agent/test/x.test.ts", ts)).toEqual({ "the group": 1, "does a thing": 2, "does, as well, another thing": 4 });
   });
+
+  it("reads a title after a modifier, with or without arguments, as in describe.skipIf(!RPC)(\"...\")", () => {
+    const ts = [
+      'describe.skipIf(!RPC)("agent on a Base fork", () => {',
+      '  it.skip("is skipped", () => {});',
+      '  it.each([1, 2])("case %s", () => {});',
+      '  it.concurrent.only("runs alone", () => {});',
+      '  const s = split("not a title");',
+      "});",
+    ].join("\n");
+    expect(testLinesIn("agent/test/integration/x.fork.test.ts", ts)).toEqual({
+      "agent on a Base fork": 1,
+      "is skipped": 2,
+      "case %s": 3,
+      "runs alone": 4,
+    });
+  });
 });
 
 describe("collectTestLines", () => {

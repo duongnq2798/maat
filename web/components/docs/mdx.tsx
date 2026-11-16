@@ -47,17 +47,19 @@ function DocsLink(props: ComponentProps<"a">) {
  * Fumadocs' code block, with an excerpt's title (contracts/src/GuardLib.sol#L44-L62) linked to those lines on main: the
  * range the excerpt gate in test/docs-content.test.ts compares with the file. Any other title stays text.
  */
-function CodeBlockPre({ title, ...props }: HTMLAttributes<HTMLPreElement>) {
+function CodeBlockPre({ title, className, ...props }: HTMLAttributes<HTMLPreElement>) {
   const href = title ? excerptHref(title, SITE.repoUrl) : null;
   return (
     <CodeBlock
       {...props}
+      // Fumadocs fixes the title bar at h-9.5 (38 px). Below md the bar of a linked title grows to 44 px, a tap target.
+      className={href ? `${className ?? ""} max-md:[&>div:has(>figcaption)]:h-11`.trim() : className}
       title={
         href ? (
           // The full height of the title bar, and a ring drawn inside the link: the caption clips anything outside it.
           <a
             href={href}
-            className="block truncate rounded-sm leading-9.5 text-fd-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:outline-none focus-visible:ring-inset"
+            className="block truncate rounded-sm leading-11 text-fd-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:outline-none focus-visible:ring-inset md:leading-9.5"
           >
             {title}
           </a>

@@ -11,9 +11,12 @@ type Replace = Parameters<typeof replaceSource>;
 /** For each test file, by repo path, the line each of its tests starts on, by name or title. */
 export type TestLines = Readonly<Record<string, Readonly<Record<string, number>>>>;
 
-/** The tests of one file: `function test_x(` in a .t.sol file, `it("...")` and `describe("...")` in a .test.ts file. */
+/**
+ * The tests of one file: `function test_x(` in a .t.sol file; in a .test.ts file, `it("...")` and `describe("...")`,
+ * also after modifiers such as `describe.skipIf(!RPC)("...")` or `it.each([...])("...")`.
+ */
 export function testLinesIn(file: string, text: string): Record<string, number> {
-  const test = file.endsWith(".sol") ? /^\s*function\s+(test\w*)\s*\(/g : /\b(?:it|describe)\("([^"\n]*)"/g;
+  const test = file.endsWith(".sol") ? /^\s*function\s+(test\w*)\s*\(/g : /\b(?:it|describe)(?:\.\w+(?:\([^)]*\))?)*\("([^"\n]*)"/g;
   const out: Record<string, number> = {};
   text.split(/\r?\n/).forEach((line, i) => {
     for (const [, name = ""] of line.matchAll(test)) out[name] ??= i + 1;

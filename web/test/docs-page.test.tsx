@@ -264,6 +264,11 @@ describe("SourceOfTruth", () => {
     render(<SourceOfTruth sources={files(1)} commit={null} />);
     expect(box()).not.toHaveTextContent("Built from");
   });
+
+  it("says when the build had changes its commit does not hold", () => {
+    render(<SourceOfTruth sources={files(1)} commit={{ short: "def033c", dirty: true }} />);
+    expect(within(box()).getByText(/^Built from commit/)).toHaveTextContent(/^Built from commit def033c, with uncommitted changes\.$/);
+  });
 });
 
 describe("PageFooter", () => {
@@ -284,6 +289,11 @@ describe("PageFooter", () => {
   it("says which commit the page was built from", () => {
     render(<PageFooter {...props} commit={{ short: "def033c" }} />);
     expect(screen.getByText(/^Built from commit/)).toHaveTextContent(/^Built from commit def033c\.$/);
+  });
+
+  it("says when the build had changes its commit does not hold", () => {
+    render(<PageFooter {...props} commit={{ short: "def033c", dirty: true }} />);
+    expect(screen.getByText(/^Built from commit/)).toHaveTextContent(/^Built from commit def033c, with uncommitted changes\.$/);
   });
 });
 

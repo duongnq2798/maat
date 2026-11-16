@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  codedTestTitles,
   docsLinks,
   excerptHref,
   excerpts,
@@ -193,6 +194,31 @@ describe("cited tests", () => {
       { line: 1, text: "halts", files: ["agent/test/runOnce.test.ts"] },
       { line: 1, text: "drops", files: ["agent/test/runOnce.test.ts"] },
       { line: 2, text: "a title", files: ["agent/test/sender.test.ts", "agent/test/lock.test.ts"] },
+    ]);
+  });
+
+  it("codedTestTitles reads each code span with a space in a line or table cell that names a test file under agent/test", () => {
+    const files = ["agent/test/policy.test.ts", "agent/test/runOnce.test.ts", "agent/test/integration/agent.fork.test.ts"];
+    const fork = `${repo}/blob/main/agent/test/integration/agent.fork.test.ts`;
+    const src = [
+      "---",
+      "description: `in frontmatter` in `agent/test/policy.test.ts`",
+      "---",
+      "The test `all cash: buys` in `agent/test/policy.test.ts` pins `BUY` and `BORROW` (`caps a buy`).",
+      "Billed anyway (`bills a failed call` in `runOnce.test.ts`).",
+      `See [\`agent.fork.test.ts\`](${fork}): \`use as collateral\`, run by \`npm run test:integration\`.`,
+      "| `in another cell` | `runOnce.test.ts`: `halts now` |",
+      "`no agent test here` beside `web/test/facts.test.ts` and `lock.test.ts`.",
+      "```ts",
+      "`in a fence` in `agent/test/policy.test.ts`",
+      "```",
+    ].join("\n");
+    expect(codedTestTitles(src, repo, files)).toEqual([
+      { line: 4, text: "all cash: buys", files: ["agent/test/policy.test.ts"] },
+      { line: 4, text: "caps a buy", files: ["agent/test/policy.test.ts"] },
+      { line: 5, text: "bills a failed call", files: ["agent/test/runOnce.test.ts"] },
+      { line: 6, text: "use as collateral", files: ["agent/test/integration/agent.fork.test.ts"] },
+      { line: 7, text: "halts now", files: ["agent/test/runOnce.test.ts"] },
     ]);
   });
 

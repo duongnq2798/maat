@@ -1,6 +1,6 @@
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { expect, type Locator, type Page, test } from "@playwright/test";
-import { buildCommit, commitMarkdown } from "../lib/build-info";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 import { DOCS_IA } from "../lib/docs/ia";
 import { SITE } from "../lib/site";
@@ -632,30 +632,34 @@ test.describe("page frame", () => {
 test.describe("build commit and line links", () => {
   const urlOf = (slug: string) => `/docs/${slug}`.replace(/\/index$/, "");
   const slugs = DOCS_IA.flatMap((s) => s.pages).map((p) => p.slug);
-  // The same lookup the build ran, in the same checkout: the commit every page should name.
-  const commit = buildCommit();
   const tests = JSON.parse(readFileSync("content/generated/tests.json", "utf8")) as Record<string, Record<string, number>>;
 
   test("every page names the commit it was built from in its Source of truth box and its footer, and llms-full.txt names it first", async ({
     page,
     request,
   }) => {
-    expect(commit, "the build runs in a Git checkout").not.toBeNull();
-    const stamp = `Built from commit ${commit!.short}.`;
+    // The stamp the build wrote, read back from out/ rather than worked out again now: HEAD may have moved since the
+    // build. A local build's stamp has no link, since its commit may never have been pushed.
+    const first = (await (await request.get("/llms-full.txt")).text()).split("\n")[0] ?? "";
+    const [, sha = "", changes = ""] = /^Built from commit `([0-9a-f]{7,40})`(, with uncommitted changes)?\.$/.exec(first) ?? [];
+    expect(sha, `llms-full.txt opens with the stamp, not "${first}"`).not.toBe("");
+    expect(() => execFileSync("git", ["cat-file", "-e", `${sha}^{commit}`], { stdio: "ignore" }), `${sha} is a commit`).not.toThrow();
+    const tail = `${changes}.`;
     for (const slug of slugs) {
       // React separates the text from the sha with an empty comment; the sha is in its own <code>.
       const html = await (await request.get(urlOf(slug))).text();
-      const stamps = [...html.matchAll(/Built from commit(?:<!-- -->)? (?:<a [^>]*>)?<code[^>]*>([^<]*)<\/code>/g)].map((m) => m[1]);
-      expect(stamps, slug).toEqual([commit!.short, commit!.short]);
+      const stamps = [...html.matchAll(/Built from commit(?:<!-- -->)? (?:<a [^>]*>)?<code[^>]*>([^<]*)<\/code>(?:<\/a>)?([^<]*)<\/p>/g)];
+      expect(
+        stamps.map((m) => `${m[1]}${m[2]}`),
+        slug,
+      ).toEqual([`${sha}${tail}`, `${sha}${tail}`]);
     }
+    const stamp = `Built from commit ${sha}${tail}`;
     await page.goto("/docs/guides/run-the-agent");
     const article = page.locator("#nd-page");
     await expect(article.getByRole("complementary", { name: "Source of truth" }).getByText(stamp, { exact: true })).toBeVisible();
     await expect(article.locator('div:has(> [aria-labelledby="page-helpful"])').getByText(stamp, { exact: true })).toBeVisible();
-    // A local build's commit may never have been pushed, so it is not a link.
-    await expect(article.getByRole("link", { name: commit!.short })).toHaveCount(0);
-    const full = await (await request.get("/llms-full.txt")).text();
-    expect(full.split("\n")[0]).toBe(commitMarkdown(commit!));
+    await expect(article.getByRole("link", { name: sha })).toHaveCount(0);
   });
 
   test("a long Source of truth list opens from a summary that counts its files, and a printout lists them", async ({ page }) => {
@@ -687,6 +691,21 @@ test.describe("build commit and line links", () => {
       }
     }
     expect(excerpts).toBeGreaterThan(0);
+  });
+
+  test("on a phone an excerpt title's link is a 44 px tap target", async ({ page }) => {
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.goto("/docs/security/testing");
+    const links = page.locator("#nd-page figcaption > a");
+    expect(await links.count()).toBeGreaterThan(0);
+    for (const link of await links.all()) {
+      const title = (await link.textContent()) ?? "";
+      const box = await link.boundingBox();
+      expect(box?.height, title).toBeGreaterThanOrEqual(44);
+      // The title bar grows with it, so the link does not spill over the code.
+      const bar = await link.locator("xpath=../..").boundingBox();
+      expect(bar?.height, `${title}: title bar`).toBeGreaterThanOrEqual(box?.height ?? Infinity);
+    }
   });
 
   test("a test name links the line its test starts on, on the page and in the Markdown copy", async ({ page, request }) => {

@@ -1,7 +1,7 @@
 import { type BuildCommit, currentBuildCommit } from "@/lib/build-info";
 import { SITE } from "@/lib/site";
+import { BuiltFrom } from "./BuiltFrom";
 import { CopyMarkdown } from "./CopyMarkdown";
-import { BuiltFrom } from "./SourceOfTruth";
 
 const action =
   "inline-flex min-h-11 items-center gap-1.5 rounded-md border border-fd-border bg-fd-secondary px-3 text-sm font-medium text-fd-secondary-foreground transition-colors hover:bg-fd-accent hover:text-fd-accent-foreground focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:outline-none disabled:opacity-60 md:min-h-9";
