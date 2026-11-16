@@ -10,16 +10,16 @@ sources:
   - contracts/src/MandateVault.sol
   - contracts/src/interfaces/IB20Asset.sol
   - contracts/test/GuardLib.t.sol
-next: [concepts/prices-and-premium, reference/mandate-vault]
+next: [concepts/credit-and-health-factor, reference/mandate-vault]
 ---
 
-When a company splits its shares or pays a dividend, the [B20](/docs/help/glossary#b20) token that tracks the stock changes a number called the [uiMultiplier](/docs/help/glossary#uimultiplier). This page explains what that number is, why a change to it makes the vault stop trading in that one stock for a while, how the vault notices a change by itself, and what it does when the token does not answer. The rules are built and have been exercised with a mock token in unit tests. On the Base mainnet fork the vault read the real multiplier but never saw it change, and nothing is deployed.
+When a company makes a stock split or pays a dividend, the [B20](/docs/help/glossary#b20) token that tracks the stock changes a number called the [uiMultiplier](/docs/help/glossary#uimultiplier). This page explains what that number is, why a change to it makes the [vault](/docs/help/glossary#vault) stop trading in that one stock for a while, how the vault notices a change by itself, and what it does when the token does not answer. The rules are built and have been exercised with a mock token in unit tests. On the [Base](/docs/help/glossary#base) mainnet fork the vault read the real multiplier but never saw it change, and nothing is deployed.
 
 ## What the multiplier is
 
 A B20 stock token publishes `uiMultiplier()` as a [WAD](/docs/help/glossary#wad) number, a fixed-point value scaled so that `1e18` means 1.0. The vault reads it through the `IB20Asset` interface, together with `effectiveAt()`, which it uses for scheduled changes (see [Scheduled changes](#scheduled-changes)). On the fork, at block <Fact name="forkBlock" />, NVDAc reports <Fact name="nvdaUiMultiplier" />, a little above 1.
 
-The token also has a display balance, `balanceOfUI`. The vault never values anything with it. It values the raw `balanceOf` amount, and it reads the [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) answer as the price of one raw token with the multiplier already applied. The design spec records why: the feed matched Coinbase's NAV price, so the multiplier must not be applied a second time. The value of a holding is the raw amount times the price (<Fact name="priceDecimals" />), divided down to USDC units (<Fact name="usdcDecimals" />):
+The token also has a display balance, `balanceOfUI`. The vault never values anything with it. It values the [raw amount](/docs/help/glossary#raw-amount) that `balanceOf` returns, and it reads the [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) answer as the price of one whole token, `10 ** decimals()` raw units, with the multiplier already applied. The design spec records why: the feed matched Coinbase's NAV price, so the multiplier must not be applied a second time. The value of a holding is the raw amount times the price (<Fact name="priceDecimals" />), divided down to USDC units (<Fact name="usdcDecimals" />):
 
 ```solidity title="contracts/src/MandateVault.sol#L504-L507"
     /// @dev raw stock amount x 8-decimal price -> USDC (6 decimals)
@@ -44,7 +44,7 @@ The multiplier above is one reading, taken on the fork at block <Fact name="fork
 
 ## How the vault notices
 
-The vault keeps a snapshot of each stock's multiplier, `lastMultiplier`, and the time it last recorded a change, `multiplierChangedAt`. Both are public mappings. The snapshot is taken when a stock is configured with a market, and the read there is not wrapped, so a token whose `uiMultiplier()` reverts cannot be configured that way.
+The vault keeps a snapshot of each stock's multiplier, `lastMultiplier`, and the time it last recorded a change, `multiplierChangedAt`. Both are public mappings. The snapshot is taken when a stock is configured with a market, and the read there is not wrapped, so a token whose `uiMultiplier()` [reverts](/docs/help/glossary#revert) cannot be configured that way.
 
 ```solidity title="contracts/src/MandateVault.sol#L705-L710"
         if (market) {
@@ -57,7 +57,7 @@ The vault keeps a snapshot of each stock's multiplier, `lastMultiplier`, and the
 
 The first snapshot starts no cooldown (`test_firstSnapshotStartsNoCooldown`). Applying a stock's settings again records a difference as a change, so applying them cannot hide one (`test_reapplyingTokenConfigDoesNotAbsorbMultiplierChange`).
 
-After that the vault records changes in two places: at the start of every `execute` for the intent's token, and in `syncMultiplier`, which anyone can call. Only a stock with a market is tracked, which means one that is allowed, or that still has a feed or a pool. An exit-only stock is tracked too.
+After that the vault records changes in two places: at the start of every `execute` for the intent's token, and in `syncMultiplier`, which anyone can call. Only a stock with a market is tracked, which means one that is allowed, or that still has a feed or a pool. An [exit-only](/docs/help/glossary#exit-only) stock is tracked too.
 
 ```solidity title="contracts/src/MandateVault.sol#L640-L653"
     function _syncMultiplier(address token) internal {
@@ -78,7 +78,9 @@ After that the vault records changes in two places: at the start of every `execu
 
 An unchanged value records nothing. A changed one is stored, stamped with the block time and announced with `MultiplierChangeDetected(token, oldMultiplier, newMultiplier)`. The token is an indexed topic, so a log filter can follow one stock.
 
-The check does not wait for the snapshot to catch up. It compares the token's current multiplier with the snapshot every time it runs, so a changed multiplier blocks the stock as soon as the token reports it, before anyone records the change. Recording then starts the cooldown clock. In live mode the agent is built to send `syncMultiplier` for any stock whose multiplier differs from the snapshot, before it proposes anything ([Step 1 of a round](/docs/get-started/how-a-decision-is-made#step-1-read-the-vault)).
+The check does not wait for the snapshot to catch up. It compares the token's current multiplier with the snapshot every time it runs, so a changed multiplier blocks the stock as soon as the token reports it, before anyone records the change. Recording then starts the cooldown clock. In [live mode](/docs/help/glossary#live-mode) the agent is built to send `syncMultiplier` for any stock whose multiplier differs from the snapshot, before it proposes anything ([Step 1 of a round](/docs/get-started/how-a-decision-is-made#step-1-read-the-vault)).
+
+Credit actions show why recording matters. A `BORROW` or a `REPAY` must name USDC, and `execute` records only the intent's token, so a valid one records nothing for the stocks held as collateral. After a change in one of them, `BORROW`, and `WITHDRAW_COLLATERAL` against debt, are refused with `MULTIPLIER_COOLDOWN` once the earlier checks pass ([The cooldown](#the-cooldown)). The vault's cooldown clock does not start until `syncMultiplier`, an `execute` that names that stock, or an `applyTokenConfig` for it records the change, so waiting alone does not clear the block. Anyone can call `syncMultiplier` ([Anyone can sync](#anyone-can-sync)), and the agent is built to call it as above.
 
 ## The cooldown
 

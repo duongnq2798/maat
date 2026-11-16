@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
-import { type FactName, factFor } from "@/lib/docs/fact-text";
+import { Fragment, type ReactNode } from "react";
+import type { BaseConstant } from "@/lib/docs/docs-data";
+import { codeParts, FACT_TABLE_HEAD, type FactCode, type FactName, factTable } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
 import { headingId } from "@/lib/docs/links";
 import { kindLabels, NO_DEFAULT, NO_EXAMPLE, READ_BY, readByDetail, requiredDetail, requiredLabel } from "@/lib/docs/reference-labels";
@@ -37,13 +38,20 @@ function Notice({ text }: { text: string }) {
   return text ? <p className="mt-3 text-fd-muted-foreground">{text}</p> : null;
 }
 
-/** A table that scrolls inside its own focusable region on small screens, never the page. */
-function ScrollTable({ label, children }: { label: string; children: ReactNode }) {
-  return (
+/** A table that scrolls inside its own focusable region on small screens, never the page. A caption goes below it. */
+function ScrollTable({ label, caption, children }: { label: string; caption?: string; children: ReactNode }) {
+  const region = (
     // tabIndex: a scrollable region must be reachable by keyboard (axe rule scrollable-region-focusable).
-    <div className="relative my-6 overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
+    <div className={caption ? "relative overflow-x-auto" : "relative my-6 overflow-x-auto"} role="region" aria-label={label} tabIndex={0}>
       <table className="my-0">{children}</table>
     </div>
+  );
+  if (!caption) return region;
+  return (
+    <figure className="my-6">
+      {region}
+      <figcaption className="mt-2 text-sm text-fd-muted-foreground">{caption}</figcaption>
+    </figure>
   );
 }
 
@@ -244,7 +252,21 @@ export function ScriptFile({ name }: { name: string }) {
   );
 }
 
-/** Every constant in contracts/script/BaseAddresses.sol; addresses link to Basescan. */
+/** Runs of constants that share a group comment, or have none, in file order. */
+function addressGroups(list: readonly BaseConstant[]): { group: string; rows: BaseConstant[] }[] {
+  const out: { group: string; rows: BaseConstant[] }[] = [];
+  for (const a of list) {
+    const last = out.at(-1);
+    if (last?.group === a.group) last.rows.push(a);
+    else out.push({ group: a.group, rows: [a] });
+  }
+  return out;
+}
+
+/**
+ * Every constant in contracts/script/BaseAddresses.sol; addresses link to Basescan. A group comment heads its rows
+ * once, in a row group of its own, and a row's Note is only the constant's own comment.
+ */
 export function AddressTable() {
   return (
     <ScrollTable label="Base addresses">
@@ -255,47 +277,71 @@ export function AddressTable() {
           <th>Note</th>
         </tr>
       </thead>
-      <tbody>
-        {docsData.addresses.map((a) => (
-          <tr key={a.name}>
-            <td><code>{a.name}</code></td>
-            <td>
-              {a.type === "address" ? (
-                <a href={`https://basescan.org/address/${a.value}`}><code>{a.value}</code></a>
-              ) : (
-                <code>{a.value}</code>
-              )}
-            </td>
-            <td>{a.note}</td>
-          </tr>
-        ))}
-      </tbody>
+      {addressGroups(docsData.addresses).map((g) => (
+        <tbody key={g.rows[0]?.name}>
+          {g.group ? (
+            <tr>
+              <th colSpan={3} scope="rowgroup">
+                {g.group}
+              </th>
+            </tr>
+          ) : null}
+          {g.rows.map((a) => (
+            <tr key={a.name}>
+              <td><code>{a.name}</code></td>
+              <td>
+                {a.type === "address" ? (
+                  <a href={`https://basescan.org/address/${a.value}`}><code>{a.value}</code></a>
+                ) : (
+                  <code>{a.value}</code>
+                )}
+              </td>
+              <td>{a.note}</td>
+            </tr>
+          ))}
+        </tbody>
+      ))}
     </ScrollTable>
   );
 }
 
-/** Facts with their value and the source that proves it, for the default parameters page. `label` names the region, so give each table on a page its own. */
-export function FactTable({ names, label = "Defaults" }: { names: readonly FactName[]; label?: string }) {
+function InCode({ code }: { code: FactCode }) {
   return (
-    <ScrollTable label={label}>
+    <>
+      {codeParts(code).map((p, i) => (p.code ? <code key={i}>{p.text}</code> : <Fragment key={i}>{p.text}</Fragment>))}
+    </>
+  );
+}
+
+/**
+ * Facts for the default parameters page. A table of settings gives each one's plain name, its name in the code,
+ * its value and the file that sets it; a table of figures gives the source that proves each one. `label` names the
+ * region, so give each table on a page its own; `caption` goes below the table.
+ */
+export function FactTable({ names, label = "Defaults", caption }: { names: readonly FactName[]; label?: string; caption?: string }) {
+  const { settings, rows } = factTable(names);
+  return (
+    <ScrollTable label={label} caption={caption}>
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Value</th>
-          <th>Source</th>
+          {(settings ? FACT_TABLE_HEAD.settings : FACT_TABLE_HEAD.figures).map((h) => (
+            <th key={h}>{h}</th>
+          ))}
         </tr>
       </thead>
       <tbody>
-        {names.map((n) => {
-          const f = factFor(n);
-          return (
-            <tr key={n}>
-              <td><code>{n}</code></td>
-              <td>{f.text}</td>
-              <td>{f.source}</td>
-            </tr>
-          );
-        })}
+        {rows.map((r) => (
+          <tr key={r.name}>
+            <td>{r.label}</td>
+            {r.code ? (
+              <td>
+                <InCode code={r.code} />
+              </td>
+            ) : null}
+            <td>{r.text}</td>
+            <td>{r.code ? <code>{r.code.file}</code> : r.source}</td>
+          </tr>
+        ))}
       </tbody>
     </ScrollTable>
   );
