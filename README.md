@@ -143,7 +143,7 @@ minute each).
 
    ```text
     Test Files  24 passed (24)
-         Tests  167 passed (167)
+         Tests  172 passed (172)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -194,7 +194,7 @@ What exists at this commit, and what does not.
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
 | `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop) | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
 | Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner has not broadcast it yet | [`contracts/script`](contracts/script) |
-| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
+| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (172 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
 | Landing page with the interactive decision engine and the labeled fork ledger | **Built and tested** (124 unit tests, 7 Playwright tests). Static export. Being deployed at [maatonbase.xyz](https://maatonbase.xyz) | [`web/`](web) |
@@ -505,7 +505,7 @@ docs/superpowers/          design specs and implementation plans
 | --- | --- | --- | --- |
 | Contracts, unit | `forge test --no-match-path "test/fork/*"` | 220 | nothing |
 | Contracts, fork | `forge test --match-path "test/fork/*"` | 14 | `BASE_RPC_URL` (archive) |
-| Agent, unit | `npm test` | 167 | nothing |
+| Agent, unit | `npm test` | 172 | nothing |
 | Agent, fork integration | `npm run test:integration` | 3 | archive RPC, `base-anvil` v1.5.1 |
 | Web, unit, component and parity | `npm test` | 124 | nothing |
 | Web, end to end | `npm run e2e` (after `npm run build`) | 7 | `npx playwright install chromium` |
