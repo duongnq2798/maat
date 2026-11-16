@@ -185,7 +185,7 @@ Some failures are not covered by fail closed:
 - **A read that no `try` guards.** USDC's and the stock's `balanceOf`, and the stock's `decimals` where the vault values a trade, are plain calls. So are the pool's `token0` and the stock's `decimals` that the TWAP reads inside the success block of its `try` around `observe`, because Solidity does not catch an error raised there. If one of them reverts, `execute` reverts with it.
 - **A pool answer that fits the ABI but cannot be used.** The TWAP indexes the `observe` answer and converts its tick inside that same success block. An answer with fewer entries than the vault asked for, or a tick outside the range `TickMath` accepts, makes `execute` revert.
 
-[`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows every example in the last three items, and that the intent id stays unused in each. The invariant suite meets none of them, because its mocks fail in none of those ways.
+[`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows each of the last three items, with every example named there except the stock's `balanceOf`, and that the intent id stays unused in each. The invariant suite meets none of them, because its mocks fail in none of those ways.
 
 ## Trust boundaries
 
