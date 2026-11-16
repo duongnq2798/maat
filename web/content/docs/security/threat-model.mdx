@@ -135,9 +135,9 @@ The policy is attached by `cdp-setup.ts`, with the same three values. The reposi
 | The attacker can | but cannot |
 | --- | --- |
 | Send requests on your quota, and so on your bill | Sign or send a transaction as the agent. The agent sends through CDP, and the RPC only serves its reads, estimates and receipts |
-| Make the agent's reads fail by using up the quota. With `BASE_RPC_URL_FALLBACK` set, the agent's reads then move to that second URL | Read anything that is not public chain data, or change a verdict |
+| Make the agent's reads fail by using up the quota | Read anything that is not public chain data, or change a verdict |
 
-If the agent cannot read the vault's state, it does nothing for that round ([`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "does nothing when the vault state is unavailable"). That is a stop, not a risk to funds.
+With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to that second URL first. If the agent cannot read the vault's state, it does nothing for that round ([`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "does nothing when the vault state is unavailable"). That is a stop, not a risk to funds.
 
 **Response.** Replace the URL at your provider and update the agent's environment. The optional second URL, `BASE_RPC_URL_FALLBACK`, is a secret of the same kind, and the same response applies to it. This is a leaked URL. A provider that answers dishonestly is a different case, and the next section covers it.
 
