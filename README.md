@@ -222,6 +222,7 @@ author dates in `git log`:
 | 2026-11-08 | Docs center: glossary and FAQ, contract and agent reference generated from the sources, guides, security and help pages, `llms.txt`, accessibility checks in both themes |
 | 2026-11-08 | Simulator "Try to make it say no": `MarketCalendar` ported to TypeScript and checked against its Foundry vectors, the default mandate's BUY checks over one day, share links, e2e tests |
 | 2026-11-16 | The landing page links to the docs and the five-minute quickstart; simulator fixes for half-typed amounts and the X post |
+| 2026-11-17 | Docs center: one decision walked step by step with what Claude is sent, the whole deploy path and the agent's go-live steps with their commands, the refusal codes grouped, gas limits and retiring a vault on the recovery page, and search that ranks named pages first and finds table text |
 
 ## The problem
 
