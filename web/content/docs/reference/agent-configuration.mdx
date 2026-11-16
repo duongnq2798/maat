@@ -26,7 +26,13 @@ These settings are read by `agent/src/config.ts`. `BASE_RPC_URL`, `MAAT_VAULT`, 
 
 <EnvVar name="BASE_RPC_URL" />
 
-The RPC endpoint for Base mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier round. It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
+The RPC endpoint for Base mainnet. It must be a valid URL. The agent builds one client on it, with `BASE_RPC_URL_FALLBACK` behind it when that is set, and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier round. It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret. The agent does not print it, and a round that halts on a failed read keeps only the first line of the error, which leaves the URL out of the journal.
+
+### BASE_RPC_URL_FALLBACK
+
+<EnvVar name="BASE_RPC_URL_FALLBACK" />
+
+A second RPC endpoint for Base mainnet. It is optional, and when it is set it must be a valid URL. Every read still goes to `BASE_RPC_URL` first, and moves to this endpoint only when that request fails, for example on a timeout or a rate limit. Without it, a failed read makes the round do nothing or halt it. Take it from another provider, so that one outage does not stop both. It needs no archive node either, and the agent keeps it out of its output the same way as `BASE_RPC_URL`, so a URL with a key in it stays a secret.
 
 ### MAAT_VAULT
 

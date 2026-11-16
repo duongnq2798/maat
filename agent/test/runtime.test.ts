@@ -1,9 +1,11 @@
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { PublicClient } from "viem";
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "../src/config.js";
 import { GuardedSender } from "../src/exec/sender.js";
+import type { RunDeps } from "../src/loop/runOnce.js";
 import { buildRuntime } from "../src/runtime.js";
 import { FakeSender } from "./fakes/fakeSender.js";
 
@@ -17,7 +19,23 @@ const env = async (over: Record<string, string> = {}) => ({
 });
 const noProposer = { propose: async () => ({ ok: false as const, error: "unused", costUsd6: 0n }) };
 
+/** The type of the client's transport and the RPC URLs it reads through, in order. */
+const rpcs = (deps: RunDeps) => {
+  const t = (deps.stateClient as PublicClient).transport as { type: string; url?: string; transports?: { value?: { url?: string } }[] };
+  return { type: t.type, urls: t.transports ? t.transports.map((x) => x.value?.url) : [t.url] };
+};
+
 describe("buildRuntime", () => {
+  it("reads through BASE_RPC_URL alone when no fallback is set", async () => {
+    const deps = await buildRuntime(loadConfig(await env()), { proposer: noProposer });
+    expect(rpcs(deps)).toEqual({ type: "http", urls: ["http://127.0.0.1:1"] });
+  });
+  it("falls back to BASE_RPC_URL_FALLBACK, after BASE_RPC_URL, when it is set", async () => {
+    const deps = await buildRuntime(loadConfig(await env({ BASE_RPC_URL_FALLBACK: "http://127.0.0.1:2" })), { proposer: noProposer });
+    expect(rpcs(deps)).toEqual({ type: "fallback", urls: ["http://127.0.0.1:1", "http://127.0.0.1:2"] });
+    expect(deps.txClient).toBe(deps.stateClient);
+    expect(deps.previewClient).toBe(deps.stateClient);
+  });
   it("dry-run never touches CDP", async () => {
     let connected = false;
     const deps = await buildRuntime(loadConfig(await env()), { proposer: noProposer, connectCdp: async () => ((connected = true), new FakeSender()) });

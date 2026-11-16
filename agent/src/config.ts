@@ -18,6 +18,7 @@ const address = (name: string) =>
 const schema = z
   .object({
     BASE_RPC_URL: field(z.string({ error: "BASE_RPC_URL is required" }).pipe(z.url())),
+    BASE_RPC_URL_FALLBACK: field(z.url().optional()),
     MAAT_VAULT: address("MAAT_VAULT"),
     MAAT_EXECUTOR: address("MAAT_EXECUTOR"),
     MAAT_EXPENSE_PAYEE: address("MAAT_EXPENSE_PAYEE"),
@@ -37,6 +38,8 @@ const schema = z
 
 export interface AgentConfig {
   rpcUrl: string;
+  /** A second RPC, tried when `rpcUrl` fails. */
+  rpcFallbackUrl: string | undefined;
   vault: Address;
   executor: Address;
   expensePayee: Address;
@@ -58,6 +61,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   const v = r.data;
   return {
     rpcUrl: v.BASE_RPC_URL,
+    rpcFallbackUrl: v.BASE_RPC_URL_FALLBACK,
     vault: v.MAAT_VAULT,
     executor: v.MAAT_EXECUTOR,
     expensePayee: v.MAAT_EXPENSE_PAYEE,

@@ -354,7 +354,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
   } catch (e) {
     report.status = "halted";
-    report.haltReason = (e as Error).message;
+    // The first line only: viem lists the RPC URL, which may carry a key, on the lines below it.
+    report.haltReason = firstLine(e);
     await j.append({ kind: "error", runId, message: `halted: ${report.haltReason}` });
   } finally {
     await d.store.save();

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { size } from "viem";
+import { HttpRequestError, size } from "viem";
 import { describe, expect, it } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
@@ -421,6 +421,19 @@ describe("runOnce", () => {
       expect(r.status).toBe("halted"); // in this fake the re-sent bill reverts too
       expect(t.inner.sent).toHaveLength(2);
       expect(t.store.pending()).toEqual([]);
+    });
+
+    it("keeps the RPC URL, which may carry a key, out of the halt reason and the journal", async () => {
+      const store = await billed();
+      store.addPending(pendingEntry());
+      const t = await setup({ store });
+      const url = "https://rpc.example.org/v2/SECRET-KEY";
+      const readContract = (async () => {
+        throw new HttpRequestError({ url, body: { method: "eth_call" }, details: "fetch failed" });
+      }) as never;
+      const r = await runOnce({ ...t.deps, txClient: { ...t.deps.txClient, readContract } });
+      expect(r).toMatchObject({ status: "halted", haltReason: "HTTP request failed." });
+      expect(JSON.stringify(await t.journal.read())).not.toContain("SECRET-KEY");
     });
   });
 

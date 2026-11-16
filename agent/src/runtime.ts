@@ -1,4 +1,4 @@
-import { createPublicClient, http, type Address, type PublicClient } from "viem";
+import { createPublicClient, fallback, http, type Address, type PublicClient } from "viem";
 import { base } from "viem/chains";
 import type { AgentConfig } from "./config.js";
 import { builderSuffix } from "./exec/builderCode.js";
@@ -19,8 +19,10 @@ export async function buildRuntime(
   } = {},
 ): Promise<RunDeps> {
   const mode = o.forceDryRun ? "dry-run" : cfg.mode;
+  // viem sends each request to the first RPC and moves to the second only when the first fails.
+  const transport = cfg.rpcFallbackUrl ? fallback([http(cfg.rpcUrl), http(cfg.rpcFallbackUrl)]) : http(cfg.rpcUrl);
   // The Base chain keeps its multicall3 address; the cast only erases the OP-stack deposit-tx types the narrow client interfaces do not model.
-  const client = createPublicClient({ chain: base, transport: http(cfg.rpcUrl) }) as PublicClient;
+  const client = createPublicClient({ chain: base, transport }) as PublicClient;
   let sender: GuardedSender | null = null;
   if (mode === "live") {
     const suffix = builderSuffix(cfg.builderCode ?? ""); // validates before any CDP call

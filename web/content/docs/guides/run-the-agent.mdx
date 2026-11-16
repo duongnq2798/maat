@@ -42,7 +42,7 @@ The first part of this guide is for any builder with a vault address. The part m
 | A vault to read | Its address is `MAAT_VAULT`. The Maat team has deployed none, so you need your own: [Deploy your own vault](/docs/guides/deploy-your-own-vault). |
 | Two more addresses | `MAAT_EXECUTOR` must be the executor that the vault reports, and `MAAT_EXPENSE_PAYEE` an address on the vault's [payee](/docs/help/glossary#payee) list. Both are required in every mode, dry run included. |
 | Node.js 22.9 or newer | With npm. `agent/package.json` sets the minimum. |
-| A Base RPC URL | Written `<BASE_RPC_URL>` here and set as `BASE_RPC_URL`. The agent only reads through it, and it does not need an archive node. |
+| A Base RPC URL | Written `<BASE_RPC_URL>` here and set as `BASE_RPC_URL`. The agent only reads through it, and it does not need an archive node. A second URL from another provider, set as `BASE_RPC_URL_FALLBACK`, is optional: the agent uses it when a request to the first fails. |
 | An Anthropic API key | `ANTHROPIC_API_KEY`, from your own account. Every round that reaches Claude is billed, in dry-run mode too. |
 | Live mode only | A registered [Builder Code](/docs/help/glossary#builder-code-erc-8021) and three CDP credentials. The owner section lists them. |
 
