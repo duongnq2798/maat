@@ -333,7 +333,7 @@ Code:
 | --- | --- | --- |
 | **The executor's only power is `execute`** | Every function that moves funds or changes a rule is owner-only, and the owner is immutable. `notifyRevenue` and `syncMultiplier` are open to anyone and only record state | [`MandateVault.sol`](contracts/src/MandateVault.sol), `test_executorCannotUseOwnerFunctions` |
 | **Nine checks, in the contract** | Market safety, size and concentration on every trade; health factor on every borrow | [The nine checks](#the-nine-checks) |
-| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert (plain ERC-20 `balanceOf` and `decimals` reads are assumed not to) | `test_refusalIsLoggedNotReverted` |
+| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert. A dependency can still make `execute` revert in a few ways the vault does not catch: return data that does not fit the ABI, a revert in a read that no `try` guards (such as an ERC-20 `balanceOf` or `decimals`), and a pool answer the TWAP cannot use | `test_refusalIsLoggedNotReverted`, [`MandateVaultMalformed.t.sol`](contracts/test/MandateVaultMalformed.t.sol) |
 | **Single-use intents** | Each intent id executes once, refused or not | `test_replayReverts` |
 | **Fail closed** | A reverting pause, policy, calendar, multiplier, feed or Aave read counts as unsafe | `test_reverting*FailsClosed` in [`GuardLib.t.sol`](contracts/test/GuardLib.t.sol), `test_unreadableCollateralFailsConcentrationClosed` |
 | **Slippage floor from the oracle** | The vault, not the agent, sets the minimum output | `test_slippageFloorIsEnforcedEvenIfAgentSendsZero` |

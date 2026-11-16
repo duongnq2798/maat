@@ -45,7 +45,7 @@ On a Saturday the calendar contract reports the market closed in both session mo
 
 ### Why refuse instead of revert?
 
-A reverted call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design only a call from the wrong address (`NotExecutor`) and a reused intent id (`IntentAlreadyUsed`) revert, as long as the feeds, tokens and adapters the vault calls follow their ABI. [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows `execute` reverting when one does not. A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
+A reverted call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design only a call from the wrong address (`NotExecutor`) and a reused intent id (`IntentAlreadyUsed`) revert. A dependency can still make `execute` revert in a few ways the vault does not catch, such as return data that does not fit the ABI ([Fail closed](/docs/security/model#fail-closed) lists them). A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
 
 ### How often does the agent run?
 
