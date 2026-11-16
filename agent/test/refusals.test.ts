@@ -34,20 +34,21 @@ const day = (weekday: number, minuteOfDay: number, over: Partial<CalendarDay> = 
 const hm = (h: number, m = 0) => h * 60 + m;
 
 describe("gate", () => {
-  it("executes OK intents", () => expect(gate("OK", null)).toEqual({ send: true, kind: "execute" }));
-  it("does nothing when the guard is unknown", () => expect(gate("UNKNOWN", null)).toEqual({ send: false, why: "guard state unknown (RPC)" }));
+  const holiday = { day: "2026-11-26", reason: "MARKET_CLOSED:holiday" };
+  it("executes OK intents", () => expect(gate("OK", null, false)).toEqual({ send: true, kind: "execute" }));
+  it("does nothing when the guard is unknown", () => expect(gate("UNKNOWN", null, false)).toEqual({ send: false, why: "guard state unknown (RPC)" }));
   it("logs a market refusal once per key", () => {
-    expect(gate("MARKET_CLOSED", null)).toEqual({ send: true, kind: "log-refusal" });
-    expect(gate("MARKET_CLOSED", { day: "2026-11-26", reason: "MARKET_CLOSED:holiday" })).toEqual({
-      send: false,
-      why: "MARKET_CLOSED already logged for NYSE date 2026-11-26 (holiday)",
-    });
-    expect(gate("FEED_STALE", { day: "2026-11-25", reason: "FEED_STALE" })).toEqual({ send: false, why: "FEED_STALE already logged for NYSE date 2026-11-25" });
-    expect(gate("MARKET_CLOSED", { day: "20763", reason: "MARKET_CLOSED" })).toEqual({ send: false, why: "MARKET_CLOSED already logged for UTC day 20763" });
+    expect(gate("MARKET_CLOSED", holiday, false)).toEqual({ send: true, kind: "log-refusal" });
+    expect(gate("MARKET_CLOSED", holiday, true)).toEqual({ send: false, why: "MARKET_CLOSED already logged for NYSE date 2026-11-26 (holiday)" });
+    expect(gate("FEED_STALE", { day: "2026-11-25", reason: "FEED_STALE" }, true)).toEqual({ send: false, why: "FEED_STALE already logged for NYSE date 2026-11-25" });
+    expect(gate("MARKET_CLOSED", { day: "20763", reason: "MARKET_CLOSED" }, true)).toEqual({ send: false, why: "MARKET_CLOSED already logged for UTC day 20763" });
+  });
+  it("leaves a refusal with no key to a later round", () => {
+    expect(gate("MARKET_CLOSED", null, false)).toEqual({ send: false, why: "MARKET_CLOSED but the calendar is open at the state block; left to a round that reads the closed phase" });
   });
   it("never spends gas on bookkeeping refusals", () => {
-    expect(gate("INSUFFICIENT_BALANCE", null)).toEqual({ send: false, why: "INSUFFICIENT_BALANCE not worth a log tx" });
-    expect(gate("VAULT_PAUSED", null).send).toBe(false);
+    expect(gate("INSUFFICIENT_BALANCE", null, false)).toEqual({ send: false, why: "INSUFFICIENT_BALANCE not worth a log tx" });
+    expect(gate("VAULT_PAUSED", null, false).send).toBe(false);
   });
   it("lists exactly the market-safety reasons", () => {
     expect([...LOGGABLE_REASONS].sort()).toEqual(
@@ -113,8 +114,9 @@ describe("refusalKey", () => {
     expect(key("FEED_STALE", NOV25 + 28 * HOUR + 30 * 60)).toEqual({ day: "2026-11-25", reason: "FEED_STALE" });
   });
 
-  it("keeps MARKET_CLOSED without a phase when the calendar says the session is open", () => {
-    expect(key("MARKET_CLOSED", NOV25 + 15 * HOUR)).toEqual({ day: "2026-11-25", reason: "MARKET_CLOSED" });
+  it("has no MARKET_CLOSED key while the calendar says the session is open", () => {
+    expect(key("MARKET_CLOSED", NOV25 + 15 * HOUR)).toBeNull();
+    expect(key("FEED_STALE", NOV25 + 15 * HOUR)).toEqual({ day: "2026-11-25", reason: "FEED_STALE" });
   });
 
   it("falls back to the UTC day when the calendar could not be read", () => {

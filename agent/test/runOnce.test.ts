@@ -474,6 +474,7 @@ describe("runOnce", () => {
   describe("refusal logs per NYSE date", () => {
     const NOV25 = 1_795_564_800n; // 2026-11-25T00:00Z, a Wednesday; New York is on EST (UTC-5) from November 1
     const utc = (hours: number, minutes = 0) => NOV25 + BigInt(hours) * 3600n + BigInt(minutes) * 60n;
+    const WED_1559_ET = utc(20, 59);
     const WED_1630_ET = utc(21, 30);
     const WED_2330_ET = utc(28, 30); // 04:30 UTC on Thursday 26 November
     const THU_1000_ET = utc(39); // Thanksgiving
@@ -509,6 +510,17 @@ describe("runOnce", () => {
         ["MARKET_CLOSED already logged for NYSE date 2026-11-25 (overnight)", "underweight"],
       ]);
       expect(t.store.hasLoggedRefusal({ day: "2026-11-25", reason: "MARKET_CLOSED:overnight" })).toBe(true);
+    });
+
+    it("leaves a MARKET_CLOSED to the next round while the calendar at the state block is open, so the log names its phase", async () => {
+      // The preview reads a later block than the state, here one past the 16:00 ET close.
+      const t = await week();
+      expect((await t.round(WED_1559_ET)).sent).toEqual([]);
+      expect((await t.round(WED_1630_ET)).sent).toHaveLength(1);
+      expect((await t.intents()).map((r) => [r.gate, r.rationale])).toEqual([
+        ["MARKET_CLOSED but the calendar is open at the state block; left to a round that reads the closed phase", "underweight"],
+        ["log-refusal", CLOSED("outside regular hours")],
+      ]);
     });
 
     it("logs the Thanksgiving refusal once, naming the holiday, through Thursday evening ET", async () => {

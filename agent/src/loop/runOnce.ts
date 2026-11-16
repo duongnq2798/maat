@@ -291,7 +291,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
       const preview = pv.result;
       const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
-      const g = gate(preview, key && d.store.hasLoggedRefusal(key) ? key : null);
+      const g = gate(preview, key, key !== null && d.store.hasLoggedRefusal(key));
       // A MARKET_CLOSED log names the closed phase. The vault's checks never read rationaleHash, so the preview stands.
       const note = g.send && g.kind === "log-refusal" && preview === "MARKET_CLOSED" ? closedNote(s) : null;
       const rationale = note ? `${p.rationale} (market closed, ${note})` : p.rationale;

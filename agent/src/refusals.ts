@@ -19,12 +19,13 @@ export const LOGGABLE_REASONS: ReadonlySet<ReasonName> = new Set<ReasonName>([
 
 export type Gate = { send: true; kind: "execute" | "log-refusal" } | { send: false; why: string };
 
-/** `logged` is the key this refusal was already logged under, or null when it was not. */
-export function gate(preview: PreviewResult, logged: RefusalKey | null): Gate {
+/** `key` is what the refusal is logged under (null when refusalKey has none) and `logged` whether it already was. */
+export function gate(preview: PreviewResult, key: RefusalKey | null, logged: boolean): Gate {
   if (preview === "OK") return { send: true, kind: "execute" };
   if (preview === "UNKNOWN") return { send: false, why: "guard state unknown (RPC)" };
   if (!LOGGABLE_REASONS.has(preview)) return { send: false, why: `${preview} not worth a log tx` };
-  return logged ? { send: false, why: `${preview} already logged for ${keyText(logged)}` } : { send: true, kind: "log-refusal" };
+  if (!key) return { send: false, why: `${preview} but the calendar is open at the state block; left to a round that reads the closed phase` };
+  return logged ? { send: false, why: `${preview} already logged for ${keyText(key)}` } : { send: true, kind: "log-refusal" };
 }
 
 /**
@@ -75,12 +76,14 @@ type KeyState = { day: bigint; calendar: CalendarDay | null; mandate: { sessionM
 /**
  * The key a refusal at the state block is logged under. Without the calendar it falls back to the vault's UTC day,
  * so the agent still logs at most once per reason per UTC day. MARKET_CLOSED in a session the calendar reports open
- * (the preview ran at a later block) keeps no phase.
+ * (the preview ran at a later block) has no phase and so no key: a later round, whose state block is closed, logs it.
  */
-export function refusalKey(reason: ReasonName, s: KeyState): RefusalKey {
+export function refusalKey(reason: ReasonName, s: KeyState): RefusalKey | null {
   if (s.calendar === null) return { day: s.day.toString(), reason };
-  const phase = reason === "MARKET_CLOSED" ? closedPhase(s.calendar, s.mandate.sessionMode) : null;
-  return { day: isoDate(s.calendar.etDay), reason: phase ? `${reason}:${phase}` : reason };
+  const day = isoDate(s.calendar.etDay);
+  if (reason !== "MARKET_CLOSED") return { day, reason };
+  const phase = closedPhase(s.calendar, s.mandate.sessionMode);
+  return phase ? { day, reason: `${reason}:${phase}` } : null;
 }
 
 function keyText(k: RefusalKey): string {
