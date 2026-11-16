@@ -196,7 +196,7 @@ export function rationaleHash(text: string): Hex {
 }
 ```
 
-So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` also computes for text it reads from standard input. Hash the [rationale](/docs/help/glossary#rationale) exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. For a `MARKET_CLOSED` log the stored text ends with the closed phase the agent appended, for example `(market closed, weekend)`. This pipe does that: `jq` decodes the `intent` line of the id and prints its `rationale` with no newline after it (`-j`), and `cast keccak` hashes what arrives.
+So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` also computes for text it reads from standard input. For a `MARKET_CLOSED` log the stored text ends with the closed phase the agent appended, for example `(market closed, weekend)`, and the hash covers that ending too. Hash the [rationale](/docs/help/glossary#rationale) exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. This pipe does that: `jq` decodes the `intent` line of the id and prints its `rationale` with no newline after it (`-j`), and `cast keccak` hashes what arrives.
 
 ```bash
 jq -j --arg id "<INTENT_ID>" 'select(.kind=="intent" and (.intentId|ascii_downcase)==($id|ascii_downcase)) | .rationale' data/journal.jsonl | cast keccak

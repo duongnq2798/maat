@@ -93,7 +93,7 @@ Each column comes from the event or from the transaction around it:
 | Gas | The gas the transaction used. It is on the transaction receipt, not in the event. |
 | Note | A short comment written for the site. It is not onchain, and it is not the rationale. |
 
-In the fork run a scripted proposer, `FixedProposer`, stood in for Claude. The four intents in the ledger carried these rationales, in order: `NVDAc underweight`, `use as collateral`, `compute runway` and `GOOGLc underweight` (`agent/test/integration/agent.fork.test.ts`). [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) shows the hash of the first.
+In the fork run a scripted proposer, `FixedProposer`, stood in for Claude. It wrote these rationales for the four intents in the ledger, in order: `NVDAc underweight`, `use as collateral`, `compute runway` and `GOOGLc underweight`. The agent is built to append the closed phase when it logs the Saturday `MARKET_CLOSED` refusal, so the fourth intent's text is `GOOGLc underweight (market closed, weekend)` (`agent/test/integration/agent.fork.test.ts`). [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) shows the hash of the first.
 
 When Claude proposes, its instructions let it propose a trade the vault will refuse while the market is closed or a [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness), if the refusal itself is worth recording, and tell it to say so in the rationale:
 
