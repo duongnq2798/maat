@@ -26,11 +26,11 @@ export function Hero() {
           </h1>
           <p className="lead max-w-[31em] text-[17px] sm:text-[20px]">{SITE.description}</p>
           <div className="flex flex-wrap gap-3">
-            <a className="pill-dark" href={SITE.quickstartUrl}>
-              Verify it in 5 minutes
-            </a>
-            <a className="pill-line" href="#try">
+            <a className="pill-dark" href="#try">
               Try to make it say no
+            </a>
+            <a className="pill-line" href={SITE.quickstartUrl}>
+              Verify it in 5 minutes
             </a>
           </div>
           <dl className="m-0 mt-2 grid max-w-[560px] grid-cols-3 border-t border-line">

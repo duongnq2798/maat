@@ -48,8 +48,14 @@ describe("hero", () => {
     expect(stat("CHECKS PER TRADE")).toBe("9");
     expect(stat("TYPED REFUSALS")).toBe("19");
     expect(stat("RULE TIMELOCK")).toBe("24h");
-    expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
-    expect(screen.getByRole("link", { name: "Try to make it say no" })).toHaveAttribute("href", "#try");
+    // The in-page simulator is the primary call: it needs no install, the quickstart needs Foundry.
+    const ctas = within(screen.getByRole("link", { name: "Try to make it say no" }).parentElement as HTMLElement)
+      .getAllByRole("link")
+      .map((a) => [a.textContent, a.getAttribute("href"), a.className]);
+    expect(ctas).toEqual([
+      ["Try to make it say no", "#try", "pill-dark"],
+      ["Verify it in 5 minutes", SITE.quickstartUrl, "pill-line"],
+    ]);
     expect(screen.getByRole("group", { name: "Choose a moment" })).toBeInTheDocument();
     expect(document.getElementById("top")).not.toBeNull();
   });
