@@ -108,7 +108,7 @@ The agent reads three values for the [CDP Server Wallet](/docs/help/glossary#cdp
 
 | The attacker can | but cannot |
 | --- | --- |
-| Act as the executor: ask CDP to send or sign transactions from the executor account, which is the same position as the executor-key row above | While the account policy holds: send a transaction anywhere but the vault, on any network but Base, or with any value; sign a transaction to any address but the vault, or with any value (the sign rule has no network limit); or sign a raw hash |
+| Act as the executor: ask CDP to send or sign transactions from the executor account, which is the same position as the executor-key row above | While the account policy holds: send a transaction anywhere but the vault, on any network but Base, or with any value; sign a transaction to any address but the vault, or with any value (the sign rule has no network limit); or sign a raw hash, a message or typed data |
 | Call any function of the vault from that account | Make any function other than `execute` do more than anyone could: the rest are public and harmless, or revert `NotOwner` |
 
 The policy is attached by `cdp-setup.ts`, with the same three values. The repository does not show whether CDP would let a holder of these values change or detach the policy, and the code has never run against the real CDP: it is tested against a fake client only, and [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the shape of the rules, not that CDP enforces them. So do not count on the policy as the only barrier. If the policy could be removed, the worst case would still be the executor account's own ETH, because the vault's funds are not in that account.

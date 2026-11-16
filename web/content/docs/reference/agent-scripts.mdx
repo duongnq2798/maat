@@ -124,7 +124,7 @@ Only `gen-abis.ts` has an npm script, `gen:abi`. You run the other files in `age
 
 <Callout type="warning" title="Owner only">
 
-Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects raw hash signing. Every run creates a new policy and points the account at it, so a second run creates a second policy.
+Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects signing a hash, a message or typed data. Neither rule limits which vault function a transaction calls. Every run creates a new policy and points the account at it, so a second run creates a second policy.
 
 It needs `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`, and it reads `CDP_ACCOUNT_NAME` for the account name. It sends no transaction on Base and does not touch the vault.
 

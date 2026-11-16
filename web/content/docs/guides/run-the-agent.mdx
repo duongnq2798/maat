@@ -183,7 +183,7 @@ In live mode the agent turns the code into an ERC-8021 suffix and appends it to 
 node --env-file=.env --import tsx scripts/cdp-setup.ts <VAULT_ADDRESS>
 ```
 
-The script creates the executor account in the CDP wallet, or finds it if an account with the name in `CDP_ACCOUNT_NAME` exists. Then it creates an account policy and attaches it. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects raw hash signing. Every run creates a new policy and points the account at it, so a second run creates a second policy. On success it prints the account address and the policy id. This page shows no output for it, because the CDP path has never run against the real CDP.
+The script creates the executor account in the CDP wallet, or finds it if an account with the name in `CDP_ACCOUNT_NAME` exists. Then it creates an account policy and attaches it. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects signing a hash, a message or typed data. Neither rule limits which vault function a transaction calls. Every run creates a new policy and points the account at it, so a second run creates a second policy. On success it prints the account address and the policy id. This page shows no output for it, because the CDP path has never run against the real CDP.
 
 **4. Point the vault at the new executor.** Only the owner wallet can sign this. The commands are copied from deployments/README.md, Switch the executor to the CDP Server Wallet. The last line only reads, and it must print the address you just set.
 
@@ -232,7 +232,7 @@ The agent bounds itself, in addition to the vault's checks. The vault stays the 
 | Transactions per UTC day | <Fact name="maxTxPerDay" /> by default, set with `MAAT_MAX_TX_PER_DAY` | The round halts with a reason that begins `daily tx cap`. The count includes every `execute` and `syncMultiplier` the agent sends or tries to send, and it is kept in `data/state.json`, so a restart does not reset it. In dry-run mode the count stays at zero. |
 | Gas limit of one transaction | At most <Fact name="maxGas" /> | The sender refuses any limit above it. |
 | Gas limit of `execute` | At least <Fact name="executeGasFloor" /> | The agent never sends `execute` with less. |
-| Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else. The CDP policy adds a second layer in live mode. |
+| Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else. In live mode the CDP policy adds a second layer for the target, not for the function. |
 | Agents per data folder | One | A second agent on the same folder stops at startup with an error. |
 
 Two more rules come from agent/README.md, Safety: if a transaction fails or reverts, the round stops at once, and if the RPC fails, the round does nothing.
