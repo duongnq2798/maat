@@ -131,7 +131,7 @@ export function nextDelayMs(r: RunReport | null): number {
 
 That is <Fact name="loopMinutes" /> in session and <Fact name="offSessionMinutes" /> outside. The round reads the market state from the vault's own calendar, under the mandate's session mode ([Market hours](/docs/concepts/market-hours)). A round that could not read it, or that failed, gets the slower cadence.
 
-Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per day ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)).
+Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)). The transaction cap and the compute bill count UTC days.
 
 ## Planned: earning
 

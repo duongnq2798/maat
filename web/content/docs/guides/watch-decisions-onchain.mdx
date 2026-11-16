@@ -184,7 +184,7 @@ export function rationaleHash(text: string): Hex {
 }
 ```
 
-So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` computes for a plain string. Hash the `rationale` exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. The agent's fork test gives its scripted proposer the rationale `NVDAc underweight` for its first intent. This is the hash of that text:
+So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` computes for a plain string. Hash the `rationale` exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. For a `MARKET_CLOSED` log the stored text ends with the closed phase the agent appended, for example `(market closed, weekend)`. The agent's fork test gives its scripted proposer the rationale `NVDAc underweight` for its first intent. This is the hash of that text:
 
 ```bash
 cast keccak "NVDAc underweight"
@@ -214,7 +214,7 @@ If the hash of the journal's `rationale` equals the `rationaleHash` in the log, 
 - **Writing `Action` and `Reason` in the `cast` declaration.** `cast` works from ABI types, so write `uint8`. The numbers it prints are positions in the enums.
 - **Leaving out the `indexed` markers.** The help text of `cast logs` says that indexed parameters must be marked in the declaration, and a wrong marking decodes the log wrongly.
 - **Reading `amount` as dollars.** It is in raw units. For a `BUY` it is USDC, which has <Fact name="usdcDecimals" />, even though `token` is the stock. For a `SELL` it is in the stock's own decimals.
-- **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per UTC day, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
+- **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per NYSE date, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
 - **Expecting a `Decision` from a reverted `execute`.** A call from another address reverts with `NotExecutor`, and a used id reverts with `IntentAlreadyUsed`. Neither emits anything.
 - **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator. Intents the owner sent by hand, such as the runbook's smoke tests, carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke`), and no journal holds text for them.
 - **Hashing altered text.** A trailing newline, a re-typed quote or text that was not decoded from JSON gives another hash.

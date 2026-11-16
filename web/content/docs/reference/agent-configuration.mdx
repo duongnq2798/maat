@@ -76,7 +76,7 @@ The model the agent asks for its proposals. The name goes to the Claude API as w
 
 <EnvVar name="MAAT_DATA_DIR" />
 
-The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, refusals logged per day, transactions sent per day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
+The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, refusals logged per NYSE date, transactions sent per UTC day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
 
 ### MAAT_MAX_TX_PER_DAY
 

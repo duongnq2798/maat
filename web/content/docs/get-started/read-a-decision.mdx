@@ -59,7 +59,7 @@ Start with `allowed`. When it is `true`, the checks passed and the action ran. W
 
 Either way the intent id is spent, so the same intent can never run again. The agent may propose the same trade later, with a new id.
 
-A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent is built to send a given refusal reason at most once per UTC day and only journal the rest.
+A refusal does not move money, but the transaction that records it costs gas. In the fork run, the Saturday refusal used <Fact name="gas.refusalLog" /> gas. That is why the agent is built to send a given refusal reason at most once per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date) and only journal the rest.
 
 ## From a ledger row to its reasoning
 
@@ -93,5 +93,5 @@ Two rows of the ledger above, read the same way:
 - **The reasoning.** The event holds only a hash. The text is in the journal.
 - **The gas or the Builder Code.** Both are on the transaction. The agent appends the [Builder Code](/docs/help/glossary#builder-code-erc-8021) to the calldata of every transaction it sends, and owner-signed transactions do not carry it.
 - **Whether the trade was a good idea.** `allowed` means the intent stayed inside the [mandate](/docs/help/glossary#mandate). A bad trade inside every limit is still allowed.
-- **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged that UTC day. A missing `Decision` is therefore not proof that the agent did not try.
+- **Every proposal the agent considered.** The agent previews first, and it sends a refusal only when it is worth recording and its reason has not been logged for that NYSE date. A missing `Decision` is therefore not proof that the agent did not try.
 - **The dollar value.** `amount` is in raw token units. The site's ledger converts it.

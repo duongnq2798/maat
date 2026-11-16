@@ -154,7 +154,7 @@ A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Cl
 | `mismatch` | When the preview and the vault's [Decision](/docs/help/glossary#decision) disagree. |
 | `error` | When the state is unavailable, the executor is wrong, or the round halts. |
 
-In dry-run mode the `gate` of an `intent` line is `dry-run: would execute` or `dry-run: would log-refusal` when the agent would have sent it. Otherwise it gives the [reason](/docs/help/glossary#reason) it would not: `guard state unknown (RPC)`, or the name of a [refusal](/docs/help/glossary#refusal) followed by `not worth a log tx` or `already logged today`. The agent is built to send a refusal onchain only for some reasons, and at most once per reason per UTC day. [Watch decisions onchain](/docs/guides/watch-decisions-onchain) reads the other side of a send: the `Decision` event that the `intent` line points to.
+In dry-run mode the `gate` of an `intent` line is `dry-run: would execute` or `dry-run: would log-refusal` when the agent would have sent it. Otherwise it gives the [reason](/docs/help/glossary#reason) it would not: `guard state unknown (RPC)`, or the name of a [refusal](/docs/help/glossary#refusal) followed by `not worth a log tx` or `already logged for` and the key it was logged under, for example `MARKET_CLOSED already logged for NYSE date 2026-11-26 (holiday)`. The agent is built to send a refusal onchain only for some reasons, and at most once per reason per NYSE date, with `MARKET_CLOSED` counted once per closed phase of that date. When the calendar contract cannot be read, it counts UTC days instead, and the `intent` line carries a `note` that says so. [Watch decisions onchain](/docs/guides/watch-decisions-onchain) reads the other side of a send: the `Decision` event that the `intent` line points to.
 
 </Step>
 
@@ -251,7 +251,7 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 | File | What it holds |
 | --- | --- |
 | `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the rationale text behind each `rationaleHash`. |
-| `data/state.json` | The compute bills, the refusals logged per day, the transaction count per day, and the sends that are still `pending`. The agent needs it to survive a restart. |
+| `data/state.json` | The compute bills, the refusals logged per NYSE date, the transaction count per UTC day, and the sends that are still `pending`. The agent needs it to survive a restart. |
 | `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and recent, counts as held. |
 
 Git ignores `agent/data/`.

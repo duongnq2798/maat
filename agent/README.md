@@ -9,7 +9,7 @@
 5. Send `execute` through the CDP Server Wallet. Every tx carries the Builder Code (ERC-8021).
 6. Write to the journal.
 
-Refusals that are "worth recording", such as `MARKET_CLOSED` or `FEED_STALE`, are also sent onchain so that a public `Decision(allowed=false)` exists. Each reason is sent at most once per UTC day.
+Refusals that are "worth recording", such as `MARKET_CLOSED` or `FEED_STALE`, are also sent onchain so that a public `Decision(allowed=false)` exists. Each reason is sent at most once per NYSE date, the New York date that the vault's calendar contract reports. `MARKET_CLOSED` is also split by why the market is closed: a holiday, the weekend, the time between an early close and 16:00 ET, or outside regular hours. So in Thanksgiving week 2026 it can log `MARKET_CLOSED` once each on Wednesday evening, Thanksgiving Day, Friday morning and Friday after the 13:00 ET early close, and it appends the case to the rationale of a `MARKET_CLOSED` log, for example "NYSE holiday: Thanksgiving". When the calendar cannot be read, the agent falls back to one log per reason per UTC day and says so in the journal. The daily tx cap and the compute bill still count UTC days.
 
 Cadence: 15 minutes in session, 1 hour out of session.
 
@@ -67,7 +67,7 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 
 ## Data
 
-- `data/state.json`: compute bills, refusal records per day, tx count per day, and `pending` txs not yet reconciled.
+- `data/state.json`: compute bills, refusal records per NYSE date (per UTC day in files from older agents, or while the calendar cannot be read), tx count per UTC day, and `pending` txs not yet reconciled.
 - `data/journal.jsonl`: for each cycle, the intent, the rationale (the original text behind `rationaleHash`), the preview, the tx (`sent`, gas, `gasUsed`) and the Decision. Plan 3 (diary/dashboard) reads this file.
 
 ## Test

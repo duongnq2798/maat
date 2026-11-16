@@ -344,7 +344,7 @@ Code:
 | **CDP account policy** | The executor wallet may only send zero-value transactions to the vault on Base; raw hash signing is rejected | [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts), [`cdpPolicy.test.ts`](agent/test/cdpPolicy.test.ts) |
 | **Exactly-once sends** | Every `execute` is stored as pending before it is sent; the next round settles it before doing anything else, from the tx receipt once the tx is mined, otherwise against `usedIntent`, so a lost receipt cannot pay a bill twice | [`agent/src/loop/runOnce.ts`](agent/src/loop/runOnce.ts), `runOnce.test.ts` "reconciles a send that threw after broadcast instead of sending again" |
 | **Halt on surprise** | If the preview said OK but the vault refused, or a receipt has no `Decision`, the round stops | `runOnce.test.ts` "halts when the preview said OK but the vault refused" |
-| **Rate limits** | `MAAT_MAX_TX_PER_DAY` (default 40). Safety refusals (market, policy, size, concentration, health factor) are logged onchain at most once per reason per UTC day; bookkeeping refusals such as `INSUFFICIENT_BALANCE` cost no gas | [`agent/src/refusals.ts`](agent/src/refusals.ts) |
+| **Rate limits** | `MAAT_MAX_TX_PER_DAY` (default 40). Safety refusals (market, policy, size, concentration, health factor) are logged onchain at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase (holiday, weekend, early close, outside regular hours) of that date; without a readable calendar the agent falls back to once per reason per UTC day. Bookkeeping refusals such as `INSUFFICIENT_BALANCE` cost no gas | [`agent/src/refusals.ts`](agent/src/refusals.ts), `runOnce.test.ts` "logs Friday's overnight and early-close refusals, whatever the week logged before" |
 | **One agent per data directory** | A lock file is taken before the store or the wallet is opened | [`agent/src/loop/lock.ts`](agent/src/loop/lock.ts) |
 
 **If the executor key leaks.** Say an attacker controls the server that runs the agent:
@@ -454,7 +454,8 @@ session.
 3. Send `syncMultiplier` for any stock whose multiplier changed.
 4. Compute rule-based suggestions, then ask Claude for intents.
 5. Pay the compute bill first if at least $0.10 is owed, then each proposal: build the intent, preview it
-   as the executor, and send it only if it is allowed, or if it is a market refusal worth logging today.
+   as the executor, and send it only if it is allowed, or if it is a market refusal not yet logged for its
+   NYSE date (and, for `MARKET_CLOSED`, its closed phase).
 6. Journal everything to `data/journal.jsonl`.
 
 It runs every 15 minutes in session and every hour outside. `MAAT_MODE` defaults to `dry-run`, which reads
