@@ -29,8 +29,10 @@ import { usdc6ToUsd } from "../units.js";
 export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "readContract">;
 export const BILL_MIN_USD6 = 100_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
-/** A pending send with no onchain trace is given up after this many blocks (controller ruling: 300, ~10 min on Base). */
-export const PENDING_WINDOW_BLOCKS = 300n;
+/** A pending send with no onchain trace is given up after this much chain time: 10 minutes. */
+export const PENDING_WINDOW_SECONDS = 600n;
+/** The same window for an entry older code stored without a timestamp: 10 minutes of Base's 200 ms blocks. */
+export const LEGACY_PENDING_WINDOW_BLOCKS = 3_000n;
 
 export interface RunDeps {
   vault: Address;
@@ -185,9 +187,13 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       return wait("tx mined but usedIntent is still false; the RPC may lag");
     }
     if (tx) return wait("tx is still in the mempool");
-    const age = s.blockNumber - BigInt(p.block);
-    if (age < PENDING_WINDOW_BLOCKS) return wait(`no onchain trace yet (${age} of ${PENDING_WINDOW_BLOCKS} blocks)`);
-    return drop(`intent not used and no tx found after ${age} blocks`);
+    // Aged in chain time, so a faster block interval cannot shrink the window. Entries without a timestamp age in blocks.
+    const timed = p.timestamp !== undefined;
+    const age = timed ? s.timestamp - BigInt(p.timestamp!) : s.blockNumber - BigInt(p.block);
+    const window = timed ? PENDING_WINDOW_SECONDS : LEGACY_PENDING_WINDOW_BLOCKS;
+    const unit = timed ? "s" : "blocks";
+    if (age < window) return wait(`no onchain trace yet (${age} of ${window} ${unit})`);
+    return drop(`intent not used and no tx found after ${age} ${unit}`);
   };
 
   try {
@@ -300,6 +306,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         preview,
         day: day.toString(),
         block: s.blockNumber.toString(),
+        timestamp: s.timestamp.toString(),
       };
       d.store.addPending(entry);
       d.store.recordTx(day);

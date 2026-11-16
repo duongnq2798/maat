@@ -272,10 +272,10 @@ What the next round does with a pending send:
 | The transaction is in the mempool | `pending` | Waits and sends nothing. |
 | The transaction is mined and reverted | `dropped` | Clears the entry. The intent was not used. |
 | The transaction is mined but the intent is not yet used | `pending` | Waits, because the RPC may lag. |
-| There is no trace of the transaction, and fewer than <Fact name="pendingWindowBlocks" /> have passed since the block the send was prepared at | `pending` | Waits. |
-| There is no trace, and <Fact name="pendingWindowBlocks" /> or more have passed | `dropped` | Records it and continues. |
+| There is no trace of the transaction, and less than <Fact name="pendingWindowMinutes" /> have passed since the block the send was prepared at | `pending` | Waits. |
+| There is no trace, and <Fact name="pendingWindowMinutes" /> or more have passed | `dropped` | Records it and continues. |
 
-agent/README.md words the last two rows with "more than". The code in `runOnce.ts` waits only while fewer blocks than the window have passed, so a send is dropped when exactly that many have.
+The window is chain time: the agent compares the timestamp of the block it reads in the round with the timestamp of the block the send was prepared at, so a change in how often Base makes a block does not change it. A send is dropped once exactly that much time has passed. An entry stored by an older agent has no timestamp and is aged in blocks instead, as agent/README.md describes.
 
 These are the halt reasons the runner writes itself. Any other error thrown after the round has read the vault and checked the executor, such as a refused or failed send, also halts it, and `haltReason` then holds that error's message. Read the journal's `error` line, which holds the halt reason after the words `halted:`.
 

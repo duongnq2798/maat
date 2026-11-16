@@ -68,7 +68,7 @@ describe("facts the docs cite (docs spec §2.4)", () => {
   });
 
   it("the window after which a pending send with no trace is dropped", () => {
-    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_BLOCKS")).toBe(DOCS_FACTS.pendingWindowBlocks.value);
+    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_SECONDS") / 60).toBe(DOCS_FACTS.pendingWindowMinutes.value);
   });
 
   it("the executor's gas top-up is the figure in the agent README and in the setup script", () => {

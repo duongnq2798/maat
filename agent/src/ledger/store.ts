@@ -13,8 +13,10 @@ export interface PendingTx {
   /** The preview verdict at send time; a log-refusal records this reason as logged. */
   preview: string;
   day: string;
-  /** The state block the round read before sending: the age origin and the getLogs lower bound. */
+  /** The state block the round read before sending: the getLogs lower bound, and the age origin without `timestamp`. */
   block: string;
+  /** That block's timestamp (unix seconds): the age origin of the pending window. Older code stored none. */
+  timestamp?: string;
 }
 
 interface Data {

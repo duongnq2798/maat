@@ -74,7 +74,7 @@ export const FACT_TEXT = {
   offSessionMinutes: t(`${F.offSessionMinutes.value} minutes`, "offSessionMinutes"),
   rebalanceDriftPct: t(`${F.rebalanceDriftPct.value} percentage points`, "rebalanceDriftPct"),
   targetWeightPct: t(`${F.targetWeightPct.value}%`, "targetWeightPct"),
-  pendingWindowBlocks: t(`${F.pendingWindowBlocks.value} blocks`, "pendingWindowBlocks"),
+  pendingWindowMinutes: t(`${F.pendingWindowMinutes.value} minutes`, "pendingWindowMinutes"),
   executorGasEth: t(`about ${F.executorGasEth.value} ETH`, "executorGasEth"),
   cashReservePct: t(`${F.cashReservePct.value}%`, "cashReservePct"),
   runwayDays: t(`${F.runwayDays.value} days`, "runwayDays"),

@@ -12,7 +12,7 @@ import { Journal } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
 import { FixedProposer, type Proposer } from "../src/llm/proposer.js";
 import type { Batch } from "../src/llm/schema.js";
-import { PENDING_WINDOW_BLOCKS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
+import { LEGACY_PENDING_WINDOW_BLOCKS, PENDING_WINDOW_SECONDS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
 import type { OnchainIntent } from "../src/types.js";
 import { EXECUTOR, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
 import { FakeReceipts } from "./fakes/fakeReceipts.js";
@@ -225,7 +225,9 @@ describe("runOnce", () => {
     return store;
   };
   const ID = `0x${"ab".repeat(32)}` as const;
-  const pendingEntry = (o: { block?: string; txHash?: `0x${string}` } = {}) => ({
+  const SENT_AT = 1_794_000_000n; // the standard scene's block timestamp
+  /** `timestamp: null` stores the entry the way older code did, without one. */
+  const pendingEntry = (o: { block?: string; timestamp?: string | null; txHash?: `0x${string}` } = {}) => ({
     intentId: ID,
     action: "PAY_EXPENSE",
     amount: "300000",
@@ -233,6 +235,7 @@ describe("runOnce", () => {
     preview: "OK",
     day: DAY.toString(),
     block: o.block ?? "100",
+    ...(o.timestamp === null ? {} : { timestamp: o.timestamp ?? SENT_AT.toString() }),
     ...(o.txHash ? { txHash: o.txHash } : {}),
   });
 
@@ -255,7 +258,7 @@ describe("runOnce", () => {
       const first = await runOnce(t.deps);
       expect(first.status).toBe("halted");
       expect(t.store.pending()).toHaveLength(1);
-      expect(t.store.pending()[0]?.txHash).toBe(first.sent[0]);
+      expect(t.store.pending()[0]).toMatchObject({ block: "100", timestamp: SENT_AT.toString(), txHash: first.sent[0] });
       t.receipts.timeout = false;
       const second = await runOnce({ ...t.deps, runId: "run-2" });
       expect(second).toMatchObject({ status: "done", sent: [] });
@@ -309,23 +312,49 @@ describe("runOnce", () => {
       const first = await runOnce(t.deps);
       t.receipts.timeout = false;
       t.receipts.mempool.add(first.sent[0]!);
-      t.scene.block = { ...t.scene.block, number: 100n + PENDING_WINDOW_BLOCKS * 2n };
+      t.scene.block = { number: 100n + LEGACY_PENDING_WINDOW_BLOCKS * 2n, timestamp: SENT_AT + PENDING_WINDOW_SECONDS * 2n };
       const r = await runOnce({ ...t.deps, runId: "run-2" });
       expect(r).toMatchObject({ status: "pending-tx", sent: [] });
       expect(t.inner.sent).toHaveLength(1);
+    });
+
+    it("waits out the window in chain time, however many blocks pass", async () => {
+      const store = await billed();
+      store.addPending(pendingEntry({ block: "100" }));
+      const t = await setup({ store });
+      t.scene.block = { number: 100n + LEGACY_PENDING_WINDOW_BLOCKS * 10n, timestamp: SENT_AT + PENDING_WINDOW_SECONDS - 1n };
+      expect(await runOnce(t.deps)).toMatchObject({ status: "pending-tx", sent: [] });
+      expect((await t.journal.read()).at(-1)).toMatchObject({ kind: "reconcile", outcome: "pending", note: "no onchain trace yet (599 of 600 s)" });
+      expect(store.pending()).toHaveLength(1);
     });
 
     it("drops a pending entry older than the window that never reached the chain", async () => {
       const store = await billed();
       store.addPending(pendingEntry({ block: "100" }));
       const t = await setup({ store });
-      t.scene.block = { ...t.scene.block, number: 100n + PENDING_WINDOW_BLOCKS };
+      t.scene.block = { ...t.scene.block, timestamp: SENT_AT + PENDING_WINDOW_SECONDS };
       const r = await runOnce(t.deps);
       expect(r.status).toBe("done");
-      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({ outcome: "dropped", intentId: ID });
+      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({ outcome: "dropped", intentId: ID, note: "intent not used and no tx found after 600 s" });
       expect(t.receipts.calls()).toHaveLength(1); // billed again, once
       expect(t.receipts.calls()[0]?.args[0]).toMatchObject({ action: 6, amount: 300_000n });
       expect(store.unpaidUsd6()).toBe(0n);
+    });
+
+    it("ages an entry stored without a timestamp in blocks", async () => {
+      const store = await billed();
+      store.addPending(pendingEntry({ block: "100", timestamp: null }));
+      const t = await setup({ store });
+      t.scene.block = { number: 100n + LEGACY_PENDING_WINDOW_BLOCKS - 1n, timestamp: SENT_AT + PENDING_WINDOW_SECONDS * 2n };
+      expect((await runOnce(t.deps)).status).toBe("pending-tx");
+      expect((await t.journal.read()).at(-1)).toMatchObject({ outcome: "pending", note: "no onchain trace yet (2999 of 3000 blocks)" });
+      t.scene.block = { ...t.scene.block, number: 100n + LEGACY_PENDING_WINDOW_BLOCKS };
+      expect((await runOnce({ ...t.deps, runId: "run-2" })).status).toBe("done");
+      expect((await t.journal.read()).find((e) => e.kind === "reconcile" && e.outcome === "dropped")).toMatchObject({
+        runId: "run-2",
+        note: "intent not used and no tx found after 3000 blocks",
+      });
+      expect(store.pending()).toEqual([]);
     });
 
     it("drops a pending entry whose tx was mined and reverted", async () => {

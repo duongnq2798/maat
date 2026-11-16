@@ -56,10 +56,10 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 1. Read `data/journal.jsonl` (the `error`, `mismatch`, `sent` and `reconcile` lines), then look up the tx hash on Basescan.
 2. `pending-tx` means a tx was sent and its outcome is still unknown. The next cycle reconciles it first, on its own:
    - the intent was used: apply its `Decision`;
-   - the tx is still in the mempool, or no more than 300 blocks have passed: keep waiting and send nothing;
-   - more than 300 blocks have passed with no trace of it: record `dropped` and continue.
+   - the tx is still in the mempool, or less than 10 minutes of chain time have passed since the block the send was prepared at: keep waiting and send nothing;
+   - 10 minutes or more have passed with no trace of it: record `dropped` and continue.
 
-   No manual fix is needed.
+   The window is measured with block timestamps, not block counts, because Base's block interval has changed (one block every 200 ms since block 53,556,127). A `pending` entry written by an older agent has no timestamp, so it is aged in blocks instead and dropped after 3,000 blocks, 10 minutes at 200 ms. No manual fix is needed.
 3. `halted` because of `mismatch` or a missing `Decision`: read the tx on Basescan before you run again. If a `pending` entry keeps halting the cycle, remove it from `data/state.json` only when you are sure that tx can no longer take effect.
 4. Emergency stop (the owner signs it): call `setPaused(true)` on the vault, or `setExecutor(owner)` to take back the executor role.
 

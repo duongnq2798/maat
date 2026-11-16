@@ -41,9 +41,9 @@ export const DOCS_FACTS = {
   maxRationaleChars: fact(600, "agent/src/llm/schema.ts MAX_RATIONALE_CHARS, characters per intent rationale"),
   maxGas: fact(3_000_000, "agent/src/exec/calls.ts MAX_GAS, the gas limit cap on every transaction the agent sends"),
   executeGasFloor: fact(2_500_000, "agent/src/exec/calls.ts EXECUTE_GAS_FLOOR, the minimum gas limit for execute"),
-  pendingWindowBlocks: fact(
-    300,
-    "agent/src/loop/runOnce.ts PENDING_WINDOW_BLOCKS = 300n, the blocks after which a send with no onchain trace is recorded as dropped",
+  pendingWindowMinutes: fact(
+    10,
+    "agent/src/loop/runOnce.ts PENDING_WINDOW_SECONDS = 600n, the chain time after which a send with no onchain trace is recorded as dropped",
   ),
   executorGasEth: fact(
     0.002,
