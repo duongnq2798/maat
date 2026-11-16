@@ -82,6 +82,9 @@ describe("landing page", () => {
     setup();
     expect(screen.getByText(/pay about one cent/)).toBeInTheDocument();
     expect(screen.getByText(/rebalanced past a 5% drift/)).toBeInTheDocument();
+    // The vault pays a USDC bill to an allowlisted payee; Anthropic is not paid onchain.
+    expect(screen.getByText("It pays its Claude bill in USDC to an allowlisted payee.")).toBeInTheDocument();
+    expect(screen.queryByText(/paid onchain/)).toBeNull();
   });
 
   it("closes with the CTA, disclaimer and tagline verbatim", () => {

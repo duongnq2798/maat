@@ -14,7 +14,7 @@ const STEPS = [
   },
   { n: "03 · SUPPLY", title: "Aave V4", body: "Stocks become collateral on the Equities Hub." },
   { n: "04 · BORROW", title: "USDC runway", body: "A small loan covers compute, never below the target health factor." },
-  { n: "05 · PAY", title: "Its own bill", body: "Claude usage is paid onchain to an allowlisted payee." },
+  { n: "05 · PAY", title: "Its own bill", body: "It pays its Claude bill in USDC to an allowlisted payee." },
 ] as const;
 
 export function TreasuryLoop() {
