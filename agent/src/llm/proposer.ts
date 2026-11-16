@@ -49,7 +49,9 @@ export class ClaudeProposer implements Proposer {
       res = await this.create({
         model: this.opts.model,
         max_tokens: 16000,
-        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        // No cache_control: the prompt is below the 512-token minimum cacheable prefix, and an entry would expire
+        // (5-minute TTL) long before the next round.
+        system: [{ type: "text", text: SYSTEM_PROMPT }],
         messages: [{ role: "user", content: renderUserMessage(input) }],
         output_config: { effort: "medium", format: { type: "json_schema", schema: BATCH_JSON_SCHEMA } },
         betas: ["server-side-fallback-2026-07-01"],

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
+import { SYSTEM_PROMPT } from "../src/llm/prompt.js";
 import { ClaudeProposer, FixedProposer, type CreateMessage } from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
@@ -27,7 +28,14 @@ describe("ClaudeProposer", () => {
     expect(seen).not.toHaveProperty("temperature");
     expect(seen).not.toHaveProperty("tool_choice");
     expect(seen).not.toHaveProperty("thinking");
-    expect((seen.system as { cache_control?: unknown }[])[0]?.cache_control).toEqual({ type: "ephemeral" });
+  });
+
+  it("asks for no prompt caching", async () => {
+    let seen: Record<string, unknown> = {};
+    const create: CreateMessage = async (p) => ((seen = p), { model: "claude-sonnet-5-5", stop_reason: "end_turn", content: [{ type: "text", text: '{"summary":"hold","intents":[]}' }], usage });
+    await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
+    expect(seen.system).toEqual([{ type: "text", text: SYSTEM_PROMPT }]);
+    expect(JSON.stringify(seen)).not.toContain("cache_control");
   });
 
   it("returns proposals and their cost", async () => {
