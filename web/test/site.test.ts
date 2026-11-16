@@ -64,7 +64,7 @@ describe("disclaimer", () => {
   });
 
   // The negation is pinned too, whichever case the sentence puts it in.
-  it.each(["README.md", "web/content/docs/get-started/what-is-maat.mdx"])("%s says the same", (path) => {
+  it.each(["README.md", "web/content/docs/get-started/what-is-maat.mdx", "web/content/docs/help/faq.mdx"])("%s says the same", (path) => {
     expect([`Not ${NOT_AFFILIATED}`, `not ${NOT_AFFILIATED}`].some((s) => flat(path).includes(s)), path).toBe(true);
   });
 });
