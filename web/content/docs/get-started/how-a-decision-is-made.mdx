@@ -10,6 +10,7 @@ sources:
   - agent/src/policy.ts
   - agent/src/llm/prompt.ts
   - agent/src/llm/proposer.ts
+  - agent/src/llm/pricing.ts
   - agent/src/llm/schema.ts
   - agent/src/intent.ts
   - agent/src/config.ts
@@ -196,7 +197,7 @@ The request itself:
 - **Model.** The value of `MAAT_LOOP_MODEL`, by default `claude-sonnet-5-5` ([MAAT_LOOP_MODEL](/docs/reference/agent-configuration#maat_loop_model)).
 - **Answer.** `output_config` sets the effort to `medium` and asks for JSON that matches `BATCH_JSON_SCHEMA`. An answer that stops at `max_tokens` is dropped as truncated.
 - **Caching.** The request carries no `cache_control` mark, so nothing is written to the prompt cache. Rounds start at least <Fact name="loopMinutes" /> apart, longer than the cache's 5-minute lifetime, so a mark would only add the price of a cache write, 1.25 times the input price, with no cheaper read to follow (`asks for no prompt caching` in `proposer.test.ts`). The system prompt holds no data from the round, so it is the same every round (`prompt.test.ts` checks that it has no timestamp). The cost still counts any cache reads and writes the response reports at their own prices.
-- **Fallback.** The request opts into the `server-side-fallback-2026-07-01` beta with `fallbacks: "default"`. A comment in `proposer.ts` says that a `fallback` block in the response marks where one model's output gives way to the next, so the agent keeps only the text after the last such block. The journal's `run` line does not record which model answered. The cost is booked at each attempt's own model: when the response lists its attempts in `usage.iterations`, the declined attempt is billed at the requested model's price and the fallback attempt at the fallback model's, and without that list the whole answer is billed under the model name the response reports.
+- **Fallback.** The request opts into the `server-side-fallback-2026-07-01` beta with `fallbacks: "default"`. A comment in `proposer.ts` says that a `fallback` block in the response marks where one model's output gives way to the next, so the agent keeps only the text after the last such block. The journal's `run` line does not record which model answered. When the response lists its attempts in `usage.iterations`, the cost is the sum of the attempts, each billed at the model its entry names, so a declined attempt that names the requested model is billed at that model's price. An entry that names no model is billed at the model the response reports, which on a fallback response is the fallback model (`prices an attempt without a model at the response model` in `pricing.test.ts`). Without that list, the whole answer is billed under the model name the response reports.
 
 Every round that reaches this step asks Claude, in dry-run mode too. When the answer cannot be used, the round gets no proposals from Claude, and the journal's `run` line has `ok` false and the error:
 
