@@ -69,7 +69,7 @@ describe("ClaudeProposer", () => {
   });
 
   it("bills a fallback response per attempt, each at its own model's price", async () => {
-    // Sonnet 5.5 declined mid-answer and Opus 4.8 served it: top-level usage covers only the Opus 4.8 attempt.
+    // Opus 5.5 declined mid-answer and Opus 4.8 served it: top-level usage covers only the Opus 4.8 attempt.
     const attempt = (input: number, output: number) => ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
     const create: CreateMessage = async () => ({
       model: "claude-opus-4-8",
@@ -78,14 +78,14 @@ describe("ClaudeProposer", () => {
       usage: {
         ...attempt(10_000, 1_000),
         iterations: [
-          { type: "message", model: "claude-sonnet-5-5", ...attempt(10_000, 100) },
+          { type: "message", model: "claude-opus-5-5", ...attempt(10_000, 100) },
           { type: "fallback_message", model: "claude-opus-4-8", ...attempt(10_000, 1_000) },
         ],
       },
     });
-    const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
-    // $0.021 for the declined Sonnet 5.5 attempt + $0.075 for the Opus 4.8 one
-    expect(out).toMatchObject({ ok: true, model: "claude-opus-4-8", costUsd6: 96_000n });
+    const out = await new ClaudeProposer({ model: "claude-opus-5-5", create }).propose(await input());
+    // $0.042 for the declined Opus 5.5 attempt + $0.075 for the Opus 4.8 one
+    expect(out).toMatchObject({ ok: true, model: "claude-opus-4-8", costUsd6: 117_000n });
   });
 
   it("prices an attempt without a model at the response model, once", async () => {

@@ -38,19 +38,20 @@ describe("costUsd6 with usage.iterations", () => {
   const tokens = (input: number, output: number) => ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
 
   it("sums every attempt at its own model and ignores the top-level usage", () => {
-    // Sonnet 5.5 declined after 100 tokens ($0.021), Opus 4.8 served the message ($0.075); top-level is that last attempt.
+    // Opus 5.5 declined after 100 tokens ($0.042), Opus 4.8 served the message ($0.075); top-level is that last attempt.
     const u = {
       ...tokens(10_000, 1_000),
       iterations: [
-        { type: "message", model: "claude-sonnet-5-5", ...tokens(10_000, 100) },
+        { type: "message", model: "claude-opus-5-5", ...tokens(10_000, 100) },
         { type: "fallback_message", model: "claude-opus-4-8", ...tokens(10_000, 1_000) },
       ],
     };
-    expect(costUsd6("claude-opus-4-8", u)).toBe(96_000n);
+    expect(costUsd6("claude-opus-4-8", u)).toBe(117_000n);
   });
   it("prices an attempt without a model at the response model", () => {
+    // Sonnet 5.5, not the unknown-model rate ($5)
     const u = { ...tokens(0, 0), iterations: [{ type: "message", model: null, ...tokens(1_000_000, 0) }] };
-    expect(costUsd6("claude-opus-4-8", u)).toBe(5_000_000n);
+    expect(costUsd6("claude-sonnet-5-5", u)).toBe(2_000_000n);
   });
   it("prices the top-level usage when iterations is empty or null", () => {
     expect(costUsd6("claude-sonnet-5-5", { ...tokens(10_000, 1_000), iterations: [] })).toBe(30_000n);
