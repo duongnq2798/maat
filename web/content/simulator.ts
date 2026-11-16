@@ -16,7 +16,7 @@ import {
 import { getDecisions } from "./decisions";
 import { CHECK_LABELS, type EngineCheck } from "./engine";
 import { FACTS } from "./facts";
-import { clockLabel, dayLabel, minuteOfClock, numberWord } from "./format";
+import { clockLabel, dayLabel, minuteOfClock } from "./format";
 import type { ReasonCode, RefusalCode } from "./reasons";
 
 /**
@@ -398,8 +398,8 @@ export function postText(s: Scenario, r: Pick<SimResult, "allowed" | "reason">):
   const what = `${formatUsd(s.intent.usd6)} of ${s.intent.token === "OTHER" ? "a token outside the mandate" : s.intent.token}`;
   const when = `${dayLabel(isoOfDay(s.etDay))} at ${clockLabel(s.intent.minute)} ET`;
   if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat's simulator said no: ${r.reason}.`;
-  const nine = numberWord(FACTS.checksPerTrade.value).toLowerCase();
-  return `I asked Maat's simulator to buy ${what} on ${when}. All ${nine} checks passed. Can you make it say no?`;
+  // Not "all nine checks passed": checks 2, 3, 5, 6 and 7 hold fork values here.
+  return `I asked Maat's simulator to buy ${what} on ${when}. It found no reason to refuse. Can you make it say no?`;
 }
 
 /** X's web intent: a plain link, no script. The share link rides along once it is absolute (after hydration). */

@@ -2,8 +2,12 @@ import { Simulator } from "@/components/Simulator";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FACTS } from "@/content/facts";
 import { andList, clockLabel, dayLabel, formatInt } from "@/content/format";
-import { FEED_AGE_TOKEN } from "@/content/simulator";
+import { DEFAULT_SCENARIO, evaluate, FEED_AGE_TOKEN, replay } from "@/content/simulator";
 import { repoFileUrl } from "@/lib/site";
+
+// The default scenario is a yes, so every check runs and says whether it holds a fork value.
+const { checks } = evaluate(replay(DEFAULT_SCENARIO.etDay, []), DEFAULT_SCENARIO.intent);
+const checkNumbers = (fixed: boolean) => andList(checks.flatMap((c, i) => (c.fixed === fixed ? [String(i + 1)] : [])));
 
 export function TryIt() {
   const { holidays, earlyCloses } = FACTS.calendar.value;
@@ -13,13 +17,13 @@ export function TryIt() {
   const notes = [
     {
       title: "Simulated",
-      body: `The market session (NYSE ${clockLabel(session.open)}–${clockLabel(session.close)} ET, weekends, and the holidays the calendar lists: ${andList(
+      body: `Checks ${checkNumbers(false)}, plus the balance check: the market session (NYSE ${clockLabel(session.open)}–${clockLabel(session.close)} ET, weekends, and the holidays the calendar lists: ${andList(
         holidays.map((h) => `${h.name} on ${dayLabel(h.date)}`),
       )}; early closes at ${andList(earlyCloses.map((e) => `${clockLabel(e.closeMin)} on ${dayLabel(e.date)}`))}), the token list, the per-trade and daily caps, the weight and the vault's USDC balance.`,
     },
     {
       title: "Fixed at fork values",
-      body: `Measured on Base at block ${formatInt(FACTS.forkBlock.value)}: token not paused, transfer path authorized, an ${FEED_AGE_TOKEN} feed answer ${FACTS.feedAgeSec.value} s old (the ${unmeasured} feeds are assumed fresh), multiplier unchanged, and a pool premium of ${andList(
+      body: `Checks ${checkNumbers(true)}, marked fork, are assumed to pass with the values measured on Base at block ${formatInt(FACTS.forkBlock.value)}: token not paused, transfer path authorized, an ${FEED_AGE_TOKEN} feed answer ${FACTS.feedAgeSec.value} s old (the ${unmeasured} feeds are assumed fresh), multiplier unchanged, and a pool premium of ${andList(
         FACTS.basket.value.map((t) => `${premiums[t]} bps for ${t}`),
       )}.`,
     },
