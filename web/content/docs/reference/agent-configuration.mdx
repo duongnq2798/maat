@@ -63,7 +63,7 @@ A Builder Code that you registered for your project. Live mode requires it, and 
 
 <EnvVar name="MAAT_LOOP_MODEL" />
 
-The model the agent asks for its proposals. The name goes to the Claude API as written, and the agent does not check it against a list. The agent books the cost of each answer at the price of the model that produced it. If that model declines and the API hands the request to a fallback model, the agent books the declined attempt and the fallback attempt each at its own model's price. It has prices for `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-opus-5-5` and `claude-opus-4-8`, and it books any other name at the `claude-opus-4-8` rate, the highest of the four, so an unknown model is not billed too low. That cost becomes the compute bill the agent pays, as [The treasury loop](/docs/concepts/treasury-loop#paying-its-own-bill) explains.
+The model the agent asks for its proposals. The name goes to the Claude API as written, and the agent does not check it against a list. The agent books the cost of each answer at the price of the model that produced it. If that model declines and the API hands the request to a fallback model, the agent books the declined attempt and the fallback attempt each at its own model's price. It has prices for `claude-sonnet-5-5`, `claude-sonnet-5`, `claude-opus-5-5` and `claude-opus-4-8`, and it books any other name at the `claude-opus-4-8` rate, the highest of the four. A model that costs more than that, such as `claude-fable-5-1`, is billed too low. That cost becomes the compute bill the agent pays, as [The treasury loop](/docs/concepts/treasury-loop#paying-its-own-bill) explains.
 
 ### MAAT_DATA_DIR
 
