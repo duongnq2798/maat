@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { checkDocsIndexes, checkDocsPage, checkExport, checkLandingIsolation, checkMarkdownCopies } from "@/lib/check-out";
+import {
+  checkDocsIndexes,
+  checkDocsPage,
+  checkExport,
+  checkLandingIsolation,
+  checkMarkdownCopies,
+  checkSearchIndex,
+  SEARCH_INDEX_GZIP_BUDGET,
+} from "@/lib/check-out";
 import { SITE } from "@/lib/site";
 
 const GOOD = [
@@ -185,5 +193,39 @@ describe("checkMarkdownCopies", () => {
 
   it("leaves the containers of the page alone: a Callout wraps real Markdown text", () => {
     expect(checkMarkdownCopies('<Callout type="warn">\nText.\n</Callout>\n\n<Steps>\n<Step>\nDo it.\n</Step>\n</Steps>\n')).toEqual([]);
+  });
+});
+
+describe("checkSearchIndex", () => {
+  /** An exported index: zbsearch keeps the records under docs.docs, each with the URL a result opens. */
+  const index = (...urls: string[]) => JSON.stringify({ type: "advanced", docs: { docs: Object.fromEntries(urls.map((url, i) => [i + 1, { url }])) } });
+  const PAGES: Record<string, string> = {
+    "/docs": '<h1>Maat docs</h1><h2 id="where-to-find-things">Where</h2>',
+    "/docs/concepts/nine-checks": '<h2 id="why">Why the order matters</h2>',
+  };
+  const page = (path: string) => PAGES[path];
+
+  it("accepts an index within its budget whose results all open an exported page and heading", () => {
+    expect(checkSearchIndex(index("/docs", "/docs#where-to-find-things", "/docs/concepts/nine-checks#why"), SEARCH_INDEX_GZIP_BUDGET, page)).toEqual([]);
+  });
+
+  it("flags an index over its gzipped budget, with both sizes", () => {
+    expect(checkSearchIndex(index("/docs"), SEARCH_INDEX_GZIP_BUDGET + 1, page)).toEqual([
+      `out/api/search.json is ${SEARCH_INDEX_GZIP_BUDGET + 1} bytes gzipped, over its budget of ${SEARCH_INDEX_GZIP_BUDGET}`,
+    ]);
+  });
+
+  it("flags a result that opens a heading its page does not have, once", () => {
+    expect(checkSearchIndex(index("/docs/concepts/nine-checks#gone", "/docs/concepts/nine-checks#gone"), 1, page)).toEqual([
+      "out/api/search.json: result /docs/concepts/nine-checks#gone has no heading with that id on its page",
+    ]);
+  });
+
+  it("flags a result that opens a page that was not exported", () => {
+    expect(checkSearchIndex(index("/docs/concepts/gone#x"), 1, page)).toEqual(["out/api/search.json: result /docs/concepts/gone#x points to no exported docs page"]);
+  });
+
+  it("flags an index with no records", () => {
+    expect(checkSearchIndex(index(), 1, page)).toEqual(["out/api/search.json holds no search records"]);
   });
 });
