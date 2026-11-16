@@ -39,7 +39,7 @@ This guide is for builders who edit the deploy configuration before the first de
 | --- | --- |
 | A clone of the repository | `contracts/script/MaatConfig.sol` is the file you edit. |
 | [Foundry](https://getfoundry.sh) | 1.8.4 or newer, for `forge script` and `forge test`. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
-| `contracts/.env` | Not in a clone, because git ignores it. Create it in `contracts/` with `cp .env.example .env`, as in [Create `contracts/.env`](/docs/guides/deploy-your-own-vault#create-contractsenv) in Deploy your own vault. The dry run reads `BASE_RPC_URL` from it and sets the four `MAAT_*` addresses on its own command line. |
+| `contracts/.env` | Not in a clone, because git ignores it. Create it in `contracts/` with `cp .env.example .env`, as in [Create `contracts/.env`](/docs/guides/deploy-your-own-vault#create-contractsenv) in Deploy your own vault. The dry run reads `BASE_RPC_URL` and the optional `MAAT_EXPENSE_PAYEE_2` from it, and sets the four required `MAAT_*` addresses on its own command line. |
 | A Base RPC | `BASE_RPC_URL` in `contracts/.env`. The template sets Base's public endpoint; if it answers HTTP 429, use your own URL. |
 | bash | Linux, macOS, or Git Bash on Windows, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). The dry run uses bash syntax, which PowerShell and cmd do not run. |
 
