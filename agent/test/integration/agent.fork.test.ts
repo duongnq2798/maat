@@ -144,13 +144,17 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(row?.decision?.allowed).toBe(false);
     expect(row?.decision?.reason).toBe(row?.preview); // contract verdict == off-chain preview
     expect(["MARKET_CLOSED", "FEED_STALE"]).toContain(row?.preview);
+    // A MARKET_CLOSED log names the closed phase in the rationale it hashes.
+    expect(row?.rationale).toBe(row?.preview === "MARKET_CLOSED" ? "GOOGLc underweight (market closed, weekend)" : "GOOGLc underweight");
 
     const before = await nonce();
     const second = await runOnce(await deps(batch, "fork-3"));
     expect(second).toMatchObject({ status: "done", sent: [] });
     const [again] = await intents(journal, "fork-3");
     expect(again?.preview).toBe(row?.preview);
-    expect(again?.gate).toBe(`${row?.preview} already logged today`);
+    // The fork block is Thursday 2026-11-05 10:30 ET, so both rounds fall on NYSE date 2026-11-07.
+    const phase = row?.preview === "MARKET_CLOSED" ? " (weekend)" : "";
+    expect(again?.gate).toBe(`${row?.preview} already logged for NYSE date 2026-11-07${phase}`);
     expect(again?.txHash).toBeUndefined();
     expect(await nonce()).toBe(before);
   });

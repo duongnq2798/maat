@@ -1,7 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Hex } from "viem";
-import type { ReasonName } from "../types.js";
+import type { RefusalKey } from "../refusals.js";
 
 /** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
 export interface PendingTx {
@@ -10,9 +10,11 @@ export interface PendingTx {
   action: string;
   amount: string;
   gateKind: "execute" | "log-refusal";
-  /** The preview verdict at send time; a log-refusal records this reason as logged. */
+  /** The preview verdict at send time; a log-refusal stored without `refusal` records this reason as logged. */
   preview: string;
   day: string;
+  /** The key a log-refusal records on settle. Older code stored none: such an entry records `day` and `preview`. */
+  refusal?: RefusalKey;
   /** The state block the round read before sending: the getLogs lower bound, and the age origin without `timestamp`. */
   block: string;
   /** That block's timestamp (unix seconds): the age origin of the pending window. Older code stored none. */
@@ -23,7 +25,7 @@ interface Data {
   version: 1;
   compute: Record<string, string>; // day -> usd6
   paidUsd6: string;
-  refusals: Record<string, ReasonName[]>; // day -> reasons logged onchain
+  refusals: Record<string, string[]>; // RefusalKey day (NYSE date, or UTC day number) -> reasons logged onchain
   txByDay: Record<string, number>;
   pending: PendingTx[];
 }
@@ -76,13 +78,12 @@ export class Store {
     this.data.paidUsd6 = (BigInt(this.data.paidUsd6) + usd6).toString();
   }
 
-  hasLoggedRefusal(day: bigint, reason: ReasonName): boolean {
-    return this.data.refusals[day.toString()]?.includes(reason) ?? false;
+  hasLoggedRefusal(k: RefusalKey): boolean {
+    return this.data.refusals[k.day]?.includes(k.reason) ?? false;
   }
 
-  recordRefusalLog(day: bigint, reason: ReasonName): void {
-    const k = day.toString();
-    this.data.refusals[k] = [...(this.data.refusals[k] ?? []), reason];
+  recordRefusalLog(k: RefusalKey): void {
+    this.data.refusals[k.day] = [...(this.data.refusals[k.day] ?? []), k.reason];
   }
 
   txCount(day: bigint): number {

@@ -17,13 +17,13 @@ import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
 import { SendRefused, type GuardedSender } from "../exec/sender.js";
-import { buildIntent, type Proposal } from "../intent.js";
+import { buildIntent, rationaleHash, type Proposal } from "../intent.js";
 import type { Journal } from "../ledger/journal.js";
 import type { PendingTx, Store } from "../ledger/store.js";
 import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
-import { gate } from "../refusals.js";
-import { REASONS, type ReasonName } from "../types.js";
+import { closedNote, gate, LOGGABLE_REASONS, refusalKey } from "../refusals.js";
+import { REASONS } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
 /** What runOnce needs from the chain around a send: gas estimates, receipts, and pending-tx reconciliation. */
@@ -149,7 +149,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
   /** Applies a mined execute()'s Decision to the store, clears the pending entry, and checks it against the preview. */
   const settle = async (p: PendingTx, decision: Decision): Promise<void> => {
     if (p.action === "PAY_EXPENSE" && decision.allowed) d.store.recordPaid(BigInt(p.amount));
-    if (p.gateKind === "log-refusal") d.store.recordRefusalLog(BigInt(p.day), p.preview as ReasonName);
+    if (p.gateKind === "log-refusal") d.store.recordRefusalLog(p.refusal ?? { day: p.day, reason: p.preview });
     d.store.clearPending(p.intentId);
     await d.store.save();
     if (decision.reason !== p.preview) {
@@ -290,20 +290,25 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       }
       const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
       const preview = pv.result;
-      const logged = preview !== "OK" && preview !== "UNKNOWN" && d.store.hasLoggedRefusal(day, preview);
-      const g = gate(preview, logged);
+      const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
+      const g = gate(preview, key && d.store.hasLoggedRefusal(key) ? key : null);
+      // A MARKET_CLOSED log names the closed phase. The vault's checks never read rationaleHash, so the preview stands.
+      const note = g.send && g.kind === "log-refusal" && preview === "MARKET_CLOSED" ? closedNote(s) : null;
+      const rationale = note ? `${p.rationale} (market closed, ${note})` : p.rationale;
+      const intent = note ? { ...b.intent, rationaleHash: rationaleHash(rationale) } : b.intent;
       const row = {
         kind: "intent" as const,
         runId,
         index,
-        intentId: b.intent.id,
+        intentId: intent.id,
         action: p.action,
         symbol: p.symbol,
         amountUsd6: b.amountUsd6,
-        rationale: p.rationale,
-        rationaleHash: b.intent.rationaleHash,
+        rationale,
+        rationaleHash: intent.rationaleHash,
         preview,
         ...(pv.error === undefined ? {} : { previewError: pv.error }),
+        ...(key && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
       };
       if (!g.send || !sender) {
         await j.append({ ...row, gate: g.send ? `dry-run: would ${g.kind}` : g.why });
@@ -314,15 +319,16 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       // Persist the intent as pending before it can leave the process, so a crash, a receipt timeout or a send that
       // fails after broadcast is reconciled next round instead of being billed or logged twice.
       checkCap();
-      const data = encodeExecute(b.intent);
+      const data = encodeExecute(intent);
       const gas = await gasFor("execute", data);
       const entry: PendingTx = {
-        intentId: b.intent.id,
+        intentId: intent.id,
         action: p.action,
-        amount: b.intent.amount.toString(),
+        amount: intent.amount.toString(),
         gateKind: g.kind,
         preview,
         day: day.toString(),
+        ...(g.kind === "log-refusal" && key ? { refusal: key } : {}),
         block: s.blockNumber.toString(),
         timestamp: s.timestamp.toString(),
       };
@@ -331,7 +337,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await d.store.save();
       let hash: Hex;
       try {
-        hash = await sender.send({ to: d.vault, data, idempotencyKey: b.intent.id, gas });
+        hash = await sender.send({ to: d.vault, data, idempotencyKey: intent.id, gas });
       } catch (e) {
         if (e instanceof SendRefused) d.store.clearPending(entry.intentId); // refused before anything was broadcast
         throw e;
@@ -347,8 +353,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         d.store.clearPending(entry.intentId); // a reverted execute() leaves the intent unused
         throw new Halt(`tx ${hash} reverted`);
       }
-      const decision = decisionIn(receipt.logs, d.vault, b.intent.id);
-      if (!decision) throw new Halt(`no Decision for intent ${b.intent.id} in tx ${hash}`);
+      const decision = decisionIn(receipt.logs, d.vault, intent.id);
+      if (!decision) throw new Halt(`no Decision for intent ${intent.id} in tx ${hash}`);
       await j.append({ ...row, gate: g.kind, txHash: hash, gasUsed: receipt.gasUsed, decision });
       await settle(entry, decision);
     }

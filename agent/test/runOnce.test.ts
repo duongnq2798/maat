@@ -1,20 +1,20 @@
 import { existsSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HttpRequestError, size } from "viem";
+import { HttpRequestError, keccak256, size, toBytes } from "viem";
 import { describe, expect, it } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
 import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
-import { Journal } from "../src/ledger/journal.js";
+import { Journal, type JournalRow } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
 import { FixedProposer, type Proposer } from "../src/llm/proposer.js";
 import type { Batch } from "../src/llm/schema.js";
 import { LEGACY_PENDING_WINDOW_BLOCKS, PENDING_WINDOW_SECONDS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
 import type { OnchainIntent } from "../src/types.js";
-import { EXECUTOR, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
+import { EXECUTOR, VAULT, standardScene, withCalendar, type FakeChain } from "./fakes/fakeChain.js";
 import { FakeReceipts } from "./fakes/fakeReceipts.js";
 import { FakeSender } from "./fakes/fakeSender.js";
 
@@ -94,14 +94,34 @@ describe("runOnce", () => {
     expect(t.store.txCount(DAY)).toBe(1);
   });
 
-  it("logs a market refusal onchain once per day", async () => {
+  it("logs a market refusal once per UTC day while the calendar is unreadable, and journals why", async () => {
     const t = await setup({ batch: BUY20, preview: () => 6 });
     t.receipts.verdict = () => ({ allowed: false, reason: 6 });
+    const why = `calendar unreadable: the refusal is keyed by UTC day ${DAY}`;
     expect((await runOnce(t.deps)).sent).toHaveLength(1);
-    expect((await t.journal.read()).find((e) => e.kind === "intent")).toMatchObject({ preview: "MARKET_CLOSED", gate: "log-refusal", decision: { allowed: false, reason: "MARKET_CLOSED" } });
+    expect((await t.journal.read()).find((e) => e.kind === "intent")).toMatchObject({
+      preview: "MARKET_CLOSED",
+      gate: "log-refusal",
+      rationale: "underweight",
+      note: why,
+      decision: { allowed: false, reason: "MARKET_CLOSED" },
+    });
     const again = await runOnce({ ...t.deps, runId: "run-2" });
     expect(again.sent).toEqual([]);
-    expect((await t.journal.read()).filter((e) => e.kind === "intent").at(-1)).toMatchObject({ gate: "MARKET_CLOSED already logged today" });
+    expect((await t.journal.read()).filter((e) => e.kind === "intent").at(-1)).toMatchObject({ gate: `MARKET_CLOSED already logged for UTC day ${DAY}`, note: why });
+  });
+
+  it("loads an older state file's UTC-day refusals, which hold only while the calendar is unreadable", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "maat-run-"));
+    await writeFile(join(dir, "state.json"), JSON.stringify({ version: 1, compute: {}, paidUsd6: "0", refusals: { [DAY.toString()]: ["MARKET_CLOSED"] }, txByDay: {} }));
+    const store = await Store.open(dir);
+    const unread = await setup({ batch: BUY20, preview: () => 6, store });
+    expect((await runOnce(unread.deps)).sent).toEqual([]);
+    expect((await unread.journal.read()).find((e) => e.kind === "intent")).toMatchObject({ gate: `MARKET_CLOSED already logged for UTC day ${DAY}` });
+    const read = await setup({ batch: BUY20, preview: () => 6, store, scene: withCalendar(standardScene()) });
+    read.receipts.verdict = () => ({ allowed: false, reason: 6 });
+    expect((await runOnce(read.deps)).sent).toHaveLength(1);
+    expect(store.hasLoggedRefusal({ day: "2026-11-06", reason: "MARKET_CLOSED:overnight" })).toBe(true); // Friday 16:20 ET
   });
 
   it("does not spend gas on a bookkeeping refusal", async () => {
@@ -345,8 +365,8 @@ describe("runOnce", () => {
       t.receipts.timeout = false;
       const second = await runOnce({ ...t.deps, runId: "run-2" });
       expect(second).toMatchObject({ status: "done", sent: [] });
-      expect(t.store.hasLoggedRefusal(DAY, "MARKET_CLOSED")).toBe(true);
-      expect((await t.journal.read()).filter((e) => e.kind === "intent").at(-1)).toMatchObject({ runId: "run-2", gate: "MARKET_CLOSED already logged today" });
+      expect(t.store.hasLoggedRefusal({ day: DAY.toString(), reason: "MARKET_CLOSED" })).toBe(true);
+      expect((await t.journal.read()).filter((e) => e.kind === "intent").at(-1)).toMatchObject({ runId: "run-2", gate: `MARKET_CLOSED already logged for UTC day ${DAY}` });
     });
 
     it("holds the round while a pending tx may still land", async () => {
@@ -451,6 +471,140 @@ describe("runOnce", () => {
     });
   });
 
+  describe("refusal logs per NYSE date", () => {
+    const NOV25 = 1_795_564_800n; // 2026-11-25T00:00Z, a Wednesday; New York is on EST (UTC-5) from November 1
+    const utc = (hours: number, minutes = 0) => NOV25 + BigInt(hours) * 3600n + BigInt(minutes) * 60n;
+    const WED_1630_ET = utc(21, 30);
+    const WED_2330_ET = utc(28, 30); // 04:30 UTC on Thursday 26 November
+    const THU_1000_ET = utc(39); // Thanksgiving
+    const THU_1400_ET = utc(43);
+    const THU_2100_ET = utc(50); // 02:00 UTC on Friday 27 November
+    const FRI_0800_ET = utc(61);
+    const FRI_1400_ET = utc(67); // after the 13:00 ET early close
+    const CLOSED = (note: string) => `underweight (market closed, ${note})`;
+
+    type Row = Extract<JournalRow, { kind: "intent" | "sent" }>;
+    const isRow = (e: JournalRow): e is Row => e.kind === "intent" || e.kind === "sent";
+
+    /** The calendar answers like MarketCalendar; every preview and Decision is `reason`. */
+    async function week(reason = 6, mode: "dry-run" | "live" = "live") {
+      const scene = withCalendar(standardScene());
+      const t = await setup({ batch: BUY20, preview: () => reason, scene, mode });
+      t.receipts.verdict = () => ({ allowed: false, reason });
+      let n = 0;
+      const round = (ts: bigint, over: Partial<RunDeps> = {}) => {
+        scene.block = { ...scene.block, timestamp: ts };
+        return runOnce({ ...t.deps, ...over, runId: `run-${++n}` });
+      };
+      const intents = async () => (await t.journal.read()).filter((e): e is Extract<Row, { kind: "intent" }> => e.kind === "intent");
+      return { ...t, round, intents };
+    }
+
+    it("logs Wednesday's after-close refusal once for NYSE date 2026-11-25, also after midnight UTC", async () => {
+      const t = await week();
+      expect((await t.round(WED_1630_ET)).sent).toHaveLength(1);
+      expect((await t.round(WED_2330_ET)).sent).toEqual([]);
+      expect((await t.intents()).map((r) => [r.gate, r.rationale])).toEqual([
+        ["log-refusal", CLOSED("outside regular hours")],
+        ["MARKET_CLOSED already logged for NYSE date 2026-11-25 (overnight)", "underweight"],
+      ]);
+      expect(t.store.hasLoggedRefusal({ day: "2026-11-25", reason: "MARKET_CLOSED:overnight" })).toBe(true);
+    });
+
+    it("logs the Thanksgiving refusal once, naming the holiday, through Thursday evening ET", async () => {
+      const t = await week();
+      expect((await t.round(THU_1000_ET)).sent).toHaveLength(1);
+      expect((await t.round(THU_1400_ET)).sent).toEqual([]);
+      expect((await t.round(THU_2100_ET)).sent).toEqual([]);
+      const already = "MARKET_CLOSED already logged for NYSE date 2026-11-26 (holiday)";
+      expect((await t.intents()).map((r) => [r.gate, r.rationale])).toEqual([
+        ["log-refusal", CLOSED("NYSE holiday: Thanksgiving")],
+        [already, "underweight"],
+        [already, "underweight"],
+      ]);
+    });
+
+    it("logs Friday's overnight and early-close refusals, whatever the week logged before", async () => {
+      const t = await week();
+      for (const ts of [WED_1630_ET, WED_2330_ET, THU_1000_ET, THU_1400_ET, THU_2100_ET]) await t.round(ts);
+      expect((await t.round(FRI_0800_ET)).sent).toHaveLength(1);
+      expect((await t.round(FRI_1400_ET)).sent).toHaveLength(1);
+      expect((await t.intents()).filter((r) => r.gate === "log-refusal").map((r) => [r.runId, r.rationale])).toEqual([
+        ["run-1", CLOSED("outside regular hours")],
+        ["run-3", CLOSED("NYSE holiday: Thanksgiving")],
+        ["run-6", CLOSED("outside regular hours")],
+        ["run-7", CLOSED("early close 13:00 ET")],
+      ]);
+      expect(t.inner.sent).toHaveLength(4);
+      expect(t.store.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:overnight" })).toBe(true);
+      expect(t.store.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" })).toBe(true);
+    });
+
+    it("logs any other loggable reason at most once per NYSE date", async () => {
+      const t = await week(7); // FEED_STALE
+      expect((await t.round(WED_1630_ET)).sent).toHaveLength(1);
+      expect((await t.round(WED_2330_ET)).sent).toEqual([]);
+      expect((await t.round(THU_1000_ET)).sent).toHaveLength(1);
+      expect((await t.intents()).map((r) => [r.gate, r.rationale])).toEqual([
+        ["log-refusal", "underweight"],
+        ["FEED_STALE already logged for NYSE date 2026-11-25", "underweight"],
+        ["log-refusal", "underweight"],
+      ]);
+    });
+
+    it("hashes the rationale it journals and sends, Claude's text and the phase note together", async () => {
+      const t = await week();
+      await t.round(THU_1000_ET);
+      const rows = (await t.journal.read()).filter(isRow);
+      expect(rows.map((r) => r.kind)).toEqual(["sent", "intent"]);
+      const sent = t.receipts.calls()[0]!.args[0] as OnchainIntent;
+      for (const r of rows) {
+        expect(r.rationale).toBe(CLOSED("NYSE holiday: Thanksgiving"));
+        expect(r.rationaleHash).toBe(keccak256(toBytes(r.rationale)));
+        expect(sent.rationaleHash).toBe(r.rationaleHash);
+      }
+    });
+
+    it("journals in dry-run the noted rationale a log would carry, with its hash", async () => {
+      const t = await week(6, "dry-run");
+      await t.round(FRI_1400_ET);
+      const [row] = await t.intents();
+      expect(row).toMatchObject({ gate: "dry-run: would log-refusal", rationale: CLOSED("early close 13:00 ET") });
+      expect(row!.rationaleHash).toBe(keccak256(toBytes(row!.rationale)));
+    });
+
+    it("records the key stored at send time when a round after a restart settles the send", async () => {
+      const t = await week();
+      t.receipts.timeout = true;
+      expect((await t.round(WED_2330_ET)).status).toBe("halted");
+      const refusal = { day: "2026-11-25", reason: "MARKET_CLOSED:overnight" };
+      expect(t.store.pending()).toEqual([expect.objectContaining({ gateKind: "log-refusal", refusal })]);
+      t.receipts.timeout = false;
+      const store = await Store.open(t.dir);
+      expect(await t.round(THU_1000_ET, { store })).toMatchObject({ status: "done" });
+      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({ outcome: "applied" });
+      expect(store.hasLoggedRefusal(refusal)).toBe(true);
+      expect(store.hasLoggedRefusal({ day: "2026-11-26", reason: "MARKET_CLOSED:holiday" })).toBe(true);
+      expect(t.inner.sent).toHaveLength(2);
+    });
+
+    it("settles a pending log-refusal that older code stored with only its UTC day", async () => {
+      const t = await week();
+      t.receipts.timeout = true;
+      await t.round(WED_2330_ET);
+      t.receipts.timeout = false;
+      const file = join(t.dir, "state.json");
+      const raw = JSON.parse(await readFile(file, "utf8"));
+      delete raw.pending[0].refusal;
+      await writeFile(file, JSON.stringify(raw));
+      const store = await Store.open(t.dir);
+      expect(store.pending()[0]).not.toHaveProperty("refusal");
+      expect(await t.round(THU_1000_ET, { store })).toMatchObject({ status: "done" });
+      expect(store.pending()).toEqual([]);
+      expect(store.hasLoggedRefusal({ day: (WED_2330_ET / 86_400n).toString(), reason: "MARKET_CLOSED" })).toBe(true);
+    });
+  });
+
   describe("preview / Decision mismatch", () => {
     const TWO: Batch = { summary: "two", intents: [BUY20.intents[0]!, { ...BUY20.intents[0]!, symbol: "AAPLc" }] };
 
@@ -483,7 +637,7 @@ describe("runOnce", () => {
       expect(t.inner.sent).toHaveLength(1);
       const rows = await t.journal.read();
       expect(rows.find((e) => e.kind === "mismatch")).toMatchObject({ message: "mismatch: preview MARKET_CLOSED, vault FEED_STALE" });
-      expect(rows.filter((e) => e.kind === "intent").at(-1)).toMatchObject({ gate: "MARKET_CLOSED already logged today" });
+      expect(rows.filter((e) => e.kind === "intent").at(-1)).toMatchObject({ gate: `MARKET_CLOSED already logged for UTC day ${DAY}` });
     });
   });
 
