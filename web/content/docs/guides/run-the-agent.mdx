@@ -10,6 +10,7 @@ sources:
   - agent/src/main.ts
   - agent/src/config.ts
   - agent/src/loop/runOnce.ts
+  - agent/src/chain/logWindows.ts
   - agent/src/loop/scheduler.ts
   - agent/src/loop/lock.ts
   - agent/src/exec/calls.ts
@@ -278,7 +279,7 @@ What the next round does with a pending send:
 
 The window is chain time: the agent compares the timestamp of the block it reads in the round with the timestamp of the block the send was prepared at, so a change in how often Base makes a block does not change it. A send is dropped once exactly that much time has passed. An entry stored by an older agent has no timestamp and is aged in blocks instead, as agent/README.md describes.
 
-These are the halt reasons the runner writes itself. Any other error thrown after the round has read the vault and checked the executor, such as a refused or failed send, also halts it, and `haltReason` then holds that error's message. Read the journal's `error` line, which holds the halt reason after the words `halted:`.
+These are the halt reasons the runner writes itself. Any other error thrown after the round has read the vault and checked the executor, such as a refused or failed send, also halts it, and `haltReason` then holds the first line of that error's message. Every halt keeps only that first line, because viem puts the RPC URL, which may carry a key, on the lines below it. Read the journal's `error` line, which holds the halt reason after the words `halted:`.
 
 | `haltReason` begins | What happened |
 | --- | --- |
