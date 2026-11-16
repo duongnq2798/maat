@@ -53,6 +53,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
         estimateGas: pub.estimateGas,
         getTransaction: pub.getTransaction,
         getLogs: pub.getLogs,
+        getBlockNumber: pub.getBlockNumber,
         readContract: pub.readContract,
         // The public RPC makes the first swap on a cold fork take minutes; RunOnce's 120 s default is too short here.
         waitForTransactionReceipt: (a) => pub.waitForTransactionReceipt({ ...a, timeout: 600_000 }),

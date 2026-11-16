@@ -102,7 +102,7 @@ Each round that reaches the proposal step asks Claude, and each answer has a cos
 
 Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment at the front of the round's queue:
 
-```typescript title="agent/src/loop/runOnce.ts#L260-L264"
+```typescript title="agent/src/loop/runOnce.ts#L272-L276"
     const queue: Proposal[] = [];
     if (unpaid >= BILL_MIN_USD6) {
       const usd = usdc6ToUsd(unpaid);

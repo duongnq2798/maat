@@ -45,6 +45,10 @@ export const DOCS_FACTS = {
     10,
     "agent/src/loop/runOnce.ts PENDING_WINDOW_SECONDS = 600n, the chain time after which a send with no onchain trace is recorded as dropped",
   ),
+  logWindowBlocks: fact(
+    9_000,
+    "agent/src/chain/logWindows.ts MAX_LOG_RANGE = 9_000n, the most blocks one eth_getLogs query of the agent covers",
+  ),
   executorGasEth: fact(
     0.002,
     "agent/README.md Live run, step 5, and agent/scripts/cdp-setup.ts: about 0.002 ETH on Base for the executor's gas. An estimate, not measured",

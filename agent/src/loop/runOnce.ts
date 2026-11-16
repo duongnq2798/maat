@@ -12,6 +12,7 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
+import { logWindows } from "../chain/logWindows.js";
 import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
@@ -26,7 +27,7 @@ import { REASONS, type ReasonName } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
 /** What runOnce needs from the chain around a send: gas estimates, receipts, and pending-tx reconciliation. */
-export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "readContract">;
+export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "getBlockNumber" | "readContract">;
 export const BILL_MIN_USD6 = 100_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
 /** A pending send with no onchain trace is given up after this much chain time: 10 minutes. */
@@ -135,6 +136,16 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
   };
 
+  /** The vault's Decision for `id` in blocks [from, to], one bounded eth_getLogs window at a time, oldest first. */
+  const decisionInLogs = async (id: Hex, from: bigint, to: bigint): Promise<Decision | undefined> => {
+    for (const { fromBlock, toBlock } of logWindows(from, to)) {
+      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: id }, fromBlock, toBlock });
+      const decision = decisionIn(logs, d.vault, id);
+      if (decision) return decision;
+    }
+    return undefined;
+  };
+
   /** Applies a mined execute()'s Decision to the store, clears the pending entry, and checks it against the preview. */
   const settle = async (p: PendingTx, decision: Decision): Promise<void> => {
     if (p.action === "PAY_EXPENSE" && decision.allowed) d.store.recordPaid(BigInt(p.amount));
@@ -181,11 +192,12 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     const receipt = tx && tx.blockNumber !== null ? await receiptOf(p.txHash!) : null;
     const mined = receipt ? decisionIn(receipt.logs, d.vault, p.intentId) : undefined;
     if (mined) return apply(mined, "Decision read from the tx receipt");
-    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
+    // usedIntent is read at a fresh head, so a used intent's Decision lies between the send's block and that head.
+    const head = await d.txClient.getBlockNumber({ cacheTime: 0 });
+    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId], blockNumber: head });
     if (used) {
-      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });
-      const decision = decisionIn(logs, d.vault, p.intentId);
-      if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block}`);
+      const decision = await decisionInLogs(p.intentId, BigInt(p.block), head);
+      if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block} to ${head}`);
       return apply(decision, "Decision found in the vault's logs");
     }
     if (receipt) {

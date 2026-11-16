@@ -299,6 +299,42 @@ describe("runOnce", () => {
       expect(t.store.unpaidUsd6()).toBe(0n);
     });
 
+    const windows = (t: { receipts: FakeReceipts }) => t.receipts.logQueries.map((q) => [q.fromBlock, q.toBlock]);
+
+    it("searches the logs in bounded windows from the send's block and stops at the Decision", async () => {
+      const t = await setup({ store: await billed() });
+      t.inner.failAfterBroadcast = new Error("socket hang up");
+      await runOnce(t.deps);
+      t.inner.failAfterBroadcast = undefined;
+      t.receipts.minedAt = 100n + 20_000n;
+      t.receipts.head = 100n + 40_000n;
+      expect(await runOnce({ ...t.deps, runId: "run-2" })).toMatchObject({ status: "done", sent: [] });
+      expect(windows(t)).toEqual([
+        [100n, 9_099n],
+        [9_100n, 18_099n],
+        [18_100n, 27_099n],
+      ]);
+      expect(t.receipts.usedAt).toEqual([40_100n]); // usedIntent is read at the head the search ends at
+      expect(t.store.unpaidUsd6()).toBe(0n);
+    });
+
+    it("searches every window up to the head before it halts on a used intent with no Decision", async () => {
+      const t = await setup({ store: await billed() });
+      t.inner.failAfterBroadcast = new Error("socket hang up");
+      await runOnce(t.deps);
+      t.inner.failAfterBroadcast = undefined;
+      t.receipts.verdict = () => null;
+      t.receipts.head = 100n + 18_000n;
+      const r = await runOnce({ ...t.deps, runId: "run-2" });
+      expect(r.status).toBe("halted");
+      expect(r.haltReason).toMatch(/is used but no Decision was found from block 100 to 18100$/);
+      expect(windows(t)).toEqual([
+        [100n, 9_099n],
+        [9_100n, 18_099n],
+        [18_100n, 18_100n],
+      ]);
+    });
+
     it("applies a mined log-refusal, so the refusal is not logged twice", async () => {
       const t = await setup({ batch: BUY20, preview: () => 6 });
       t.receipts.verdict = () => ({ allowed: false, reason: 6 });

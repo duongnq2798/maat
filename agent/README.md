@@ -56,7 +56,7 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 1. Read `data/journal.jsonl` (the `error`, `mismatch`, `sent` and `reconcile` lines), then look up the tx hash on Basescan.
 2. `pending-tx` means a tx was sent and its outcome is still unknown. The next cycle reconciles it first, on its own:
    - the tx is mined and its receipt holds the intent's `Decision`: apply it, with no log search;
-   - otherwise, the intent was used: find its `Decision` in the vault's logs and apply it;
+   - otherwise, the intent was used: find its `Decision` in the vault's logs, from the block the send was prepared at to the latest block, and apply it. Each `eth_getLogs` covers at most 9,000 blocks, because free RPCs cap one query at about 10,000;
    - the tx is still in the mempool, or less than 10 minutes of chain time have passed since the block the send was prepared at: keep waiting and send nothing;
    - 10 minutes or more have passed with no trace of it: record `dropped` and continue.
 

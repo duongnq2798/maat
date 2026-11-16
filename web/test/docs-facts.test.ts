@@ -71,6 +71,10 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_SECONDS") / 60).toBe(DOCS_FACTS.pendingWindowMinutes.value);
   });
 
+  it("the most blocks one log query of the agent covers", () => {
+    expect(tsConst("agent/src/chain/logWindows.ts", "MAX_LOG_RANGE")).toBe(DOCS_FACTS.logWindowBlocks.value);
+  });
+
   it("the executor's gas top-up is the figure in the agent README and in the setup script", () => {
     const readme = /send about ([\d.]+) ETH on Base to the executor address/.exec(readRepo("agent/README.md"));
     const script = /send ~([\d.]+) ETH on Base to \$\{account\.address\} for gas/.exec(readRepo("agent/scripts/cdp-setup.ts"));
