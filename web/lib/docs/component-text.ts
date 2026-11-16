@@ -1,3 +1,4 @@
+import type { Root } from "fumadocs-core/page-tree";
 import { REASON_MEANING_DOCS, REASONS } from "../../content/reasons";
 import { SITE } from "../site";
 import { forkLedger, GROUP_OF, decisionEventSource, mandateTable } from "./content-data";
@@ -8,6 +9,7 @@ import { STATUS_LABEL, STATUSES, type DocStatus } from "./frontmatter";
 import { docsData } from "./generated";
 import { READER_PATHS } from "./reader-paths";
 import { kindLabels, NO_DEFAULT, NO_EXAMPLE, READ_BY, readByDetail, requiredDetail, requiredLabel } from "./reference-labels";
+import { sectionIndex } from "./sections";
 import { accessLabel, errorSignature, eventSignature, findContract, findItem, functionSignature } from "./signatures";
 import type { SolParam } from "./sol-surface";
 
@@ -23,6 +25,8 @@ export type Props = Readonly<Record<string, string | boolean | readonly string[]
 export interface TextContext {
   /** Whether a docs page has shipped, by slug ("get-started/quickstart"). */
   readonly exists: (slug: string) => boolean;
+  /** The docs page tree, as Fumadocs builds the sidebar from content/docs: what a section index lists. */
+  readonly tree?: () => Root;
 }
 
 type Render = (props: Props, ctx: TextContext) => string;
@@ -214,6 +218,14 @@ const routerCards: Render = (_props, ctx) =>
     return `- **${p.reader}**: ${p.want} ${cta}`;
   }).join("\n");
 
+/** Each group's cards as a list of links with their descriptions; a named group under its name, in bold, not a heading. */
+const sectionIndexText: Render = (props, ctx) => {
+  if (!ctx.tree) throw new Error("<SectionIndex /> needs the docs page tree (TextContext.tree)");
+  return sectionIndex(ctx.tree(), optionalStr("SectionIndex", props, "section") ?? "")
+    .map((g) => blocks(g.name && `**${g.name}**`, g.cards.map((c) => `- ${link(c.title, c.url)}${c.description ? `: ${c.description}` : ""}`).join("\n")))
+    .join("\n\n");
+};
+
 const statusBadge: Render = (props) => {
   const status = str("StatusBadge", props, "status");
   if (!(STATUSES as readonly string[]).includes(status)) throw new Error(`<StatusBadge status="${status}" /> is not a status (${STATUSES.join(", ")})`);
@@ -248,6 +260,7 @@ export const COMPONENT_TEXT: Readonly<Record<DataComponent, Render>> = {
   EventSignature: eventSignatureText,
   ForkLedger: forkLedgerText,
   RouterCards: routerCards,
+  SectionIndex: sectionIndexText,
   StatusBadge: statusBadge,
   DecisionLoop: flow(DECISION_LOOP),
   Architecture: flow(ARCHITECTURE),

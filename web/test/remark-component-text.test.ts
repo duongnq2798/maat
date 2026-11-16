@@ -139,6 +139,42 @@ describe("remarkComponentText", () => {
     }
   });
 
+  it("lists a section from the pages and meta.json files under docsDir, as Fumadocs builds the sidebar from them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "maat-docs-"));
+    try {
+      const page = (path: string, title: string, description: string, eol = "\n") =>
+        writeFileSync(join(dir, path), ["---", `title: "${title}"`, `description: ${description}`, "---", "", "Body."].join(eol));
+      writeFileSync(join(dir, "meta.json"), JSON.stringify({ title: "Docs", pages: ["index", "a"] }));
+      page("index.mdx", "Home", "The home.");
+      mkdirSync(join(dir, "a"));
+      writeFileSync(join(dir, "a", "meta.json"), JSON.stringify({ title: "Section A", pages: ["one", "---Group---", "two", "[Home](/docs)"] }));
+      page(join("a", "index.mdx"), "Section A", "What A holds.");
+      page(join("a", "one.mdx"), "One: the first", "Page one.");
+      // A Windows checkout may have CRLF line endings.
+      page(join("a", "two.mdx"), "Two", "Page two.", "\r\n");
+      const tags = '<SectionIndex section="a" />\n\n<SectionIndex />\n';
+      const { nodes, whole } = parse(tags, {
+        '<SectionIndex section="a" />': flow("SectionIndex", [attr("section", "a")]),
+        "<SectionIndex />": flow("SectionIndex"),
+      });
+      expect(run(tags, { type: "root", children: nodes, position: whole }, { docsDir: dir })).toBe(
+        [
+          "- [One: the first](/docs/a/one): Page one.",
+          "",
+          "**Group**",
+          "",
+          "- [Two](/docs/a/two): Page two.",
+          "- [Home](/docs): The home.",
+          "",
+          "- [Section A](/docs/a): What A holds.",
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it("indents a multi-line rendering under its list item, with empty lines for the blank ones", () => {
     const source = `- ${EXECUTE}\n- Second item.\n`;
     const { nodes, whole } = parse(source, { [EXECUTE]: flow("Fn", [attr("contract", "MandateVault"), attr("name", "execute")]) });

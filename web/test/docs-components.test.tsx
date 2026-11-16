@@ -1,12 +1,17 @@
 import { render, screen, within } from "@testing-library/react";
+import type { Root } from "fumadocs-core/page-tree";
 import { describe, expect, it } from "vitest";
 import { EventSignature, ForkLedger, MandateTable, READER_PATHS, ReasonTable, RouterCards } from "@/components/docs/content";
 import { Architecture, DecisionLoop, marketWeek, MarketWeek, TimelockFlow, TreasuryLoop } from "@/components/docs/diagrams";
+import { SectionIndex } from "@/components/docs/SectionIndex";
 import { getDecisions } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
 import { mandateRows } from "@/content/mandate";
 import { REASON_MEANING, REASON_MEANING_DOCS, REASONS } from "@/content/reasons";
+import { DOCS_IA } from "@/lib/docs/ia";
 import { docsSlug } from "@/lib/docs/links";
+import { docsTree } from "@/lib/docs/remark-component-text";
+import { sectionIndex } from "@/lib/docs/sections";
 
 describe("data tables", () => {
   it("ReasonTable lists every refusal with its enum id and a link to its entry", () => {
@@ -55,6 +60,122 @@ describe("RouterCards", () => {
     render(<RouterCards exists={(slug) => !slug.startsWith("security/")} />);
     expect(screen.getAllByRole("link")).toHaveLength(READER_PATHS.length - 1);
     expect(screen.getByText("Security model (coming soon)")).toBeInTheDocument();
+  });
+});
+
+describe("SectionIndex", () => {
+  // The tree Fumadocs builds from content/docs, the same builder as the sidebar's; the IA is the independent oracle.
+  // The path is relative to web/, as the build reads it (the test helpers' file URLs do not resolve under jsdom).
+  const tree = docsTree("content/docs");
+  const iaPage = new Map(DOCS_IA.flatMap((s) => s.pages).map((p) => [p.slug, p]));
+  const sections = DOCS_IA.filter((s) => s.dir !== "");
+
+  /** Each card as a reader sees it: the link's text and target, and the line under it. */
+  const cards = (root: HTMLElement) =>
+    [...root.querySelectorAll("li")].map((li) => ({
+      title: li.querySelector("a")?.textContent,
+      href: li.querySelector("a")?.getAttribute("href"),
+      description: li.querySelector("p")?.textContent,
+    }));
+
+  it.each(sections.map((s) => [s.dir, s] as const))("%s lists the folder's pages in sidebar order, each with its description", (dir, s) => {
+    const { container } = render(<SectionIndex tree={tree} section={dir} />);
+    const expected = s.pages
+      .filter((p) => p.slug !== `${dir}/index`)
+      .flatMap((p) => [p, ...(s.links ?? []).filter((l) => l.after === p.slug).map((l) => iaPage.get(l.slug)!)])
+      .map((p) => ({ title: p.title, href: `/docs/${p.slug}`, description: p.description }));
+    expect(cards(container)).toEqual(expected);
+  });
+
+  it("puts Reference under the sidebar's groups, with Refusal codes among the contracts", () => {
+    const { container } = render(<SectionIndex tree={tree} section="reference" />);
+    const groups = [...container.querySelectorAll("section")].map((g) => ({
+      name: g.querySelector("h2")?.textContent,
+      pages: cards(g).map((c) => c.href),
+    }));
+    expect(groups).toEqual([
+      {
+        name: "Contracts",
+        pages: ["mandate-vault", "events", "errors", "types"]
+          .map((p) => `/docs/reference/${p}`)
+          .concat("/docs/concepts/refusal-codes", "/docs/reference/market-calendar", "/docs/reference/adapters"),
+      },
+      { name: "Agent", pages: ["/docs/reference/agent-configuration", "/docs/reference/agent-scripts"] },
+      { name: "Data", pages: ["/docs/reference/base-addresses", "/docs/reference/default-parameters"] },
+    ]);
+  });
+
+  it("on the docs home, maps the sections: each title links its own page, with that page's description", () => {
+    const { container } = render(<SectionIndex tree={tree} />);
+    expect(cards(container)).toEqual(
+      sections.map((s) => ({ title: s.title, href: `/docs/${s.dir}`, description: iaPage.get(`${s.dir}/index`)!.description })),
+    );
+    // The home page itself is not a card on its own map.
+    expect(screen.queryByRole("link", { name: "Maat docs" })).toBeNull();
+  });
+
+  it("fails on a section with no page of its own, rather than listing nothing", () => {
+    expect(() => SectionIndex({ tree, section: "nope" })).toThrow("no docs folder has its own page at /docs/nope");
+  });
+});
+
+describe("sectionIndex", () => {
+  // A tree with what content/docs does not have yet: a separator without a name, a page without a description, a link
+  // to a page of another folder and a link out of the docs.
+  const tree: Root = {
+    name: "Docs",
+    children: [
+      { type: "page", name: "Home", url: "/docs", description: "The home." },
+      {
+        type: "folder",
+        name: "A",
+        index: { type: "page", name: "A", url: "/docs/a", description: "Section A." },
+        children: [
+          { type: "page", name: "One", url: "/docs/a/one", description: "Page one." },
+          { type: "separator" },
+          { type: "page", name: "Two", url: "/docs/a/two" },
+          { type: "separator", name: "More" },
+          { type: "page", name: "Three", url: "/docs/b/three" },
+          { type: "page", name: "Out", url: "https://example.com", external: true },
+        ],
+      },
+      {
+        type: "folder",
+        name: "B",
+        index: { type: "page", name: "B", url: "/docs/b" },
+        children: [{ type: "page", name: "Three", url: "/docs/b/three", description: "Page three." }],
+      },
+    ],
+  };
+
+  it("groups a folder's entries by separator, keeps an unnamed one as a break, and fills in a link's description", () => {
+    expect(sectionIndex(tree, "a")).toEqual([
+      { cards: [{ title: "One", url: "/docs/a/one", description: "Page one." }] },
+      { cards: [{ title: "Two", url: "/docs/a/two" }] },
+      {
+        name: "More",
+        cards: [
+          { title: "Three", url: "/docs/b/three", description: "Page three." },
+          { title: "Out", url: "https://example.com" },
+        ],
+      },
+    ]);
+  });
+
+  it("on the root, lists each folder as a card for its own page and leaves out the home page", () => {
+    expect(sectionIndex(tree, "")).toEqual([
+      {
+        cards: [
+          { title: "A", url: "/docs/a", description: "Section A." },
+          { title: "B", url: "/docs/b" },
+        ],
+      },
+    ]);
+  });
+
+  it("fails on a folder without a page of its own", () => {
+    const bare: Root = { name: "Docs", children: [{ type: "folder", name: "C", children: [] }] };
+    expect(() => sectionIndex(bare, "")).toThrow("the docs folder C has no index.mdx");
   });
 });
 

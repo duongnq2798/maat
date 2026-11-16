@@ -15,9 +15,11 @@ import {
   ScriptFile,
   TypeEntry,
 } from "@/components/docs/reference";
+import { SectionIndex } from "@/components/docs/SectionIndex";
 import { StatusBadge } from "@/components/docs/StatusBadge";
 import { componentText, type Props, type TextContext } from "@/lib/docs/component-text";
 import type { DataComponent } from "@/lib/docs/data-components";
+import { docsTree } from "@/lib/docs/remark-component-text";
 
 // The Markdown copies print the same data as the components. These tests render a component and read its text
 // back out of the HTML, so a column, a caption or a label that changes in one place and not the other fails here.
@@ -163,6 +165,29 @@ describe("router cards", () => {
     });
     expect(md("RouterCards", {}, { exists })).toBe(cards.join("\n"));
   });
+});
+
+describe("section index", () => {
+  // Relative to web/, as the build reads it (the test helpers' file URLs do not resolve under jsdom).
+  const tree = docsTree("content/docs");
+
+  it.each(["", "get-started", "concepts", "guides", "reference", "security", "help"])(
+    'section "%s": each group has the name, and each card the link and the line, of the rendered index',
+    (section) => {
+      const { container } = render(<SectionIndex tree={tree} section={section} />);
+      // An unnamed group is a bare list; a named one is a section with its heading and its list.
+      const groups = [...container.firstElementChild!.children].map((group) => {
+        const name = group.querySelector("h2")?.textContent;
+        const items = [...group.querySelectorAll("li")].map((li) => {
+          const a = li.querySelector("a")!;
+          const line = li.querySelector("p")?.textContent;
+          return `- [${a.textContent}](${a.getAttribute("href")})${line ? `: ${line}` : ""}`;
+        });
+        return [name && `**${name}**`, items.join("\n")].filter(Boolean).join("\n\n");
+      });
+      expect(md("SectionIndex", section ? { section } : {}, { ...ALL, tree: () => tree })).toBe(groups.join("\n\n"));
+    },
+  );
 });
 
 describe("diagrams", () => {

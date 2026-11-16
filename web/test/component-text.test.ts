@@ -1,4 +1,5 @@
 // @vitest-environment node
+import type { Root } from "fumadocs-core/page-tree";
 import { describe, expect, it } from "vitest";
 import { getDecisions } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
@@ -227,6 +228,54 @@ describe("EventSignature, RouterCards and StatusBadge", () => {
   it("StatusBadge is its label", () => {
     expect(text("StatusBadge", { status: "fork-tested" })).toBe("Fork-tested");
     expect(text("StatusBadge", { status: "live" })).toBe("Live on mainnet");
+  });
+});
+
+describe("SectionIndex", () => {
+  const tree: Root = {
+    name: "Docs",
+    children: [
+      { type: "page", name: "Home", url: "/docs", description: "The home." },
+      {
+        type: "folder",
+        name: "A",
+        index: { type: "page", name: "A", url: "/docs/a", description: "Section A." },
+        children: [
+          { type: "page", name: "One", url: "/docs/a/one", description: "Page one." },
+          { type: "page", name: "Two", url: "/docs/a/two" },
+          { type: "separator", name: "More" },
+          { type: "page", name: "Three", url: "/docs/b/three" },
+        ],
+      },
+      {
+        type: "folder",
+        name: "B",
+        index: { type: "page", name: "B", url: "/docs/b", description: "Section B." },
+        children: [{ type: "page", name: "Three", url: "/docs/b/three", description: "Page three." }],
+      },
+    ],
+  };
+  const withTree: TextContext = { ...ALL, tree: () => tree };
+
+  it("lists a folder's pages as links with their descriptions, and names each later group in bold", () => {
+    expect(text("SectionIndex", { section: "a" }, withTree)).toBe(
+      [
+        "- [One](/docs/a/one): Page one.",
+        "- [Two](/docs/a/two)",
+        "",
+        "**More**",
+        "",
+        "- [Three](/docs/b/three): Page three.",
+      ].join("\n"),
+    );
+  });
+
+  it("with no section, lists the sections, each linking its own page", () => {
+    expect(text("SectionIndex", {}, withTree)).toBe("- [A](/docs/a): Section A.\n- [B](/docs/b): Section B.");
+  });
+
+  it("needs the page tree", () => {
+    expect(() => text("SectionIndex", { section: "a" })).toThrow("<SectionIndex /> needs the docs page tree");
   });
 });
 

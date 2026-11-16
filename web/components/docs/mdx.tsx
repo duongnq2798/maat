@@ -2,7 +2,7 @@ import { Step, Steps } from "fumadocs-ui/components/steps";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
 import type { ComponentProps } from "react";
-import { pageExists } from "@/lib/docs-source";
+import { pageExists, source } from "@/lib/docs-source";
 import { docsSlug } from "@/lib/docs/links";
 import { Callout } from "./Callout";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "./content";
@@ -20,6 +20,7 @@ import {
   ScriptFile,
   TypeEntry,
 } from "./reference";
+import { SectionIndex } from "./SectionIndex";
 import { StatusBadge } from "./StatusBadge";
 
 // <Fact /> is replaced with text at build time (lib/docs/remark-facts.ts). Reaching render means that plugin did not run.
@@ -54,6 +55,8 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     EventSignature,
     ForkLedger,
     RouterCards: () => <RouterCards exists={pageExists} />,
+    // The sidebar's own tree, so a section index lists what the sidebar shows.
+    SectionIndex: ({ section }: { section?: string }) => <SectionIndex tree={source.getPageTree()} section={section} />,
     DecisionLoop,
     Architecture,
     TimelockFlow,

@@ -105,15 +105,20 @@ test.describe("reading comfort", () => {
       expect(widths.table).toBe(widths.column);
     });
 
-    test(`at ${width}px the docs home's router cards, a component, keep the full column`, async ({ page }) => {
+    test(`at ${width}px the docs home's router cards and section map, components, keep the full column`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto("/docs");
       const widths = await page.evaluate(() => {
         const width = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().width;
-        return { column: width("#nd-page .prose"), router: width('#nd-page .prose > [aria-label="Where to start"]') };
+        return {
+          column: width("#nd-page .prose"),
+          router: width('#nd-page .prose > [aria-label="Where to start"]'),
+          sections: width('#nd-page .prose > [data-section-index=""]'),
+        };
       });
       expect(widths.column).toBeGreaterThan(0);
       expect(widths.router).toBe(widths.column);
+      expect(widths.sections).toBe(widths.column);
     });
   }
 
@@ -364,6 +369,55 @@ test.describe("search finds what readers type", () => {
     expect(markdown).toContain("DateLib.civilFromDays(");
     const dialog = await searchFor(page, "civilFromDays");
     await expect(dialog.getByRole("status").filter({ hasText: "No results" })).toBeVisible();
+  });
+});
+
+test.describe("sections", () => {
+  const SECTIONS = [
+    ["get-started", "Get started"],
+    ["concepts", "Concepts"],
+    ["guides", "Guides"],
+    ["reference", "Reference"],
+    ["security", "Security"],
+    ["help", "Help"],
+  ] as const;
+
+  test("the docs home maps every section, and each one opens its own page", async ({ page }) => {
+    await page.goto("/docs");
+    const map = page.locator('#nd-page [data-section-index=""]');
+    await expect(map.getByRole("link")).toHaveText(SECTIONS.map(([, title]) => title));
+    for (const [dir, title] of SECTIONS) {
+      await expect(map.getByRole("link", { name: title, exact: true })).toHaveAttribute("href", `/docs/${dir}`);
+    }
+    for (const [dir, title] of SECTIONS) {
+      const response = await page.goto(`/docs/${dir}`);
+      expect(response?.status()).toBe(200);
+      await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+      await expect(page.locator(`#nd-page [data-section-index="${dir}"] li`).first()).toBeVisible();
+    }
+  });
+
+  test("a page's breadcrumb links its section", async ({ page }) => {
+    await page.goto("/docs/concepts/nine-checks");
+    await page.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link", { name: "Concepts", exact: true }).click();
+    await expect(page).toHaveURL(/\/docs\/concepts$/);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Concepts");
+  });
+
+  test("the sidebar and the Reference page show the same groups, with Refusal codes among the contracts", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/reference");
+    const sidebar = page.locator("#nd-sidebar");
+    for (const group of ["Contracts", "Agent", "Data"]) await expect(sidebar.getByText(group, { exact: true })).toBeVisible();
+    await expect(sidebar.getByRole("link", { name: "Reference", exact: true })).toHaveAttribute("href", "/docs/reference");
+    const index = page.locator('#nd-page [data-section-index="reference"]');
+    await expect(index.getByRole("heading", { level: 2 })).toHaveText(["Contracts", "Agent", "Data"]);
+    await expect(index.getByRole("link", { name: "Refusal codes", exact: true })).toHaveAttribute("href", "/docs/concepts/refusal-codes");
+  });
+
+  test("the docs home's Markdown copy lists the sections", async ({ page }) => {
+    const markdown = await (await page.request.get("/md/docs.md")).text();
+    for (const [dir, title] of SECTIONS) expect(markdown).toMatch(new RegExp(`^- \\[${title}\\]\\(https?://[^)]+/docs/${dir}\\): .{50,}$`, "m"));
   });
 });
 

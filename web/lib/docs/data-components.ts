@@ -22,6 +22,7 @@ export const DATA_COMPONENTS = [
   "EventSignature",
   "ForkLedger",
   "RouterCards",
+  "SectionIndex",
   "StatusBadge",
   "DecisionLoop",
   "Architecture",

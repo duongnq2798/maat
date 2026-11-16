@@ -1,6 +1,9 @@
+import { frontmatter } from "fumadocs-core/content/md/frontmatter";
 import { replaceSource } from "fumadocs-core/mdx-plugins/stringifier";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
+import type { Root } from "fumadocs-core/page-tree";
+import { loader, type VirtualFile } from "fumadocs-core/source";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import { componentText, isDataComponent, type Props } from "./component-text";
 import type { MdNode } from "./remark-facts";
 
@@ -10,10 +13,33 @@ type Replace = Parameters<typeof replaceSource>;
 type PropValue = Props[string];
 
 export interface ComponentTextOptions {
-  /** The docs MDX files, relative to the working directory like defineDocs' `dir`: a router card links a page only once it exists here. */
+  /**
+   * The docs MDX files, relative to the working directory like defineDocs' `dir`: a router card links a page only once it
+   * exists here, and a section index lists the pages and meta.json files here.
+   */
   docsDir?: string;
   /** Overrides the lookup of shipped pages, for tests. */
   exists?: (slug: string) => boolean;
+}
+
+/**
+ * The page tree of the docs, built by Fumadocs' own loader from the frontmatter and meta.json files under docsDir: the
+ * tree the sidebar shows, for the Markdown copies, which are written while the MDX compiles, before lib/docs-source.ts
+ * has a tree to give.
+ */
+export function docsTree(docsDir: string): Root {
+  const files: VirtualFile[] = [];
+  const walk = (dir: string) => {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const file = join(dir, e.name);
+      const path = relative(docsDir, file).split(sep).join("/");
+      if (e.isDirectory()) walk(file);
+      else if (e.name.endsWith(".mdx")) files.push({ type: "page", path, data: frontmatter(readFileSync(file, "utf8")).data as VirtualFile["data"] });
+      else if (e.name === "meta.json") files.push({ type: "meta", path, data: JSON.parse(readFileSync(file, "utf8")) as VirtualFile["data"] });
+    }
+  };
+  walk(docsDir);
+  return loader({ baseUrl: "/docs", source: { files } }).getPageTree();
 }
 
 const isElement = (node: MdNode) => node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
@@ -59,6 +85,8 @@ function readProps(node: MdNode, where: string): Props {
 export function remarkComponentText(options: ComponentTextOptions = {}) {
   const docsDir = options.docsDir ?? "content/docs";
   const exists = options.exists ?? ((slug: string) => existsSync(join(docsDir, `${slug}.mdx`)) || existsSync(join(docsDir, slug, "index.mdx")));
+  // Read when a section index asks for it, so a page without one reads no other file.
+  const pageTree = () => docsTree(docsDir);
   return (tree: MdNode, file: { path?: string }) => {
     const walk = (parent: MdNode) => {
       for (const node of parent.children ?? []) {
@@ -69,7 +97,7 @@ export function remarkComponentText(options: ComponentTextOptions = {}) {
         const where = `${file.path ?? "<unknown file>"}${node.position ? `:${node.position.start.line}` : ""}`;
         let text: string;
         try {
-          text = componentText(node.name, readProps(node, where), { exists });
+          text = componentText(node.name, readProps(node, where), { exists, tree: pageTree });
         } catch (e) {
           const message = (e as Error).message;
           throw new Error(message.startsWith(where) ? message : `${where}: ${message}`);
