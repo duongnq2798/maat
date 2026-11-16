@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdtemp, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -34,6 +34,17 @@ describe("acquireLock", () => {
     expect(existsSync(f)).toBe(false);
     await (await acquireLock(d))();
     expect(existsSync(f)).toBe(false);
+  });
+  it("rejects a second acquire through another path to the same dir", async () => {
+    const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
+    const real = join(d, "real");
+    const link = join(d, "link");
+    await mkdir(real);
+    await symlink(real, link, "junction");
+    const release = await acquireLock(real);
+    await expect(acquireLock(link)).rejects.toThrow(/another agent \(pid \d+\) is running/);
+    await release();
+    expect(existsSync(join(real, "agent.lock"))).toBe(false);
   });
   it("respects a lock held by another live process", async () => {
     const child = spawn(process.execPath, ["-e", "setInterval(() => {}, 1000)"], { stdio: "ignore" });

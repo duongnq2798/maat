@@ -1,10 +1,10 @@
-import { mkdir, open, readFile, stat, unlink } from "node:fs/promises";
-import { resolve } from "node:path";
+import { mkdir, open, readFile, realpath, stat, unlink } from "node:fs/promises";
+import { join } from "node:path";
 
 /** An unreadable lock younger than this may belong to an agent that has not written its pid yet. */
 const UNREADABLE_STALE_MS = 60_000;
 
-/** Lock files this process holds, by absolute path: a lock naming our pid that is not in here is a predecessor's. */
+/** Lock files this process holds, by real path: a lock naming our pid that is not in here is a predecessor's. */
 const held = new Set<string>();
 
 function alive(pid: number): boolean {
@@ -19,7 +19,8 @@ function alive(pid: number): boolean {
 /** One agent per data dir: a second one would double-pay bills and double-log refusals. */
 export async function acquireLock(dir: string): Promise<() => Promise<void>> {
   await mkdir(dir, { recursive: true });
-  const file = resolve(dir, "agent.lock");
+  // The real path is one key per file, whatever case, symlink or junction spells the dir.
+  const file = join(await realpath(dir), "agent.lock");
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
       const h = await open(file, "wx");
