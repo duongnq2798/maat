@@ -58,6 +58,124 @@ for (const width of WIDTHS) {
   }
 }
 
+/** The characters on the first line of the page's first body paragraph, as the browser wrapped them. */
+async function firstLineLength(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const paragraph = document.querySelector("#nd-page .prose > p");
+    if (!paragraph) throw new Error("the page has no body paragraph");
+    const range = document.createRange();
+    const walker = document.createTreeWalker(paragraph, NodeFilter.SHOW_TEXT);
+    let top: number | undefined;
+    let count = 0;
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      for (let i = 0; i < (node.textContent ?? "").length; i++) {
+        range.setStart(node, i);
+        range.setEnd(node, i + 1);
+        // A space where the line breaks may have no box of its own.
+        const box = range.getClientRects()[0];
+        if (!box) continue;
+        top ??= box.top;
+        if (box.top > top + box.height / 2) return count;
+        count++;
+      }
+    }
+    return count;
+  });
+}
+
+test.describe("reading comfort", () => {
+  for (const width of [1440, 1920] as const) {
+    test(`at ${width}px a body line holds about 72 characters, and callouts and tables keep the full column`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/docs/guides/deploy-your-own-vault");
+      await page.evaluate(() => document.fonts.ready);
+      const length = await firstLineLength(page);
+      expect(length).toBeGreaterThanOrEqual(64);
+      expect(length).toBeLessThanOrEqual(80);
+      const widths = await page.evaluate(() => {
+        const width = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().width;
+        return {
+          column: width("#nd-page .prose"),
+          callout: width("#nd-page .prose > [data-callout]"),
+          table: width("#nd-page .prose > div:has(> table)"),
+        };
+      });
+      expect(widths.column).toBeGreaterThan(0);
+      expect(widths.callout).toBe(widths.column);
+      expect(widths.table).toBe(widths.column);
+    });
+  }
+
+  test("a printed runbook shows the article only, with every command line wrapped and link targets spelled out", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/guides/deploy-your-own-vault", { waitUntil: "networkidle" });
+    await page.emulateMedia({ media: "print" });
+    const article = page.locator("#nd-page");
+    for (const chrome of [
+      page.locator("#nd-sidebar"),
+      page.locator("#nd-subnav"),
+      page.locator("#nd-toc"),
+      page.locator("[data-toc-popover]"),
+      page.locator("button[data-search-full]"),
+      article.locator('nav[aria-labelledby="read-next"]'),
+      article.locator('[aria-labelledby="page-helpful"]'),
+      article.getByRole("button", { name: "Copy page as Markdown" }),
+      article.locator("figure").first().getByRole("button", { name: "Copy Text" }),
+      // Fumadocs' previous and next cards.
+      article.locator("a:has(> div > svg.lucide-chevron-left)"),
+      article.locator("a:has(> div > svg.lucide-chevron-right)"),
+    ]) {
+      await expect(chrome).toBeHidden();
+    }
+    await expect(article.locator(".prose")).toBeVisible();
+    await expect(article.getByRole("heading", { level: 1 })).toBeVisible();
+    const layout = await page.evaluate(() => {
+      const regions = [...document.querySelectorAll("#nd-page figure [role=region]")];
+      const external = document.querySelector<HTMLAnchorElement>('#nd-page .prose a[href^="https://"]');
+      return {
+        articleWidth: document.querySelector("#nd-page")?.getBoundingClientRect().width,
+        pageWidth: document.documentElement.clientWidth,
+        codeBlocks: regions.length,
+        clipped: regions.filter((r) => r.scrollWidth > r.clientWidth || r.scrollHeight > r.clientHeight).length,
+        unwrapped: regions.filter((r) => getComputedStyle(r.querySelector("pre") ?? r).whiteSpace !== "pre-wrap").length,
+        externalHref: external?.getAttribute("href"),
+        externalAfter: external ? getComputedStyle(external, "::after").content : undefined,
+      };
+    });
+    expect(layout.articleWidth).toBe(layout.pageWidth);
+    expect(layout.codeBlocks).toBeGreaterThan(0);
+    expect(layout.clipped).toBe(0);
+    expect(layout.unwrapped).toBe(0);
+    expect(layout.externalHref).toBeTruthy();
+    expect(layout.externalAfter).toContain(layout.externalHref);
+  });
+
+  test("a web font that arrives after the first paint does not move the page", async ({ page }) => {
+    // Lighthouse's mobile screen, where a reference page moved when Geist swapped in.
+    await page.setViewportSize({ width: 412, height: 823 });
+    await page.route("**/*.woff2", async (route) => {
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+      await route.continue();
+    });
+    await page.addInitScript(() => {
+      const w = window as unknown as { layoutShift: number };
+      w.layoutShift = 0;
+      new PerformanceObserver((list) => {
+        for (const entry of list.getEntries() as unknown as { value: number; hadRecentInput: boolean }[]) {
+          if (!entry.hadRecentInput) w.layoutShift += entry.value;
+        }
+      }).observe({ type: "layout-shift", buffered: true });
+    });
+    // networkidle: both fonts have arrived.
+    await page.goto("/docs/reference/mandate-vault", { waitUntil: "networkidle" });
+    await page.evaluate(() => document.fonts.ready);
+    // Two frames, so a shift from the last font is reported.
+    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const shift = await page.evaluate(() => (window as unknown as { layoutShift: number }).layoutShift);
+    expect(shift).toBeLessThan(0.01);
+  });
+});
+
 /** Opens search the way a reader does. Playwright sends "K" for "Control+K"; a real Ctrl+K sends "k", which Fumadocs matches. */
 async function openSearch(page: Page) {
   await page.keyboard.press("Control+k");

@@ -53,6 +53,13 @@
   --color-fd-ring: #6e83ff;
 }
 
+/* About 72 characters a line (spec §6.6), for top-level prose only: tables, code, callouts, Steps and diagrams keep
+   the full column. Geist's "0" is far wider than its average letter, so 72ch still holds about 106 characters; 33em
+   holds 72. */
+#nd-page .prose > :where(p, ul, ol, dl, blockquote) {
+  max-width: 33em;
+}
+
 /* Reference entries are headed by identifiers such as projectedHealthFactorAfterBorrow (ICreditAdapter). At 360px one
    word is wider than the column, so a heading may break inside a word instead of widening the page. */
 #nd-page .prose :is(h2, h3, h4) {
@@ -64,4 +71,48 @@
   --color-fd-muted: #151821;
   --color-fd-secondary: #1a1e28;
   --color-fd-muted-foreground: #a0a6b4;
+}
+
+/* An owner may print a runbook (the deploy checklist, the emergency playbook) before signing: print the article only,
+   across the page, with long commands wrapped instead of clipped and the address of every external link. */
+@media print {
+  #nd-subnav,
+  [data-sidebar-placeholder],
+  [data-sidebar-panel],
+  #nd-sidebar-mobile,
+  [data-toc-popover],
+  #nd-toc,
+  [data-search],
+  [data-search-full],
+  #nd-page figure button,
+  #nd-page > nav[aria-labelledby="read-next"],
+  /* Fumadocs' previous and next cards, then PageFooter's feedback, edit and copy row. */
+  #nd-page > div:has(> a > div > :is(.lucide-chevron-left, .lucide-chevron-right)),
+  #nd-page > div:has(> [aria-labelledby="page-helpful"]) {
+    display: none;
+  }
+
+  #nd-docs-layout {
+    display: block;
+  }
+
+  #nd-page {
+    max-width: none;
+    padding-inline: 0;
+  }
+
+  #nd-page figure [role="region"] {
+    max-height: none;
+    overflow: visible;
+  }
+
+  #nd-page figure pre {
+    width: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  #nd-page .prose a[href^="http"]::after {
+    content: " (" attr(href) ")";
+  }
 }
