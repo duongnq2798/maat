@@ -35,6 +35,8 @@ export class FakeReceipts {
   minedAt = 101n;
   /** What getBlockNumber returns. */
   head = 101n;
+  /** The arguments of each getBlockNumber read. */
+  headReads: unknown[] = [];
   /** The blockNumber of each usedIntent read. */
   usedAt: unknown[] = [];
   estimate: (data: Hex) => bigint | Promise<bigint> = () => 200_000n;
@@ -118,7 +120,7 @@ export class FakeReceipts {
         if (Number(hash) < 1 || Number(hash) > this.sender.sent.length) throw new TransactionNotFoundError({ hash });
         return { hash, blockNumber: this.mempool.has(hash) ? null : this.minedAt };
       }) as never,
-      getBlockNumber: (async () => this.head) as never,
+      getBlockNumber: (async (args?: unknown) => (this.headReads.push(args), this.head)) as never,
       estimateGas: (async (a: { account: unknown; to: unknown; data: Hex }) => (this.estimates.push(a), this.estimate(a.data))) as never,
       waitForTransactionReceipt: (async ({ hash }: { hash: Hex }) => {
         if (this.timeout || this.mempool.has(hash)) throw new WaitForTransactionReceiptTimeoutError({ hash });

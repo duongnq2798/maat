@@ -272,6 +272,7 @@ describe("runOnce", () => {
         note: "Decision read from the tx receipt",
       });
       expect(t.receipts.logQueries).toEqual([]); // the mined tx's receipt settles it: no eth_getLogs
+      expect(t.receipts.usedAt).toEqual([]); // and no usedIntent read
     });
 
     it("searches the logs when the mined tx's receipt holds no Decision for the intent", async () => {
@@ -315,6 +316,7 @@ describe("runOnce", () => {
         [18_100n, 27_099n],
       ]);
       expect(t.receipts.usedAt).toEqual([40_100n]); // usedIntent is read at the head the search ends at
+      expect(t.receipts.headReads).toEqual([{ cacheTime: 0 }]); // a fresh head, not viem's cached block number
       expect(t.store.unpaidUsd6()).toBe(0n);
     });
 
