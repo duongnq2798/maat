@@ -101,8 +101,14 @@ for (const width of [360, 1024]) {
     expect(fit.overflow).toBeLessThanOrEqual(0);
     expect(fit.clipped).toEqual([]);
 
+    // The longest Execute notice: the longest token label, amount and reason that go together.
     await ui.button("Other token").click();
     await ui.button("Execute").click();
+    await expect(ui.root.getByText("Executed 10:30 BUY Other token · $999,999,999.99: Refused · TOKEN_NOT_ALLOWED")).toBeVisible();
+    fit = await measureFit(page);
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.clipped).toEqual([]);
+
     await ui.button("Copy link").click();
     await expect(ui.root.getByRole("textbox", { name: "Copy this link:" })).toBeVisible();
     await expect(ui.tape.first()).toContainText("Refused · TOKEN_NOT_ALLOWED");
