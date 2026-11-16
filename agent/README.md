@@ -50,7 +50,7 @@ The image holds `src/`, the package files and `tsconfig.json`, with production d
 
 **One volume, one container.** Never mount one data volume in two running containers, and never run two agents against one vault. `agent.lock` holds a process id, and process ids are per container, so the lock cannot be relied on to stop a second container.
 
-**Stop timeout.** A stop signal ends the wait between rounds, not a round in flight, and a round can wait up to 2 minutes for each receipt. Give the agent time to finish the round and remove `agent.lock` before it is killed: Docker's default is 10 s and Fly's is 5 s.
+**Stop timeout.** A stop signal ends the wait between rounds, not a round in flight, and a round can wait up to 2 minutes for each receipt. Give the agent time to finish the round and remove `agent.lock` before it is killed: Docker's default is 10 s and Fly's is 5 s. The 300 s set below is the most Fly allows: it covers a normal round, where Base receipts arrive in seconds, and about two full receipt waits, not a round that waits long on several. A killed agent leaves `agent.lock` behind. If the restarted agent then stops at `another agent (pid N) is running` while no other container uses the volume, the lock is stale (in a container the new agent can get the old one's process id): read the journal, then delete `/data/agent.lock` with a one-off command, as for the `--once` run below.
 
 ### On a VPS with Docker
 
