@@ -76,7 +76,7 @@ What each step needs, and where it goes:
 | What | Where it goes | Needed for |
 | --- | --- | --- |
 | `BASE_RPC_URL` | `contracts/.env` and `agent/.env` | Every command that reads the chain or sends to it |
-| `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` | `contracts/.env` | The simulations and the broadcast |
+| `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE`, and the optional `MAAT_EXPENSE_PAYEE_2` | `contracts/.env` | The simulations and the broadcast |
 | `ETHERSCAN_API_KEY` | `contracts/.env` | `--verify` at the broadcast |
 | The `maat-owner` wallet, with ETH on Base for gas | A Foundry keystore, made with `cast wallet import` | Every command marked **Owner only** |
 | USDC on Base | The owner's wallet | Funding the vault |
@@ -116,7 +116,7 @@ In the runbook the owner is your wallet, the executor is temporarily your wallet
 
 `MAAT_EXPENSE_PAYEE_2` is optional. Set it when you already know a second address the vault should be able to pay, for example an agent's Bankr wallet: the deploy puts it on the list at once, while adding it later takes `queuePayee` and a wait of <Fact name="timelockHours" />. The agent pays one address only: its own [`MAAT_EXPENSE_PAYEE`](/docs/reference/agent-configuration#maat_expense_payee) setting, which it reads at startup and puts in the `payee` field of every `PAY_EXPENSE` intent. It never reads the vault's list, so with two payees on it you choose in the agent's settings which one it pays, and moving it to the other takes a restart, not a timelock.
 
-**The owner does not have to be the deployer.** The script reads the four addresses separately, and the deploy fork test `test_deployWiresEverything` deploys with four different addresses and checks the owner of both the vault and the calendar. The deployer signs only the deploy. After it, the owner signs `fund` (which pulls the USDC from the owner), `setExecutor`, `setPaused`, `withdraw`, every [timelocked](/docs/help/glossary#timelock) change, and the calendar's `addHoliday` and `setEarlyClose`. The executor signs the smoke-test `execute` calls. The commands on this page sign every role with one keystore wallet, `maat-owner`. The owner is fixed at the deploy, so this is when to choose a better-protected owner address. A multisig owner is compatible with the contract and is not set up, and a multisig cannot sign the `--account` commands on these pages. [The owner key](/docs/security/threat-model#the-owner-key) says what a leaked owner key allows.
+**The owner does not have to be the deployer.** The script reads each address separately, and the deploy fork test `test_deployWiresEverything` deploys with four different addresses and checks the owner of both the vault and the calendar. The deployer signs only the deploy. After it, the owner signs `fund` (which pulls the USDC from the owner), `setExecutor`, `setPaused`, `withdraw`, every [timelocked](/docs/help/glossary#timelock) change, and the calendar's `addHoliday` and `setEarlyClose`. The executor signs the smoke-test `execute` calls. The commands on this page sign every role with one keystore wallet, `maat-owner`. The owner is fixed at the deploy, so this is when to choose a better-protected owner address. A multisig owner is compatible with the contract and is not set up, and a multisig cannot sign the `--account` commands on these pages. [The owner key](/docs/security/threat-model#the-owner-key) says what a leaked owner key allows.
 
 Time: not measured. No mainnet deploy has been run, and the runbook gives no durations. The smoke tests need a weekday session and a weekend day.
 
@@ -135,7 +135,7 @@ cd contracts
 cp .env.example .env
 ```
 
-The template sets `BASE_RPC_URL` to the public Base endpoint. Its comment says that endpoint had archive state when it was tested on 2026-11-06. If it answers with HTTP 429, put your own URL there. Its four `MAAT_*` lines are zero addresses: the dry run in the next step overrides them on its command line, and [Import your wallet and fill `.env`](#import-your-wallet-and-fill-env) replaces them before the real simulation. Every `forge script` command below runs in `contracts/`.
+The template sets `BASE_RPC_URL` to the public Base endpoint. Its comment says that endpoint had archive state when it was tested on 2026-11-06. If it answers with HTTP 429, put your own URL there. Its five `MAAT_*` lines are zero addresses. The dry run in the next step overrides the four required ones on its command line, and [Import your wallet and fill `.env`](#import-your-wallet-and-fill-env) replaces them before the real simulation. `MAAT_EXPENSE_PAYEE_2` can stay at zero, which means no second payee. Every `forge script` command below runs in `contracts/`.
 
 </Step>
 
