@@ -49,6 +49,8 @@ export interface RunDeps {
   journal: Pick<Journal, "append">;
   policy?: PolicyParams;
   runId?: string;
+  /** Where an alert is printed for the operator, besides the journal. Default console.warn. */
+  log?: (m: string) => void;
 }
 
 export interface RunReport {
@@ -243,7 +245,16 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       suggestions: policy.suggestions.length,
       proposals: out.ok ? out.proposals.length : 0,
       ...(out.ok ? {} : { error: out.error }),
+      ...(out.provider === undefined ? {} : { provider: out.provider }),
+      ...(out.failover === undefined ? {} : { failover: out.failover }),
     });
+    // One proposal per round, so this alert is written and printed at most once per round.
+    if (out.unfunded !== undefined) {
+      const then = out.failover === undefined ? "The round had no failover." : "The round failed over to the Claude API.";
+      const message = `Bankr answered the LLM call with 402 ${out.unfunded}: the Bankr key's credits or daily budget ran out. ${then}`;
+      await j.append({ kind: "alert", runId, code: "llm-unfunded", message });
+      (d.log ?? console.warn)(`alert llm-unfunded: ${message}`);
+    }
 
     const queue: Proposal[] = [];
     if (unpaid >= BILL_MIN_USD6) {

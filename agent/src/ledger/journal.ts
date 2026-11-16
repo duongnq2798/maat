@@ -2,11 +2,15 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import type { Address, Hex } from "viem";
 import type { PreviewResult } from "../chain/preview.js";
+import type { LlmProvider } from "../llm/pricing.js";
 
 export type Decision = { allowed: boolean; reason: string };
 
 export type JournalEntry =
-  | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
+  /** `provider` answered (or was asked last); `failover` says why a Bankr call was asked again of the Claude API. */
+  | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string; provider?: LlmProvider; failover?: string }
+  /** Something the operator must act on. llm-unfunded: Bankr answered 402, its credits or daily budget ran out. */
+  | { kind: "alert"; runId: string; code: "llm-unfunded"; message: string }
   | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
   /** Written right after the send returns, before the receipt: with `intent` it brackets the pending window. */
   | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash: Hex; gas: bigint }

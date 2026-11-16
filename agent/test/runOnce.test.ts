@@ -136,6 +136,57 @@ describe("runOnce", () => {
     expect((await t.journal.read()).find((e) => e.kind === "run")).toMatchObject({ ok: false, error: "invalid proposal JSON: x", costUsd6: "30000" });
   });
 
+  describe("LLM provider", () => {
+    const withLog = async (out: Awaited<ReturnType<Proposer["propose"]>>) => {
+      const t = await setup({ proposer: { propose: async () => out } });
+      const logs: string[] = [];
+      t.deps.log = (m) => logs.push(m);
+      await runOnce(t.deps);
+      return { rows: await t.journal.read(), logs, store: t.store };
+    };
+
+    it("records the provider that answered, and no alert when Bankr was paid", async () => {
+      const { rows, logs } = await withLog({ ok: true, summary: "hold", proposals: [], costUsd6: 30_000n, model: "claude-sonnet-5.5", provider: "bankr" });
+      const run = rows.find((e) => e.kind === "run");
+      expect(run).toMatchObject({ ok: true, provider: "bankr" });
+      expect(run).not.toHaveProperty("failover");
+      expect(rows.filter((e) => e.kind === "alert")).toEqual([]);
+      expect(logs).toEqual([]);
+    });
+
+    it("records the failover and raises one llm-unfunded alert when Bankr is out of credits", async () => {
+      const { rows, logs, store } = await withLog({
+        ok: true,
+        summary: "hold",
+        proposals: [],
+        costUsd6: 30_000n,
+        model: "claude-sonnet-5-5",
+        provider: "anthropic",
+        failover: "bankr 402 insufficient_credits",
+        unfunded: "insufficient_credits",
+      });
+      expect(rows.find((e) => e.kind === "run")).toMatchObject({ ok: true, provider: "anthropic", failover: "bankr 402 insufficient_credits", costUsd6: "30000" });
+      const alerts = rows.filter((e) => e.kind === "alert");
+      expect(alerts).toEqual([expect.objectContaining({ runId: "run-1", code: "llm-unfunded", message: expect.stringMatching(/402 insufficient_credits.*failed over to the Claude API/) })]);
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatch(/^alert llm-unfunded: /);
+      expect(store.unpaidUsd6()).toBe(30_000n);
+    });
+
+    it("raises the alert when Bankr is out of credits and nothing answered", async () => {
+      const { rows, logs } = await withLog({ ok: false, error: "bankr: 402 x", costUsd6: 0n, provider: "bankr", unfunded: "daily_budget_exceeded" });
+      expect(rows.find((e) => e.kind === "run")).toMatchObject({ ok: false, provider: "bankr", error: "bankr: 402 x" });
+      expect(rows.filter((e) => e.kind === "alert")).toEqual([expect.objectContaining({ code: "llm-unfunded", message: expect.stringMatching(/402 daily_budget_exceeded.*no failover/) })]);
+      expect(logs).toHaveLength(1);
+    });
+
+    it("writes no provider for a proposer that names none", async () => {
+      const t = await setup();
+      await runOnce(t.deps);
+      expect((await t.journal.read()).find((e) => e.kind === "run")).not.toHaveProperty("provider");
+    });
+  });
+
   it("syncs a changed multiplier before trading", async () => {
     const t = await setup({ batch: BUY20, scene: standardScene().set(addressOf("NVDAc"), "uiMultiplier", 2n * 10n ** 18n) });
     await runOnce(t.deps);
