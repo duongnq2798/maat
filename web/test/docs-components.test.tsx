@@ -9,7 +9,7 @@ import { FACTS } from "@/content/facts";
 import { mandateRows } from "@/content/mandate";
 import { REASON_MEANING, REASON_MEANING_DOCS, REASONS } from "@/content/reasons";
 import { DOCS_IA } from "@/lib/docs/ia";
-import { docsSlug } from "@/lib/docs/links";
+import { docsSlug, urlSlug } from "@/lib/docs/links";
 import { docsTree } from "@/lib/docs/remark-component-text";
 import { sectionIndex } from "@/lib/docs/sections";
 
@@ -229,5 +229,15 @@ describe("docsSlug", () => {
     ["#anchor", null],
   ])("%s", (href, slug) => {
     expect(docsSlug(href)).toEqual(slug);
+  });
+});
+
+describe("urlSlug", () => {
+  it.each([
+    ["index", []],
+    ["concepts/index", ["concepts"]],
+    ["concepts/nine-checks", ["concepts", "nine-checks"]],
+  ])("%s", (slug, url) => {
+    expect(urlSlug(slug)).toEqual(url);
   });
 });

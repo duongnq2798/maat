@@ -3,8 +3,10 @@ import type { SortedResult } from "fumadocs-core/search";
 import { describe, expect, it } from "vitest";
 import { READER_PATHS } from "@/lib/docs/reader-paths";
 import { SEARCH_INDEX_URL, SEARCH_START_PAGES, searchTokenizer, titleFirst } from "@/lib/docs/search";
-import { searchStructure } from "@/lib/docs/search-index";
-import { docsPages } from "./helpers/docs";
+import { componentText } from "@/lib/docs/component-text";
+import { docsTree } from "@/lib/docs/remark-component-text";
+import { searchStructure, sectionIndexLines } from "@/lib/docs/search-index";
+import { DOCS_DIR, docsPages } from "./helpers/docs";
 
 const tokenizer = searchTokenizer();
 const tokenize = (text: string) => tokenizer.tokenize(text);
@@ -123,6 +125,37 @@ describe("searchStructure", () => {
 
   it("fails the build when the headings and the table of contents disagree, naming the page", () => {
     expect(() => searchStructure(MARKDOWN, TOC.slice(0, 1), "/docs/x")).toThrow("/docs/x: the processed Markdown has 2 headings and the table of contents 1");
+  });
+});
+
+describe("section indexes are not search content", () => {
+  const tree = docsTree(DOCS_DIR);
+  const lines = sectionIndexLines(tree);
+  const text = (section?: string) => componentText("SectionIndex", section === undefined ? {} : { section }, { exists: () => true, tree: () => tree });
+  const contents = (data: ReturnType<typeof searchStructure>) => data.contents.map((c) => c.content);
+
+  it("finds a section page by its purpose sentence: its cards repeat the titles and descriptions of pages found on their own", () => {
+    for (const section of ["get-started", "concepts", "guides", "reference", "security", "help"]) {
+      const data = searchStructure(`One sentence of purpose.\n\n${text(section)}\n`, [], `/docs/${section}`, lines);
+      expect(contents(data), section).toEqual(["One sentence of purpose."]);
+    }
+  });
+
+  it("keeps the rest of the docs home and its headings, without its map of the sections", () => {
+    const markdown = `The lead.\n\n## Explore by section\n\n${text()}\n\n## Where to find things\n\n- **Search:** press Ctrl K.\n`;
+    const toc = [{ url: "#explore-by-section" }, { url: "#where-to-find-things" }];
+    const data = searchStructure(markdown, toc, "/docs", lines);
+    expect(data.headings.map((h) => h.content)).toEqual(["Explore by section", "Where to find things"]);
+    expect(contents(data)).toEqual(["The lead.", "**Search:** press Ctrl K."]);
+  });
+
+  it("leaves out whole lines only, and nothing inside a code fence", () => {
+    const card = "- [MarketCalendar](/docs/reference/market-calendar): x";
+    const omit = new Set([card]);
+    const markdown = ["Before.", "", card, "", "```md", card, "```", "", `${card} and more.`].join("\n");
+    expect(contents(searchStructure(markdown, [], "/docs/x", omit))).toEqual(["Before.", "MarketCalendar: x and more."]);
+    expect(lines.has("**Contracts**")).toBe(true);
+    expect(lines.has("")).toBe(false);
   });
 });
 

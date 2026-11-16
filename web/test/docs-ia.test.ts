@@ -1,11 +1,13 @@
 // @vitest-environment node
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { flattenTree } from "fumadocs-core/page-tree";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { frontmatterOf } from "@/lib/docs/content-checks";
 import { AUDIENCES } from "@/lib/docs/frontmatter";
 import { DOCS_IA, IA_SLUGS, type IaSection } from "@/lib/docs/ia";
+import { urlSlug } from "@/lib/docs/links";
 import { docsTree } from "@/lib/docs/remark-component-text";
 import { DOCS_DIR, docsPages } from "./helpers/docs";
 
@@ -144,6 +146,11 @@ describe("docs pages follow the IA (docs spec §3)", () => {
     }
   });
 
+  it("a section's own page has no next, so no Next block: its cards already list the pages to read", () => {
+    // The one exception to the Next block that spec §4.1 gives every page.
+    for (const s of sections) expect(split(own(s)).fm.next, own(s)).toBeUndefined();
+  });
+
   it("a section's own page is written for every reader its pages are written for", () => {
     for (const s of sections) {
       const readers = new Set(s.pages.filter((p) => p.slug !== own(s)).flatMap((p) => split(p.slug).fm.audience as string[]));
@@ -161,6 +168,15 @@ describe("docs pages follow the IA (docs spec §3)", () => {
     expect(folders.map((f) => ({ name: f.name, index: f.index?.url }))).toEqual(sections.map((s) => ({ name: s.title, index: `/docs/${s.dir}` })));
     // Not also a plain entry in the folder, as it becomes when meta.json lists "index".
     for (const f of folders) expect(f.children.filter((c) => c.type === "page" && c.url === f.index?.url)).toEqual([]);
+  });
+
+  it("every IA slug, as frontmatter next names a page, leads to that page's URL, a section's own page included", () => {
+    // NextLinks looks a slug up by urlSlug: Fumadocs serves concepts/index.mdx at /docs/concepts, not /docs/concepts/index.
+    const urls = flattenTree(docsTree(DOCS_DIR).children).map((p) => p.url);
+    const url = (slug: string) => ["/docs", ...urlSlug(slug)].join("/");
+    expect(IA_SLUGS.filter((slug) => !urls.includes(url(slug)))).toEqual([]);
+    expect(url("concepts/index")).toBe("/docs/concepts");
+    expect(url("index")).toBe("/docs");
   });
 
   it("the root meta.json lists the home page, then each section that has pages", () => {

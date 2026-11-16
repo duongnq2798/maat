@@ -6,7 +6,8 @@ import { NextLinks } from "@/components/docs/NextLinks";
 import { PageFooter } from "@/components/docs/PageFooter";
 import { PageHeader } from "@/components/docs/PageHeader";
 import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
-import { source } from "@/lib/docs-source";
+import { pagesInSidebarOrder, source } from "@/lib/docs-source";
+import { footerItems } from "@/lib/docs/footer-items";
 import { markdownUrl, readingMinutes } from "@/lib/docs/markdown";
 import { SITE, siteUrl } from "@/lib/site";
 
@@ -26,8 +27,13 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
       full={full}
       // PageHeader renders the breadcrumb with a Docs root and nav semantics.
       breadcrumb={{ enabled: false }}
-      // Fumadocs' previous/next by sidebar order, then the feedback, edit and copy row.
+      // The previous and next pages in sidebar order, each page once (lib/docs/footer-items.ts), then the feedback, edit
+      // and copy row.
       footer={{
+        items: footerItems(
+          pagesInSidebarOrder().map((p) => ({ name: p.data.title, url: p.url, description: p.data.description })),
+          page.url,
+        ),
         children: (
           <PageFooter
             title={title}

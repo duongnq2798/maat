@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { feedbackHref } from "@/components/docs/PageFooter";
 import { StatusBadge } from "@/components/docs/StatusBadge";
+import { footerItems } from "@/lib/docs/footer-items";
 import { llmsIndex, markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath } from "@/lib/docs/markdown";
 import { SITE } from "@/lib/site";
 
@@ -61,6 +62,27 @@ describe("docs Markdown helpers", () => {
     expect(pageMarkdown({ title: "T", url: "https://x.dev/docs", body })).toBe(
       `# T\n\nURL: https://x.dev/docs\n\n${body.replace("[after](/docs/b)", "[after](https://x.dev/docs/b)")}\n`,
     );
+  });
+});
+
+describe("footerItems", () => {
+  const pages = [
+    { name: "Errors", url: "/docs/reference/errors", description: "E." },
+    { name: "Types", url: "/docs/reference/types", description: "T." },
+    { name: "MarketCalendar", url: "/docs/reference/market-calendar" },
+  ];
+
+  it("gives a page the pages before and after it, with their titles and descriptions", () => {
+    expect(footerItems(pages, "/docs/reference/types")).toEqual({ previous: pages[0], next: pages[2] });
+  });
+
+  it("gives the first page no previous card and the last no next card", () => {
+    expect(footerItems(pages, "/docs/reference/errors")).toEqual({ previous: undefined, next: pages[1] });
+    expect(footerItems(pages, "/docs/reference/market-calendar")).toEqual({ previous: pages[1], next: undefined });
+  });
+
+  it("gives a page that is not in the list no cards, rather than the first page as its next", () => {
+    expect(footerItems(pages, "/docs/concepts/refusal-codes")).toEqual({});
   });
 });
 

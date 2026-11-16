@@ -1,10 +1,15 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
+import { DOCS_IA } from "../lib/docs/ia";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
-/** Pages checked at every width: the docs home, then the longest pages as they ship (Tasks 8, 13, 14, 15, 16, 17 and 18). */
+/**
+ * Pages checked at every width: the docs home, the Reference section page (the one whose cards come in groups), then
+ * the longest pages as they ship (Tasks 8, 13, 14, 15, 16, 17 and 18).
+ */
 const PAGES: string[] = [
   "/docs",
+  "/docs/reference",
   "/docs/concepts/nine-checks",
   "/docs/guides/run-the-tests",
   "/docs/guides/reproduce-the-fork-run",
@@ -363,6 +368,14 @@ test.describe("search finds what readers type", () => {
     await expect(dialog.getByRole("option").filter({ hasText: "MARKET_CLOSED" }).filter({ hasText: "or the calendar can't be read" })).toBeVisible();
   });
 
+  test("a page's description finds that page, and not the section page whose card repeats it", async ({ page }) => {
+    // MarketCalendar's description, which the Reference page's card repeats; the Concepts card for Market hours shares words with it.
+    const dialog = await searchFor(page, "holidays and early closes it ships with");
+    await expect.poll(async () => (await resultPages(dialog))?.includes("/docs/reference/market-calendar")).toBe(true);
+    const sectionPages = ["/docs", ...["get-started", "concepts", "guides", "reference", "security", "help"].map((dir) => `/docs/${dir}`)];
+    expect((await resultPages(dialog))?.filter((url) => sectionPages.includes(url))).toEqual([]);
+  });
+
   test("a word that appears only inside a code block finds nothing", async ({ page }) => {
     // The market-hours code excerpt calls DateLib.civilFromDays, and no prose on any page names it.
     const markdown = await (await page.request.get("/md/docs/concepts/market-hours.md")).text();
@@ -419,6 +432,31 @@ test.describe("sections", () => {
     const markdown = await (await page.request.get("/md/docs.md")).text();
     for (const [dir, title] of SECTIONS) expect(markdown).toMatch(new RegExp(`^- \\[${title}\\]\\(https?://[^)]+/docs/${dir}\\): .{50,}$`, "m"));
   });
+});
+
+test.describe("previous and next", () => {
+  const iaPage = new Map(DOCS_IA.flatMap((s) => s.pages).map((p) => [p.slug, p]));
+
+  // Reference lists Refusal codes as a link to its Concepts page. Paging on from Types must stay in Reference, and the
+  // Concepts page must keep its own neighbours.
+  for (const [slug, previous, next] of [
+    ["reference/types", "reference/errors", "reference/market-calendar"],
+    ["reference/market-calendar", "reference/types", "reference/adapters"],
+    ["concepts/refusal-codes", "concepts/nine-checks", "concepts/market-hours"],
+  ] as const) {
+    test(`${slug} pages back to ${previous} and on to ${next}, each card with its page's description`, async ({ page }) => {
+      await page.goto(`/docs/${slug}`);
+      for (const [side, target] of [
+        ["left", previous],
+        ["right", next],
+      ] as const) {
+        const card = page.locator(`#nd-page a:has(> div > svg.lucide-chevron-${side})`);
+        const want = iaPage.get(target);
+        await expect(card).toHaveAttribute("href", `/docs/${target}`);
+        await expect(card.locator("p")).toHaveText([want?.title ?? target, want?.description ?? target]);
+      }
+    });
+  }
 });
 
 test("the 404 page offers search and the docs sections", async ({ page }) => {

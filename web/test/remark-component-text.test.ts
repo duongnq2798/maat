@@ -2,7 +2,7 @@
 import { createStringifier } from "fumadocs-core/mdx-plugins/stringifier";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentText } from "@/lib/docs/component-text";
 import { type MdNode } from "@/lib/docs/remark-facts";
@@ -170,6 +170,31 @@ describe("remarkComponentText", () => {
           "",
         ].join("\n"),
       );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the bundler which files a section index read, so next dev rebuilds its Markdown when another page changes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "maat-docs-"));
+    try {
+      writeFileSync(join(dir, "meta.json"), JSON.stringify({ title: "Docs", pages: ["index", "a"] }));
+      writeFileSync(join(dir, "index.mdx"), "---\ntitle: Home\ndescription: The home.\n---\n");
+      mkdirSync(join(dir, "a"));
+      writeFileSync(join(dir, "a", "meta.json"), JSON.stringify({ title: "A", pages: ["one"] }));
+      writeFileSync(join(dir, "a", "index.mdx"), "---\ntitle: A\ndescription: What A holds.\n---\n");
+      writeFileSync(join(dir, "a", "one.mdx"), "---\ntitle: One\ndescription: Page one.\n---\n");
+      const compile = (source: string, tags: Record<string, Omit<MdNode, "position">>) => {
+        const added: string[] = [];
+        const { nodes, whole } = parse(source, tags);
+        const file = { path: PATH, toString: () => source, data: { _compiler: { addDependency: (f: string) => added.push(f) } } };
+        remarkComponentText({ docsDir: dir, exists: () => true })({ type: "root", children: nodes, position: whole }, file);
+        return added;
+      };
+      const all = ["meta.json", "index.mdx", join("a", "meta.json"), join("a", "index.mdx"), join("a", "one.mdx")].map((f) => resolve(dir, f));
+      expect(new Set(compile('<SectionIndex section="a" />', { '<SectionIndex section="a" />': flow("SectionIndex", [attr("section", "a")]) }))).toEqual(new Set(all));
+      // A page without a section index reads no other file, so it depends on none.
+      expect(compile(EXECUTE, { [EXECUTE]: flow("Fn", [attr("contract", "MandateVault"), attr("name", "execute")]) })).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

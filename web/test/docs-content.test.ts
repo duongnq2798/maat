@@ -17,7 +17,7 @@ import {
 import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
 import { docsFrontmatter } from "@/lib/docs/frontmatter";
 import { DOCS_IA } from "@/lib/docs/ia";
-import { docsSlug, headingId } from "@/lib/docs/links";
+import { docsSlug, headingId, urlSlug } from "@/lib/docs/links";
 import { SITE } from "@/lib/site";
 import { docsPages } from "./helpers/docs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
@@ -29,6 +29,27 @@ const pages = docsPages();
 const bySlug = new Map(pages.map((p) => [p.slug, p.source]));
 const ia = new Map(DOCS_IA.flatMap((s) => s.pages).map((p) => [p.slug, p]));
 const at = (slug: string, f: { line: number; text: string }) => `content/docs/${slug}.mdx:${f.line} ${f.text}`;
+
+/**
+ * The IA page a docs link opens, or undefined if it opens none. Fumadocs serves a folder's index.mdx at the folder's
+ * URL: /docs/concepts is concepts/index, and /docs/concepts/index is no page at all.
+ */
+const byUrl = new Map([...ia.keys()].map((slug) => [urlSlug(slug).join("/"), slug]));
+const linkedPage = (href: string) => byUrl.get((docsSlug(href) ?? []).join("/"));
+
+describe("a docs link opens the IA page Fumadocs serves at its URL (gate 2)", () => {
+  it.each([
+    ["/docs", "index"],
+    ["/docs/concepts", "concepts/index"],
+    ["/docs/concepts#x", "concepts/index"],
+    ["/docs/concepts/nine-checks#why-the-order-matters", "concepts/nine-checks"],
+    ["/docs/concepts/index", undefined],
+    ["/docs/index", undefined],
+    ["/docs/concepts/not-a-page", undefined],
+  ])("%s", (href, slug) => {
+    expect(linkedPage(href)).toBe(slug);
+  });
+});
 
 const FENCED = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
 
@@ -91,10 +112,10 @@ describe.each(pages.map((p) => [p.slug, p.source] as const))("content/docs/%s.md
   it("links to IA pages, to headings that exist, and to repo paths that exist (gate 2)", () => {
     const bad: string[] = [];
     for (const href of docsLinks(source)) {
-      const target = (docsSlug(href) ?? []).join("/") || "index";
+      const target = linkedPage(href);
       const hash = href.split("#")[1];
-      const page = bySlug.get(target);
-      if (!ia.has(target)) bad.push(`${href}: not a page in lib/docs/ia.ts`);
+      const page = target === undefined ? undefined : bySlug.get(target);
+      if (target === undefined) bad.push(`${href}: not a page in lib/docs/ia.ts`);
       // A page in the IA that is not written yet passes; its anchors are checked once it ships.
       else if (hash && page !== undefined && !headingIds(page).has(hash)) bad.push(`${href}: no heading #${hash} on ${target}`);
     }
