@@ -2,9 +2,9 @@ import { DocsBody, DocsPage } from "fumadocs-ui/layouts/docs/page";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getMDXComponents } from "@/components/docs/mdx";
-import { NextLinks } from "@/components/docs/NextLinks";
+import { listsNextInBody, NextLinks } from "@/components/docs/NextLinks";
 import { PageFooter } from "@/components/docs/PageFooter";
-import { PageHeader } from "@/components/docs/PageHeader";
+import { HomeHeader, PageHeader } from "@/components/docs/PageHeader";
 import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
 import { pagesInSidebarOrder, source } from "@/lib/docs-source";
 import { footerItems } from "@/lib/docs/footer-items";
@@ -21,19 +21,25 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
 
   const { body: MDX, toc, full, title, description, status, audience, lastReviewed, sources, next } = page.data;
   const markdown = await page.data.getText("processed");
+  // The docs home keeps its H1 and lede only, with no Read next block or previous and next cards: its router cards and
+  // section map are the ways on.
+  const home = page.url === "/docs";
   return (
     <DocsPage
-      toc={toc}
+      // A one-letter heading, such as the glossary's A to X, only groups the entries under it: the TOC lists the entries.
+      toc={toc.filter((item) => !(item.depth === 2 && /^#[a-z]$/.test(item.url)))}
       full={full}
       // PageHeader renders the breadcrumb with a Docs root and nav semantics.
       breadcrumb={{ enabled: false }}
       // The previous and next pages in sidebar order, each page once (lib/docs/footer-items.ts), then the feedback, edit
       // and copy row.
       footer={{
-        items: footerItems(
-          pagesInSidebarOrder().map((p) => ({ name: p.data.title, url: p.url, description: p.data.description })),
-          page.url,
-        ),
+        items: home
+          ? {}
+          : footerItems(
+              pagesInSidebarOrder().map((p) => ({ name: p.data.title, url: p.url, description: p.data.description })),
+              page.url,
+            ),
         children: (
           <PageFooter
             title={title}
@@ -44,20 +50,26 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
         ),
       }}
     >
-      <PageHeader
-        url={page.url}
-        title={title}
-        description={description}
-        status={status}
-        audience={audience}
-        readingMinutes={readingMinutes(markdown)}
-        lastReviewed={lastReviewed}
-      />
+      {home ? (
+        <HomeHeader title={title} description={description} />
+      ) : (
+        <PageHeader
+          url={page.url}
+          title={title}
+          description={description}
+          // The label says how far Maat is built and tested; the Help pages describe no part of it.
+          status={page.slugs[0] === "help" ? undefined : status}
+          audience={audience}
+          readingMinutes={readingMinutes(markdown)}
+          lastReviewed={lastReviewed}
+        />
+      )}
       <DocsBody>
         <MDX components={getMDXComponents()} />
       </DocsBody>
+      {/* A page whose body has its own Next steps or Related list gets no second one. */}
+      {!home && !listsNextInBody(toc) && <NextLinks slugs={next} />}
       <SourceOfTruth sources={sources} />
-      <NextLinks slugs={next} />
     </DocsPage>
   );
 }
@@ -72,11 +84,12 @@ export async function generateMetadata({ params }: PageProps<"/docs/[[...slug]]"
   if (!page) notFound();
   const { title, description } = page.data;
   // This openGraph object replaces the file-based image from app/opengraph-image.png, so name it here.
-  const images = { url: "/opengraph-image.png", width: 1200, height: 630 };
+  const images = { url: "/opengraph-image.png", width: 1200, height: 630, alt: SITE.name };
   return {
-    title,
+    // The docs home is the docs center itself: "Maat Docs", not "Maat docs · Maat Docs".
+    title: page.url === "/docs" ? { absolute: `${SITE.name} Docs` } : title,
     description,
-    alternates: { canonical: page.url },
+    alternates: { canonical: page.url, types: { "text/markdown": markdownUrl(page.url) } },
     openGraph: { type: "article", url: page.url, siteName: SITE.name, title, description, images },
     twitter: { card: "summary_large_image", site: SITE.xHandle, title, description, images },
   };

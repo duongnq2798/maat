@@ -1,6 +1,7 @@
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 import { DOCS_IA } from "../lib/docs/ia";
+import { SITE } from "../lib/site";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /**
@@ -457,6 +458,128 @@ test.describe("previous and next", () => {
       }
     });
   }
+});
+
+test.describe("page frame", () => {
+  /** The URL of a page from its IA slug: a folder's index.mdx is served at the folder's URL. */
+  const urlOf = (slug: string) => `/docs/${slug}`.replace(/\/index$/, "");
+
+  test("the status label links to what the labels mean, and the status page's own table keeps plain labels", async ({ page }) => {
+    await page.goto("/docs/concepts/nine-checks");
+    const link = page.locator("#nd-page header").getByRole("link", { name: "Status: Fork-tested. What this label means", exact: true });
+    await expect(link).toHaveAccessibleDescription(
+      "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
+    );
+    await link.click();
+    await expect(page).toHaveURL(/\/docs\/get-started\/status#what-the-three-labels-mean$/);
+    const table = page.locator("#nd-page .prose [data-status]");
+    await expect(table).toHaveCount(3);
+    expect(await table.evaluateAll((labels) => labels.filter((label) => label.closest("a")).length)).toBe(0);
+  });
+
+  test("the Help pages carry no status label", async ({ page }) => {
+    const help = DOCS_IA.find((s) => s.dir === "help")?.pages ?? [];
+    expect(help.length).toBeGreaterThan(0);
+    for (const { slug } of help) {
+      await page.goto(urlOf(slug));
+      const header = page.locator("#nd-page header");
+      await expect(header.getByRole("list", { name: "Written for" }), slug).toBeVisible();
+      await expect(header.locator("[data-status]"), slug).toHaveCount(0);
+    }
+  });
+
+  test("the docs home is its H1 and lede, without breadcrumb, labels, reading time, Read next or previous and next", async ({ page }) => {
+    await page.goto("/docs");
+    await expect(page).toHaveTitle(`${SITE.name} Docs`);
+    const article = page.locator("#nd-page");
+    await expect(article.getByRole("heading", { level: 1 })).toHaveText("Maat docs");
+    for (const absent of [
+      article.getByRole("navigation", { name: "Breadcrumb" }),
+      article.locator("[data-status]"),
+      article.getByRole("list", { name: "Written for" }),
+      article.getByText(/min read|Last reviewed/),
+      article.locator('nav[aria-labelledby="read-next"]'),
+      article.locator("a:has(> div > svg.lucide-chevron-left), a:has(> div > svg.lucide-chevron-right)"),
+    ]) {
+      await expect(absent).toHaveCount(0);
+    }
+    // It keeps its sources and the feedback, edit and copy row.
+    await expect(article.getByRole("complementary", { name: "Source of truth" })).toBeVisible();
+    await expect(article.getByRole("button", { name: "Copy page as Markdown" })).toBeVisible();
+  });
+
+  /** The ids of the article's headings that are not part of the page's body: the blocks the page frame adds. */
+  const frameHeadings = (article: Locator) => article.locator("h2").evaluateAll((hs) => hs.filter((h) => !h.closest(".prose")).map((h) => h.id));
+
+  test("a guide with its own Next steps goes on from its body to Source of truth, then the previous and next cards", async ({ page }) => {
+    await page.goto("/docs/guides/deploy-your-own-vault");
+    const article = page.locator("#nd-page");
+    await expect(article.locator(".prose h2#next-steps")).toHaveCount(1);
+    expect(await frameHeadings(article)).toEqual(["source-of-truth"]);
+    await expect(article.locator('nav[aria-labelledby="read-next"]')).toHaveCount(0);
+    const cardsFollowSources = await page.evaluate(() => {
+      const sources = document.querySelector("#nd-page #source-of-truth");
+      const card = document.querySelector("#nd-page a:has(> div > svg.lucide-chevron-right)");
+      return Boolean(sources && card && sources.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING);
+    });
+    expect(cardsFollowSources).toBe(true);
+  });
+
+  for (const path of ["/docs/get-started/quickstart", "/docs/get-started/status"]) {
+    test(`${path}, with no list of its own, shows Read next before Source of truth, and not in a printout`, async ({ page }) => {
+      await page.goto(path);
+      const article = page.locator("#nd-page");
+      const readNext = article.getByRole("navigation", { name: "Read next" });
+      await expect(readNext.getByRole("link").first()).toBeVisible();
+      expect(await frameHeadings(article)).toEqual(["read-next", "source-of-truth"]);
+      await page.emulateMedia({ media: "print" });
+      await expect(readNext).toBeHidden();
+    });
+  }
+
+  test("the glossary's contents list the terms, not the letters that group them", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/help/glossary");
+    const terms = await page.locator("#nd-page .prose h3").count();
+    expect(terms).toBeGreaterThan(0);
+    // The letters stay on the page as headings.
+    await expect(page.locator("#nd-page .prose h2#a")).toHaveCount(1);
+    const entries = page.locator('#nd-toc a[href^="#"]');
+    await expect(entries).toHaveCount(terms);
+    await expect(entries.first()).toHaveText("Aave V4");
+  });
+
+  test("every docs page's head links its Markdown copy", async ({ request }) => {
+    for (const { slug } of DOCS_IA.flatMap((s) => s.pages)) {
+      const html = await (await request.get(urlOf(slug))).text();
+      const links = [...html.matchAll(/<link [^>]*>/g)].map(([tag]) => tag).filter((tag) => tag.includes('type="text/markdown"'));
+      expect(links, slug).toHaveLength(1);
+      expect(links[0], slug).toContain('rel="alternate"');
+      const href = /href="([^"]+)"/.exec(links[0] ?? "")?.[1] ?? "";
+      expect(new URL(href).pathname, slug).toBe(`/md${urlOf(slug)}.md`);
+      expect((await request.get(new URL(href).pathname)).status(), slug).toBe(200);
+    }
+  });
+
+  test("the image a shared link shows is named", async ({ page }) => {
+    await page.goto("/docs/concepts/nine-checks");
+    await expect(page.locator('head meta[property="og:image:alt"]')).toHaveAttribute("content", SITE.name);
+    await expect(page.locator('head meta[name="twitter:image:alt"]')).toHaveAttribute("content", SITE.name);
+  });
+
+  test("the sidebar's footer carries the MIT License and the site's disclaimer, in the phone drawer too", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/guides/deploy-your-own-vault");
+    const sidebar = page.locator("#nd-sidebar");
+    await expect(sidebar.getByRole("link", { name: "MIT License", exact: true })).toHaveAttribute("href", SITE.licenseUrl);
+    await expect(sidebar.getByText(SITE.disclaimer, { exact: true })).toBeVisible();
+
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.locator("#nd-subnav").getByRole("button", { name: "Open Sidebar" }).click();
+    const drawer = page.locator("#nd-sidebar-mobile");
+    await expect(drawer.getByRole("link", { name: "MIT License", exact: true })).toHaveAttribute("href", SITE.licenseUrl);
+    await expect(drawer.getByText(SITE.disclaimer, { exact: true })).toBeVisible();
+  });
 });
 
 test("the 404 page offers search and the docs sections", async ({ page }) => {

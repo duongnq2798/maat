@@ -91,6 +91,13 @@ describe("checkDocsPage", () => {
     expect(checkDocsPage(DOC.replace("</body>", "<p>a</p><div>b</div></body>"), PATH, KNOWN)).toEqual([]);
   });
 
+  it("wants the docs home titled with the docs center's name alone, and every other page in the template", () => {
+    const home = DOC.replace(`The nine checks · ${SITE.name} Docs`, `${SITE.name} Docs`);
+    expect(checkDocsPage(home, "out/docs.html", KNOWN)).toEqual([]);
+    expect(checkDocsPage(DOC.replace("The nine checks", "Maat docs"), "out/docs.html", KNOWN).join("\n")).toMatch(/title/);
+    expect(checkDocsPage(home, PATH, KNOWN).join("\n")).toMatch(/title/);
+  });
+
   it("names the page in every problem", () => {
     expect(checkDocsPage(DOC.replace(' lang="en"', ""), PATH, KNOWN)[0]).toMatch(/^out\/docs\/concepts\/nine-checks\.html: /);
   });

@@ -151,6 +151,14 @@ describe("docs pages follow the IA (docs spec §3)", () => {
     for (const s of sections) expect(split(own(s)).fm.next, own(s)).toBeUndefined();
   });
 
+  it("no page's first next page sends the reader straight back to it", () => {
+    /** Each pair of pages whose first next pages name each other, once. */
+    const bounces = (first: ReadonlyMap<string, string | undefined>) =>
+      [...first].filter(([slug, to]) => to !== undefined && slug < to && first.get(to) === slug).map(([slug, to]) => `${slug} <-> ${to}`);
+    expect(bounces(new Map([["a", "b"], ["b", "a"], ["c", "a"]]))).toEqual(["a <-> b"]);
+    expect(bounces(new Map(written.map((slug) => [slug, (split(slug).fm.next as string[] | undefined)?.[0]])))).toEqual([]);
+  });
+
   it("a section's own page is written for every reader its pages are written for", () => {
     for (const s of sections) {
       const readers = new Set(s.pages.filter((p) => p.slug !== own(s)).flatMap((p) => split(p.slug).fm.audience as string[]));

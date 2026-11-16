@@ -49,10 +49,11 @@ export function checkDocsPage(html: string, path: string, known: ReadonlySet<str
   };
 
   need(html.includes('<html lang="en"'), 'missing <html lang="en">');
-  // The title template of app/(docs)/layout.tsx.
+  // The title template of app/(docs)/layout.tsx; the docs home, out/docs.html, is titled with the docs center's name alone.
   const suffix = ` · ${SITE.name} Docs`;
   const title = /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? "";
-  need(title.endsWith(suffix) && title.length > suffix.length, `title "${title}" does not end with "${suffix}"`);
+  if (path === "out/docs.html") need(title === `${SITE.name} Docs`, `title "${title}" is not "${SITE.name} Docs"`);
+  else need(title.endsWith(suffix) && title.length > suffix.length, `title "${title}" does not end with "${suffix}"`);
   const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
   // An entity such as &#x27; counts as one character.
   const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;

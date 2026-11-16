@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import type { ReactNode } from "react";
 import { DocsProvider } from "@/components/docs/DocsProvider";
+import { source } from "@/lib/docs-source";
 import { SITE, siteUrl } from "@/lib/site";
 import "./docs.css";
 
@@ -38,7 +39,8 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
   title: { default: `Docs · ${SITE.name}`, template: `%s · ${SITE.name} Docs` },
-  description: SITE.description,
+  // The docs home's own description; SITE.description is the landing page's pitch.
+  description: source.getPage([])?.data.description,
 };
 
 /** Root layout for /docs: its own <html>, stylesheet and providers, so nothing here reaches the landing page. */
