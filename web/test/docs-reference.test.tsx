@@ -160,7 +160,8 @@ describe("agent, address and fact entries", () => {
   it("AddressTable links every address to Basescan", () => {
     render(<AddressTable />);
     const rows = within(screen.getByRole("region", { name: "Base addresses" })).getAllByRole("row");
-    expect(rows).toHaveLength(1 + docsData.addresses.length);
+    const groups = new Set(docsData.addresses.map((a) => a.group).filter(Boolean));
+    expect(rows).toHaveLength(1 + groups.size + docsData.addresses.length);
     const addresses = docsData.addresses.filter((a) => a.type === "address");
     expect(screen.getAllByRole("link")).toHaveLength(addresses.length);
     expect(screen.getByRole("link", { name: addresses[0]?.value })).toHaveAttribute(
@@ -169,11 +170,48 @@ describe("agent, address and fact entries", () => {
     );
   });
 
-  it("FactTable shows each value with its source", () => {
-    render(<FactTable names={["timelockHours", "mandate.maxPremiumBps"]} />);
-    expect(screen.getByText("24 hours")).toBeInTheDocument();
-    expect(screen.getByText(FACTS.timelockHours.source)).toBeInTheDocument();
+  it("AddressTable shows each group comment once, heading its own row group, and no row repeats it", () => {
+    const { container } = render(<AddressTable />);
+    const groups = [...new Set(docsData.addresses.map((a) => a.group).filter(Boolean))];
+    expect(groups.length).toBeGreaterThan(0);
+    for (const g of groups) {
+      const heads = screen.getAllByText(g);
+      expect(heads).toHaveLength(1);
+      expect(heads[0]).toHaveAttribute("scope", "rowgroup");
+      const members = docsData.addresses.filter((a) => a.group === g).map((a) => a.name);
+      const inGroup = [...heads[0]!.closest("tbody")!.querySelectorAll("td:first-child")].map((td) => td.textContent);
+      expect(inGroup).toEqual(members);
+    }
+    const notes = [...container.querySelectorAll("tbody td:nth-child(3)")].map((td) => td.textContent).filter(Boolean);
+    expect(notes).toEqual(docsData.addresses.map((a) => a.note).filter(Boolean));
+  });
+
+  it("FactTable shows a setting's plain name, its name in the code, its value and the file that sets it", () => {
+    render(<FactTable names={["timelockHours", "mandate.maxPremiumBps", "earlyClose"]} />);
+    const region = screen.getByRole("region", { name: "Defaults" });
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Setting", "In code", "Value", "Source file"]);
+    const row = (label: string) => [...within(region).getByText(label).closest("tr")!.querySelectorAll("td")].map((td) => td.textContent);
+    expect(row("Timelock delay")).toEqual(["Timelock delay", "MandateVault.TIMELOCK", "24 hours", "contracts/src/MandateVault.sol"]);
+    expect(row("Premium limit")).toEqual(["Premium limit", "Mandate.maxPremiumBps in defaultMandate", "100 bps", "contracts/script/MaatConfig.sol"]);
+    expect(row("Close on a shipped early-close day")).toEqual([
+      "Close on a shipped early-close day",
+      "literal 780 in constructor",
+      "13:00 ET",
+      "contracts/src/MarketCalendar.sol",
+    ]);
     expect(() => FactTable({ names: ["nope" as never] })).toThrow('<Fact name="nope" /> is not in FACT_TEXT');
+  });
+
+  it("FactTable shows a figure with the source that proves it, and a caption below the table", () => {
+    render(<FactTable names={["forkBlock"]} label="Figures" caption="Measured on a fork." />);
+    const region = screen.getByRole("region", { name: "Figures" });
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Figure", "Value", "Source"]);
+    expect(within(region).getByText(FACTS.forkBlock.source)).toBeInTheDocument();
+    expect(region.closest("figure")?.querySelector("figcaption")).toHaveTextContent("Measured on a fork.");
+  });
+
+  it("FactTable refuses a table that mixes settings and figures", () => {
+    expect(() => FactTable({ names: ["timelockHours", "forkBlock"] })).toThrow("<FactTable /> mixes settings and figures");
   });
 
   it("FactTable names its region with the label it is given, and says Defaults without one", () => {

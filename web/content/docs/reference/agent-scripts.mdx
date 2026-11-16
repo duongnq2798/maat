@@ -9,11 +9,13 @@ sources:
   - agent/package.json
   - agent/src/main.ts
   - agent/scripts/gen-abis.ts
+  - agent/scripts/cdp-setup.ts
+  - agent/scripts/smoke-claude.ts
   - agent/README.md
 next: [guides/run-the-agent, guides/run-the-tests]
 ---
 
-This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. The agent is built and fork-tested, and it has not run live.
+This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and it has not run live.
 
 | Entry | What it does | What it needs | Outside services |
 | --- | --- | --- | --- |
@@ -84,7 +86,15 @@ Runs the fork test in `agent/test/integration`, one file at a time and with long
 - The Base build of Anvil (`base-anvil`, installed with `base-foundryup`). On Windows, `MAAT_ANVIL_BIN` must point at the real `anvil.exe`.
 - A free local port. The test refuses to start when something already answers on it.
 
-The fork run uses a scripted proposer in place of Claude and a local sender in place of the CDP wallet, so it makes no Claude call and no CDP call. The exact versions and the port are in [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#test). Setting `MAAT_GAS_LOG` to a file path makes the test write the gas limit and `gasUsed` of each transaction it sends. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) walks through it.
+`base-foundryup` comes from Base's [base/base-anvil](https://github.com/base/base-anvil) repository, not from this one. That repository's README installs it with this command, which downloads Base's installer from its `foundryup` folder and runs it:
+
+```bash
+curl -L https://raw.githubusercontent.com/base/base-anvil/HEAD/foundryup/install | bash
+```
+
+The same README says the Base build installs alongside a stock Foundry and does not overwrite it. Then run `base-foundryup` with the version that [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#test) gives. That section also names the port the test uses.
+
+The fork run uses a scripted proposer in place of Claude and a local sender in place of the CDP wallet, so it makes no Claude call and no CDP call. Setting `MAAT_GAS_LOG` to a file path makes the test write the gas limit and `gasUsed` of each transaction it sends. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) walks through it.
 
 ### typecheck
 
@@ -126,7 +136,7 @@ Only `gen-abis.ts` has an npm script, `gen:abi`. You run the other files in `age
 
 Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects signing a hash, a message or typed data. Neither rule limits which vault function a transaction calls. Every run creates a new policy and points the account at it, so a second run creates a second policy.
 
-It needs `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`, and it reads `CDP_ACCOUNT_NAME` for the account name. It sends no transaction on Base and does not touch the vault.
+It needs `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`, and it reads `CDP_ACCOUNT_NAME` for the account name. Unlike the agent, it falls back to `maat-executor` only when that variable is absent. A blank `CDP_ACCOUNT_NAME=` gives it an empty name, which the CDP SDK rejects before any call to the CDP API, with `Either address or name must be provided`. The script stops with that error before it creates an account or a policy, so set a name or delete the line. It sends no transaction on Base and does not touch the vault.
 
 ```bash
 cd agent
@@ -153,11 +163,20 @@ This script calls the paid Claude API. Each run is billed to the Anthropic accou
 
 </Callout>
 
-It asks Claude for one proposal and prints the result as JSON. It builds a fixed test vault from the fakes in `agent/test`, evaluates the policy on it and passes the result to the same `ClaudeProposer` the agent uses, with the model `claude-sonnet-5-5` written into the script. So it reads no chain, uses no RPC URL, no wallet and no CDP, and it ignores `MAAT_LOOP_MODEL`. It does not load `.env`, so `ANTHROPIC_API_KEY` must be set in your shell. It is not an npm script, and neither `npm test` nor `npm run typecheck` runs it.
+It asks Claude for one proposal and prints the result as JSON. It builds a fixed test vault from the fakes in `agent/test`, evaluates the policy on it and passes the result to the same `ClaudeProposer` the agent uses, with the model `claude-sonnet-5-5` written into the script. So it reads no chain, uses no RPC URL, no wallet and no CDP, and it ignores `MAAT_LOOP_MODEL`. It is not an npm script, and neither `npm test` nor `npm run typecheck` runs it.
+
+The script does not load `.env` itself. The Anthropic SDK reads `ANTHROPIC_API_KEY` from the environment, so with the key set in your shell, run:
 
 ```bash
 cd agent
 npx tsx scripts/smoke-claude.ts
+```
+
+To have Node read the key from `agent/.env` instead, the way `cdp-setup.ts` reads its credentials, run the command below. It keeps the key out of your shell history.
+
+```bash
+cd agent
+node --env-file=.env --import tsx scripts/smoke-claude.ts
 ```
 
 This page shows no output for it, because the script calls the paid API.

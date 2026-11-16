@@ -26,7 +26,7 @@ export const DECISION_LOOP: FlowData = {
     { title: "Preview, then send", detail: "Each intent is previewed first, so the agent spends gas only on calls worth sending." },
     {
       title: "The vault decides",
-      detail: `${f("checksPerTrade")} checks run in the contract. A Decision event records the verdict.`,
+      detail: `Up to ${f("checksPerTrade")} checks run in the contract for a BUY or a SELL. A Decision event records the verdict.`,
     },
   ],
   caption: `The agent is built to run this every ${f("loopMinutes")} in session and every ${f("offSessionMinutes")} outside. Only the vault's checks are trusted.`,
@@ -37,8 +37,8 @@ export const ARCHITECTURE: FlowData = {
   steps: [
     { title: "Claude", detail: "Proposes intents as JSON that must match a schema." },
     { title: "Agent", detail: "Validates, previews and sends only vault calls, with the Builder Code." },
-    { title: "CDP wallet", detail: "Live-mode signer: only zero-value transactions to the vault, sent only on Base." },
-    { title: "MandateVault", detail: "Runs the checks and records every decision." },
+    { title: "CDP wallet", detail: "Live-mode signer. Its policy allows only zero-value transactions to the vault, and sends only on Base." },
+    { title: "MandateVault", detail: "Runs the checks and records its verdict on every execute that does not revert." },
     { title: "Base protocols", detail: "Aerodrome swaps, Aave V4 credit, Chainlink prices." },
   ],
   caption: "Only the vault moves funds, and it runs every check itself. A stolen agent key faces the same rules.",
@@ -52,7 +52,8 @@ export const TIMELOCK_FLOW: FlowData = {
     { title: "Apply or cancel", detail: `Apply the exact queued values within ${f("gracePeriodDays")}, or cancel.` },
     { title: "Or expire", detail: "After that window, applying reverts and the change must be queued again." },
   ],
-  caption: "Pausing, rotating the executor and withdrawing to the owner are instant. Changing a rule never is.",
+  caption:
+    "Pausing, rotating the executor, withdrawing to the owner, and adding a holiday or an earlier close to the calendar are instant. Changing the mandate, a stock's settings or a payee never is.",
 };
 
 export const TREASURY_LOOP: FlowData = {
@@ -65,7 +66,7 @@ export const TREASURY_LOOP: FlowData = {
     { title: "Supply", detail: "Idle stock goes to Aave V4 as collateral." },
     {
       title: "Borrow",
-      detail: `USDC, when cash covers less than ${f("runwayDays")} of compute. Only in session, and only if the projected health factor stays at or above ${f("mandate.minHealthFactor")}.`,
+      detail: `USDC, when cash covers less than ${f("runwayDays")} of compute plus unpaid bills. Only in session, and only if the projected health factor stays at or above ${f("mandate.minHealthFactor")}, or ${f("mandate.targetHealthFactor")} in the de-risk window.`,
     },
     { title: "Pay", detail: "Its own Claude bill in USDC, to an allowlisted payee, at any hour." },
   ],
