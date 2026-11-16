@@ -1,8 +1,13 @@
-export interface Usage {
+interface Tokens {
   input_tokens: number;
   output_tokens: number;
   cache_read_input_tokens?: number | null;
   cache_creation_input_tokens?: number | null;
+}
+
+export interface Usage extends Tokens {
+  /** One entry per sampling attempt, declined fallback hops included (SDK BetaIterationsUsage). */
+  iterations?: readonly (Tokens & { type: string; model?: string | null })[] | null;
 }
 
 /**
@@ -20,13 +25,22 @@ const CENTS: Record<string, { input: number; output: number; cacheRead: number; 
 // today): pricing it too low would leave the expense wallet covering the difference.
 const FALLBACK = CENTS["claude-opus-4-8"]!;
 
-/** $X per million tokens = X micro-dollars per token, so usd6 = tokens x cents / 100, rounded up. */
-export function costUsd6(model: string, u: Usage): bigint {
+function cents(model: string, u: Tokens): bigint {
   const p = CENTS[model] ?? FALLBACK;
-  const cents =
+  return (
     BigInt(u.input_tokens) * BigInt(p.input) +
     BigInt(u.output_tokens) * BigInt(p.output) +
     BigInt(u.cache_read_input_tokens ?? 0) * BigInt(p.cacheRead) +
-    BigInt(u.cache_creation_input_tokens ?? 0) * BigInt(p.cacheWrite);
-  return (cents + 99n) / 100n;
+    BigInt(u.cache_creation_input_tokens ?? 0) * BigInt(p.cacheWrite)
+  );
+}
+
+/**
+ * $X per million tokens = X micro-dollars per token, so usd6 = tokens x cents / 100, rounded up. `model` is the
+ * response's. With iterations, the top-level usage covers only the attempt that produced the message, so the cost
+ * is the sum of the attempts, each at the model that ran it (the response's when the entry names none).
+ */
+export function costUsd6(model: string, u: Usage): bigint {
+  const total = u.iterations?.length ? u.iterations.reduce((s, it) => s + cents(it.model ?? model, it), 0n) : cents(model, u);
+  return (total + 99n) / 100n;
 }

@@ -60,6 +60,37 @@ describe("ClaudeProposer", () => {
     });
   });
 
+  it("bills a fallback response per attempt, each at its own model's price", async () => {
+    // Sonnet 5.5 declined mid-answer and Opus 4.8 served it: top-level usage covers only the Opus 4.8 attempt.
+    const attempt = (input: number, output: number) => ({ input_tokens: input, output_tokens: output, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
+    const create: CreateMessage = async () => ({
+      model: "claude-opus-4-8",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: '{"summ' }, { type: "fallback" }, { type: "text", text: '{"summary":"hold","intents":[]}' }],
+      usage: {
+        ...attempt(10_000, 1_000),
+        iterations: [
+          { type: "message", model: "claude-sonnet-5-5", ...attempt(10_000, 100) },
+          { type: "fallback_message", model: "claude-opus-4-8", ...attempt(10_000, 1_000) },
+        ],
+      },
+    });
+    const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
+    // $0.021 for the declined Sonnet 5.5 attempt + $0.075 for the Opus 4.8 one
+    expect(out).toMatchObject({ ok: true, model: "claude-opus-4-8", costUsd6: 96_000n });
+  });
+
+  it("prices an attempt without a model at the response model, once", async () => {
+    const create: CreateMessage = async () => ({
+      model: "claude-sonnet-5-5",
+      stop_reason: "end_turn",
+      content: [{ type: "text", text: '{"summary":"hold","intents":[]}' }],
+      usage: { ...usage, iterations: [{ type: "message", model: null, ...usage }] },
+    });
+    const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
+    expect(out.costUsd6).toBe(30_000n);
+  });
+
   it("skips invalid JSON but still bills it", async () => {
     const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create: reply("not json") }).propose(await input());
     expect(out.ok).toBe(false);
