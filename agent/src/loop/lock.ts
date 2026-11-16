@@ -43,8 +43,8 @@ export async function acquireLock(dir: string): Promise<() => Promise<void>> {
       const pid = m ? Number(m[1]) : NaN;
       const owner = m?.[2];
       if (Number.isSafeInteger(pid) && pid > 0) {
-        // Same image, same pid: our pid from another host is a live agent we cannot probe, so fail closed.
-        if (pid === process.pid && owner !== undefined && owner !== host) {
+        // A pid written on another host lives in another pid namespace, so a probe here proves nothing: fail closed.
+        if (owner !== undefined && owner !== host) {
           throw new Error(`another agent (pid ${pid} on ${owner}) may be running; delete ${file} if no other container uses this data dir`);
         }
         // A container restart often reuses the pid the crashed agent wrote, so our own pid alone proves nothing.

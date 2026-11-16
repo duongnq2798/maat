@@ -1,6 +1,6 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { mkdir, mkdtemp, readFile, symlink, utimes, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, symlink, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
@@ -20,6 +20,12 @@ describe("acquireLock", () => {
   it("takes over a lock left by a dead process", async () => {
     const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
     await writeFile(join(d, "agent.lock"), "2147483646");
+    const release = await acquireLock(d);
+    await release();
+  });
+  it("takes over a lock left by a dead process on this host", async () => {
+    const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
+    await writeFile(join(d, "agent.lock"), `2147483646 ${hostname()}`);
     const release = await acquireLock(d);
     await release();
   });
@@ -48,6 +54,16 @@ describe("acquireLock", () => {
     const f = join(d, "agent.lock");
     await writeFile(f, `${process.pid} other-host`);
     await expect(acquireLock(d)).rejects.toThrow(`another agent (pid ${process.pid} on other-host) may be running`);
+    expect(existsSync(f)).toBe(true);
+  });
+  it("treats a lock that names another pid on another host as held", async () => {
+    // That pid lives in another pid namespace: a probe here finds nothing and would let a second agent in.
+    const d = await mkdtemp(join(tmpdir(), "maat-lock-"));
+    const f = join(d, "agent.lock");
+    await writeFile(f, "2147483646 other-host");
+    await expect(acquireLock(d)).rejects.toThrow(
+      `another agent (pid 2147483646 on other-host) may be running; delete ${join(await realpath(d), "agent.lock")} if no other container uses this data dir`,
+    );
     expect(existsSync(f)).toBe(true);
   });
   it("rejects a second acquire through another path to the same dir", async () => {
