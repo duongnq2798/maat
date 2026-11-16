@@ -236,9 +236,23 @@ describe("diagrams", () => {
     expect(out[0]).toBe("**How one round of the agent loop reaches a decision**");
     expect(out[2]).toBe("1. **Read the vault**: Balances, prices, the mandate and the market, all at one block.");
     expect(out[5]).toBe(
-      `4. **The vault decides**: ${factFor("checksPerTrade").text} checks run in the contract. A Decision event records the verdict.`,
+      `4. **The vault decides**: Up to ${factFor("checksPerTrade").text} checks run in the contract for a BUY or a SELL. A Decision event records the verdict.`,
     );
     expect(out.at(-1)).toContain(`every ${factFor("loopMinutes").text} in session`);
+  });
+
+  it("states the signer, the vault, the instant owner actions and the borrow rule as wide as the code", () => {
+    const architecture = lines(text("Architecture"));
+    expect(architecture).toContain(
+      "3. **CDP wallet**: Live-mode signer. Its policy allows only zero-value transactions to the vault, and sends only on Base.",
+    );
+    expect(architecture).toContain("4. **MandateVault**: Runs the checks and records its verdict on every execute that does not revert.");
+    expect(lines(text("TimelockFlow")).at(-1)).toBe(
+      "Pausing, rotating the executor, withdrawing to the owner, and adding a holiday or an earlier close to the calendar are instant. Changing the mandate, a stock's settings or a payee never is.",
+    );
+    expect(lines(text("TreasuryLoop"))).toContain(
+      `3. **Borrow**: USDC, when cash covers less than ${factFor("runwayDays").text} of compute plus unpaid bills. Only in session, and only if the projected health factor stays at or above ${factFor("mandate.minHealthFactor").text}, or ${factFor("mandate.targetHealthFactor").text} in the de-risk window.`,
+    );
   });
 
   it.each(["Architecture", "TimelockFlow", "TreasuryLoop"] as const)("%s numbers its steps from 1", (name) => {

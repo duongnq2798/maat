@@ -151,7 +151,7 @@ test.describe("copy", () => {
     // The Windows clipboard stores line breaks as CRLF.
     const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
     expect(text).toMatch(/^# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/);
-    expect(text).toContain(`passes ${FACT_TEXT.checksPerTrade.text} checks`);
+    expect(text).toContain(`passes up to ${FACT_TEXT.checksPerTrade.text} checks`);
     expect(text).not.toContain("<Fact");
   });
 

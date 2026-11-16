@@ -74,7 +74,7 @@ describe("diagrams", () => {
         <TimelockFlow />
       </>,
     );
-    expect(screen.getByText("9 checks run in the contract. A Decision event records the verdict.")).toBeInTheDocument();
+    expect(screen.getByText("Up to 9 checks run in the contract for a BUY or a SELL. A Decision event records the verdict.")).toBeInTheDocument();
     expect(screen.getByText("Nothing can apply it for 24 hours.")).toBeInTheDocument();
     expect(screen.getByText(/every 15 minutes in session and every 60 minutes outside/)).toBeInTheDocument();
   });
