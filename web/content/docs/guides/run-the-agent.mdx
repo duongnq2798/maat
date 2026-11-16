@@ -9,10 +9,16 @@ sources:
   - agent/README.md
   - agent/src/main.ts
   - agent/src/config.ts
+  - agent/src/runtime.ts
+  - agent/src/intent.ts
+  - agent/src/policy.ts
+  - agent/src/chain/state.ts
   - agent/src/loop/runOnce.ts
   - agent/src/chain/logWindows.ts
   - agent/src/loop/scheduler.ts
   - agent/src/loop/lock.ts
+  - agent/src/llm/proposer.ts
+  - agent/src/llm/pricing.ts
   - agent/src/exec/calls.ts
   - agent/src/exec/sender.ts
   - agent/src/exec/cdpPolicy.ts
@@ -22,15 +28,19 @@ sources:
   - agent/src/ledger/store.ts
   - agent/src/refusals.ts
   - agent/scripts/cdp-setup.ts
+  - agent/scripts/smoke-claude.ts
+  - agent/test/builderCode.test.ts
+  - contracts/src/MandateVault.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
   - deployments/README.md
 next: [reference/agent-configuration, guides/watch-decisions-onchain]
 ---
 
-This guide takes you from a clone of the repository to one round of the Maat agent, and then to the checklist that the vault's [owner](/docs/help/glossary#owner) follows to run it live. The agent is the loop that reads the vault, asks Claude for proposals, [previews](/docs/help/glossary#preview) each one against the vault and, in live mode, sends the ones worth sending. You start in [dry run](/docs/help/glossary#dry-run) mode, which is the default: it reads the real chain, calls the real Claude API, writes a journal and sends nothing. It is written for a builder who has, or will have, their own vault.
+This guide takes you from a clone of the repository to one [round](/docs/help/glossary#round) of the Maat agent, and then to the checklist that the [vault](/docs/help/glossary#vault)'s [owner](/docs/help/glossary#owner) follows to run it live. The agent is the loop that reads the vault, asks Claude for proposals, [previews](/docs/help/glossary#preview) each one against the vault and, in [live mode](/docs/help/glossary#live-mode), sends the ones worth sending. You start in [dry run](/docs/help/glossary#dry-run) mode, which is the default: it reads the real chain, calls the real Claude API, writes a [journal](/docs/help/glossary#journal) and sends nothing. It is written for a builder who has, or will have, their own vault.
 
 <Callout type="fork" title="What has run">
 
-The agent's rounds and its send path ran on a Base mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. The two journal commands in step 4 were written for this guide. No Maat vault is deployed, so the live checklist is untested on mainnet.
+The agent's rounds and its send path ran on a [Base](/docs/help/glossary#base) mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. The two journal commands in [step 4](#read-the-journal), the suffix check in [Switch to live mode and run one round](#switch-to-live-mode-and-run-one-round) and the commands in [What to watch while it runs](#what-to-watch-while-it-runs) were written for this guide. The `smoke-claude.ts` command comes from [Agent scripts](/docs/reference/agent-scripts#smoke-claudets). No Maat vault is deployed, so the live checklist is untested on mainnet.
 
 </Callout>
 
@@ -43,11 +53,14 @@ The first part of this guide is for any builder with a vault address. The part m
 | A vault to read | Its address is `MAAT_VAULT`. The Maat team has deployed none, so you need your own: [Deploy your own vault](/docs/guides/deploy-your-own-vault). |
 | Two more addresses | `MAAT_EXECUTOR` must be the executor that the vault reports, and `MAAT_EXPENSE_PAYEE` an address on the vault's [payee](/docs/help/glossary#payee) list. Both are required in every mode, dry run included. |
 | Node.js 22.9 or newer | With npm. `agent/package.json` sets the minimum. |
+| bash | Linux, macOS, or Git Bash on Windows. The commands are written for bash, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). They use `export`, `$VAR` and `grep`, which PowerShell and cmd do not run as written. The `cast` lines need [Foundry](https://getfoundry.sh). |
 | A Base RPC URL | Written `<BASE_RPC_URL>` here and set as `BASE_RPC_URL`. The agent only reads through it, and it does not need an archive node. A second URL from another provider, set as `BASE_RPC_URL_FALLBACK`, is optional: the agent uses it when a request to the first fails. |
 | An Anthropic API key | `ANTHROPIC_API_KEY`, from your own account. Every round that reaches Claude is billed, in dry-run mode too. |
 | Live mode only | A registered [Builder Code](/docs/help/glossary#builder-code-erc-8021) and three CDP credentials. The owner section lists them. |
 
-Time: not measured. No run of the real Claude API or the CDP wallet is committed, and the runbook gives no durations. The dry run calls Claude, so it costs real API fees. `agent/README.md` gives an estimate for one round, and this page does not repeat it because no run of the real API is committed to check it.
+The dry run reads a deployed vault, so it comes after the deploy. It runs the read, Claude and preview steps of a round against your vault. It does not exercise the send path, the CDP wallet or the Builder Code, because a dry run never builds a sender. Before you deploy, `npx tsx scripts/smoke-claude.ts` in `agent/`, after `npm ci` there, checks your Anthropic key: it makes one paid Claude call on a fixed test vault built from the test fakes, with no RPC and no deployed vault, and it reads `ANTHROPIC_API_KEY` from your shell, not from `.env` ([smoke-claude.ts](/docs/reference/agent-scripts#smoke-claudets)). The [fork test](/docs/help/glossary#fork-test) in [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) is the only end-to-end run, with a scripted proposer and a local sender.
+
+Time: not measured. No run of the real Claude API or the CDP wallet is committed, and the runbook gives no durations. The dry run calls Claude, so it costs real API fees. `agent/README.md` estimates about one cent per round. Each round that reaches the proposal step calls Claude once. The loop waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> after any other, so under a [mandate](/docs/help/glossary#mandate) in the `REGULAR` [session mode](/docs/help/glossary#session-mode) it runs at most about 43 rounds on a full weekday and 24 on a weekend day or a holiday. The `costUsd6` of each `run` line is what the agent books for that round: it is computed from the response's token counts with the price table in `agent/src/llm/pricing.ts`, and a model the table does not list is booked at the Opus rate. Your Anthropic billing is the real figure.
 
 ## Run a dry run
 
@@ -101,7 +114,7 @@ deployments/README.md prints no output for it, so none is shown. In the runbook'
 
 This is the command from agent/README.md, Dry run. `--once` runs a single round and exits, and `--dry-run` forces dry-run mode whatever `MAAT_MODE` says. The `--` before them passes the flags through npm.
 
-```bash
+```bash title="agent/"
 npm run agent -- --once --dry-run
 ```
 
@@ -115,7 +128,7 @@ It reads the vault at one block, calls Claude, previews each proposal with `prev
 | `marketOpen` | Whether the vault's calendar says the market is open. It sets the pause before the next round when the loop runs. |
 | `sent` | The hashes of the transactions the round sent. It is empty in dry-run mode. |
 | `skipped` | How many proposals the round did not send. In dry-run mode every proposal counts here. |
-| `proposals` | How many proposals the round considered. The agent adds a compute-bill payment of its own when it owes enough, so this can exceed what Claude proposed. |
+| `proposals` | How many proposals the round considered. The agent adds a [compute-bill](/docs/help/glossary#compute-bill) payment of its own when it owes enough, so this can exceed what Claude proposed. |
 | `haltReason` | Present only when the round halted. It says why. |
 
 The exit code does not tell you how the round went. A round that halts exits like a round that completes, so read `status`:
@@ -126,7 +139,7 @@ The exit code does not tell you how the round went. A round that halts exits lik
 | `no-state` | A required read of the vault failed. | Nothing else. The journal has an `error` line that starts `state unavailable`. |
 | `wrong-executor` | `MAAT_EXECUTOR` is not the vault's executor. | Nothing else. The journal has an `error` line with both addresses. |
 | `pending-tx` | A send from an earlier round is not settled yet. | Checked it and sent nothing new. See [Recover from a halted round](#recover-from-a-halted-round). |
-| `halted` | Something went wrong after the round started. | Stopped at once. `haltReason` says why. |
+| `halted` | Something went wrong after the round started. | Stopped this round at once. `haltReason` says why. In the loop, the next round still runs on schedule ([Run it continuously](#run-it-continuously)). |
 
 </Step>
 
@@ -136,12 +149,12 @@ The exit code does not tell you how the round went. A round that halts exits lik
 
 The agent appends one JSON object per line to `data/journal.jsonl`. The folder is `MAAT_DATA_DIR`, which is `./data` by default and relative to where you start the agent. The first command lists the `run` lines, one for each round that reached the proposal step, and the second shows the whole file.
 
-```bash
+```bash title="agent/"
 grep '"kind":"run"' data/journal.jsonl
 cat data/journal.jsonl
 ```
 
-A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Claude call worked. When it did not, `ok` is false and an `error` field says why, for example because the Anthropic key is missing. Amounts that end in `Usd6` are USDC units, which have <Fact name="usdcDecimals" />, and every bigint is written as a decimal string. These are the kinds of line:
+A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Claude call worked. When it did not, `ok` is false and an `error` field says why, for example because the Anthropic key is missing. Amounts that end in `Usd6` are USDC units, which have <Fact name="usdcDecimals" />, and every bigint is written as a decimal string. These are the kinds of line, and [Journal format](#journal-format) gives the fields of each:
 
 | `kind` | When the agent writes it |
 | --- | --- |
@@ -168,7 +181,15 @@ Live mode makes the agent send. In live mode `npm run agent` loads the settings,
 
 These steps create credentials, create the executor wallet, sign a transaction from the owner wallet and spend gas. Do them yourself, from your own accounts, and keep every secret in `.env`.
 
-**1. Register a Builder Code.** Register the project at [dashboard.base.org](https://dashboard.base.org), go to Settings, then Builder Code, and set `MAAT_BUILDER_CODE=bc_...` in `.env`. The code must match this pattern, and the agent checks it before it makes any CDP call:
+</Callout>
+
+<Steps>
+
+<Step>
+
+### Register a Builder Code
+
+Register the project at [dashboard.base.org](https://dashboard.base.org), go to Settings, then Builder Code, and set `MAAT_BUILDER_CODE=bc_...` in `.env`. The code must match this pattern, and the agent checks it before it makes any CDP call:
 
 ```text
 ^[a-z0-9_]{1,32}$
@@ -176,17 +197,39 @@ These steps create credentials, create the executor wallet, sign a transaction f
 
 In live mode the agent turns the code into an ERC-8021 suffix and appends it to the calldata of every transaction it sends. The owner's own transactions do not carry it. No real code is registered yet.
 
-**2. Create the CDP credentials.** At [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com), create an API key and a Wallet Secret. Set `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`.
+</Step>
 
-**3. Create the executor and attach the policy.** Run this once. It talks to Coinbase and sends no transaction on Base. The vault address is the one argument.
+<Step>
 
-```bash
+### Create the CDP credentials
+
+At [portal.cdp.coinbase.com](https://portal.cdp.coinbase.com), create an API key and a Wallet Secret. Set `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`.
+
+</Step>
+
+<Step>
+
+### Create the executor and attach the policy
+
+Run this once. It talks to Coinbase and sends no transaction on Base. The vault address is the one argument.
+
+```bash title="agent/"
 node --env-file=.env --import tsx scripts/cdp-setup.ts <VAULT_ADDRESS>
 ```
 
 The script creates the executor account in the CDP wallet, or finds it if an account with the name in `CDP_ACCOUNT_NAME` exists. Then it creates an account policy and attaches it. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects raw hash signing. Every run creates a new policy and points the account at it, so a second run creates a second policy. On success it prints the account address and the policy id. This page shows no output for it, because the CDP path has never run against the real CDP.
 
-**4. Point the vault at the new executor.** Only the owner wallet can sign this. The commands are copied from deployments/README.md, Switch the executor to the CDP Server Wallet. The last line only reads, and it must print the address you just set.
+</Step>
+
+<Step>
+
+### Point the vault at the new executor
+
+Only the owner wallet can sign this. The commands are copied from deployments/README.md, Switch the executor to the CDP Server Wallet. The last line only reads, and it must print the address you just set.
+
+<Callout type="warning" title="Owner only">
+
+The `cast send` line is signed by the owner wallet and spends gas.
 
 ```bash
 export EXECUTOR=<EXECUTOR_ADDRESS>   # the address the script printed
@@ -194,11 +237,25 @@ cast send "$VAULT" "setExecutor(address)" "$EXECUTOR" --rpc-url "$BASE_RPC_URL" 
 cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"
 ```
 
-From that transaction on, the owner's own `execute` calls revert with `NotExecutor`, so run any owner smoke test first ([Deploy your own vault](/docs/guides/deploy-your-own-vault)). Do this step before you start the agent in live mode: until the vault's executor is the CDP account, every round ends with `wrong-executor`.
+</Callout>
 
-**5. Fund the executor for gas.** Send <Fact name="executorGasEth" /> on Base to the executor address. The README's figure is an estimate and no live transaction has been sent to check it. A paymaster cannot be used, because it only supports smart accounts.
+From that transaction on, the owner's own `execute` calls [revert](/docs/help/glossary#revert) with `NotExecutor`, so run any owner smoke test first ([Deploy your own vault](/docs/guides/deploy-your-own-vault)). Do this step before you start the agent in live mode: until the vault's executor is the CDP account, every round ends with `wrong-executor`.
 
-**6. Switch to live mode and run one round.** Set the mode, the executor and the Builder Code in `.env`, next to the CDP credentials from step 2:
+</Step>
+
+<Step>
+
+### Fund the executor for gas
+
+Send <Fact name="executorGasEth" /> on Base to the executor address. The README's figure is an estimate and no live transaction has been sent to check it. A paymaster cannot be used, because it only supports smart accounts.
+
+</Step>
+
+<Step>
+
+### Switch to live mode and run one round
+
+Set the mode, the executor and the Builder Code in `.env`, next to the CDP credentials from [Create the CDP credentials](#create-the-cdp-credentials):
 
 ```text
 MAAT_MODE=live
@@ -206,23 +263,129 @@ MAAT_EXECUTOR=<EXECUTOR_ADDRESS>
 MAAT_BUILDER_CODE=<BUILDER_CODE>
 ```
 
-`MAAT_MODE=live` without `MAAT_BUILDER_CODE` stops the start, and so does a `MAAT_EXECUTOR` that is not the address of the CDP account named by `CDP_ACCOUNT_NAME`. Then run a single round:
+`MAAT_MODE=live` without `MAAT_BUILDER_CODE` stops the start, and so does a `MAAT_EXECUTOR` that is not the address of the CDP account named by `CDP_ACCOUNT_NAME`.
 
-```bash
+<Callout type="warning" title="The first round in live mode pays the dry-run bill">
+
+Every dry-run round still records the cost of its Claude call in `state.json`, and a dry run never pays it. With the same `MAAT_DATA_DIR`, the first round in live mode that owes at least <Fact name="billMinUsd" /> puts one `PAY_EXPENSE` of the whole unpaid sum, up to the vault's USDC balance, first in its queue of intents. It pays `MAAT_EXPENSE_PAYEE`, which the runbook's deploy sets to the owner's own wallet ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)).
+
+- It counts against the per-trade and daily caps, like a trade. The agent cuts the payment only to the vault's USDC balance, never to a cap: when the vault holds less USDC than the bill, the payment is the whole USDC balance, and the rest stays owed for a later round. A payment above the per-trade cap (<Fact name="mandate.perTradeCapUsd" /> by default), or above what is left of the daily cap, is refused with `SIZE_LIMIT`, and the bill stays unpaid.
+- You can see it before you switch. Each dry-run round that owes it has an `intent` line with the [action](/docs/help/glossary#action) `PAY_EXPENSE`, and its `gate` says what a round in live mode would do with it. When the vault holds no USDC, it is a `skip` line instead.
+- Whether the vault pays for the dry runs is the owner's choice. A new, empty `MAAT_DATA_DIR` starts with no bill. A dry run writes nothing else to `state.json`, so the new folder loses only the compute history, and the [runway](/docs/help/glossary#runway) uses `MAAT_DEFAULT_DAILY_COMPUTE_USD` until a cost has been recorded on a day before the current one.
+
+</Callout>
+
+Then run a single round.
+
+<Callout type="warning" title="Owner only">
+
+In live mode this round sends transactions from the executor account and spends its gas.
+
+```bash title="agent/"
 npm run agent -- --once
 ```
 
-Check the transaction on Basescan. Its input data must end with the Builder Code suffix, which agent/README.md writes as `...0080218021...8021`. This page shows no output, because nothing has been sent.
+</Callout>
 
-**7. Run it continuously.** Start the loop with the command below. Stop it with Ctrl+C. A stop signal ends the wait between rounds and does not interrupt a round in progress: the agent finishes that round, releases its lock and exits.
+Check the transaction on Basescan. Its input data must end with the Builder Code suffix. This page shows no output, because nothing has been sent.
+
+To read the input data yourself, this call only reads:
 
 ```bash
+cast tx <TX_HASH> input --rpc-url "$BASE_RPC_URL"
+```
+
+For `bc_a1b2c3d4`, a test code that is not Maat's, the agent's unit test in `agent/test/builderCode.test.ts` expects this 29-byte suffix:
+
+```text
+0x62635f61316232633364340b0080218021802180218021802180218021
+```
+
+It is the code's 11 ASCII bytes (`62635f6131623263336434`), one byte for their length (`0b`), then `00`, then `8021` eight times. Your own code gives the same layout with its own bytes. The agent's code decodes the codes in calldata with `codesIn`. The running agent never calls it: its unit tests and its fork test (`agent/test/integration/agent.fork.test.ts`) use it to read the code back out of the calldata:
+
+```typescript title="agent/src/exec/builderCode.ts#L17-L24"
+export function codesIn(input: Hex): readonly string[] {
+  try {
+    const a = Attribution.fromData(input) as { codes?: readonly string[] } | undefined;
+    return a?.codes ?? [];
+  } catch {
+    return [];
+  }
+}
+```
+
+Only the agent's transactions carry the suffix: `GuardedSender` appends it to every send. The owner's own `cast send` transactions do not.
+
+</Step>
+
+<Step>
+
+### Run it continuously
+
+Start the loop with the command below. Stop it with Ctrl+C. A stop signal ends the wait between rounds and does not interrupt a round in progress: the agent finishes that round, releases its lock and exits.
+
+<Callout type="warning" title="Owner only">
+
+In live mode the loop sends transactions from the executor account and spends its gas, round after round.
+
+```bash title="agent/"
 npm run agent
 ```
 
 </Callout>
 
 Without `--once` the agent runs a round, then waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> after any other round. A round that throws is logged and tried again after the longer wait. After each round the loop prints one line with the run id, the status and the counts of sent and skipped intents.
+
+A halted round does not stop the loop. The loop prints `round <runId>: halted, sent N, skipped M`, without the reason. The reason is in the journal's `error` line, which begins `halted:`. The next round then runs after the usual wait: <Fact name="loopMinutes" /> if the halted round saw the market open, and <Fact name="offSessionMinutes" /> otherwise.
+
+- **A mismatch clears its pending entry before the round halts.** So the next round does not wait for it: it reads the vault, asks Claude again and may send a similar intent.
+- **A `daily tx cap` halt repeats until the UTC day changes.** It comes back in every round that has something to send. A round that reaches its intents before it halts has already asked Claude, which is billed.
+- **To stop for a look, press Ctrl+C.** Or have the owner pause the vault ([Pause and unpause](/docs/guides/pause-withdraw-recover#pause-and-unpause)). A pause makes the vault refuse every action except `REPAY`, but the loop keeps running: it still asks Claude every round, and a `REPAY` or a `syncMultiplier` can still go through.
+
+</Step>
+
+</Steps>
+
+## What to watch while it runs
+
+The agent sends no alerts, and the loop keeps going after a halted round. Nothing in this section has run against an agent in live mode. Watch these yourself:
+
+- **The line after each round.** It is `round <runId>: <status>, sent N, skipped M`, or `round failed:` and the error when a round throws. Any status other than `done` needs a look: see [Recover from a halted round](#recover-from-a-halted-round).
+- **The journal's `halted:` and `mismatch` lines.** The two commands below list them.
+- **The executor's ETH.** Nothing tops it up ([Operational costs](/docs/security/not-claimed#operational-costs)), and without gas a send fails and the round halts. `cast balance` prints the balance in wei.
+- **The data folder.** `data/state.json` must persist across restarts, so keep the folder when you restart or move the agent. `data/journal.jsonl` grows without limit, because nothing rotates it.
+
+```bash title="agent/"
+grep '"kind":"mismatch"' data/journal.jsonl
+grep '"message":"halted:' data/journal.jsonl
+cast balance <EXECUTOR_ADDRESS> --rpc-url "$BASE_RPC_URL"
+```
+
+These calls only read the vault and its credit adapter:
+
+```bash
+export VAULT=<VAULT_ADDRESS>       # your vault
+export ADAPTER=<ADAPTER_ADDRESS>   # the creditAdapter field of mandate()
+cast call "$VAULT" "paused()(bool)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "today()(uint256)" --rpc-url "$BASE_RPC_URL"
+cast call "$VAULT" "spentOnDay(uint256)(uint256)" <DAY> --rpc-url "$BASE_RPC_URL"
+cast call "$ADAPTER" "debt()(uint256)" --rpc-url "$BASE_RPC_URL"
+cast call "$ADAPTER" "healthFactor()(uint256)" --rpc-url "$BASE_RPC_URL"
+```
+
+| Call | What it tells you |
+| --- | --- |
+| `paused()` | `true` while the owner has paused the vault. |
+| `executor()` | The address the vault accepts. It must be `MAAT_EXECUTOR`. |
+| `today()` | The UTC day number: the `<DAY>` for the next call, and the `day` of the journal and of `state.json`. |
+| `spentOnDay(<DAY>)` | How much of the daily cap the day's trades and bill payments used, in USDC units. The cap is <Fact name="mandate.dailyCapUsd" /> by default. Credit actions do not count. |
+| `debt()` | The adapter's USDC debt, in USDC units. |
+| `healthFactor()` | The position's [health factor](/docs/help/glossary#health-factor) in [WAD](/docs/help/glossary#wad), so `1e18` reads as 1.0. |
+
+The default floor, <Fact name="mandate.minHealthFactor" />, and target, <Fact name="mandate.targetHealthFactor" />, are the vault's gates for its own actions, not liquidation lines. A `BORROW`, or a `WITHDRAW_COLLATERAL` while debt is open, must leave the health factor at or above the floor, and at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window). By default that window is the last <Fact name="mandate.deriskWindowSec" /> before <Fact name="feedEdge" /> on a Friday, and the same hours on a Monday to Thursday that comes before a holiday ([The de-risk window](/docs/concepts/credit-and-health-factor#the-de-risk-window)). The agent's policy does not repay because of the health factor: it suggests a `REPAY` only when new revenue arrives.
+
+Two owner tasks recur. Keep the vault's calendar current, because a missing holiday counts as a normal session ([Keep the calendar current](/docs/guides/change-a-rule#keep-the-calendar-current)). And keep the executor funded with ETH.
 
 ## Limits that protect the run
 
@@ -233,10 +396,11 @@ The agent bounds itself, in addition to the vault's checks. The vault stays the 
 | Transactions per UTC day | <Fact name="maxTxPerDay" /> by default, set with `MAAT_MAX_TX_PER_DAY` | The round halts with a reason that begins `daily tx cap`. The count includes every `execute` and `syncMultiplier` the agent sends or tries to send, and it is kept in `data/state.json`, so a restart does not reset it. In dry-run mode the count stays at zero. |
 | Gas limit of one transaction | At most <Fact name="maxGas" /> | The sender refuses any limit above it. |
 | Gas limit of `execute` | At least <Fact name="executeGasFloor" /> | The agent never sends `execute` with less. |
-| Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else. The CDP policy adds a second layer in live mode. |
+| Gas limit of `syncMultiplier` | At least <Fact name="syncGasFloor" /> | The agent never sends `syncMultiplier` with less. |
+| Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else. The CDP policy adds a second layer in live mode. `notifyRevenue` is on the list, but the agent never sends it: no code in `agent/src` encodes it, and it has no gas floor. |
 | Agents per data folder | One | A second agent on the same folder stops at startup with an error. |
 
-Two more rules come from agent/README.md, Safety: if a transaction fails or reverts, the round stops at once, and if the RPC fails, the round does nothing.
+Two more rules come from agent/README.md, Safety: if a transaction fails or reverts, the round stops at once, and if the RPC fails, the round does nothing. In the loop, the next round still runs ([Run it continuously](#run-it-continuously)).
 
 Every transaction carries an explicit gas limit, which the agent works out like this:
 
@@ -250,19 +414,77 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 
 | File | What it holds |
 | --- | --- |
-| `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the rationale text behind each `rationaleHash`. |
-| `data/state.json` | The compute bills, the refusals logged per day, the transaction count per day, and the sends that are still `pending`. The agent needs it to survive a restart. |
-| `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and recent, counts as held. |
+| `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the [rationale](/docs/help/glossary#rationale) text behind each `rationaleHash`. |
+| `data/state.json` | The compute bills and the amount paid so far, the refusals logged per day, the transaction count per day, and the sends that are still `pending`. The agent needs it to survive a restart. |
+| `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and younger than <Fact name="lockStaleSec" />, counts as held. |
 
-Git ignores `agent/data/`.
+Git ignores `agent/data/`. Stop the agent before you edit either file: it holds the contents of `state.json` in memory and writes them back after each round.
+
+The folder belongs to one vault. `state.json` does not record which, so when `MAAT_VAULT` changes, the unpaid bill, the refusals logged and the transactions counted per day, and any pending send carry over to the new vault. A round on the new vault then skips a refusal log for a reason the old vault already logged that day.
+
+### Journal format
+
+Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
+
+```typescript title="agent/src/ledger/journal.ts#L8-L18"
+export type JournalEntry =
+  | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
+  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
+  /** Written right after the send returns, before the receipt: with `intent` it brackets the pending window. */
+  | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; txHash: Hex; gas: bigint }
+  /** A send from an earlier round, settled (applied / dropped) or still pending at round start. */
+  | { kind: "reconcile"; runId: string; intentId: Hex; action: string; txHash?: Hex; outcome: "applied" | "pending" | "dropped"; decision?: Decision; note?: string }
+  | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
+  | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
+  | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
+  | { kind: "error"; runId: string; message: string };
+```
+
+- Every `bigint` field is written as a decimal string.
+- Amounts that end in `Usd6` are USDC units, with <Fact name="usdcDecimals" />.
+- `day` is the UTC day number: the whole days from 1970-01-01 to the timestamp of the block the round read. It is the same number the vault's `today()` returns.
+
+### State file format
+
+`state.json` holds one object of the `Data` shape below, and `pending` holds the sends that are not settled yet:
+
+```typescript title="agent/src/ledger/store.ts#L6-L27"
+/** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
+export interface PendingTx {
+  intentId: Hex;
+  txHash?: Hex;
+  action: string;
+  amount: string;
+  gateKind: "execute" | "log-refusal";
+  /** The preview verdict at send time; a log-refusal records this reason as logged. */
+  preview: string;
+  day: string;
+  /** The state block the round read before sending: the age origin and the getLogs lower bound. */
+  block: string;
+}
+
+interface Data {
+  version: 1;
+  compute: Record<string, string>; // day -> usd6
+  paidUsd6: string;
+  refusals: Record<string, ReasonName[]>; // day -> reasons logged onchain
+  txByDay: Record<string, number>;
+  pending: PendingTx[];
+}
+```
+
+- `version` must be 1. Any other value stops startup with `unsupported state version N`, and a file that is not valid JSON stops startup too. A missing file starts empty.
+- The keys of `compute`, `refusals` and `txByDay` are UTC day numbers, written as strings.
+- The daily compute cost behind the runway is the average of the recorded days among the 7 UTC days before today. With none recorded, it is `MAAT_DEFAULT_DAILY_COMPUTE_USD`, <Fact name="dailyComputeUsd" /> by default ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
+- The unpaid bill is the total of `compute` minus `paidUsd6`, and never less than zero.
 
 ## Recover from a halted round
 
 This section follows agent/README.md, After a halted or pending-tx cycle. A round that ends `halted` or `pending-tx` needs a look at the journal, not a restart in the dark.
 
 1. Read `data/journal.jsonl`: the `error`, `mismatch`, `sent` and `reconcile` lines. Then look up the transaction hash on Basescan.
-2. `pending-tx` means a transaction was sent and its outcome is still unknown. The next round settles it first, on its own. No manual fix is needed. The table shows what it decides.
-3. `halted` because of a `mismatch` or a missing `Decision`: read the transaction on Basescan before you run again. If a `pending` entry keeps halting the round, remove it from `data/state.json` only when you are sure that transaction can no longer take effect. Stop the agent first, because it holds the file's contents in memory and writes them back after each round.
+2. `pending-tx` means a transaction was sent and its outcome is still unknown. The next round settles it first, on its own. No manual fix is needed, unless the same entry stays `pending` round after round. The table shows what it decides.
+3. `halted` because of a `mismatch` or a missing `Decision`: read the transaction on Basescan before the next round runs, so stop the agent first. A mismatch has already cleared its pending entry. If a `pending` entry halts every round, do not just delete it: follow [A pending entry that halts every round](#a-pending-entry-that-halts-every-round).
 4. An emergency stop is the owner's call and needs a signature: the owner can pause the vault, or take the executor role back. [Pause, withdraw and recover](/docs/guides/pause-withdraw-recover) has the steps.
 
 What the next round does with a pending send:
@@ -273,7 +495,7 @@ What the next round does with a pending send:
 | The vault says the intent is used, and no receipt settled it | `applied` | Searches the vault's logs for the intent's `Decision`, from the block the send was prepared at to the latest block, at most <Fact name="logWindowBlocks" /> per query, and settles it. If it finds no `Decision`, the round halts. |
 | The transaction is in the mempool | `pending` | Waits and sends nothing. |
 | The transaction is mined and reverted | `dropped` | Clears the entry. The intent was not used. |
-| The transaction is mined, its receipt holds no `Decision` for the intent, and the intent is not yet used | `pending` | Waits, because the RPC may lag. |
+| The transaction is mined, its receipt holds no `Decision` for the intent, and the intent is not yet used | `pending` | Waits, because the RPC may lag. If this repeats for more than a few rounds, check that `MAAT_VAULT` is the vault the transaction went to. |
 | There is no trace of the transaction, and less than <Fact name="pendingWindowMinutes" /> have passed since the block the send was prepared at | `pending` | Waits. |
 | There is no trace, and <Fact name="pendingWindowMinutes" /> or more have passed | `dropped` | Records it and continues. |
 
@@ -285,7 +507,7 @@ These are the halt reasons the runner writes itself. Any other error thrown afte
 | --- | --- |
 | `daily tx cap` | The day's transaction limit was reached. |
 | `gas estimate failed` | The estimate for `execute` or `syncMultiplier` failed, so no limit was chosen. |
-| `no receipt for` | A sent transaction had no receipt within the wait. The entry stays pending and the next round settles it. |
+| `no receipt for` | A sent transaction had no receipt within <Fact name="receiptTimeoutSec" />. For an `execute`, the entry stays pending and the next round settles it. A `syncMultiplier` is not tracked as pending: the next round compares the multiplier again and may send another one. |
 | `tx ... reverted` | A sent transaction reverted. |
 | `no Decision for intent` | A sent transaction succeeded but its receipt has no `Decision` from the vault for that intent. |
 | `mismatch` | The preview said `OK` and the vault refused. The journal has a `mismatch` line. |
@@ -293,25 +515,63 @@ These are the halt reasons the runner writes itself. Any other error thrown afte
 | `state unavailable after a transaction` | The vault could not be read again after a send. |
 | `syncMultiplier ... no MultiplierChangeDetected` | A `syncMultiplier` call succeeded but the vault did not record a change. |
 
+### A pending entry that halts every round
+
+<Callout type="note" title="Not run">
+
+Nobody has run this procedure. It is written from the code that settles a send, `settle` and `reconcile` in `agent/src/loop/runOnce.ts`.
+
+</Callout>
+
+When the agent settles a send, it does more than clear the entry. For an allowed `PAY_EXPENSE` it adds the amount to `paidUsd6`, and for a logged refusal it records the reason for that day. If you only delete the entry, neither happens: the next round can pay the same bill again, or log the same refusal again. Do this instead:
+
+1. Stop the agent.
+2. Read whether the vault used the intent, with the `usedIntent` call in [Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent) and the entry's `intentId`. If it prints `false`, leave the entry: the agent drops it on its own when the transaction reverts, or after <Fact name="pendingWindowBlocks" /> with no trace of it. If the transaction was mined and did not revert but `usedIntent` stays `false`, the agent never drops the entry. An `execute` that does not revert marks its intent used, so unless your RPC lags, the transaction was not sent to this vault: see the row for a mined transaction whose intent is not yet used in the table above.
+3. If it prints `true`, the transaction took effect. Find its `Decision` with the `cast logs` command in the same step, from the entry's `block`. Pass `--query-size` if your provider limits the block range. Compare its reason with the entry's `preview` ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)): if they differ, the agent would also have recorded a mismatch.
+4. Do in `state.json` what the agent would have done:
+   - If the entry's `action` is `PAY_EXPENSE` and the `Decision` has `allowed` true, add the entry's `amount` to `paidUsd6`. Both are decimal strings in USDC units, with <Fact name="usdcDecimals" />.
+   - If its `gateKind` is `log-refusal`, add its `preview` reason to `refusals["<day>"]`, where `<day>` is the entry's `day`.
+5. Delete the entry from `pending`, then start the agent.
+
+A pending entry looks like this, with placeholders for the values that vary. `txHash` is missing until the send has returned a hash. `amount` is the intent's amount: USDC units for a `BUY`, `BORROW`, `REPAY` or `PAY_EXPENSE`, and the stock's own units ([raw amount](/docs/help/glossary#raw-amount)) for a `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL`.
+
+```json
+{
+  "intentId": "<INTENT_ID>",
+  "txHash": "<TX_HASH>",
+  "action": "PAY_EXPENSE",
+  "amount": "<AMOUNT>",
+  "gateKind": "execute",
+  "preview": "OK",
+  "day": "<UTC_DAY>",
+  "block": "<BLOCK>"
+}
+```
+
 ## Check it worked
 
 - The dry run printed a line that starts with `maat agent: mode=dry-run`, then a report. A round that read the vault and finished has `status` `done` and an empty `sent`.
 - The journal has a `run` line for the round with `"mode":"dry-run"` and `"ok":true`. If `ok` is false, read the `error` field before you do anything else.
 - Every `intent` line of the round has a `gate`, and none has a `txHash`. A dry run sends nothing.
-- In live mode, `sent` holds the hashes, Basescan shows each transaction going from the executor to the vault, the input data ends with the Builder Code suffix, and the `intent` line written after the receipt has a `decision`.
+- In live mode, `sent` holds the hashes, Basescan shows each transaction going from the executor to the vault, the input data ends with the Builder Code suffix ([Switch to live mode and run one round](#switch-to-live-mode-and-run-one-round)), and the `intent` line written after the receipt has a `decision`.
 
 ## Common mistakes
 
 - **Treating the dry run as free.** It calls Claude in every round that reaches the proposal step, and Anthropic bills each request. It sends no transaction, and it still costs money.
 - **No `ANTHROPIC_API_KEY`.** The agent does not check for it at startup. The SDK reports the missing key when the round asks Claude, and the round's `run` line then has `ok` false with the error.
-- **A `MAAT_EXECUTOR` that is not the vault's executor.** Every round ends with `wrong-executor`, in every mode. In live mode the agent also stops at startup if it is not the CDP account's address.
-- **Going live before the vault points at the CDP account.** Owner step 4 has to come before the first live round.
-- **`MAAT_MODE=live` without a Builder Code.** The start fails, even with `--dry-run`, because the flag is applied after the settings are checked.
+- **Starting the agent in a shell that sourced `contracts/.env`.** The deploy guide's `set -a; source .env; set +a` exports `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` from `contracts/.env`. Node's `--env-file` does not replace a variable that is already set, so the agent uses those values instead of the ones in `agent/.env`. After the handover, the `MAAT_EXECUTOR` from `contracts/.env` is still the owner's wallet, so every dry-run round ends with `wrong-executor`, and a start in live mode stops at the CDP check below. Start the agent in a new terminal, and check the executor in its `maat agent: mode=` line.
+- **A `MAAT_EXECUTOR` that is not the vault's executor.** Every round ends with `wrong-executor`, in every mode, and the journal's `error` line reads `vault executor is <ADDRESS>, agent is <ADDRESS>`. In live mode the agent also stops at startup if it is not the CDP account's address, with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`. That check is tested against a fake CDP client only.
+- **Going live before the vault points at the CDP account.** [Point the vault at the new executor](#point-the-vault-at-the-new-executor) has to come before the first live round.
+- **`MAAT_MODE=live` without a Builder Code.** The start fails, even with `--dry-run`, because the flag is applied after the settings are checked. A start in live mode with a code that does not match the pattern stops with `invalid builder code "<CODE>"`, before any CDP call.
 - **A misspelled flag.** `main.ts` reads only `--once` and `--dry-run` and ignores every other argument, so `--onec` starts the loop instead of one round.
 - **Reading the exit code as the result.** `main.ts` sets none. Read `status`.
-- **Two agents on one data folder.** The second stops at startup and names the process that holds the lock.
+- **Two agents on one data folder.** The second stops at startup with `another agent (pid N) is running; lock <FILE>`. A lock left by a process that has exited is removed at the next start, unless the system has given that pid to another running process: the start then names that pid.
+- **A leftover lock file that is empty or garbled.** While it is younger than <Fact name="lockStaleSec" />, the start stops with `lock file unreadable; delete if no agent runs`. Delete it only when no agent runs. An older one is removed at the next start.
 - **Editing `state.json` while the agent runs.** The agent writes its in-memory copy back after each round and overwrites your edit.
+- **Deleting a `pending` entry to unstick a round.** It can pay the same bill twice. Follow [A pending entry that halts every round](#a-pending-entry-that-halts-every-round).
 - **Looking for a transaction in dry-run mode.** There is none. The `intent` line says what the agent would have done.
+
+Problems with the setup and the tests are in [Troubleshooting](/docs/help/troubleshooting).
 
 ## Next steps
 

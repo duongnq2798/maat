@@ -7,43 +7,68 @@ status: fork-tested
 lastReviewed: 2026-11-07
 sources:
   - agent/src/loop/runOnce.ts
+  - agent/src/policy.ts
+  - agent/src/llm/prompt.ts
+  - agent/src/llm/proposer.ts
   - agent/src/llm/schema.ts
+  - agent/src/intent.ts
+  - agent/src/config.ts
+  - agent/src/chain/preview.ts
+  - agent/src/refusals.ts
   - agent/src/exec/sender.ts
+  - agent/src/exec/cdpPolicy.ts
   - contracts/src/MandateVault.sol
   - contracts/src/IMandateVaultEvents.sol
-next: [concepts/nine-checks, get-started/read-a-decision, concepts/refusal-codes]
+next: [concepts/nine-checks, get-started/read-a-decision, concepts/treasury-loop]
 ---
 
-This page follows one trade from the moment the agent reads the vault to the moment the vault records its verdict. You will see which steps belong to the agent, which one belongs to the contract, and why only the contract's step is trusted. Nothing is deployed yet, so the page describes how the code is built to work, and its example is a run on a fork.
+This page follows one trade from the moment the agent reads the [vault](/docs/help/glossary#vault) to the moment the vault records its verdict. You will see which steps belong to the agent, which one belongs to the contract, and why only the contract's step is trusted. Nothing is deployed yet, so the page describes how the code is built to work, and its example is a run on a [fork](/docs/help/glossary#fork-test).
 
 ## The loop in four steps
 
-One round of the agent loop has four steps. The agent is built to run a round every <Fact name="loopMinutes" /> while the US market is in session and every <Fact name="offSessionMinutes" /> outside it.
+One [round](/docs/help/glossary#round) of the agent loop has four steps. The agent is built to run a round every <Fact name="loopMinutes" /> while the vault's calendar says the market is open, which under the default [mandate](/docs/help/glossary#mandate) means the [NYSE session](/docs/help/glossary#nyse-session), and every <Fact name="offSessionMinutes" /> otherwise.
 
-1. [Read the vault](#step-1-read-the-vault): balances, prices, the [mandate](/docs/help/glossary#mandate) and the market, all at one block.
-2. [Policy, then Claude](#step-2-the-policy-and-claude): rules suggest trades, and Claude proposes [intents](/docs/help/glossary#intent), each with a rationale.
+1. [Read the vault](#step-1-read-the-vault): balances, prices, the mandate and the market, all at one block.
+2. [Policy, then Claude](#step-2-the-policy-and-claude): rules suggest trades, and Claude proposes [intents](/docs/help/glossary#intent), each with a [rationale](/docs/help/glossary#rationale).
 3. [Preview, then send](#step-3-preview-and-send): each intent is [previewed](/docs/help/glossary#preview) first, and only worthwhile calls cost gas.
-4. [The vault decides](#step-4-the-vault-decides): for a BUY or a SELL the contract runs its <Fact name="checksPerTrade" /> checks (concentration applies to a BUY only; the other actions have their own) and records the verdict.
+4. [The vault decides](#step-4-the-vault-decides): for a BUY or a SELL the contract runs its <Fact name="checksPerTrade" /> checks (concentration applies to a BUY only; the other [actions](/docs/help/glossary#action) have their own) and records the verdict.
 
 Steps 1 to 3 run in the agent, off chain. Step 4 runs in the vault, onchain.
 
 <Architecture />
 
-The agent-side steps save gas and keep a readable journal. None of them is trusted: the vault runs every check again itself.
+The agent-side steps save gas and keep a readable [journal](/docs/help/glossary#journal). None of them is trusted: the vault runs every check again itself.
 
-## Step 1: read the vault
+## Worked example: the Saturday buy
+
+The agent's end-to-end test runs this on a fork of [Base](/docs/help/glossary#base) mainnet pinned at block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />. A scripted proposer stands in for Claude, and a local sender stands in for the [CDP wallet](/docs/help/glossary#cdp-server-wallet).
+
+1. **Thursday <Fact name="forkTimeEt" />.** The agent reads the vault, previews a BUY of NVDAc and sends it. The preview says `OK`, every check passes, and the vault records a [`Decision`](/docs/help/glossary#decision) with `allowed=true, reason=OK`. The same run also supplies the stock to [Aave V4](/docs/help/glossary#aave-v4) and borrows USDC against it.
+2. **The clock moves.** The test moves the fork's clock ahead <Fact name="weekendOffsetDays" /> days, to Saturday. The agent proposes a BUY of GOOGLc.
+3. **The preview.** `previewIntent` returns `MARKET_CLOSED`. That [refusal](/docs/help/glossary#refusal) is worth recording and the agent has not logged it that day, so it sends the intent.
+4. **The verdict.** The vault's calendar says the market is closed. The vault emits `Decision(allowed=false, reason=MARKET_CLOSED)`, the transaction uses <Fact name="gas.refusalLog" /> gas, and no money moves. The call does not [revert](/docs/help/glossary#revert).
+
+<Callout type="fork" title="Fork only">
+
+The Saturday round is the same fork with the clock moved forward, not a real Saturday block. The proposer is scripted, the sender is local rather than the CDP wallet, and no output from the real Claude API is committed yet. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it, and [Read a decision](/docs/get-started/read-a-decision) shows all four decisions of the run.
+
+</Callout>
+
+## Each step in detail
+
+### Step 1: read the vault
 
 The agent reads the vault, its tokens, their feeds and its Aave position at one pinned block, so every number in the round comes from the same moment. If a required read fails, the agent does nothing and writes the failure to its journal. It also stops if the vault's [executor](/docs/help/glossary#executor) is not its own address.
 
-Before it asks for any proposal, the agent settles any send that an earlier round left pending, by reading its `Decision` from the transaction's receipt, or by looking the intent up with `usedIntent` and finding its `Decision` in the vault's logs. In live mode it also sends `syncMultiplier` for any stock whose [uiMultiplier](/docs/help/glossary#uimultiplier) changed, so the vault records the change.
+Before it asks for any proposal, the agent settles any send that an earlier round left pending, by reading its `Decision` from the transaction's receipt, or by looking the intent up with `usedIntent` and finding its `Decision` in the vault's logs. If a send cannot be settled yet, the round ends there with the status `pending-tx`: it does not ask Claude and sends nothing new. [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) shows what the next round decides in each case. In [live mode](/docs/help/glossary#live-mode) the agent also sends `syncMultiplier` for any stock whose [uiMultiplier](/docs/help/glossary#uimultiplier) changed, so the vault records the change.
 
-## Step 2: the policy and Claude
+### Step 2: the policy and Claude
 
-A rule-based policy turns the state into suggestions. It keeps an equal-weight basket of the three stocks with <Fact name="cashReservePct" /> held in USDC, and it rebalances when a weight drifts more than <Fact name="rebalanceDriftPct" /> from its target. It suggests borrowing when cash covers less than <Fact name="runwayDays" /> of compute cost.
+A rule-based policy turns the state into suggestions. It keeps an equal-weight basket of the three stocks with <Fact name="cashReservePct" /> held in USDC, and it rebalances when a weight drifts more than <Fact name="rebalanceDriftPct" /> from its target. It suggests borrowing only when the vault has collateral supplied and its USDC is below the [runway](/docs/help/glossary#runway): <Fact name="runwayDays" /> of compute cost plus any unpaid [compute bill](/docs/help/glossary#compute-bill). [The treasury loop](/docs/concepts/treasury-loop) explains each rule.
 
 The suggestions are arithmetic, not orders. Claude can adopt, resize or drop them, and proposing nothing is a valid answer.
 
-A proposal from Claude is JSON that must match a schema: at most <Fact name="maxIntents" /> intents, each with an action, a stock, a dollar amount and a rationale of at most <Fact name="maxRationaleChars" /> characters. The agent validates the answer again with zod and clamps each amount to what the vault can actually act on.
+Claude answers in structured output. The JSON schema sent with the request fixes the shape: a summary, and a list of intents, each with an action, a symbol (one of the three stocks, or USDC), a dollar amount and a rationale. Apart from a one-line description on four of its fields, that schema holds only the types, the allowed actions and symbols, the required keys, and a ban on extra keys. The bounds are checked afterwards, when the agent validates the answer with zod: at most <Fact name="maxIntents" /> intents, a rationale of at most <Fact name="maxRationaleChars" /> characters, a summary of at most <Fact name="maxSummaryChars" /> characters and a positive amount of at most <Fact name="maxAmountUsd" />. An answer that breaks any of them is dropped whole.
 
 ```typescript title="agent/src/llm/schema.ts#L3-L17"
 export const LLM_ACTIONS = ["BUY", "SELL", "SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY"] as const;
@@ -63,21 +88,146 @@ export const ProposalSchema = z.strictObject({
 });
 ```
 
+The agent then turns each proposal into an intent and, for every action except `BORROW`, clamps its amount: an amount above what the vault can act on is lowered to that limit, and a smaller one is kept. For a `SELL`, a `SUPPLY` or a `WITHDRAW_COLLATERAL` it first converts the dollars into token units at the feed price it read. The other actions are in USDC.
+
+| Action | The amount is capped at |
+| --- | --- |
+| `BUY` | The vault's USDC |
+| `SELL`, `SUPPLY` | The vault's balance of that stock |
+| `WITHDRAW_COLLATERAL` | The amount of that stock supplied as collateral |
+| `REPAY` | The smaller of the vault's USDC and the debt, or the USDC alone when there is no debt or the debt cannot be read |
+| `BORROW` | No cap: the intent keeps the amount Claude proposed, and the vault's checks, including the projected [health factor](/docs/help/glossary#health-factor), bound it |
+| `PAY_EXPENSE`, which the agent's code adds | The vault's USDC |
+
+The clamp does not apply the mandate's caps. Claude is shown the per-trade and daily limits and what the vault has spent today, and the policy keeps its own buy and sell suggestions under the per-trade cap. Still, a buy, a sell or a bill payment above a cap reaches the preview, and if the earlier checks pass, the vault's size check refuses it with `SIZE_LIMIT`. A symbol that does not fit its action, such as USDC on a BUY (of Claude's actions, only `BORROW` and `REPAY` take USDC, and they take nothing else), or an amount that the clamp brings to zero, is skipped and only written to the journal.
+
 Claude's schema cannot express `PAY_EXPENSE`: it is not in `LLM_ACTIONS`. When the agent owes at least <Fact name="billMinUsd" /> for its Claude usage, the agent's own code adds the `PAY_EXPENSE` intent, and pays that bill before any proposal.
 
 The agent keeps each rationale in its journal and puts `keccak256(rationale)` onchain as the `rationaleHash` of the intent. That lets anyone match a `Decision` to the reasoning behind it. [Read a decision](/docs/get-started/read-a-decision) shows how.
 
-## Step 3: preview and send
+#### What Claude is sent
+
+Each request carries a fixed system prompt, a user message with the round's state, and the JSON schema, whose field descriptions add a few short instructions. This is the system prompt:
+
+```typescript title="agent/src/llm/prompt.ts#L5-L25"
+export const SYSTEM_PROMPT = `You are Maat, the treasury agent of an onchain vault on Base. The vault holds USDC and tokenized US stocks
+(B20 tokens NVDAc, GOOGLc, AAPLc) and can borrow USDC against them on Aave V4. Motto: "LLM proposes, contract decides."
+You propose actions; the MandateVault contract checks each one against its mandate and refuses anything unsafe, and every
+verdict, including refusals, is published onchain.
+
+Investment policy (fixed; do not invent another):
+- Target: 30% of net equity in USDC, the rest split equally across the stocks in the basket.
+- Rebalance only when a weight drifts more than 5 percentage points from target.
+- Stocks held in the vault should be supplied as collateral; withdraw collateral before selling it.
+- Borrow USDC only to keep 7 days of compute costs plus unpaid bills in USDC, and only against supplied collateral.
+- Repay debt when new revenue arrives, keeping the 7-day runway.
+- Never predict prices. Never chase news. Size limits and market hours are enforced by the contract.
+
+You receive the current state, the policy's computed weights and a list of suggestions. Suggestions are arithmetic, not
+orders: adopt, resize or drop them. Proposing nothing is a valid and often correct answer: return an empty list.
+When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
+itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
+
+Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
+and in English. Hard limits (an answer that breaks one is rejected whole): at most ${MAX_INTENTS} intents, each rationale
+at most ${MAX_RATIONALE_CHARS} characters, the summary at most ${MAX_SUMMARY_CHARS} characters, every amount positive.`;
+```
+
+The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per UTC day, and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. When the market is closed or a feed is [stale](/docs/help/glossary#staleness), the prompt also lets Claude propose a trade the vault will refuse, if the refusal is worth recording and the rationale says so. The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
+
+`renderUserMessage` builds the user message each round:
+
+```typescript title="agent/src/llm/prompt.ts#L29-L63"
+export function renderUserMessage({ state: s, policy: p, billUsd6 }: ProposerInput): string {
+  const view = {
+    block: s.blockNumber.toString(),
+    utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
+    marketOpen: s.marketOpen,
+    vaultPaused: s.paused,
+    usdc: usd(s.usdcBalance),
+    newRevenue: usd(s.newRevenue),
+    equity: usd(p.equityUsd6),
+    cashWeightPct: p.cashBps / 100,
+    unpaidComputeBill: usd(billUsd6),
+    computeRunwayNeed: usd(p.runwayNeedUsd6),
+    spendableForTrades: usd(p.spendableUsd6),
+    credit: s.credit && {
+      readable: s.credit.readable,
+      debt: usd(s.credit.debt),
+      healthFactor: s.credit.debt === 0n ? null : Number(s.credit.healthFactor) / 1e18,
+      minHealthFactor: Number(s.mandate.minHealthFactor) / 1e18,
+      targetHealthFactor: Number(s.mandate.targetHealthFactor) / 1e18,
+    },
+    limits: { perTradeUsd: usd(s.mandate.perTradeCapUsd), dailyUsd: usd(s.mandate.dailyCapUsd), spentTodayUsd: usd(s.spentToday) },
+    tokens: s.tokens.map((t) => ({
+      symbol: t.symbol ?? t.address,
+      price: t.price8 === null ? null : Number(t.price8) / 1e8,
+      feedAgeSeconds: t.feedAge === null ? null : Number(t.feedAge),
+      valueUsd: usd(t.valueUsd6),
+      ...(() => {
+        const w = p.weights.find((x) => x.symbol === t.symbol);
+        return w ? { weightPct: w.weightBps / 100, targetPct: w.targetBps / 100, inVaultUsd: usd(w.walletUsd6), suppliedUsd: usd(w.suppliedUsd6) } : {};
+      })(),
+    })),
+    suggestions: p.suggestions.map((x) => ({ action: x.action, symbol: x.symbol, amountUsd: usd(x.amountUsd6), why: x.why })),
+  };
+  return `Current state:\n${JSON.stringify(view, null, 2)}\n\nDecide this round's actions.`;
+}
+```
+
+Every field comes from the agent's read of the vault, the policy's numbers and suggestions, or the unpaid bill in the agent's state file. No news, web page or journal text is sent.
+
+The request itself:
+
+```typescript title="agent/src/llm/proposer.ts#L49-L57"
+      res = await this.create({
+        model: this.opts.model,
+        max_tokens: 16000,
+        system: [{ type: "text", text: SYSTEM_PROMPT, cache_control: { type: "ephemeral" } }],
+        messages: [{ role: "user", content: renderUserMessage(input) }],
+        output_config: { effort: "medium", format: { type: "json_schema", schema: BATCH_JSON_SCHEMA } },
+        betas: ["server-side-fallback-2026-07-01"],
+        fallbacks: "default",
+      });
+```
+
+- **Model.** The value of `MAAT_LOOP_MODEL`, by default `claude-sonnet-5-5` ([MAAT_LOOP_MODEL](/docs/reference/agent-configuration#maat_loop_model)).
+- **Answer.** `output_config` sets the effort to `medium` and asks for JSON that matches `BATCH_JSON_SCHEMA`. An answer that stops at `max_tokens` is dropped as truncated.
+- **Caching.** The system prompt carries a `cache_control` mark. It holds no data from the round, so it is the same every round (`prompt.test.ts` checks that it has no timestamp). The cost counts cache reads and writes at their own prices.
+- **Fallback.** The request opts into the `server-side-fallback-2026-07-01` beta with `fallbacks: "default"`. A comment in `proposer.ts` says that a `fallback` block in the response marks where one model's output gives way to the next, so the agent keeps only the text after the last such block. The journal's `run` line does not record which model answered. The cost is booked under the model name the response reports.
+
+Every round that reaches this step asks Claude, in dry-run mode too. When the answer cannot be used, the round gets no proposals from Claude, and the journal's `run` line has `ok` false and the error:
+
+| What happens | Error | Billed |
+| --- | --- | --- |
+| The request throws, for example on a network or API error | Starts with `claude:` | No, the cost is 0 |
+| Claude refuses: `stop_reason` is `refusal` | `claude refused` | Yes, for the tokens the response reports |
+| The answer stops at `max_tokens` | `claude output truncated` | Yes |
+| The text is not valid JSON, including an empty answer such as an empty `content` list | Starts with `invalid proposal JSON:` | Yes |
+| The JSON breaks the schema or one of its bounds | Starts with `invalid proposal JSON:` | Yes |
+| The response has no `content` field, or its `usage` is missing or cannot be read, for example without `input_tokens` | Starts with `claude: malformed response:` | No, the cost is 0 |
+
+A billed cost is added to that day's compute total, so it becomes part of what the agent owes ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)). A `PAY_EXPENSE` that is due is still queued, because the agent's code adds it whatever Claude answered.
+
+<Callout type="warning" title="Tested against a fake client only">
+
+`proposer.test.ts` checks the request shape, the fallback handling, the API error, the refusal, the truncation, invalid JSON and a schema violation against a fake client. No test covers the malformed response. The real Claude API has never run in a Maat test, and no response from it is committed.
+
+</Callout>
+
+### Step 3: preview and send
 
 For each proposal the agent builds an `Intent` and calls `previewIntent`, a read-only `eth_call` made as the executor. The vault answers with the verdict its checks would give `execute`, without a transaction, so the agent spends gas only on calls worth sending. A preview returns the check verdict, not the execution result: it cannot predict `SWAP_FAILED` or `TRANSFER_FAILED`, nor a credit call that fails once it runs.
 
-An intent whose preview is `OK` is sent. A refused intent is sent only when the refusal is worth recording onchain (a market, policy, size, concentration or [health factor](/docs/help/glossary#health-factor) refusal) and the agent has not logged that reason yet on the current UTC day. Every other refusal, such as `INSUFFICIENT_BALANCE`, is only written to the journal. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, the agent sends nothing.
+An intent whose preview is `OK` is sent. A refused intent is sent only when the refusal is worth recording onchain (a market, price, multiplier, paused-token, policy, size, concentration or [health factor](/docs/help/glossary#health-factor) refusal) and the agent has not logged that reason yet on the current UTC day. Every other refusal, such as `INSUFFICIENT_BALANCE`, is only written to the journal. If the preview call fails, or returns a reason id the agent does not know, the result is `UNKNOWN`: the agent sends nothing and journals the guard state as unknown. [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts) has the full table. In dry-run mode, which is the default, the agent sends nothing.
 
-Sending goes through `GuardedSender`, which refuses everything except a call to the vault's `execute`, `syncMultiplier` or `notifyRevenue`. Every send carries an explicit gas limit, at least <Fact name="executeGasFloor" /> for `execute` and never more than <Fact name="maxGas" />, because the vault catches inner failures and a plain gas estimate can come out too low for the swap. It also carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. In live mode the wallet behind it is meant to be a [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), whose account policy allows only zero-value transactions to the vault on Base and rejects raw hash signing. That path is tested against a fake CDP client only and has never run against the real CDP. The fork run signs with a local sender instead.
+Sending goes through `GuardedSender`, which refuses everything except a call to the vault's `execute`, `syncMultiplier` or `notifyRevenue`. `notifyRevenue` is on that list, but the agent never sends it: no code in `agent/src` encodes it. The vault records new USDC itself whenever an `execute` passes its checks, and anyone may call `notifyRevenue`. Every send carries an explicit gas limit, at least <Fact name="executeGasFloor" /> for `execute` and never more than <Fact name="maxGas" />, because the vault catches inner failures and a plain gas estimate can come out too low for the swap. It also carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix.
 
-Two guards protect the round itself. The agent stores each `execute` as pending before it sends it. A pending send, such as one that fails after broadcast, is settled against `usedIntent` in the next round, so a lost receipt cannot pay a bill twice. And if an intent the preview called `OK` comes back refused, the agent journals a mismatch and halts the round.
+In live mode the wallet behind the sender is meant to be a [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). Its account policy allows only zero-value transactions to the vault (they carry no ETH; the wallet pays only gas), sends only on Base and rejects raw hash signing. [What the agent adds](/docs/security/model#what-the-agent-adds) says what the policy does not cover. That path is tested against a fake CDP client only and has never run against the real CDP. The fork run signs with a local sender instead.
 
-## Step 4: the vault decides
+Two guards protect the round itself. The agent stores each `execute` as pending before it sends it. A pending send, such as one that fails after broadcast, is settled against `usedIntent` in the next round, so a lost receipt alone does not pay a bill twice. A pending send whose intent is still unused, and whose transaction the agent cannot find, is dropped after at least <Fact name="pendingWindowBlocks" />; [What the agent adds](/docs/security/model#what-the-agent-adds) explains the one case where a bill can then be paid twice. And if an intent the preview called `OK` comes back refused, the agent journals a mismatch and halts the round.
+
+### Step 4: the vault decides
 
 `execute` is the executor's only way to move anything.
 
@@ -100,31 +250,18 @@ Read it top to bottom:
 
 - Only the executor can call it, and each intent id works once, refused or not. These two cases are the only reverts by design, so a refused intent still uses up its id and cannot be replayed.
 - `_check` runs the checks in a fixed order, and the first failure decides the reason. For a BUY or a SELL they are the checks listed on [The nine checks](/docs/concepts/nine-checks). The other actions run their own checks.
-- If every check passes, `_perform` carries out the swap or the credit action. For a swap the vault computes its own slippage floor from the oracle price and the mandate's `maxSlippageBps` (<Fact name="mandate.maxSlippageBps" /> by default), whatever `minOut` the agent sent. The agent always sends 0.
+- If every check passes, `_perform` carries out the swap, the bill payment or the credit action. For a swap the vault computes its own [slippage floor](/docs/help/glossary#slippage-floor) from the oracle price and the mandate's `maxSlippageBps` (<Fact name="mandate.maxSlippageBps" /> by default), whatever `minOut` the agent sent. The agent always sends 0.
 - The last line emits `Decision`, whether the intent was allowed or not. A refusal does not revert: it records `allowed=false` and the reason, and moves no money.
-
-## Worked example: the Saturday buy
-
-The agent's end-to-end test runs this on a fork of Base mainnet pinned at block <Fact name="forkBlock" />, which is Thursday <Fact name="forkDay" /> at <Fact name="forkTimeEt" />. A scripted proposer stands in for Claude, and a local sender stands in for the CDP wallet.
-
-1. **Thursday <Fact name="forkTimeEt" />.** The agent reads the vault, previews a BUY of NVDAc and sends it. The preview says `OK`, every check passes, and the vault records `Decision(allowed=true, reason=OK)`. The same run also supplies the stock to Aave V4 and borrows USDC against it.
-2. **The clock moves.** The test moves the fork's clock ahead <Fact name="weekendOffsetDays" /> days, to Saturday. The agent proposes a BUY of GOOGLc.
-3. **The preview.** `previewIntent` returns `MARKET_CLOSED`. That refusal is worth recording and the agent has not logged it that day, so it sends the intent.
-4. **The verdict.** The vault's calendar says the market is closed. The vault emits `Decision(allowed=false, reason=MARKET_CLOSED)`, the transaction uses <Fact name="gas.refusalLog" /> gas, and no money moves. The call does not revert.
-
-<Callout type="fork" title="Fork only">
-
-The Saturday round is the same fork with the clock moved forward, not a real Saturday block. The proposer is scripted, the sender is local rather than the CDP wallet, and no output from the real Claude API is committed yet. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it, and [Read a decision](/docs/get-started/read-a-decision) shows all four decisions of the run.
-
-</Callout>
 
 ## What none of the agent's steps can do
 
 Steps 1 to 3 belong to the agent, and none of them is trusted. A confused Claude, a bug in the agent or a stolen executor key still meets the vault's checks. Whoever holds only the executor key cannot:
 
-- skip any of the <Fact name="checksPerTrade" /> checks on a BUY or a SELL (the other actions have their own), trade outside the session or the stock list, or beat the default <Fact name="mandate.perTradeCapUsd" /> per-trade and <Fact name="mandate.dailyCapUsd" /> per-day caps;
-- send funds anywhere: swaps go to the allowlisted pool, borrowed USDC and collateral come back to the vault, and `PAY_EXPENSE` pays only allowlisted payees;
+- skip any of the <Fact name="checksPerTrade" /> checks on a BUY or a SELL (the other actions have their own), trade outside the session or the stock list, or beat the default <Fact name="mandate.perTradeCapUsd" /> per-trade and <Fact name="mandate.dailyCapUsd" /> per-day caps, which bound trades and bill payments;
+- send funds anywhere: swaps go to the allowlisted pool, borrowed USDC and collateral come back to the vault, and `PAY_EXPENSE` pays only allowlisted [payees](/docs/help/glossary#payee) ([Where the money can go](/docs/security/model#where-the-money-can-go) lists every path);
 - push the projected health factor below <Fact name="mandate.minHealthFactor" />, or below <Fact name="mandate.targetHealthFactor" /> inside the [de-risk window](/docs/help/glossary#de-risk-window), the hours before the feeds stop for a weekend or a market holiday;
-- change the mandate, withdraw or unpause the vault. Those are owner-only, and the owner can also pause the vault or rotate the executor key at any time, instantly.
+- change the mandate, withdraw or unpause the vault. Only the [owner](/docs/help/glossary#owner) can do those, and the owner can also pause the vault or rotate the executor key at any time, instantly.
+
+The caps do not bound the credit actions. A `BORROW`, and a `WITHDRAW_COLLATERAL` made while debt is open, must clear the health factor floor in the list above, and `SUPPLY` and `REPAY` have no size limit other than what the vault holds ([Caps are simple](/docs/security/not-claimed#caps-are-simple)).
 
 Claude itself cannot choose the verdict, set the slippage or pay a bill. [Timelock and roles](/docs/concepts/timelock-and-roles) covers who can do what, and the fork test `test_compromisedExecutorIsBounded` in [MandateVaultFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) tries a leaked executor key against real Base state.

@@ -7,18 +7,32 @@ status: fork-tested
 lastReviewed: 2026-11-07
 sources:
   - web/content/facts.ts
+  - web/content/docs-facts.ts
   - contracts/script/MaatConfig.sol
+  - contracts/script/Deploy.s.sol
+  - contracts/src/Types.sol
   - contracts/src/MandateVault.sol
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/lib/PriceLib.sol
   - agent/src/policy.ts
   - agent/src/config.ts
+  - agent/src/addresses.ts
+  - agent/src/loop/scheduler.ts
+  - agent/src/loop/runOnce.ts
+  - agent/src/loop/lock.ts
+  - agent/src/llm/schema.ts
+  - agent/src/llm/prompt.ts
+  - agent/src/llm/pricing.ts
+  - agent/src/exec/calls.ts
+  - agent/test/prompt.test.ts
 next: [concepts/mandate, guides/configure-a-mandate]
 ---
 
-A default is a value the code uses until someone changes it. This page lists the defaults that the vault, the calendar and the agent ship with, each with its unit and the file that sets it, so you can find a number without reading the code. Some rows are fixed constants and bounds, not values you can change; the text above each table says which. A last table holds figures that look like defaults and are not: measurements, counts and plans. The vault and the agent are built and fork-tested, and nothing is deployed, so these are the defaults of the code, not of a running deployment. The values come from the same fact list as the rest of the docs, and tests compare the ones the repository can prove with the code that sets them.
+A default is a value the code uses until someone changes it. This page lists the defaults that the vault, the calendar and the agent ship with, so you can find a number without reading the code. Each row of the settings tables gives a plain name for the setting, the name the code gives it, its value with its unit, and the file that sets it. Where the code gives a value no name, the In code column gives the literal and the function that writes it. Some rows are fixed constants and bounds, not values you can change; the text above each table says which. A last table holds figures that look like defaults and are not: measurements, counts and plans. The vault and the agent are built and fork-tested, and nothing is deployed, so these are the defaults of the code, not of a running deployment. The values come from the same fact list as the rest of the docs, and tests compare the ones the repository can prove with the code that sets them, and check that each name in the In code column is in the file beside it and, for a name such as `Mandate.maxStaleness`, that `maxStaleness` is declared in `Mandate`.
 
 ## Vault and mandate
 
-The rows named `mandate.*` are the defaults that `MaatConfig` and the deploy script give a deployment. `MaatConfig.defaultMandate()` builds the [mandate](/docs/concepts/mandate), and the deploy script passes `REGULAR` to it as the session mode. `MaatConfig.basket()` sets `maxWeightBps` for each token. The owner can change any of them later through the [timelock](/docs/help/glossary#timelock). The other rows are constants and bounds in the contract code, so only a new deployment changes them.
+`MaatConfig.defaultMandate()` builds the default [mandate](/docs/concepts/mandate), so its rows name a field of the `Mandate` struct, and the deploy script passes `SessionMode.REGULAR` to it as the [session mode](/docs/help/glossary#session-mode). `MaatConfig.basket()` sets `TokenConfig.maxWeightBps` for each stock. These are the values a deployment starts with, and the [owner](/docs/help/glossary#owner) can change any of them later through the [timelock](/docs/help/glossary#timelock). The other rows are constants and bounds in the contract code, so only a new deployment changes them.
 
 <FactTable
   names={[
@@ -43,13 +57,14 @@ The rows named `mandate.*` are the defaults that `MaatConfig` and the deploy scr
     "maxTokenDecimals",
   ]}
   label="Vault and mandate defaults"
+  caption="The mandate and stock defaults are set in contracts/script/MaatConfig.sol: defaultMandate(), with its constants MIN_HEALTH_FACTOR, TARGET_HEALTH_FACTOR and DERISK_WINDOW, and basket(). The session mode comes from contracts/script/Deploy.s.sol."
 />
 
 [The mandate](/docs/concepts/mandate) explains what each field limits and which check reads it, and [Configure a mandate](/docs/guides/configure-a-mandate) shows how to change one before you deploy.
 
 ## Calendar
 
-These come from `MarketCalendar.sol`. The session times and the feed edge are constants in New York time, and the offsets are the rule the contract uses to turn UTC into New York time. The early close is the time that the constructor gives to the early closes it ships. The owner can add holidays and move a close earlier, but cannot make the calendar looser. The dates it ships are listed on [MarketCalendar](/docs/reference/market-calendar#shipped-holidays-and-early-closes).
+These come from `MarketCalendar.sol`. The session times and the [feed edge](/docs/help/glossary#feed-edge) are constants in New York time, and the offsets are the rule the contract uses to turn UTC into New York time. The early close is the time that the constructor gives to the early closes it ships. The owner can add holidays and move a close earlier, but cannot make the calendar looser. The dates it ships are listed on [MarketCalendar](/docs/reference/market-calendar#shipped-holidays-and-early-closes).
 
 <FactTable
   names={[
@@ -65,7 +80,7 @@ These come from `MarketCalendar.sol`. The session times and the feed edge are co
 
 ## Agent
 
-`maxTxPerDay` and `dailyComputeUsd` are the defaults of two environment variables, `MAAT_MAX_TX_PER_DAY` and `MAAT_DEFAULT_DAILY_COMPUTE_USD`, so you change them in `.env` ([Agent configuration](/docs/reference/agent-configuration)). The other rows are constants in the agent's source, such as `DEFAULT_POLICY` in `agent/src/policy.ts`. `main.ts` passes no override, so changing one of them means editing the code.
+The first two rows are the defaults of two environment variables, `MAAT_MAX_TX_PER_DAY` and `MAAT_DEFAULT_DAILY_COMPUTE_USD`, so you change them in `.env` ([Agent configuration](/docs/reference/agent-configuration)). The other rows are constants in the agent's source. Nothing passes a policy of its own to a round, so `agent/src/loop/runOnce.ts` uses `DEFAULT_POLICY`, and changing one of these rows means editing the code.
 
 <FactTable
   names={[
@@ -80,19 +95,38 @@ These come from `MarketCalendar.sol`. The session times and the feed edge are co
     "billMinUsd",
     "maxIntents",
     "maxRationaleChars",
+    "maxSummaryChars",
+    "maxAmountUsd",
     "maxGas",
     "executeGasFloor",
+    "syncGasFloor",
+    "receiptTimeoutSec",
     "pendingWindowMinutes",
     "logWindowBlocks",
+    "lockStaleSec",
   ]}
   label="Agent defaults"
 />
 
 [The treasury loop](/docs/concepts/treasury-loop) shows where the policy rows act in a round.
 
+<Callout type="note" title="Before you change an agent default">
+
+Some agent values are written in more than one file. Change one copy alone and the agent disagrees with itself.
+
+- **The policy and the system prompt.** The system prompt in `agent/src/llm/prompt.ts` restates the cash target (<Fact name="cashReservePct" />), the drift (<Fact name="rebalanceDriftPct" />) and the runway (<Fact name="runwayDays" />) to Claude. If you change `DEFAULT_POLICY` alone, the policy computes one target and the prompt tells Claude another. `agent/test/prompt.test.ts` checks that the prompt says <Fact name="cashReservePct" />, so a new cash target changes that test too.
+- **The basket.** The agent lists its stocks in three files: `agent/src/addresses.ts`, `LLM_SYMBOLS` in `agent/src/llm/schema.ts`, and the system prompt in `agent/src/llm/prompt.ts`. The vault's own list is separate, and [Configure a mandate](/docs/guides/configure-a-mandate) covers it.
+- **The model.** `agent/src/llm/pricing.ts` has prices for `claude-sonnet-5-5` and `claude-opus-5-5`, and it bills any other model at the `claude-opus-5-5` rate ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)).
+
+No agent with changed defaults has been tested. After a change, run `npm test` and `npm run typecheck` in `agent/`.
+
+</Callout>
+
 ## Measured and planned figures
 
-The rows below are measurements, estimates, counts, dates, versions, derived values or planned values, not settings. Each Source says where the figure comes from. `x402Price` and `treasuryUsd` are plans, not features of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
+The rows below are measurements, estimates, counts, dates, versions, derived values or planned values, not settings. Each Source says where the figure comes from. The planned treasury size and the planned price of an [x402](/docs/help/glossary#x402) check are plans, not features of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
+
+The two slippage rows are derived from the default caps. The vault gives the swap adapter a [slippage floor](/docs/help/glossary#slippage-floor) <Fact name="mandate.maxSlippageBps" /> below the output the feed price implies, and the Aerodrome adapter reverts below it. So a swap at the per-trade cap fills at most <Fact name="slippageLossPerTradeUsd" /> below the oracle price, and the swaps of one UTC day at most <Fact name="slippageLossPerDayUsd" />, because the daily cap counts buys, sells and bill payments. The bound is measured from the feed price, which the vault trusts.
 
 <FactTable
   names={[
@@ -101,6 +135,8 @@ The rows below are measurements, estimates, counts, dates, versions, derived val
     "calendarPreload.holidays",
     "calendarPreload.earlyCloses",
     "targetWeightPct",
+    "slippageLossPerTradeUsd",
+    "slippageLossPerDayUsd",
     "forkBlock",
     "forkDay",
     "forkTimeEt",
