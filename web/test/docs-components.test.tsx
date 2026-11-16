@@ -5,7 +5,7 @@ import { Architecture, DecisionLoop, marketWeek, MarketWeek, TimelockFlow, Treas
 import { getDecisions } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
 import { mandateRows } from "@/content/mandate";
-import { REASONS } from "@/content/reasons";
+import { REASON_MEANING, REASON_MEANING_DOCS, REASONS } from "@/content/reasons";
 import { docsSlug } from "@/lib/docs/links";
 
 describe("data tables", () => {
@@ -16,6 +16,8 @@ describe("data tables", () => {
     const closed = screen.getByRole("link", { name: "MARKET_CLOSED" });
     expect(closed).toHaveAttribute("href", "/docs/concepts/refusal-codes#market_closed");
     expect(closed.closest("tr")).toHaveTextContent(`MARKET_CLOSED${REASONS.indexOf("MARKET_CLOSED") + 1}Market`);
+    expect(closed.closest("tr")).toHaveTextContent(REASON_MEANING_DOCS.MARKET_CLOSED);
+    expect(closed.closest("tr")).not.toHaveTextContent(REASON_MEANING.MARKET_CLOSED);
   });
 
   it("MandateTable shows the landing page's mandate rows", () => {

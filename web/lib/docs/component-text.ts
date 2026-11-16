@@ -1,4 +1,4 @@
-import { REASON_MEANING, REASONS } from "../../content/reasons";
+import { REASON_MEANING_DOCS, REASONS } from "../../content/reasons";
 import { SITE } from "../site";
 import { forkLedger, GROUP_OF, decisionEventSource, mandateTable } from "./content-data";
 import { DATA_COMPONENTS, type DataComponent } from "./data-components";
@@ -181,7 +181,7 @@ const factTableText: Render = (props) => {
 const reasonTable: Render = () =>
   mdTable(
     ["Code", "Id", "Group", "Meaning"],
-    REASONS.map((c, i) => [link(code(c), `/docs/concepts/refusal-codes#${c.toLowerCase()}`), String(i + 1), GROUP_OF.get(c) ?? "", REASON_MEANING[c]]),
+    REASONS.map((c, i) => [link(code(c), `/docs/concepts/refusal-codes#${c.toLowerCase()}`), String(i + 1), GROUP_OF.get(c) ?? "", REASON_MEANING_DOCS[c]]),
   );
 
 const mandateTableText: Render = () => {
