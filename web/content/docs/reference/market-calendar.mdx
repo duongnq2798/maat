@@ -9,6 +9,7 @@ sources:
   - contracts/src/MarketCalendar.sol
   - contracts/src/lib/DateLib.sol
   - contracts/test/MarketCalendar.t.sol
+  - contracts/test/MarketCalendarVectors.t.sol
 next: [reference/events, guides/change-a-rule]
 ---
 
@@ -18,7 +19,7 @@ next: [reference/events, guides/change-a-rule]
 
 ## Functions
 
-The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol). `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules. One test per 2027 date, such as `test_goodFriday2027IsClosed` and `test_dayAfterThanksgiving2027ClosesEarly`, checks the shipped 2027 closures.
+The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) and [MarketCalendarVectors.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendarVectors.t.sol). In the first, `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules. One test per 2027 date, such as `test_goodFriday2027IsClosed` and `test_dayAfterThanksgiving2027ClosesEarly`, checks the shipped 2027 closures. The second checks the contract against vectors computed outside Solidity: `etOffsetSeconds` at every daylight saving change from 2007 to 2100, and `isHoliday`, `earlyCloseMin` and, at fixed New York times, `isOpen` on every shipped date, 2026-12-24's <Fact name="earlyClose" /> close included ([Calendar vectors](/docs/security/testing#calendar-vectors)).
 
 ### addHoliday
 
