@@ -1,9 +1,13 @@
+import { CreatePolicyBodySchema } from "@coinbase/cdp-sdk";
 import { describe, expect, it } from "vitest";
 import { executorPolicy } from "../src/exec/cdpPolicy.js";
 
 describe("executorPolicy", () => {
   const p = executorPolicy("0x1111111111111111111111111111111111111111");
   it("is account-scoped", () => expect(p.scope).toBe("account"));
+  it("is a body the SDK's createPolicy accepts", () => {
+    expect(CreatePolicyBodySchema.parse(p)).toEqual(p);
+  });
   it("only accepts zero-value vault calls on base", () => {
     expect(p.rules[0]).toEqual({
       action: "accept",

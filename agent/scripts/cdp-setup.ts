@@ -14,7 +14,7 @@ const vault = getAddress(vaultArg);
 const name = process.env.CDP_ACCOUNT_NAME ?? "maat-executor";
 const cdp = new CdpClient();
 const account = await cdp.evm.getOrCreateAccount({ name });
-const policy = await cdp.policies.createPolicy({ policy: executorPolicy(vault) as never });
+const policy = await cdp.policies.createPolicy({ policy: executorPolicy(vault) });
 await cdp.evm.updateAccount({ address: account.address, update: { accountPolicy: policy.id } });
 console.log(`executor account "${name}": ${account.address}`);
 console.log(`policy ${policy.id} attached (vault ${vault}, Base only, zero value)`);
