@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   docsLinks,
+  excerptHref,
   excerpts,
   factNames,
   foreignCharacters,
@@ -10,7 +11,10 @@ import {
   isDistinctive,
   malformedExcerptTitles,
   prose,
+  quotedTestTitles,
   repoPaths,
+  testNameLinks,
+  unknownTestNames,
 } from "@/lib/docs/content-checks";
 
 const PAGE = [
@@ -127,5 +131,82 @@ describe("page parts", () => {
     const text = "excerpt title must read path#L<from>-L<to>, with the fence at the start of the line";
     expect(excerpts(src).map((e) => e.line)).toEqual([1]);
     expect(malformedExcerptTitles(src)).toEqual([4, 6, 8, 10, 12].map((line) => ({ line, text })));
+  });
+
+  it("excerptHref links an excerpt title to its lines on main, and no other title", () => {
+    const repo = "https://github.com/o/r";
+    expect(excerptHref("contracts/src/GuardLib.sol#L44-L62", repo)).toBe(`${repo}/blob/main/contracts/src/GuardLib.sol#L44-L62`);
+    for (const title of ["agent/.env.example", "contracts/src/GuardLib.sol#L44", "contracts/src/GuardLib.sol#L44-62", "a#b#L1-L2"]) {
+      expect(excerptHref(title, repo), title).toBeNull();
+    }
+  });
+});
+
+describe("cited tests", () => {
+  const repo = "https://github.com/o/r";
+  const names = new Set([
+    "test_replayReverts",
+    "test_revertingIsPausedFailsClosed",
+    "test_revertingCalendarFailsClosed",
+    "test_priceFromSqrt_stockIsToken0",
+    "test_priceFromSqrt_stockIsToken1",
+  ]);
+
+  it("unknownTestNames flags a test name in inline code that no test has, and skips fences and plain prose", () => {
+    const src = [
+      "`test_replayReverts` refuses a replay, `test_replayRevert` does not exist.",
+      "The output reads `[PASS] test_replayReverts()`, then `forge test --match-test \"test_replayReverts|test_gone\"`.",
+      "```bash",
+      "forge test --match-test test_inFence",
+      "```",
+      "Plain test_inProse is not code.",
+    ].join("\n");
+    expect(unknownTestNames(src, names)).toEqual([
+      { line: 1, text: "test_replayRevert" },
+      { line: 2, text: "test_gone" },
+    ]);
+  });
+
+  it("unknownTestNames reads `*` as any letters, which must match a test, and 'the two `test_x` tests' as that many tests starting so", () => {
+    expect(unknownTestNames("the other `test_reverting*FailsClosed` tests in the same file", names)).toEqual([]);
+    expect(unknownTestNames("`test_reverting*Closes`", names)).toEqual([{ line: 1, text: "test_reverting*Closes: no test matches" }]);
+    expect(unknownTestNames("and the two `test_priceFromSqrt` tests cover it", names)).toEqual([]);
+    expect(unknownTestNames("the three `test_priceFromSqrt` tests", names)).toEqual([
+      { line: 1, text: "test_priceFromSqrt: 2 tests start so, not 3" },
+    ]);
+    // Without "the two ... tests" around it, a prefix is a misspelt name.
+    expect(unknownTestNames("`test_priceFromSqrt`", names)).toEqual([{ line: 1, text: "test_priceFromSqrt" }]);
+  });
+
+  it("quotedTestTitles reads the quoted titles in a line or table cell that links a test file under agent/test", () => {
+    const url = (file: string) => `${repo}/blob/main/agent/test/${file}`;
+    const src = [
+      `| Row | [\`runOnce.test.ts\`](${url("runOnce.test.ts")}): "halts", "drops" | The README calls this row "Exactly-once sends" |`,
+      `See "a title" in [\`sender.test.ts\`](${url("sender.test.ts")}), and [\`lock.test.ts\`](${url("lock.test.ts")}).`,
+      `A quote "elsewhere", and [the fakes](${repo}/tree/main/agent/test/fakes) "not a file".`,
+      "```ts",
+      `it("in a fence", () => {}); // ${url("x.test.ts")}`,
+      "```",
+      `<Callout title="An attribute">See [\`a.test.ts\`](${url("a.test.ts")}) and \`"inline code"\`.</Callout>`,
+    ].join("\n");
+    expect(quotedTestTitles(src, repo)).toEqual([
+      { line: 1, text: "halts", files: ["agent/test/runOnce.test.ts"] },
+      { line: 1, text: "drops", files: ["agent/test/runOnce.test.ts"] },
+      { line: 2, text: "a title", files: ["agent/test/sender.test.ts", "agent/test/lock.test.ts"] },
+    ]);
+  });
+
+  it("testNameLinks reads every link whose text is a test name, with the file it opens", () => {
+    const src = [
+      `[\`test_replayReverts\`](${repo}/blob/main/contracts/test/MandateVault.t.sol) and [the file](${repo}/blob/main/contracts/test/GuardLib.t.sol).`,
+      "```md",
+      `[\`test_inFence\`](${repo}/blob/main/contracts/test/MandateVault.t.sol)`,
+      "```",
+      `[\`test_concentration\`](${repo}/blob/main/contracts/test/MandateVault.t.sol#L9), [\`test_x\`](https://github.com/other/repo/blob/main/a.t.sol)`,
+    ].join("\n");
+    expect(testNameLinks(src, repo)).toEqual([
+      { line: 1, name: "test_replayReverts", file: "contracts/test/MandateVault.t.sol" },
+      { line: 5, name: "test_concentration", file: "contracts/test/MandateVault.t.sol" },
+    ]);
   });
 });

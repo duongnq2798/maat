@@ -88,10 +88,76 @@ export function docsLinks(source: string): string[] {
   return [...md, ...jsx];
 }
 
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
 /** Repo paths linked as `<repoUrl>/blob/main/<path>` or `/tree/main/<path>`, without any #L anchor. */
 export function repoPaths(source: string, repoUrl: string): string[] {
-  const esc = repoUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return [...source.matchAll(new RegExp(`${esc}/(?:blob|tree)/main/([^)\\s"'#?]+)`, "g"))].map((m) => m[1] ?? "");
+  return [...source.matchAll(new RegExp(`${escapeRegExp(repoUrl)}/(?:blob|tree)/main/([^)\\s"'#?]+)`, "g"))].map((m) => m[1] ?? "");
+}
+
+const COUNT_WORDS: Readonly<Record<string, number>> = { two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9 };
+
+/**
+ * Solidity test names in inline code that no test in `names` has, outside fences: `test_x`, or one inside a longer span
+ * such as `[PASS] test_x()`. Two forms name several tests at once: a `*` stands for any letters and must match at least
+ * one test (`test_reverting*FailsClosed`), and "the two `test_x` tests" must have exactly that many tests starting so.
+ */
+export function unknownTestNames(source: string, names: ReadonlySet<string>): Finding[] {
+  const out: Finding[] = [];
+  source
+    .replace(/^---\n[\s\S]*?\n---\n/, blank)
+    .replace(FENCE, blank)
+    .split("\n")
+    .forEach((line, i) => {
+      for (const span of line.matchAll(/`([^`\n]*)`/g)) {
+        const code = span[1] ?? "";
+        const count = COUNT_WORDS[/\bthe (\w+) $/.exec(line.slice(0, span.index))?.[1] ?? ""];
+        const plural = count !== undefined && /^ tests\b/.test(line.slice(span.index + span[0].length));
+        for (const [name] of code.matchAll(/\btest_[\w*]*/g)) {
+          if (plural && name === code) {
+            const n = [...names].filter((t) => t.startsWith(name)).length;
+            if (n !== count) out.push({ line: i + 1, text: `${name}: ${n} tests start so, not ${count}` });
+          } else if (name.includes("*")) {
+            const pattern = new RegExp(`^${name.split("*").join("\\w*")}$`);
+            if (![...names].some((t) => pattern.test(t))) out.push({ line: i + 1, text: `${name}: no test matches` });
+          } else if (!names.has(name)) out.push({ line: i + 1, text: name });
+        }
+      }
+    });
+  return out;
+}
+
+export interface QuotedTitle extends Finding {
+  /** The test files under agent/test that the line, or the table cell, links. */
+  readonly files: readonly string[];
+}
+
+/**
+ * Vitest titles a page quotes: each "..." in a prose line, or in one cell of a table row, that links a test file under
+ * agent/test, with the files it links. Code, JSX tags and frontmatter are skipped, and so is a quote in another cell.
+ */
+export function quotedTestTitles(source: string, repoUrl: string): QuotedTitle[] {
+  const testFile = new RegExp(`${escapeRegExp(repoUrl)}/blob/main/(agent/test/[^)\\s"'#?]+\\.test\\.ts)`, "g");
+  const out: QuotedTitle[] = [];
+  prose(source)
+    .split("\n")
+    .forEach((line, i) => {
+      for (const unit of line.trimStart().startsWith("|") ? line.split(/(?<!\\)\|/) : [line]) {
+        const files = [...unit.matchAll(testFile)].map((m) => m[1] ?? "");
+        if (files.length === 0) continue;
+        for (const [, text = ""] of unit.matchAll(/"([^"\n]+)"/g)) out.push({ line: i + 1, text, files });
+      }
+    });
+  return out;
+}
+
+/** Links whose text is a test name in inline code, [`test_x`](<repoUrl>/blob/main/<file>), outside fences. */
+export function testNameLinks(source: string, repoUrl: string): { line: number; name: string; file: string }[] {
+  const link = new RegExp(`\\[\`(test_\\w+)\`\\]\\(${escapeRegExp(repoUrl)}/blob/main/([^)\\s"'#?]+)`, "g");
+  return source
+    .replace(FENCE, blank)
+    .split("\n")
+    .flatMap((l, i) => [...l.matchAll(link)].map((m) => ({ line: i + 1, name: m[1] ?? "", file: m[2] ?? "" })));
 }
 
 /** The ids Fumadocs gives the page's headings (h2 to h6), outside code blocks. */
@@ -113,10 +179,21 @@ export interface Excerpt {
   readonly body: string;
 }
 
+/** An excerpt's title: a repo path, then the line range it quotes ("contracts/src/GuardLib.sol#L44-L62"). */
+const EXCERPT_TITLE = String.raw`([^"#]+)#L(\d+)-L(\d+)`;
+
+/**
+ * Where an excerpt's title links: those lines of the file on main, the range the excerpt gate compares with the code.
+ * Null for a title that is not an excerpt's, such as "agent/.env.example".
+ */
+export function excerptHref(title: string, repoUrl: string): string | null {
+  return new RegExp(`^${EXCERPT_TITLE}$`).test(title) ? `${repoUrl}/blob/main/${title}` : null;
+}
+
 /** Fenced blocks titled with a repo path and a line range: ```solidity title="contracts/src/GuardLib.sol#L44-L62". */
 export function excerpts(source: string): Excerpt[] {
   const out: Excerpt[] = [];
-  const re = /^(```|~~~)[^\n]*title="([^"#]+)#L(\d+)-L(\d+)"[^\n]*\n([\s\S]*?)^\1[^\n]*$/gm;
+  const re = new RegExp(String.raw`^(${"```"}|~~~)[^\n]*title="${EXCERPT_TITLE}"[^\n]*\n([\s\S]*?)^\1[^\n]*$`, "gm");
   for (const m of source.matchAll(re)) {
     out.push({
       line: source.slice(0, m.index).split("\n").length,

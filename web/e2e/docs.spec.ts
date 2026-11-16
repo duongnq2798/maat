@@ -1,4 +1,6 @@
+import { readFileSync } from "node:fs";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { buildCommit, commitMarkdown } from "../lib/build-info";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 import { DOCS_IA } from "../lib/docs/ia";
 import { SITE } from "../lib/site";
@@ -624,6 +626,91 @@ test.describe("page frame", () => {
       await expect(page.locator("#nd-page > footer").getByText(SITE.disclaimer, { exact: true }), `${path} printed`).toBeVisible();
       await page.emulateMedia({ media: "screen" });
     }
+  });
+});
+
+test.describe("build commit and line links", () => {
+  const urlOf = (slug: string) => `/docs/${slug}`.replace(/\/index$/, "");
+  const slugs = DOCS_IA.flatMap((s) => s.pages).map((p) => p.slug);
+  // The same lookup the build ran, in the same checkout: the commit every page should name.
+  const commit = buildCommit();
+  const tests = JSON.parse(readFileSync("content/generated/tests.json", "utf8")) as Record<string, Record<string, number>>;
+
+  test("every page names the commit it was built from in its Source of truth box and its footer, and llms-full.txt names it first", async ({
+    page,
+    request,
+  }) => {
+    expect(commit, "the build runs in a Git checkout").not.toBeNull();
+    const stamp = `Built from commit ${commit!.short}.`;
+    for (const slug of slugs) {
+      // React separates the text from the sha with an empty comment; the sha is in its own <code>.
+      const html = await (await request.get(urlOf(slug))).text();
+      const stamps = [...html.matchAll(/Built from commit(?:<!-- -->)? (?:<a [^>]*>)?<code[^>]*>([^<]*)<\/code>/g)].map((m) => m[1]);
+      expect(stamps, slug).toEqual([commit!.short, commit!.short]);
+    }
+    await page.goto("/docs/guides/run-the-agent");
+    const article = page.locator("#nd-page");
+    await expect(article.getByRole("complementary", { name: "Source of truth" }).getByText(stamp, { exact: true })).toBeVisible();
+    await expect(article.locator('div:has(> [aria-labelledby="page-helpful"])').getByText(stamp, { exact: true })).toBeVisible();
+    // A local build's commit may never have been pushed, so it is not a link.
+    await expect(article.getByRole("link", { name: commit!.short })).toHaveCount(0);
+    const full = await (await request.get("/llms-full.txt")).text();
+    expect(full.split("\n")[0]).toBe(commitMarkdown(commit!));
+  });
+
+  test("a long Source of truth list opens from a summary that counts its files, and a printout lists them", async ({ page }) => {
+    await page.goto("/docs/guides/run-the-agent");
+    const box = page.locator("#nd-page").getByRole("complementary", { name: "Source of truth" });
+    const summary = box.locator("details > summary");
+    await expect(summary).toHaveText(/^Source of truth \(\d+ files\)$/);
+    const files = Number(/\((\d+) files\)/.exec((await summary.textContent()) ?? "")?.[1]);
+    expect(files).toBeGreaterThan(5);
+    await expect(box.locator("details li a").first()).toBeHidden();
+    await page.emulateMedia({ media: "print" });
+    await expect(box.locator("details li a").last()).toBeVisible();
+    await page.emulateMedia({ media: "screen" });
+    await expect(box.locator("details li a").first()).toBeHidden();
+    await summary.click();
+    await expect(box.locator("details li a")).toHaveCount(files);
+    await expect(box.locator("details li a").first()).toBeVisible();
+  });
+
+  test("every excerpt title links its lines on main", async ({ request }) => {
+    let excerpts = 0;
+    for (const slug of slugs) {
+      const html = await (await request.get(urlOf(slug))).text();
+      for (const [, inner = ""] of html.matchAll(/<figcaption class="flex-1 truncate">([\s\S]*?)<\/figcaption>/g)) {
+        const title = inner.replace(/<[^>]+>/g, "");
+        if (!/#L\d+-L\d+$/.test(title)) continue;
+        excerpts++;
+        expect(/^<a [^>]*href="([^"]+)"/.exec(inner)?.[1], `${slug}: ${title}`).toBe(`${SITE.repoUrl}/blob/main/${title}`);
+      }
+    }
+    expect(excerpts).toBeGreaterThan(0);
+  });
+
+  test("a test name links the line its test starts on, on the page and in the Markdown copy", async ({ page, request }) => {
+    const line = tests["contracts/test/MandateVault.t.sol"]?.test_replayReverts;
+    const href = `${SITE.repoUrl}/blob/main/contracts/test/MandateVault.t.sol#L${line}`;
+    await page.goto("/docs/security/model");
+    await expect(page.locator("#nd-page .prose").getByRole("link", { name: "test_replayReverts", exact: true }).first()).toHaveAttribute("href", href);
+    expect(await (await request.get("/md/docs/security/model.md")).text()).toContain(`[\`test_replayReverts\`](${href})`);
+    // No test-name link on any page still opens the top of its file.
+    const unanchored: string[] = [];
+    for (const slug of slugs) {
+      const html = await (await request.get(urlOf(slug))).text();
+      for (const [, url = "", name] of html.matchAll(/<a [^>]*href="([^"]+)"[^>]*><code>(test_\w+)<\/code><\/a>/g)) {
+        if (!/#L\d+$/.test(url)) unanchored.push(`${slug}: ${name} -> ${url}`);
+      }
+    }
+    expect(unanchored).toEqual([]);
+  });
+
+  test("View as Markdown opens the page's Markdown copy", async ({ page }) => {
+    await page.goto("/docs/concepts/nine-checks");
+    await page.getByRole("link", { name: "View as Markdown" }).click();
+    await expect(page).toHaveURL(/\/md\/docs\/concepts\/nine-checks\.md$/);
+    await expect(page.locator("body")).toContainText("# The nine checks");
   });
 });
 

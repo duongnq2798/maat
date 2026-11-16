@@ -1,10 +1,13 @@
 import { readFileSync } from "node:fs";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import type { Root } from "fumadocs-core/page-tree";
+import type { ComponentProps, ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
+import { getMDXComponents } from "@/components/docs/mdx";
 import { listsNextInBody, NextLinks } from "@/components/docs/NextLinks";
-import { feedbackHref } from "@/components/docs/PageFooter";
+import { feedbackHref, PageFooter } from "@/components/docs/PageFooter";
 import { HomeHeader, PageHeader, STATUS_MEANING } from "@/components/docs/PageHeader";
+import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
 import { StatusBadge } from "@/components/docs/StatusBadge";
 import { footerItems } from "@/lib/docs/footer-items";
 import { llmsIndex, markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath } from "@/lib/docs/markdown";
@@ -218,6 +221,95 @@ describe("NextLinks", () => {
     expect(listsNextInBody(toc("#summary", "#related"))).toBe(true);
     expect(listsNextInBody(toc("#steps", "#check-it-worked"))).toBe(false);
     expect(listsNextInBody([])).toBe(false);
+  });
+});
+
+describe("SourceOfTruth", () => {
+  const files = (n: number) => Array.from({ length: n }, (_, i) => `contracts/src/F${i}.sol`);
+  const box = () => screen.getByRole("complementary", { name: "Source of truth" });
+  const RULE = "This page is checked against these files. If they disagree, the files win.";
+
+  it("lists up to five files in the open, each linked on main", () => {
+    render(<SourceOfTruth sources={files(5)} commit={null} />);
+    expect(box().querySelector("details")).toBeNull();
+    expect(within(box()).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual(
+      files(5).map((f) => `${SITE.repoUrl}/blob/main/${f}`),
+    );
+  });
+
+  it("folds a longer list into a closed disclosure that counts the files, keeping the heading and the rule in view", () => {
+    render(<SourceOfTruth sources={files(6)} commit={null} />);
+    const details = box().querySelector("details");
+    expect(details).not.toBeNull();
+    expect(details).not.toHaveAttribute("open");
+    expect(details?.querySelector("summary")).toHaveTextContent(/^Source of truth \(6 files\)$/);
+    expect([...(details?.querySelectorAll("a") ?? [])].map((a) => a.getAttribute("href"))).toEqual(
+      files(6).map((f) => `${SITE.repoUrl}/blob/main/${f}`),
+    );
+    expect(within(box()).getByRole("heading", { name: "Source of truth" }).closest("details")).toBeNull();
+    expect(within(box()).getByText(RULE).closest("details")).toBeNull();
+  });
+
+  it("says which commit the page was built from, linking it only when it is on GitHub", () => {
+    const { unmount } = render(<SourceOfTruth sources={files(6)} commit={{ short: "def033c" }} />);
+    expect(within(box()).getByText(/^Built from commit/)).toHaveTextContent(/^Built from commit def033c\.$/);
+    expect(within(box()).getByText(/^Built from commit/).closest("details")).toBeNull();
+    expect(within(box()).queryByRole("link", { name: "def033c" })).toBeNull();
+    unmount();
+    render(<SourceOfTruth sources={files(1)} commit={{ short: "0123456", url: `${SITE.repoUrl}/commit/0123456789` }} />);
+    expect(within(box()).getByRole("link", { name: "0123456" })).toHaveAttribute("href", `${SITE.repoUrl}/commit/0123456789`);
+  });
+
+  it("names no commit when the build could not tell which", () => {
+    render(<SourceOfTruth sources={files(1)} commit={null} />);
+    expect(box()).not.toHaveTextContent("Built from");
+  });
+});
+
+describe("PageFooter", () => {
+  const props = {
+    title: "The nine checks",
+    pageUrl: "https://x.dev/docs/concepts/nine-checks",
+    filePath: "concepts/nine-checks.mdx",
+    markdownHref: "/md/docs/concepts/nine-checks.md",
+  };
+
+  it("opens the page's Markdown copy from a link next to the copy button", () => {
+    render(<PageFooter {...props} commit={null} />);
+    const view = screen.getByRole("link", { name: "View as Markdown" });
+    expect(view).toHaveAttribute("href", "/md/docs/concepts/nine-checks.md");
+    expect(view.nextElementSibling).toBe(screen.getByRole("button", { name: "Copy page as Markdown" }));
+  });
+
+  it("says which commit the page was built from", () => {
+    render(<PageFooter {...props} commit={{ short: "def033c" }} />);
+    expect(screen.getByText(/^Built from commit/)).toHaveTextContent(/^Built from commit def033c\.$/);
+  });
+});
+
+describe("code block titles", () => {
+  const Pre = getMDXComponents().pre as (props: ComponentProps<"pre">) => ReactNode;
+
+  it("links an excerpt's path and line range to those lines on main", () => {
+    render(
+      <Pre title="contracts/src/MandateVault.sol#L102-L113">
+        <code>function execute()</code>
+      </Pre>,
+    );
+    const link = screen.getByRole("link", { name: "contracts/src/MandateVault.sol#L102-L113" });
+    expect(link).toHaveAttribute("href", `${SITE.repoUrl}/blob/main/contracts/src/MandateVault.sol#L102-L113`);
+    expect(link.closest("figcaption")).not.toBeNull();
+    expect(screen.getByText("function execute()")).toBeInTheDocument();
+  });
+
+  it("leaves any other title as text", () => {
+    render(
+      <Pre title="agent/.env.example">
+        <code>MAAT_MODE=dry-run</code>
+      </Pre>,
+    );
+    expect(screen.getByText("agent/.env.example").tagName).toBe("FIGCAPTION");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });
 

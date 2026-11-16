@@ -1,9 +1,12 @@
+import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
-import type { ComponentProps } from "react";
+import type { ComponentProps, HTMLAttributes } from "react";
 import { pageExists, source } from "@/lib/docs-source";
+import { excerptHref } from "@/lib/docs/content-checks";
 import { docsSlug } from "@/lib/docs/links";
+import { SITE } from "@/lib/site";
 import { Callout } from "./Callout";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "./content";
 import { Architecture, DecisionLoop, MarketWeek, TimelockFlow, TreasuryLoop } from "./diagrams";
@@ -40,10 +43,39 @@ function DocsLink(props: ComponentProps<"a">) {
   return <BaseLink {...props} />;
 }
 
+/**
+ * Fumadocs' code block, with an excerpt's title (contracts/src/GuardLib.sol#L44-L62) linked to those lines on main: the
+ * range the excerpt gate in test/docs-content.test.ts compares with the file. Any other title stays text.
+ */
+function CodeBlockPre({ title, ...props }: HTMLAttributes<HTMLPreElement>) {
+  const href = title ? excerptHref(title, SITE.repoUrl) : null;
+  return (
+    <CodeBlock
+      {...props}
+      title={
+        href ? (
+          // The full height of the title bar, and a ring drawn inside the link: the caption clips anything outside it.
+          <a
+            href={href}
+            className="block truncate rounded-sm leading-9.5 text-fd-primary underline-offset-4 hover:underline focus-visible:ring-2 focus-visible:ring-fd-ring focus-visible:outline-none focus-visible:ring-inset"
+          >
+            {title}
+          </a>
+        ) : (
+          title
+        )
+      }
+    >
+      <Pre>{props.children}</Pre>
+    </CodeBlock>
+  );
+}
+
 /** Components available in every docs MDX page. */
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
     ...defaultMdxComponents,
+    pre: CodeBlockPre,
     a: DocsLink,
     Fact,
     Callout,

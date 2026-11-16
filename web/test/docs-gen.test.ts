@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { generateDocsData, parseAgentEnv, parseBaseAddresses, serialize } from "@/lib/docs/docs-data";
+import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { buildSurface, type SolContract } from "@/lib/docs/sol-surface";
 import { readRepo, REPO_ROOT } from "./helpers/solidity";
 
@@ -195,8 +196,33 @@ describe("committed data is current", () => {
     ["web/content/generated/contracts.json", data.surface],
     ["web/content/generated/base-addresses.json", data.addresses],
     ["web/content/generated/agent.json", data.agent],
+    // A test that moves changes its line, so the links that remarkTestAnchors points at it need a regeneration too.
+    ["web/content/generated/tests.json", collectTestLines(REPO_ROOT)],
   ] as const)("%s matches the sources (run `npm run docs:gen` in web/ if this fails)", (file, value) => {
     expect(readRepo(file).replace(/\r\n/g, "\n")).toBe(serialize(value));
+  });
+});
+
+describe("the test lines of the repo", () => {
+  const tests = collectTestLines(REPO_ROOT);
+
+  it("finds test_replayReverts on the line of MandateVault.t.sol that defines it", () => {
+    const lines = readRepo("contracts/test/MandateVault.t.sol").split(/\r?\n/);
+    const defined = lines.findIndex((l) => l.includes("function test_replayReverts(")) + 1;
+    expect(defined).toBeGreaterThan(0);
+    expect(tests["contracts/test/MandateVault.t.sol"]?.test_replayReverts).toBe(defined);
+  });
+
+  it("finds a Vitest title on the line of its it() call", () => {
+    const lines = readRepo("agent/test/runOnce.test.ts").split(/\r?\n/);
+    const title = "halts when the preview said OK but the vault refused";
+    expect(lines[(tests["agent/test/runOnce.test.ts"]?.[title] ?? 0) - 1]).toContain(`it("${title}"`);
+  });
+
+  it("covers both test folders", () => {
+    const files = Object.keys(tests);
+    expect(files.some((f) => f.startsWith("contracts/test/fork/"))).toBe(true);
+    expect(files.some((f) => f.startsWith("agent/test/integration/"))).toBe(true);
   });
 });
 

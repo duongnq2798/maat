@@ -12,12 +12,16 @@ import {
   handTypedFacts,
   headingIds,
   malformedExcerptTitles,
+  quotedTestTitles,
   repoPaths,
+  testNameLinks,
+  unknownTestNames,
 } from "@/lib/docs/content-checks";
 import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
 import { docsFrontmatter } from "@/lib/docs/frontmatter";
 import { DOCS_IA } from "@/lib/docs/ia";
 import { docsSlug, headingId, urlSlug } from "@/lib/docs/links";
+import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { SITE } from "@/lib/site";
 import { docsPages } from "./helpers/docs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
@@ -48,6 +52,58 @@ describe("a docs link opens the IA page Fumadocs serves at its URL (gate 2)", ()
     ["/docs/concepts/not-a-page", undefined],
   ])("%s", (href, slug) => {
     expect(linkedPage(href)).toBe(slug);
+  });
+});
+
+/** The tests in contracts/test and agent/test, with the line each starts on, read from the sources now. */
+const TESTS = collectTestLines(REPO_ROOT);
+const SOLIDITY_TESTS = new Set(
+  Object.entries(TESTS)
+    .filter(([file]) => file.startsWith("contracts/"))
+    .flatMap(([, tests]) => Object.keys(tests)),
+);
+
+/**
+ * Every test a page cites that does not exist (test gate): a Solidity test name in inline code, a quoted Vitest title
+ * beside a link to its file, and a link whose text is a test name but whose file does not define that test, which
+ * remarkTestAnchors could then not point at the test's line.
+ */
+function missingTests(slug: string, source: string): string[] {
+  const bad = unknownTestNames(source, SOLIDITY_TESTS).map((f) => at(slug, f));
+  for (const q of quotedTestTitles(source, SITE.repoUrl)) {
+    if (!q.files.some((file) => TESTS[file]?.[q.text] !== undefined)) {
+      bad.push(at(slug, { line: q.line, text: `"${q.text}" is no it() or describe() title in ${q.files.join(" or ")}` }));
+    }
+  }
+  for (const l of testNameLinks(source, SITE.repoUrl)) {
+    if (TESTS[l.file]?.[l.name] === undefined) bad.push(at(slug, { line: l.line, text: `${l.name} is not defined in ${l.file}` }));
+  }
+  return bad;
+}
+
+describe("the test gate", () => {
+  const vault = `${SITE.repoUrl}/blob/main/contracts/test/MandateVault.t.sol`;
+  const runOnce = `${SITE.repoUrl}/blob/main/agent/test/runOnce.test.ts`;
+
+  it("passes the tests the pages cite today, in each of the forms they use", () => {
+    const page = [
+      `[\`test_replayReverts\`](${vault}) and the other \`test_reverting*FailsClosed\` tests, and the two \`test_priceFromSqrt\` tests.`,
+      `[\`runOnce.test.ts\`](${runOnce}): "halts when the preview said OK but the vault refused"`,
+    ].join("\n");
+    expect(missingTests("x", page)).toEqual([]);
+  });
+
+  it("catches a misspelt test name, a misspelt title and a test linked to the wrong file", () => {
+    const page = [
+      "A replay reverts (`test_replayRevert`).",
+      `[\`runOnce.test.ts\`](${runOnce}): "halts when the preview said ok but the vault refused"`,
+      `[\`test_executorCannotUseOwnerFunctions\`](${vault})`,
+    ].join("\n");
+    expect(missingTests("x", page)).toEqual([
+      "content/docs/x.mdx:1 test_replayRevert",
+      'content/docs/x.mdx:2 "halts when the preview said ok but the vault refused" is no it() or describe() title in agent/test/runOnce.test.ts',
+      "content/docs/x.mdx:3 test_executorCannotUseOwnerFunctions is not defined in contracts/test/MandateVault.t.sol",
+    ]);
   });
 });
 
@@ -121,6 +177,10 @@ describe.each(pages.map((p) => [p.slug, p.source] as const))("content/docs/%s.md
     }
     for (const p of repoPaths(source, SITE.repoUrl)) if (!existsSync(join(REPO_ROOT, p))) bad.push(`${p}: not in the repo`);
     expect(bad).toEqual([]);
+  });
+
+  it("cites tests that exist, each test name linked to the file that defines it (test gate)", () => {
+    expect(missingTests(slug, source)).toEqual([]);
   });
 
   it("gives every heading its own id (anchor gate)", () => {
