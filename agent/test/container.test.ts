@@ -70,8 +70,9 @@ describe("agent/Dockerfile", () => {
   });
 
   it("bakes no secret into the image", () => {
-    const leaks = docker.filter((i) => (i.op === "ARG" || i.op === "ENV") && /KEY|SECRET|TOKEN|ANTHROPIC/i.test(i.args));
-    expect(leaks).toEqual([]);
+    // An allowlist, not a list of secret names: BASE_RPC_URL names no secret but can carry a provider key.
+    expect(all("ARG")).toEqual([]);
+    expect(all("ENV").map((i) => i.args)).toEqual(["MAAT_DATA_DIR=/data"]);
   });
 
   it("copies only the runtime files, and never .env", () => {
