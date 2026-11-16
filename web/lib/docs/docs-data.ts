@@ -20,7 +20,10 @@ export interface BaseConstant {
   readonly name: string;
   readonly type: "address" | "uint256";
   readonly value: string;
+  /** The `///` block above this constant alone; empty when it has none. */
   readonly note: string;
+  /** The `///` block above the run of constants this one belongs to; empty when it is in no group. */
+  readonly group: string;
 }
 
 export interface AgentEnvVar {
@@ -96,31 +99,37 @@ function solFiles(root: string, dir: string): SolSource[] {
 }
 
 /**
- * Every `address|uint256 internal constant NAME = value;`, with the `///` block above it. One block describes
- * the whole run of constants below it, so each of them carries the note. A note ends at a blank line, at any
- * other line (the `library` line, `}`), or when a new `///` block starts after a constant.
+ * Every `address|uint256 internal constant NAME = value;`, with the `///` block above it. A block covers the run
+ * of constants below it, which ends at a blank line, at any other line (the `library` line, `}`), or where a new
+ * `///` block starts. Above a run of two or more constants the block is their group's comment, so the table can
+ * show it once; above a single constant it is that constant's own note.
  */
 export function parseBaseAddresses(text: string): BaseConstant[] {
   const out: BaseConstant[] = [];
-  let note: string[] = [];
-  let afterConstant = false;
+  let comment: string[] = [];
+  let run: Omit<BaseConstant, "note" | "group">[] = [];
+  const close = () => {
+    const block = comment.join(" ");
+    const grouped = run.length > 1;
+    for (const c of run) out.push({ ...c, note: grouped ? "" : block, group: grouped ? block : "" });
+    comment = [];
+    run = [];
+  };
   for (const raw of text.split("\n")) {
     const line = raw.trim();
     if (line.startsWith("///")) {
-      if (afterConstant) note = [];
-      afterConstant = false;
-      note.push(line.slice(3).replace(/^\s*@notice\s+/, "").trim());
+      if (run.length > 0) close();
+      comment.push(line.slice(3).replace(/^\s*@notice\s+/, "").trim());
       continue;
     }
     const m = /^(address|uint256) internal constant (\w+) = ([^;]+);/.exec(line);
     if (m?.[1] && m[2] && m[3]) {
-      out.push({ name: m[2], type: m[1] as BaseConstant["type"], value: m[3].trim(), note: note.join(" ") });
-      afterConstant = true;
+      run.push({ name: m[2], type: m[1] as BaseConstant["type"], value: m[3].trim() });
       continue;
     }
-    note = [];
-    afterConstant = false;
+    close();
   }
+  close();
   return out;
 }
 

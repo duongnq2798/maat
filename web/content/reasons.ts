@@ -66,3 +66,16 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   HEALTH_FACTOR_LOW: "The move would leave the Aave health factor under the floor.",
   DERISK_WINDOW: "Before the feed pauses for a weekend or holiday, the target health factor applies, not just the floor.",
 };
+
+/**
+ * The docs' line per refusal: REASON_MEANING with four lines widened to match the code. Meant for the docs table
+ * (components/docs/content.tsx) and its Markdown copy (lib/docs/component-text.ts); the landing's Refusals section
+ * keeps REASON_MEANING.
+ */
+export const REASON_MEANING_DOCS: Readonly<Record<RefusalCode, string>> = {
+  ...REASON_MEANING,
+  TOKEN_NOT_ALLOWED: "This token can't be used for this action.",
+  MARKET_CLOSED: "The market is closed for the mandate's session (a weekend, a holiday or outside its hours), or the calendar can't be read.",
+  BAD_PRICE: "The Chainlink answer is zero, negative, undated or from the future, or the feed or the pool's TWAP could not be read.",
+  MULTIPLIER_COOLDOWN: "The token's multiplier changed recently or has a change scheduled, as around a split, or can't be read.",
+};
