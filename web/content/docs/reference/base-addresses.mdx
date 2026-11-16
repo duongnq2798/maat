@@ -87,6 +87,7 @@ Each protocol Maat is built on has code in this repository that calls it and a t
 | All of the above, wired together | `contracts/script/Deploy.s.sol` | `test_deployWiresEverything` in `contracts/test/fork/DeployFork.t.sol` | Fork of Base; nothing was broadcast |
 | [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) | `agent/src/exec/cdpSender.ts`, with the policy in `agent/src/exec/cdpPolicy.ts` | `agent/test/cdpSender.test.ts` and `agent/test/cdpPolicy.test.ts` | Tested against a fake only. The agent's fork test sent from an anvil account instead |
 | Claude API | `ClaudeProposer` in `agent/src/llm/proposer.ts` | `agent/test/proposer.test.ts` | Tested against a fake only. The agent's fork test used a scripted proposer instead |
+| Bankr's LLM gateway | `bankrCreate` and `ClaudeProposer` in `agent/src/llm/proposer.ts`, with `MAAT_LLM_PROVIDER=bankr` | The `ClaudeProposer on Bankr's LLM gateway` tests in `agent/test/proposer.test.ts` | Tested against fakes built from the shapes in Bankr's documentation only. No request has reached the gateway |
 | [Builder Codes](/docs/help/glossary#builder-code-erc-8021) | `GuardedSender` in `agent/src/exec/sender.ts` adds the suffix from `agent/src/exec/builderCode.ts` to every transaction | `agent/test/builderCode.test.ts`, and the agent's fork test, which checks the suffix on every transaction it sent | Test vector; no code registered. The fork test used the code `bc_maattest` |
 
 ## Check an address yourself
