@@ -20,7 +20,29 @@ describe("executorPolicy", () => {
     });
   });
   it("closes raw signing paths", () => {
-    expect(p.rules.map((r) => (r as { operation: string }).operation)).toEqual(["sendEvmTransaction", "signEvmTransaction", "signEvmHash"]);
+    expect(p.rules.map((r) => r.operation)).toEqual([
+      "sendEvmTransaction",
+      "signEvmTransaction",
+      "signEvmHash",
+      "signEvmMessage",
+      "signEvmTypedData",
+    ]);
     expect(p.rules[2]).toEqual({ action: "reject", operation: "signEvmHash" });
+    expect(p.rules[3]).toEqual({
+      action: "reject",
+      operation: "signEvmMessage",
+      criteria: [{ type: "evmMessage", match: "[\\s\\S]*" }],
+    });
+    expect(p.rules[4]).toEqual({
+      action: "reject",
+      operation: "signEvmTypedData",
+      criteria: [{ type: "evmTypedDataVerifyingContract", addresses: [], operator: "not in" }],
+    });
+  });
+  it("matches every message, even if CDP anchors the pattern", () => {
+    const rule = p.rules[3];
+    if (rule?.operation !== "signEvmMessage") throw new Error("rule 3 is not the signEvmMessage rule");
+    const whole = new RegExp(`^(?:${rule.criteria[0]!.match})$`);
+    for (const m of ["", "hello", "line one\nline two", "0xdeadbeef"]) expect(whole.test(m)).toBe(true);
   });
 });
