@@ -219,6 +219,8 @@ Check the transaction on Basescan. Its input data must end with the Builder Code
 npm run agent
 ```
 
+To run the loop on a server instead, in a container that restarts on its own, keeps its data on a volume and takes its secrets at run time, follow [Run in a container](https://github.com/duongnq2798/maat/blob/main/agent/README.md#run-in-a-container) in agent/README.md. That image has not been built yet.
+
 </Callout>
 
 Without `--once` the agent runs a round, then waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> after any other round. A round that throws is logged and tried again after the longer wait. After each round the loop prints one line with the run id, the status and the counts of sent and skipped intents.
