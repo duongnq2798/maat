@@ -40,6 +40,94 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 6. Set `MAAT_EXECUTOR=<executor address>` and `MAAT_MODE=live`, run `npm run agent -- --once`, then check the tx on Basescan. The input data must end with the Builder Code (`...0080218021...8021`).
 7. Run continuously: `npm run agent`. Stop it with Ctrl+C.
 
+## Run in a container
+
+`agent/Dockerfile` builds one image for the agent loop, with `agent/` as the build context. The image has not been built yet: the dev machine has no Docker, so build it remotely, on Fly.io's remote builder or on the VPS that runs it. Do live-run steps 1–5 first.
+
+The image holds `src/`, the package files and `tsconfig.json`, with production dependencies only (`npm ci --omit=dev`; `tsx` is a dependency because it runs `src/`). It runs `node --import tsx src/main.ts` under tini as the non-root `node` user, so a stop signal reaches the agent. `MAAT_DATA_DIR` is `/data`, a volume. Pin `node:24-slim` by digest when you build (see the top of the Dockerfile). The same image can run another entry point in `src/` by overriding the command.
+
+**Keys.** The vault owner key is never on the agent host or in the container. The host only holds the CDP API credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`) and the Anthropic key (`ANTHROPIC_API_KEY`), plus `BASE_RPC_URL` when it carries a provider key. None of them is in the image: pass them at run time.
+
+**One volume, one container.** Never mount one data volume in two running containers, and never run two agents against one vault. `agent.lock` holds a process id, and process ids are per container, so the lock cannot be relied on to stop a second container.
+
+**Stop timeout.** A stop signal ends the wait between rounds, not a round in flight, and a round can wait up to 2 minutes for each receipt. Give the agent time to finish the round and remove `agent.lock` before it is killed: Docker's default is 10 s and Fly's is 5 s.
+
+### On a VPS with Docker
+
+```bash
+# From the repository root, on the VPS.
+docker build -t maat-agent agent/
+
+# Settings and secrets in a root-only file outside the repository, in the format of .env.example.
+sudo install -d -m 700 /etc/maat
+sudo install -m 600 /dev/null /etc/maat/agent.env   # fill it in as root
+
+sudo docker run -d --name maat-agent \
+  --restart=always \
+  --stop-timeout 300 \
+  --env-file /etc/maat/agent.env \
+  -v maat-data:/data \
+  maat-agent
+```
+
+Leave `MAAT_DATA_DIR` out of the env file: the image sets it to `/data`, and `./data` would point inside `/app`, which the `node` user cannot write. `maat-data` is a named volume: Docker fills a new one from the image's `/data`, so it starts owned by `node`. A bind mount of a host folder would have to be owned by uid 1000 instead.
+
+`docker logs -f maat-agent` follows the loop's output. To run one round by overriding the command, stop the loop first, because both use the same volume:
+
+```bash
+sudo docker stop maat-agent
+sudo docker run --rm --env-file /etc/maat/agent.env -v maat-data:/data maat-agent node --import tsx src/main.ts --once
+sudo docker start maat-agent
+```
+
+### On Fly.io
+
+Save this as `agent/fly.toml`, next to the Dockerfile (`.dockerignore` keeps it out of the image). The settings that are not secret go in `[env]`.
+
+```toml
+app = "<APP_NAME>"
+primary_region = "<REGION>"
+kill_timeout = 300
+
+[env]
+  MAAT_MODE = "live"
+  MAAT_VAULT = "<VAULT_ADDRESS>"
+  MAAT_EXECUTOR = "<EXECUTOR_ADDRESS>"
+  MAAT_EXPENSE_PAYEE = "<PAYEE_ADDRESS>"
+  MAAT_BUILDER_CODE = "<BUILDER_CODE>"
+
+[mounts]
+  source = "maat_data"
+  destination = "/data"
+
+[[restart]]
+  policy = "always"
+```
+
+```bash
+cd agent
+fly apps create <APP_NAME>
+fly volumes create maat_data --size 1 --region <REGION>
+fly secrets set ANTHROPIC_API_KEY=... CDP_API_KEY_ID=... CDP_API_KEY_SECRET=... CDP_WALLET_SECRET=... BASE_RPC_URL=...
+fly deploy --remote-only
+fly scale count 1
+```
+
+`fly secrets import` reads the same `NAME=value` lines from stdin and keeps the values out of your shell history. Keep exactly one Machine: a volume attaches to one Machine only, so a second Machine would run on a volume of its own, with a lock that cannot see the first agent.
+
+### Health check
+
+The agent serves no port, but every round appends to `/data/journal.jsonl`, and off session the loop waits 60 minutes between rounds. A newest line older than about 70 minutes (that wait plus a round) means the loop is stuck or failing before it writes. This command exits 0 when the newest line is younger than 70 minutes, and 1 otherwise, also when the journal is missing:
+
+```bash
+sudo docker exec maat-agent node -e '
+const last = require("node:fs").readFileSync("/data/journal.jsonl", "utf8").trimEnd().split("\n").at(-1);
+process.exit(Date.now() - Date.parse(JSON.parse(last).ts) < 70 * 60_000 ? 0 : 1);
+'
+```
+
+On Fly, run the same `node -e` through `fly ssh console`. It is not a `HEALTHCHECK` in the image, because it has not run in a container yet. Run it from cron or a monitor, and give a fresh start one round to write its first line.
+
 ## Safety
 
 - The contract is the final gate: $50 per-trade cap, $100 daily cap, slippage floor, session hours, feed, premium, HF. The agent cannot exceed these limits.
