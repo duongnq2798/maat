@@ -28,6 +28,10 @@ describe("loadConfig", () => {
     const c = loadConfig({ ...base, MAAT_LLM_PROVIDER: "bankr", BANKR_API_KEY: "bk_test" });
     expect(c.llmProvider).toBe("bankr");
     expect(c.bankrApiKey).toBe("bk_test");
+    // The default provider does not use the key, so a key of spaces does not stop the start.
+    const spaces = loadConfig({ ...base, BANKR_API_KEY: "   " });
+    expect(spaces.llmProvider).toBe("anthropic");
+    expect(spaces.bankrApiKey).toBeUndefined();
   });
   it("rejects an unknown provider", () => {
     expect(() => loadConfig({ ...base, MAAT_LLM_PROVIDER: "openrouter" })).toThrow(/MAAT_LLM_PROVIDER/);

@@ -28,8 +28,9 @@ const schema = z
     MAAT_MAX_TX_PER_DAY: field(z.coerce.number().int().positive().default(40)),
     MAAT_DEFAULT_DAILY_COMPUTE_USD: field(z.coerce.number().positive().default(0.5)),
     MAAT_LLM_PROVIDER: field(z.enum(["anthropic", "bankr"]).default("anthropic")),
-    // The keys are never echoed: a zod issue names the setting, not the value.
-    BANKR_API_KEY: field(z.string().trim().min(1).optional()),
+    // The keys are never echoed: a zod issue names the setting, not the value. A key of spaces counts as unset, so
+    // it stops only the bankr provider (below).
+    BANKR_API_KEY: field(z.string().trim().transform((k) => k || undefined).optional()),
     // The Anthropic SDK reads the key itself; the agent only notes whether one is set (the Bankr failover needs it).
     ANTHROPIC_API_KEY: field(z.string().optional()),
     CDP_ACCOUNT_NAME: field(z.string().default("maat-executor")),
