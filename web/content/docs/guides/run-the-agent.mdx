@@ -400,7 +400,7 @@ The agent bounds itself, in addition to the vault's checks. The vault stays the 
 | Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else. The CDP policy adds a second layer in live mode. `notifyRevenue` is on the list, but the agent never sends it: no code in `agent/src` encodes it, and it has no gas floor. |
 | Agents per data folder | One | A second agent on the same folder stops at startup with an error. |
 
-Two more rules come from agent/README.md, Safety: if a transaction fails or reverts, the round stops at once, and if the RPC fails, the round does nothing. In the loop, the next round still runs ([Run it continuously](#run-it-continuously)).
+Two more rules come from agent/README.md, Safety: if a transaction fails or reverts, the round stops at once, and if the RPC fails, the round does nothing. With `BASE_RPC_URL_FALLBACK` set, a request that fails on `BASE_RPC_URL` is sent to the second RPC, and the RPC counts as failed only when both fail. In the loop, the next round still runs ([Run it continuously](#run-it-continuously)).
 
 Every transaction carries an explicit gas limit, which the agent works out like this:
 
@@ -448,7 +448,7 @@ export type JournalEntry =
 
 `state.json` holds one object of the `Data` shape below, and `pending` holds the sends that are not settled yet:
 
-```typescript title="agent/src/ledger/store.ts#L6-L27"
+```typescript title="agent/src/ledger/store.ts#L6-L29"
 /** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
 export interface PendingTx {
   intentId: Hex;
@@ -459,8 +459,10 @@ export interface PendingTx {
   /** The preview verdict at send time; a log-refusal records this reason as logged. */
   preview: string;
   day: string;
-  /** The state block the round read before sending: the age origin and the getLogs lower bound. */
+  /** The state block the round read before sending: the getLogs lower bound, and the age origin without `timestamp`. */
   block: string;
+  /** That block's timestamp (unix seconds): the age origin of the pending window. Older code stored none. */
+  timestamp?: string;
 }
 
 interface Data {
@@ -526,14 +528,14 @@ Nobody has run this procedure. It is written from the code that settles a send, 
 When the agent settles a send, it does more than clear the entry. For an allowed `PAY_EXPENSE` it adds the amount to `paidUsd6`, and for a logged refusal it records the reason for that day. If you only delete the entry, neither happens: the next round can pay the same bill again, or log the same refusal again. Do this instead:
 
 1. Stop the agent.
-2. Read whether the vault used the intent, with the `usedIntent` call in [Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent) and the entry's `intentId`. If it prints `false`, leave the entry: the agent drops it on its own when the transaction reverts, or after <Fact name="pendingWindowBlocks" /> with no trace of it. If the transaction was mined and did not revert but `usedIntent` stays `false`, the agent never drops the entry. An `execute` that does not revert marks its intent used, so unless your RPC lags, the transaction was not sent to this vault: see the row for a mined transaction whose intent is not yet used in the table above.
-3. If it prints `true`, the transaction took effect. Find its `Decision` with the `cast logs` command in the same step, from the entry's `block`. Pass `--query-size` if your provider limits the block range. Compare its reason with the entry's `preview` ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)): if they differ, the agent would also have recorded a mismatch.
+2. Read whether the vault used the intent, with the `usedIntent` call in [Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent) and the entry's `intentId`. If it prints `false`, leave the entry: the agent drops it on its own when the transaction reverts, or after <Fact name="pendingWindowMinutes" /> of chain time with no trace of it. An entry that an older agent wrote has no `timestamp` and is aged in blocks instead. If the transaction was mined and did not revert but `usedIntent` stays `false`, the agent never drops the entry. An `execute` that does not revert marks its intent used, so unless your RPC lags, the transaction was not sent to this vault: see the row for a mined transaction whose intent is not yet used in the table above.
+3. If it prints `true`, the transaction took effect. Find its `Decision` with the `cast logs` command in the same step, from the entry's `block`. Pass `--query-size` if your provider limits the block range: free RPCs cap one query at about 10,000 blocks, and the agent asks for at most <Fact name="logWindowBlocks" />. Compare its reason with the entry's `preview` ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)): if they differ, the agent would also have recorded a mismatch.
 4. Do in `state.json` what the agent would have done:
    - If the entry's `action` is `PAY_EXPENSE` and the `Decision` has `allowed` true, add the entry's `amount` to `paidUsd6`. Both are decimal strings in USDC units, with <Fact name="usdcDecimals" />.
    - If its `gateKind` is `log-refusal`, add its `preview` reason to `refusals["<day>"]`, where `<day>` is the entry's `day`.
 5. Delete the entry from `pending`, then start the agent.
 
-A pending entry looks like this, with placeholders for the values that vary. `txHash` is missing until the send has returned a hash. `amount` is the intent's amount: USDC units for a `BUY`, `BORROW`, `REPAY` or `PAY_EXPENSE`, and the stock's own units ([raw amount](/docs/help/glossary#raw-amount)) for a `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL`.
+A pending entry looks like this, with placeholders for the values that vary. `txHash` is missing until the send has returned a hash. `block` is the block the round read before sending, and `timestamp` is that block's time in Unix seconds; an entry that an older agent wrote has no `timestamp`. `amount` is the intent's amount: USDC units for a `BUY`, `BORROW`, `REPAY` or `PAY_EXPENSE`, and the stock's own units ([raw amount](/docs/help/glossary#raw-amount)) for a `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL`.
 
 ```json
 {
@@ -544,7 +546,8 @@ A pending entry looks like this, with placeholders for the values that vary. `tx
   "gateKind": "execute",
   "preview": "OK",
   "day": "<UTC_DAY>",
-  "block": "<BLOCK>"
+  "block": "<BLOCK>",
+  "timestamp": "<BLOCK_TIMESTAMP>"
 }
 ```
 

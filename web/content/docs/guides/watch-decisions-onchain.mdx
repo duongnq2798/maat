@@ -70,7 +70,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
   "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)"
 ```
 
-No vault is deployed, so this page shows no output. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, [the table in step 3](#turn-the-numbers-into-names) shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` in Foundry 1.9.0 splits the range into chunks of that many blocks to work around such limits.
+No vault is deployed, so this page shows no output. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, [the table in step 3](#turn-the-numbers-into-names) shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` in Foundry 1.9.0 splits the range into chunks of that many blocks to work around such limits. Free Base RPCs cap one query at about 10,000 blocks, which Base makes in about 33 minutes at one block every 200 ms, so a search from the deploy block usually needs it. The agent itself asks for at most <Fact name="logWindowBlocks" /> per query.
 
 To check that you typed the signature right without any network, compute the hash that every `Decision` log carries as its first topic. The plain form without names gives the same hash as the declaration:
 
