@@ -1,5 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
+import { IA_SLUGS } from "@/lib/docs/ia";
 import { SITE, siteUrl } from "@/lib/site";
 import { readRepo } from "./helpers/solidity";
 
@@ -35,12 +36,15 @@ describe("links into the README", () => {
         .replace(/ /g, "-"),
     );
 
-  it.each([
-    ["evaluateUrl", SITE.evaluateUrl],
-    ["forkEvidenceUrl", SITE.forkEvidenceUrl],
-  ])("%s points at a README heading", (_name, url) => {
-    expect(url.startsWith(`${SITE.repoUrl}#`)).toBe(true);
-    expect(slugs).toContain(url.split("#")[1]);
+  it("forkEvidenceUrl points at a README heading", () => {
+    expect(SITE.forkEvidenceUrl.startsWith(`${SITE.repoUrl}#`)).toBe(true);
+    expect(slugs).toContain(SITE.forkEvidenceUrl.split("#")[1]);
+  });
+
+  it("the docs links point at pages in the docs IA", () => {
+    expect(SITE.docsUrl).toBe("/docs");
+    expect(SITE.quickstartUrl).toBe("/docs/get-started/quickstart");
+    expect(IA_SLUGS).toContain(SITE.quickstartUrl.slice("/docs/".length));
   });
 
   it("the license link points at the LICENSE file at the repo root", () => {

@@ -26,9 +26,8 @@ export function Hero() {
           </h1>
           <p className="lead max-w-[31em] text-[17px] sm:text-[20px]">{SITE.description}</p>
           <div className="flex flex-wrap gap-3">
-            <a className="pill-dark" href={SITE.evaluateUrl}>
+            <a className="pill-dark" href={SITE.quickstartUrl}>
               Verify it in 5 minutes
-              <span aria-hidden="true"> ↗</span>
             </a>
             <a className="pill-line" href="#how">
               How it weighs a trade
