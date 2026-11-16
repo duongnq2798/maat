@@ -42,6 +42,7 @@ function state(over: Partial<VaultState> & { tokens?: TokenState[] }): VaultStat
     spentToday: 0n,
     mandate: MANDATE,
     marketOpen: true,
+    calendar: null,
     credit: { readable: true, debt: 0n, healthFactor: 2n ** 256n - 1n },
     ...over,
     tokens,
