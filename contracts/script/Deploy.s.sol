@@ -24,7 +24,7 @@ contract Deploy is Script {
         address owner = vm.envAddress("MAAT_OWNER");
         address executor = vm.envAddress("MAAT_EXECUTOR");
         address payee = vm.envAddress("MAAT_EXPENSE_PAYEE");
-        address payee2 = vm.envOr("MAAT_EXPENSE_PAYEE_2", address(0)); // optional: unset or zero adds none
+        address payee2 = optionalAddress("MAAT_EXPENSE_PAYEE_2"); // optional: unset or zero adds none
 
         (address[] memory toks, TokenConfig[] memory cfgs) = MaatConfig.basket();
         (address[] memory ctoks, uint256[] memory ids) = MaatConfig.creditReserves();
@@ -62,6 +62,11 @@ contract Deploy is Script {
         console2.log("AerodromeSwapAdapter", address(swapAdapter));
         console2.log("AaveV4CreditAdapter ", address(creditAdapter));
         console2.log("MandateVault        ", address(vault));
+    }
+
+    /// @notice The address in env variable `name`, or address(0) (unset) when it is missing.
+    function optionalAddress(string memory name) internal view returns (address) {
+        return vm.envOr(name, address(0));
     }
 
     /// @notice The vault's starting payee list: `first`, then `second` unless it is address(0) (unset).

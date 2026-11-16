@@ -10,6 +10,10 @@ contract DeployHarness is Deploy {
     function expensePayeesOf(address first, address second) external pure returns (address[] memory) {
         return expensePayees(first, second);
     }
+
+    function optionalAddressOf(string memory name) external view returns (address) {
+        return optionalAddress(name);
+    }
 }
 
 contract DeployTest is VaultFixture {
@@ -47,10 +51,10 @@ contract DeployTest is VaultFixture {
         h.expensePayeesOf(payee, payee);
     }
 
-    function test_expensePayees_secondUnsetGivesOnePayee() public {
-        // The read run() makes; no test sets this variable, so skip only if the shell exports one.
-        vm.skip(vm.envExists("MAAT_EXPENSE_PAYEE_2"));
-        address[] memory list = h.expensePayeesOf(payee, vm.envOr("MAAT_EXPENSE_PAYEE_2", address(0)));
+    function test_expensePayees_secondUnsetGivesOnePayee() public view {
+        // run() reads MAAT_EXPENSE_PAYEE_2 through optionalAddress. A name no one sets keeps this test off
+        // contracts/.env, which forge loads by itself.
+        address[] memory list = h.expensePayeesOf(payee, h.optionalAddressOf("MAAT_TEST_UNSET_PAYEE_2"));
         assertEq(list.length, 1);
         assertEq(list[0], payee);
     }

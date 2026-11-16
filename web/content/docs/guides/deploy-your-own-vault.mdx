@@ -56,7 +56,7 @@ You need the pieces below. Your wallet is the [owner](/docs/help/glossary#owner)
         address owner = vm.envAddress("MAAT_OWNER");
         address executor = vm.envAddress("MAAT_EXECUTOR");
         address payee = vm.envAddress("MAAT_EXPENSE_PAYEE");
-        address payee2 = vm.envOr("MAAT_EXPENSE_PAYEE_2", address(0)); // optional: unset or zero adds none
+        address payee2 = optionalAddress("MAAT_EXPENSE_PAYEE_2"); // optional: unset or zero adds none
 ```
 
 In the runbook the owner is your wallet, the [executor](/docs/help/glossary#executor) is temporarily your wallet until the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) takes over, and the [payee](/docs/help/glossary#payee) is the compute-expense wallet, the address the vault's `PAY_EXPENSE` action may pay. Its `.env` step sets all three to your wallet address. The deploy uses [`MaatConfig.defaultMandate`](/docs/concepts/mandate#the-default-mandate) with the `REGULAR` session and the three-stock basket. To change a limit, a token or the payee, read [Configure a mandate](/docs/guides/configure-a-mandate) before you deploy.
