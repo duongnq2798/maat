@@ -54,9 +54,9 @@
 }
 
 /* About 72 characters a line (spec §6.6), for top-level prose only: tables, code, callouts, Steps and diagrams keep
-   the full column. Geist's "0" is far wider than its average letter, so 72ch still holds about 106 characters; 33em
-   holds 72. */
-#nd-page .prose > :where(p, ul, ol, dl, blockquote) {
+   the full column, and so do components (.not-prose), such as the docs home's router cards. Geist's "0" is far wider
+   than its average letter, so 72ch still holds about 106 characters; 33em holds 72. */
+#nd-page .prose > :where(p, ul, ol, dl, blockquote):not(.not-prose) {
   max-width: 33em;
 }
 

@@ -104,51 +104,72 @@ test.describe("reading comfort", () => {
       expect(widths.callout).toBe(widths.column);
       expect(widths.table).toBe(widths.column);
     });
+
+    test(`at ${width}px the docs home's router cards, a component, keep the full column`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/docs");
+      const widths = await page.evaluate(() => {
+        const width = (selector: string) => document.querySelector(selector)?.getBoundingClientRect().width;
+        return { column: width("#nd-page .prose"), router: width('#nd-page .prose > [aria-label="Where to start"]') };
+      });
+      expect(widths.column).toBeGreaterThan(0);
+      expect(widths.router).toBe(widths.column);
+    });
   }
 
-  test("a printed runbook shows the article only, with every command line wrapped and link targets spelled out", async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/docs/guides/deploy-your-own-vault", { waitUntil: "networkidle" });
-    await page.emulateMedia({ media: "print" });
-    const article = page.locator("#nd-page");
-    for (const chrome of [
-      page.locator("#nd-sidebar"),
-      page.locator("#nd-subnav"),
-      page.locator("#nd-toc"),
-      page.locator("[data-toc-popover]"),
-      page.locator("button[data-search-full]"),
-      article.locator('nav[aria-labelledby="read-next"]'),
-      article.locator('[aria-labelledby="page-helpful"]'),
-      article.getByRole("button", { name: "Copy page as Markdown" }),
-      article.locator("figure").first().getByRole("button", { name: "Copy Text" }),
-      // Fumadocs' previous and next cards.
-      article.locator("a:has(> div > svg.lucide-chevron-left)"),
-      article.locator("a:has(> div > svg.lucide-chevron-right)"),
-    ]) {
-      await expect(chrome).toBeHidden();
-    }
-    await expect(article.locator(".prose")).toBeVisible();
-    await expect(article.getByRole("heading", { level: 1 })).toBeVisible();
-    const layout = await page.evaluate(() => {
-      const regions = [...document.querySelectorAll("#nd-page figure [role=region]")];
-      const external = document.querySelector<HTMLAnchorElement>('#nd-page .prose a[href^="https://"]');
-      return {
-        articleWidth: document.querySelector("#nd-page")?.getBoundingClientRect().width,
-        pageWidth: document.documentElement.clientWidth,
-        codeBlocks: regions.length,
-        clipped: regions.filter((r) => r.scrollWidth > r.clientWidth || r.scrollHeight > r.clientHeight).length,
-        unwrapped: regions.filter((r) => getComputedStyle(r.querySelector("pre") ?? r).whiteSpace !== "pre-wrap").length,
-        externalHref: external?.getAttribute("href"),
-        externalAfter: external ? getComputedStyle(external, "::after").content : undefined,
-      };
+  // The site chrome each layout shows on screen. A4 paper lays out at about 718 to 794 CSS px, below Fumadocs' md
+  // breakpoint, so a printout gets the mobile header and the "On this page" bar, not the sidebar and the TOC.
+  for (const { width, shown } of [
+    { width: 1440, shown: ["#nd-sidebar", "#nd-toc", "button[data-search-full]"] },
+    { width: 718, shown: ["#nd-subnav", "#nd-subnav [data-search]", "[data-toc-popover]"] },
+  ]) {
+    test(`a printed runbook at ${width}px shows the article only, with every command line wrapped and link targets spelled out`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto("/docs/guides/deploy-your-own-vault", { waitUntil: "networkidle" });
+      // Visible on screen at this width, so only the print rules can hide it.
+      for (const selector of shown) await expect(page.locator(selector)).toBeVisible();
+      await page.emulateMedia({ media: "print" });
+      const article = page.locator("#nd-page");
+      for (const chrome of [
+        page.locator("#nd-sidebar"),
+        page.locator("#nd-subnav"),
+        page.locator("#nd-subnav [data-search]"),
+        page.locator("#nd-toc"),
+        page.locator("[data-toc-popover]"),
+        page.locator("button[data-search-full]"),
+        article.locator('nav[aria-labelledby="read-next"]'),
+        article.locator('[aria-labelledby="page-helpful"]'),
+        article.getByRole("button", { name: "Copy page as Markdown" }),
+        article.locator("figure").first().getByRole("button", { name: "Copy Text" }),
+        // Fumadocs' previous and next cards.
+        article.locator("a:has(> div > svg.lucide-chevron-left)"),
+        article.locator("a:has(> div > svg.lucide-chevron-right)"),
+      ]) {
+        await expect(chrome).toBeHidden();
+      }
+      await expect(article.locator(".prose")).toBeVisible();
+      await expect(article.getByRole("heading", { level: 1 })).toBeVisible();
+      const layout = await page.evaluate(() => {
+        const regions = [...document.querySelectorAll("#nd-page figure [role=region]")];
+        const external = document.querySelector<HTMLAnchorElement>('#nd-page .prose a[href^="https://"]');
+        return {
+          articleWidth: document.querySelector("#nd-page")?.getBoundingClientRect().width,
+          pageWidth: document.documentElement.clientWidth,
+          codeBlocks: regions.length,
+          clipped: regions.filter((r) => r.scrollWidth > r.clientWidth || r.scrollHeight > r.clientHeight).length,
+          unwrapped: regions.filter((r) => getComputedStyle(r.querySelector("pre") ?? r).whiteSpace !== "pre-wrap").length,
+          externalHref: external?.getAttribute("href"),
+          externalAfter: external ? getComputedStyle(external, "::after").content : undefined,
+        };
+      });
+      expect(layout.articleWidth).toBe(layout.pageWidth);
+      expect(layout.codeBlocks).toBeGreaterThan(0);
+      expect(layout.clipped).toBe(0);
+      expect(layout.unwrapped).toBe(0);
+      expect(layout.externalHref).toBeTruthy();
+      expect(layout.externalAfter).toContain(layout.externalHref);
     });
-    expect(layout.articleWidth).toBe(layout.pageWidth);
-    expect(layout.codeBlocks).toBeGreaterThan(0);
-    expect(layout.clipped).toBe(0);
-    expect(layout.unwrapped).toBe(0);
-    expect(layout.externalHref).toBeTruthy();
-    expect(layout.externalAfter).toContain(layout.externalHref);
-  });
+  }
 
   test("a web font that arrives after the first paint does not move the page", async ({ page }) => {
     // Lighthouse's mobile screen, where a reference page moved when Geist swapped in.
