@@ -9,7 +9,7 @@
 [![Status: unaudited, pre-mainnet](https://img.shields.io/badge/status-unaudited%2C%20pre--mainnet-b45309?style=flat-square)](#status)
 [![Tested on a Base mainnet fork](https://img.shields.io/badge/Base-mainnet%20fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
 [![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#built-for-stocks-maxxing-season)
-[![Tests: 545, 521 offline](https://img.shields.io/badge/tests-545%20(521%20offline)-15803d?style=flat-square)](#development)
+[![Tests: 558, 534 offline](https://img.shields.io/badge/tests-558%20(534%20offline)-15803d?style=flat-square)](#development)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
 **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
@@ -122,14 +122,15 @@ minute each).
    [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the vault still holds its 200 USDC,
    and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, and the invariant suite,
+   which takes most of the run's time):
 
    ```bash
    forge test --no-match-path "test/fork/*"
    ```
 
    ```text
-   Ran 8 test suites in …: 230 tests passed, 0 failed, 0 skipped (230 total tests)
+   Ran 11 test suites in …: 243 tests passed, 0 failed, 0 skipped (243 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -188,7 +189,7 @@ What exists at this commit, and what does not.
 
 | Component | Status | Where |
 | --- | --- | --- |
-| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs every verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (230 unit tests across the contracts, 14 fork tests). **Not deployed** on mainnet | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
+| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs every verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (243 unit tests across the contracts, 14 fork tests). **Not deployed** on mainnet | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
 | `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027) | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
@@ -515,7 +516,7 @@ docs/superpowers/          design specs and implementation plans
 
 | Suite | Command (in its folder) | Tests | Needs |
 | --- | --- | --- | --- |
-| Contracts, unit | `forge test --no-match-path "test/fork/*"` | 230 | nothing |
+| Contracts, unit | `forge test --no-match-path "test/fork/*"` | 243 | nothing |
 | Contracts, fork | `forge test --match-path "test/fork/*"` | 14 | `BASE_RPC_URL` (archive) |
 | Agent, unit | `npm test` | 167 | nothing |
 | Agent, fork integration | `npm run test:integration` | 3 | archive RPC, `base-anvil` v1.5.1 |
@@ -523,7 +524,8 @@ docs/superpowers/          design specs and implementation plans
 | Web, end to end | `npm run e2e` (after `npm run build`) | 7 | `npx playwright install chromium` |
 
 Contract unit tests by suite: MandateVault 64, MandateVaultCredit 54, GuardLib 44, MandateVaultAdmin 23,
-MarketCalendar 19, AaveV4CreditAdapter 15, PriceLib 7, AerodromeSwapAdapter 4.
+MarketCalendar 19, AaveV4CreditAdapter 15, MandateVaultMalformed 8, PriceLib 7, AerodromeSwapAdapter 4,
+MarketCalendarVectors 4, MandateVaultInvariants 1 (forge counts its six invariants as one test).
 
 Other useful commands: `forge build --sizes` (MandateVault is 22,755 bytes of runtime code, 1,821 under the
 24,576-byte limit), `npm run typecheck` in `agent/` and `web/`, `npm run verify` in `web/` (typecheck, tests,
