@@ -10,7 +10,10 @@ interface PageHeaderProps {
   url: string;
   title: string;
   description?: string;
-  /** Left out on a page that describes no part of Maat, such as the Help pages. */
+  /**
+   * The project's status label. Left out on the Help pages: the label states how far the project is built and tested,
+   * and those pages are aids around the docs, so they carry none (final-review Minor).
+   */
   status?: DocStatus;
   audience: readonly Audience[];
   readingMinutes: number;
@@ -27,9 +30,17 @@ export const STATUS_MEANING: Record<DocStatus, string> = {
   planned: "Designed but not built.",
 };
 
+/** The highlight the label takes on hover, and on keyboard focus too. */
+const STATUS_LINK_HIGHLIGHT = [
+  "hover:[&>[data-status]]:bg-fd-accent hover:[&>[data-status]]:text-fd-accent-foreground hover:[&>[data-status]]:underline hover:text-fd-foreground",
+  "focus-visible:[&>[data-status]]:bg-fd-accent focus-visible:[&>[data-status]]:text-fd-accent-foreground focus-visible:[&>[data-status]]:underline focus-visible:text-fd-foreground",
+].join(" ");
+
 /**
- * The status label, linked to what the labels mean. Its meaning is the link's description, in visually hidden text:
- * a title shows only on hover, and aria-description is still an ARIA 1.3 draft.
+ * The status label, linked to what the labels mean, with an info mark that shows it is a link without a hover. Its
+ * meaning is the link's description, in a hidden node: one that aria-describedby names still gives the description,
+ * where visually hidden text would be read again as page text. A title shows only on hover, and aria-description is
+ * still an ARIA 1.3 draft.
  */
 function StatusLink({ status }: { status: DocStatus }) {
   return (
@@ -38,11 +49,15 @@ function StatusLink({ status }: { status: DocStatus }) {
         href="/docs/get-started/status#what-the-three-labels-mean"
         aria-label={`Status: ${STATUS_LABEL[status]}. What this label means`}
         aria-describedby="status-meaning"
-        className="inline-flex min-h-11 items-center md:min-h-0 hover:[&>[data-status]]:bg-fd-accent hover:[&>[data-status]]:text-fd-accent-foreground"
+        className={`inline-flex min-h-11 items-center gap-1 md:min-h-0 ${STATUS_LINK_HIGHLIGHT}`}
       >
         <StatusBadge status={status} />
+        <svg aria-hidden="true" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" className="size-3.5 shrink-0">
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M8 7.25v3.5M8 5.1v.05" />
+        </svg>
       </Link>
-      <span id="status-meaning" className="sr-only">
+      <span id="status-meaning" hidden>
         {STATUS_MEANING[status]}
       </span>
     </>

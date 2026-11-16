@@ -154,10 +154,19 @@ describe("PageHeader", () => {
     expect(link).toHaveAccessibleDescription(
       "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
     );
-    // Visually hidden text, not a tooltip or the ARIA 1.3 draft attribute.
+    // Hidden text that only the description reads, not a tooltip or the ARIA 1.3 draft attribute. Visually hidden
+    // (sr-only) text would be read a second time as page text.
     expect(link).not.toHaveAttribute("title");
     expect(link).not.toHaveAttribute("aria-description");
-    expect(document.getElementById(link.getAttribute("aria-describedby") ?? "")).toHaveClass("sr-only");
+    const meaning = document.getElementById(link.getAttribute("aria-describedby") ?? "");
+    expect(meaning).toHaveAttribute("hidden");
+    expect(meaning).not.toHaveClass("sr-only");
+  });
+
+  it("marks the label as a link with an info mark that a screen reader skips", () => {
+    render(<PageHeader {...header} status="fork-tested" />);
+    const link = screen.getByRole("link", { name: "Status: Fork-tested. What this label means" });
+    expect(link.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   });
 
   it("gives each label the meaning the status page's table gives it, word for word", () => {

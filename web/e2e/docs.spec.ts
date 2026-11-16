@@ -470,11 +470,45 @@ test.describe("page frame", () => {
     await expect(link).toHaveAccessibleDescription(
       "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
     );
+    // Hidden, not visually hidden: a screen reader reads the meaning once, as the link's description, not again as text.
+    await expect(page.locator("#status-meaning")).toBeHidden();
     await link.click();
     await expect(page).toHaveURL(/\/docs\/get-started\/status#what-the-three-labels-mean$/);
     const table = page.locator("#nd-page .prose [data-status]");
     await expect(table).toHaveCount(3);
     expect(await table.evaluateAll((labels) => labels.filter((label) => label.closest("a")).length)).toBe(0);
+  });
+
+  test("the status label shows it is a link: an info mark at rest, and the hover highlight on keyboard focus", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/concepts/nine-checks");
+    const header = page.locator("#nd-page header");
+    const link = header.getByRole("link", { name: "Status: Fork-tested. What this label means", exact: true });
+    const label = link.locator("[data-status]");
+    await expect(link.locator('svg[aria-hidden="true"]')).toBeVisible();
+    const style = () => label.evaluate((el) => ({ background: getComputedStyle(el).backgroundColor, line: getComputedStyle(el).textDecorationLine }));
+    const rest = await style();
+    await link.hover();
+    const hovered = await style();
+    expect(hovered).not.toEqual(rest);
+    await page.mouse.move(0, 0);
+    expect(await style()).toEqual(rest);
+    // Tab to it from the breadcrumb, the link before it.
+    await header.getByRole("navigation", { name: "Breadcrumb" }).getByRole("link").last().focus();
+    await page.keyboard.press("Tab");
+    await expect(link).toBeFocused();
+    expect(await style()).toEqual(hovered);
+  });
+
+  test("only the docs home and the Help pages go without a status label, and only the home without a review date", async ({ page }) => {
+    // What get-started/status says under "What the three labels mean" and "How this page stays honest".
+    for (const { slug } of DOCS_IA.flatMap((s) => s.pages)) {
+      await page.goto(urlOf(slug), { waitUntil: "domcontentloaded" });
+      const header = page.locator("#nd-page header").first();
+      const labelled = slug !== "index" && !slug.startsWith("help/");
+      await expect(header.locator("[data-status]"), slug).toHaveCount(labelled ? 1 : 0);
+      await expect(header.getByText(/^Last reviewed/), slug).toHaveCount(slug === "index" ? 0 : 1);
+    }
   });
 
   test("the Help pages carry no status label", async ({ page }) => {
@@ -515,6 +549,8 @@ test.describe("page frame", () => {
     await page.goto("/docs/guides/deploy-your-own-vault");
     const article = page.locator("#nd-page");
     await expect(article.locator(".prose h2#next-steps")).toHaveCount(1);
+    // Next steps is the body's last section (docs spec §4.2), so nothing comes between it and Source of truth.
+    await expect(article.locator(".prose h2").last()).toHaveId("next-steps");
     expect(await frameHeadings(article)).toEqual(["source-of-truth"]);
     await expect(article.locator('nav[aria-labelledby="read-next"]')).toHaveCount(0);
     const cardsFollowSources = await page.evaluate(() => {
@@ -567,18 +603,27 @@ test.describe("page frame", () => {
     await expect(page.locator('head meta[name="twitter:image:alt"]')).toHaveAttribute("content", SITE.name);
   });
 
-  test("the sidebar's footer carries the MIT License and the site's disclaimer, in the phone drawer too", async ({ page }) => {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto("/docs/guides/deploy-your-own-vault");
-    const sidebar = page.locator("#nd-sidebar");
-    await expect(sidebar.getByRole("link", { name: "MIT License", exact: true })).toHaveAttribute("href", SITE.licenseUrl);
-    await expect(sidebar.getByText(SITE.disclaimer, { exact: true })).toBeVisible();
-
-    await page.setViewportSize({ width: 360, height: 800 });
-    await page.locator("#nd-subnav").getByRole("button", { name: "Open Sidebar" }).click();
-    const drawer = page.locator("#nd-sidebar-mobile");
-    await expect(drawer.getByRole("link", { name: "MIT License", exact: true })).toHaveAttribute("href", SITE.licenseUrl);
-    await expect(drawer.getByText(SITE.disclaimer, { exact: true })).toBeVisible();
+  test("every docs page ends with the MIT License and the site's disclaimer, once, on a phone and in a printout too", async ({ page }) => {
+    for (const path of ["/docs", "/docs/guides/deploy-your-own-vault"]) {
+      for (const width of [1440, 360]) {
+        await page.setViewportSize({ width, height: 800 });
+        await page.goto(path);
+        // Below the feedback, edit and copy row, as the landing page's footer closes the landing page.
+        const footer = page.locator("#nd-page > footer");
+        await expect(footer.getByRole("link", { name: "MIT License", exact: true }), `${path} at ${width}`).toHaveAttribute("href", SITE.licenseUrl);
+        await expect(footer.getByText(SITE.disclaimer, { exact: true }), `${path} at ${width}`).toBeVisible();
+        await expect(page.getByText(SITE.disclaimer, { exact: true }), `${path} at ${width}`).toHaveCount(1);
+        const afterRow = await page.evaluate(() => {
+          const row = document.querySelector('#nd-page [aria-labelledby="page-helpful"]');
+          const end = document.querySelector("#nd-page > footer");
+          return Boolean(row && end && row.compareDocumentPosition(end) & Node.DOCUMENT_POSITION_FOLLOWING);
+        });
+        expect(afterRow, `${path} at ${width}`).toBe(true);
+      }
+      await page.emulateMedia({ media: "print" });
+      await expect(page.locator("#nd-page > footer").getByText(SITE.disclaimer, { exact: true }), `${path} printed`).toBeVisible();
+      await page.emulateMedia({ media: "screen" });
+    }
   });
 });
 

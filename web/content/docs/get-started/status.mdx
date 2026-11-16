@@ -17,11 +17,11 @@ This page says what exists, what comes next and what is only an idea, so you can
 
 ## What the three labels mean
 
-Every page in these docs carries one of three labels next to its title.
+Every page in these docs, apart from the docs home and the Help pages, carries one of three labels under its title.
 
 | Label | Meaning | Today |
 | --- | --- | --- |
-| <StatusBadge status="fork-tested" /> | Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed. | Every page in these docs. |
+| <StatusBadge status="fork-tested" /> | Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed. | Every page in these docs except the docs home, which says so in its opening paragraphs, and the Help pages. |
 | <StatusBadge status="live" /> | Deployed to Base mainnet by the owner, with the addresses recorded in `deployments/README.md`. | None. No Maat contract is deployed. |
 | <StatusBadge status="planned" /> | Designed but not built. | Planned work is listed on this page, under Planned, not built. |
 
@@ -76,4 +76,4 @@ None of this is built. Each item links the spec section it is sketched in and na
 - Nothing is labeled live until the owner deploys. The address table in `deployments/README.md` is empty today.
 - Distinctive numbers come from facts: a page fails a test if it types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value. Tests check most facts against the contracts, the agent and the fork-run gas log. A few cite documents instead: the planned x402 price and the treasury size cite the treasury design spec, and the AMZNc pool liquidity cites the README and that spec. The check count cites that spec too, and its only test compares it with the site's own list of check labels, not with the contract.
 - Test counts are not shown, because they go stale. The [Quickstart](/docs/get-started/quickstart) shows how to run the suites yourself.
-- The date at the top of each page, Last reviewed, says when the page was last checked against its sources.
+- The date at the top of each page except the docs home, Last reviewed, says when the page was last checked against its sources.

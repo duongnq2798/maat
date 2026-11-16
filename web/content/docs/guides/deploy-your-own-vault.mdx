@@ -432,14 +432,6 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - **Handing the executor role over too early.** After `setExecutor` points at the CDP Server Wallet, your wallet's `execute` calls revert with `NotExecutor`. Take the role back with `setExecutor` to finish a smoke test.
 - **Treating the dry-run addresses as yours.** The contract addresses in the dry run differ from mainnet, and the four address lines are placeholders.
 
-## Next steps
-
-- [Run the agent](/docs/guides/run-the-agent) covers the agent's part of [The whole path](#the-whole-path): the dry run, the executor handover and the loop in live mode.
-- [Change a rule](/docs/guides/change-a-rule) queues a change to the mandate, a stock or a payee through the timelock. [Keep the calendar current](/docs/guides/change-a-rule#keep-the-calendar-current) adds the holidays and early closes that the calendar does not ship with.
-- [Pause, withdraw and recover](/docs/guides/pause-withdraw-recover) is the guide for the emergency steps, including [unwinding a credit position](/docs/guides/pause-withdraw-recover#unwind-the-credit-position).
-- [Configure a mandate](/docs/guides/configure-a-mandate) shows where each default lives and which values the vault rejects, before you change one.
-- [Send intents from your own code](#send-intents-from-your-own-code), below, is for an executor that is not the Maat agent.
-
 ## Send intents from your own code
 
 <Callout type="fork" title="Only this repository's agent has done this">
@@ -469,3 +461,11 @@ export function rationaleHash(text: string): Hex {
 6. **The ABI** is `mandateVaultAbi` in [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
 
 Not offered: no hosted API, no SDK, no factory. Anything not built yet is listed on [Status and roadmap](/docs/get-started/status#planned-not-built).
+
+## Next steps
+
+- [Run the agent](/docs/guides/run-the-agent) covers the agent's part of [The whole path](#the-whole-path): the dry run, the executor handover and the loop in live mode.
+- [Change a rule](/docs/guides/change-a-rule) queues a change to the mandate, a stock or a payee through the timelock. [Keep the calendar current](/docs/guides/change-a-rule#keep-the-calendar-current) adds the holidays and early closes that the calendar does not ship with.
+- [Pause, withdraw and recover](/docs/guides/pause-withdraw-recover) is the guide for the emergency steps, including [unwinding a credit position](/docs/guides/pause-withdraw-recover#unwind-the-credit-position).
+- [Configure a mandate](/docs/guides/configure-a-mandate) shows where each default lives and which values the vault rejects, before you change one.
+- [Send intents from your own code](#send-intents-from-your-own-code), above, is for an executor that is not the Maat agent.

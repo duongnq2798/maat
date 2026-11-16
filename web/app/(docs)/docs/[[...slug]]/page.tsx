@@ -32,7 +32,8 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
       // PageHeader renders the breadcrumb with a Docs root and nav semantics.
       breadcrumb={{ enabled: false }}
       // The previous and next pages in sidebar order, each page once (lib/docs/footer-items.ts), then the feedback, edit
-      // and copy row.
+      // and copy row, then the license and the disclaimer, as the landing page's footer has them. In the page, not the
+      // sidebar, they show on a phone without opening the drawer, and in a printout.
       footer={{
         items: home
           ? {}
@@ -41,12 +42,20 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
               page.url,
             ),
         children: (
-          <PageFooter
-            title={title}
-            pageUrl={new URL(page.url, siteUrl()).href}
-            filePath={page.path}
-            markdownHref={markdownUrl(page.url)}
-          />
+          <>
+            <PageFooter
+              title={title}
+              pageUrl={new URL(page.url, siteUrl()).href}
+              filePath={page.path}
+              markdownHref={markdownUrl(page.url)}
+            />
+            <footer className="not-prose flex flex-col items-start gap-1 text-xs text-fd-muted-foreground">
+              <a href={SITE.licenseUrl} className="inline-flex min-h-11 items-center font-medium text-fd-foreground hover:text-fd-primary md:min-h-0">
+                MIT License
+              </a>
+              <p>{SITE.disclaimer}</p>
+            </footer>
+          </>
         ),
       }}
     >
@@ -57,7 +66,8 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
           url={page.url}
           title={title}
           description={description}
-          // The label says how far Maat is built and tested; the Help pages describe no part of it.
+          // The label states the project's status. The Help pages are aids around the docs, so they carry none
+          // (final-review Minor).
           status={page.slugs[0] === "help" ? undefined : status}
           audience={audience}
           readingMinutes={readingMinutes(markdown)}

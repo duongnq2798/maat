@@ -4,10 +4,10 @@ import { join } from "node:path";
 import { flattenTree } from "fumadocs-core/page-tree";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
-import { frontmatterOf } from "@/lib/docs/content-checks";
+import { docsLinks, frontmatterOf, headingIds } from "@/lib/docs/content-checks";
 import { AUDIENCES } from "@/lib/docs/frontmatter";
 import { DOCS_IA, IA_SLUGS, type IaSection } from "@/lib/docs/ia";
-import { urlSlug } from "@/lib/docs/links";
+import { docsSlug, headingId, urlSlug } from "@/lib/docs/links";
 import { docsTree } from "@/lib/docs/remark-component-text";
 import { DOCS_DIR, docsPages } from "./helpers/docs";
 
@@ -87,6 +87,41 @@ function metaPages(s: IaSection): string[] {
     });
 }
 
+/** The page with its fenced code blanked, so a heading or a link inside a code block counts for nothing. */
+const outsideFences = (source: string) => source.replace(/^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, (m) => m.replace(/[^\n]/g, " "));
+
+/** A heading line's level and the id Fumadocs gives it, or undefined for any other line. */
+function heading(line: string): { level: number; id: string } | undefined {
+  const m = /^(#{2,6})\s+(.+?)\s*#*\s*$/.exec(line);
+  return m ? { level: m[1]?.length ?? 0, id: headingId((m[2] ?? "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")) } : undefined;
+}
+
+/** The ids of a page's H2 headings, in order. */
+const h2Ids = (source: string) =>
+  outsideFences(source)
+    .split("\n")
+    .flatMap((line) => (heading(line)?.level === 2 ? [heading(line)?.id ?? ""] : []));
+
+/** The text under a page's Next steps or Related heading, up to the next heading at its level or above. */
+function readingList(source: string): string {
+  const out: string[] = [];
+  let level: number | undefined;
+  for (const line of outsideFences(source).split("\n")) {
+    const h = heading(line);
+    if (level !== undefined) {
+      if (h && h.level <= level) break;
+      out.push(line);
+    } else if (h && (h.id === "next-steps" || h.id === "related")) level = h.level;
+  }
+  return out.join("\n");
+}
+
+/** The pages a page's frontmatter next names, by IA slug, that its Next steps or Related list does not link. */
+function unlistedNext(source: string, next: readonly string[]): string[] {
+  const linked = new Set(docsLinks(readingList(source)).map((href) => (docsSlug(href) ?? []).join("/")));
+  return next.filter((slug) => !linked.has(urlSlug(slug).join("/")));
+}
+
 /** A page's frontmatter and its body, the text after the frontmatter. */
 function split(slug: string): { fm: Record<string, unknown>; body: string } {
   const source = sourceOf.get(slug) ?? "";
@@ -157,6 +192,23 @@ describe("docs pages follow the IA (docs spec §3)", () => {
       [...first].filter(([slug, to]) => to !== undefined && slug < to && first.get(to) === slug).map(([slug, to]) => `${slug} <-> ${to}`);
     expect(bounces(new Map([["a", "b"], ["b", "a"], ["c", "a"]]))).toEqual(["a <-> b"]);
     expect(bounces(new Map(written.map((slug) => [slug, (split(slug).fm.next as string[] | undefined)?.[0]])))).toEqual([]);
+  });
+
+  it("a page with its own Next steps or Related list links there every page its next names, as it shows no Read next", () => {
+    // page.tsx skips NextLinks on such a page (listsNextInBody), so a next page missing from the list is linked nowhere.
+    const fixture = "## Related\n\n- [A](/docs/concepts/a#x): a.\n- [C](/docs/concepts)\n\n## After\n\n[B](/docs/concepts/b)\n";
+    expect(unlistedNext(fixture, ["concepts/a", "concepts/b", "concepts/index"])).toEqual(["concepts/b"]);
+    const withList = written.filter((slug) => ["next-steps", "related"].some((id) => headingIds(sourceOf.get(slug) ?? "").has(id)));
+    expect(withList.length).toBeGreaterThan(0);
+    expect(
+      withList.flatMap((slug) => unlistedNext(sourceOf.get(slug) ?? "", (split(slug).fm.next as string[] | undefined) ?? []).map((n) => `${slug}: ${n}`)),
+    ).toEqual([]);
+  });
+
+  it("a page's own Next steps or Related list ends its body, where a Read next block would be (docs spec §4.2)", () => {
+    const withList = written.filter((slug) => ["next-steps", "related"].some((id) => headingIds(sourceOf.get(slug) ?? "").has(id)));
+    expect(withList.length).toBeGreaterThan(0);
+    expect(withList.filter((slug) => !["next-steps", "related"].includes(h2Ids(sourceOf.get(slug) ?? "").at(-1) ?? ""))).toEqual([]);
   });
 
   it("a section's own page is written for every reader its pages are written for", () => {
