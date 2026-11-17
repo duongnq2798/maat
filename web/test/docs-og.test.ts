@@ -14,9 +14,15 @@ const data = { title: "The nine checks", status: "fork-tested", lastReviewed: "2
 
 /** Every docs page as ogCard reads it: its URL slugs and the frontmatter fields the card uses. */
 const pages = docsPages().map((p) => {
-  const fm = parse(frontmatterOf(p.source)) as { title: string; status: DocStatus; lastReviewed: string };
-  return { slug: p.slug, slugs: urlSlug(p.slug), data: { title: fm.title, status: fm.status, lastReviewed: fm.lastReviewed } };
+  const fm = parse(frontmatterOf(p.source)) as { title: string; description: string; status: DocStatus; lastReviewed: string };
+  return {
+    slug: p.slug,
+    slugs: urlSlug(p.slug),
+    data: { title: fm.title, description: fm.description, status: fm.status, lastReviewed: fm.lastReviewed },
+  };
 });
+const home = pages.find((p) => p.slugs.length === 0);
+if (!home) throw new Error("no docs home in content/docs");
 
 describe("ogImageUrl and slugsFromOgPath", () => {
   it("give the docs home and every page its own PNG under /og, as /md gives each its Markdown copy", () => {
@@ -58,7 +64,18 @@ describe("ogCard", () => {
 
   it("leaves the label off a Help page and the docs home, as their headers do", () => {
     expect(ogCard({ slugs: ["help", "faq"], data: { ...data, title: "FAQ" } }, tree)).toStrictEqual({ title: "FAQ", section: "Help" });
-    expect(ogCard({ slugs: [], data: { ...data, title: "Maat docs" } }, tree)).toStrictEqual({ title: "Maat docs" });
+    expect(ogCard({ slugs: [], data: { ...data, title: "Maat docs", description: "Understand Maat." } }, tree)).toStrictEqual({
+      description: "Understand Maat.",
+    });
+  });
+
+  it("gives the docs home its description in place of a title that would repeat the lockup's name", () => {
+    expect(ogCard(home, tree)).toStrictEqual({ description: home.data.description });
+    expect(home.data.description.length).toBeGreaterThan(0);
+  });
+
+  it("fails on a docs home with no description, which would leave its image with nothing but the lockup", () => {
+    expect(() => ogCard({ slugs: [], data: { ...data, title: "Maat docs" } }, tree)).toThrow(/docs home.*description/);
   });
 
   it("names no section on a section's own page, whose title is the section", () => {
@@ -74,7 +91,8 @@ describe("ogCard", () => {
 
   it("gives every docs page a card of its own, so no two shared links look the same", () => {
     const cards = pages.map((p) => JSON.stringify(ogCard(p, tree)));
-    expect(cards).toHaveLength(49);
+    // More than one, so the uniqueness check cannot pass on an empty list; no page count, which adding a page changes.
+    expect(cards.length).toBeGreaterThan(1);
     expect(new Set(cards).size).toBe(cards.length);
   });
 });
@@ -85,7 +103,12 @@ describe("ogAlt", () => {
       "Maat Docs, Concepts: The nine checks. Status: Fork-tested.",
     );
     expect(ogAlt({ title: "FAQ", section: "Help" })).toBe("Maat Docs, Help: FAQ.");
-    expect(ogAlt({ title: "Maat docs" })).toBe("Maat Docs: Maat docs.");
+  });
+
+  it("reads the docs home's description after the docs center's name, and ends it with one full stop", () => {
+    expect(ogAlt({ description: "Understand Maat. Pick a path." })).toBe("Maat Docs: Understand Maat. Pick a path.");
+    expect(ogAlt({ description: "Understand Maat" })).toBe("Maat Docs: Understand Maat.");
+    expect(ogAlt(ogCard(home, tree))).toBe(`Maat Docs: ${home.data.description}`);
   });
 });
 
@@ -114,6 +137,15 @@ describe("renderDocsOg", () => {
     }
     expect(outside).toEqual([]);
   }, 60_000);
+
+  it("draws the docs home's description under the lockup, and not its title, which would repeat the lockup", async () => {
+    const texts: string[] = [];
+    await docsOgSvg(ogCard(home, tree), (node) => {
+      if (node.textContent) texts.push(node.textContent);
+    });
+    expect(texts).toContain(home.data.description);
+    expect(texts).not.toContain(home.data.title);
+  }, 30_000);
 
   it("would catch a title too long for the image", async () => {
     const bottoms: number[] = [];

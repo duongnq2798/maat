@@ -242,10 +242,12 @@ function Badge({ text, fail }: { text: string; fail?: boolean }) {
 
 /**
  * A docs page's link preview (lib/docs/og.ts): the lockup and "Docs", then the page's section, its title and its status
- * label, inside the same 64 x 72 px margins as the landing's image. Boxes do not shrink, so a title too long to fit
- * pushes the label past the bottom margin, where test/docs-og.test.ts sees it, instead of overflowing a squeezed box.
+ * label, or the docs home's description, inside the same 64 x 72 px margins as the landing's image. Boxes do not shrink,
+ * so a title too long to fit pushes the label past the bottom margin, where test/docs-og.test.ts sees it, instead of
+ * overflowing a squeezed box.
  */
 function DocsOg({ card }: { card: OgCard }) {
+  const status = "status" in card ? card.status : undefined;
   return (
     <div
       style={{
@@ -274,15 +276,21 @@ function DocsOg({ card }: { card: OgCard }) {
           <Lockup mark={44} />
           <span style={{ fontSize: 31, fontWeight: 500, letterSpacing: "-0.03em", color: PALETTE.ink2 }}>Docs</span>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 20, flexShrink: 0 }}>
-          {card.section === undefined ? null : (
-            <span style={{ fontFamily: "Geist Mono", fontSize: 26, fontWeight: 500, color: PALETTE.accent }}>{card.section}</span>
-          )}
-          <span style={{ fontSize: 72, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1.05 }}>{card.title}</span>
-        </div>
+        {"description" in card ? (
+          <span style={{ fontSize: 52, fontWeight: 600, letterSpacing: "-0.035em", lineHeight: 1.15, flexShrink: 0 }}>
+            {card.description}
+          </span>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20, flexShrink: 0 }}>
+            {card.section === undefined ? null : (
+              <span style={{ fontFamily: "Geist Mono", fontSize: 26, fontWeight: 500, color: PALETTE.accent }}>{card.section}</span>
+            )}
+            <span style={{ fontSize: 72, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1.05 }}>{card.title}</span>
+          </div>
+        )}
         {/* A fixed height, so the title sits at the same place on a page with no label. */}
         <div style={{ display: "flex", alignItems: "center", height: 56, flexShrink: 0 }}>
-          {card.status === undefined ? null : (
+          {status === undefined ? null : (
             <span
               style={{
                 fontSize: 24,
@@ -293,7 +301,7 @@ function DocsOg({ card }: { card: OgCard }) {
                 backgroundColor: PALETTE.lineSoft,
               }}
             >
-              {card.status}
+              {status}
             </span>
           )}
         </div>
