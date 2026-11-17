@@ -80,7 +80,7 @@ npm run guard
 | `GET /check?token&side&sizeUSD` | 0.01 USDC on Base (x402) | the market verdict in GuardLib order (`reason`, `ok`), plus `sizeShareBps`, `policyRestricted`, `multiplierPending` |
 
 How the endpoints behave:
-- `token` is a basket symbol (NVDAc, GOOGLc, AAPLc, any case) or address. Any other token gets 404.
+- For `/state` and `/check`, `token` is a basket symbol (NVDAc, GOOGLc, AAPLc, any case) or address, and any other token gets 404. For `/preview`, `token` is an address (USDC for the credit and expense actions), and the vault's own answer says whether it is allowed.
 - Each IP gets 60 requests per minute on each of `/state`, `/preview` and `/check`. State and previews are cached for 15 s, and the Coinbase list for 60 s.
 - If the RPC is down, `/state`, `/preview` and `/check` answer 503 `{"reason":"UNKNOWN"}`, and `/check` does not charge.
 - If Coinbase is down, `nav` is `null` and everything else still answers.

@@ -157,7 +157,7 @@ The guard has no wallet. Every step here that moves money is signed by a CDP acc
    - signs only if the guard offers exactly 0.01 USDC on Base to the vault;
    - prints the settlement tx and the vault's USDC before and after;
    - ends with `S4 PASS` or `S4 FAIL`.
-4. On `S4 PASS`, the agent's next round sends `notifyRevenue()` (journal: `kind: "housekeeping", call: "notifyRevenue"`). The `RevenueReceived` event is on Basescan.
+4. On `S4 PASS`, the 0.01 USDC is in the vault, but it is below the agent's default `MAAT_REVENUE_MIN_USD` (0.05), so the agent records it only once at least 0.05 USDC of new revenue has arrived. To see it recorded right away, run the agent's next round with `MAAT_REVENUE_MIN_USD=0.01`: that round sends `notifyRevenue()` (journal: `kind: "housekeeping", call: "notifyRevenue"`), and the `RevenueReceived` event is on Basescan.
 5. On `S4 FAIL` (the facilitator refuses a contract `payTo`):
    - Set `GUARD_PAY_TO` to an address you hold, then restart the guard.
    - From time to time, move the collected USDC into the vault with a plain ERC-20 `transfer`. Do not use `fund()`, which does not count as revenue.
