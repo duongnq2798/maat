@@ -230,11 +230,13 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
 
     // Housekeeping: record inbound USDC (x402 payments to the vault) as revenue, so it shows without waiting for a trade.
     let revenueRecorded = 0n;
-    if (s.newRevenue >= (d.revenueMinUsd6 ?? REVENUE_MIN_USD6)) {
+    if (s.newRevenue > 0n && s.newRevenue >= (d.revenueMinUsd6 ?? REVENUE_MIN_USD6)) {
       if (!sender) {
         await j.append({ kind: "housekeeping", runId, call: "notifyRevenue", amount: s.newRevenue, note: "dry-run" });
+      } else if (d.store.txCount(day) * 2 >= d.maxTxPerDay) {
+        // The lowest-priority tx: unrecorded USDC still reaches policy and the prompt through newRevenue, so it never halts the round or takes the second half of the daily cap.
+        await j.append({ kind: "housekeeping", runId, call: "notifyRevenue", amount: s.newRevenue, note: "skipped: half the daily tx cap is kept for trades and bills" });
       } else {
-        checkCap();
         const data = encodeNotifyRevenue();
         const gas = await gasFor("notifyRevenue", data);
         d.store.recordTx(day);

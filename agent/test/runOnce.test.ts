@@ -184,6 +184,41 @@ describe("runOnce", () => {
     expect((await t.journal.read()).find((e) => e.kind === "housekeeping")).toMatchObject({ call: "notifyRevenue", amount: "30000000", note: "dry-run" });
   });
 
+  it("keeps half the daily tx cap for trades and bills: the keeper skips at half the cap", async () => {
+    const t = await setup({ batch: BUY20, maxTxPerDay: 4, scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    t.store.recordTx(DAY);
+    t.store.recordTx(DAY); // 2 of 4 used: the keeper may not take the second half
+    t.receipts.revenue = 30_000_000n;
+    const r = await runOnce(t.deps);
+    expect(r.status).toBe("done");
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["execute"]);
+    expect(t.store.txCount(DAY)).toBe(3);
+    const rows = await t.journal.read();
+    expect(rows.filter((e) => e.kind === "housekeeping")).toEqual([
+      expect.objectContaining({ call: "notifyRevenue", amount: "30000000", note: "skipped: half the daily tx cap is kept for trades and bills" }),
+    ]);
+    expect(rows.find((e) => e.kind === "intent")).toMatchObject({ gate: "execute" });
+  });
+
+  it("lets the keeper send while less than half the daily tx cap is used", async () => {
+    const t = await setup({ batch: BUY20, maxTxPerDay: 4, scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    t.store.recordTx(DAY); // 1 of 4 used
+    t.receipts.revenue = 30_000_000n;
+    const r = await runOnce(t.deps);
+    expect(r.status).toBe("done");
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["notifyRevenue", "execute"]);
+    expect(t.store.txCount(DAY)).toBe(3);
+  });
+
+  it("does not run the keeper when there is no new revenue, even with a zero threshold", async () => {
+    for (const mode of ["live", "dry-run"] as const) {
+      const t = await setup({ mode });
+      t.deps.revenueMinUsd6 = 0n;
+      expect((await runOnce(t.deps)).sent).toEqual([]);
+      expect((await t.journal.read()).filter((e) => e.kind === "housekeeping")).toEqual([]);
+    }
+  });
+
   it("does not halt when someone else recorded the revenue first", async () => {
     const t = await setup({ scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
     const r = await runOnce(t.deps); // receipts.revenue stays null: the receipt carries no RevenueReceived
