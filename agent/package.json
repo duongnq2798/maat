@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "agent": "node --env-file-if-exists=.env --import tsx src/main.ts",
-    "guard": "node --env-file-if-exists=.env.guard --import tsx src/guard/main.ts"
+    "guard": "node --env-file-if-exists=.env.guard --import tsx src/guard/main.ts",
+    "s4:pay": "node --env-file-if-exists=.env.s4 --import tsx scripts/s4-pay.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
