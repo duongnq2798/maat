@@ -26,7 +26,7 @@ import {
   deploymentHref,
   DEPLOYMENTS_CAPTION,
   DEPLOYMENTS_FILE,
-  isDeployed,
+  hasAddress,
   kindLabels,
   NO_DEFAULT,
   NO_DEPLOYMENT,
@@ -238,7 +238,7 @@ const addressTable: Render = () =>
  */
 export function deploymentText(rows: readonly Deployment[]): string {
   const file = link(code(DEPLOYMENTS_FILE), `${SITE.repoUrl}/blob/main/${DEPLOYMENTS_FILE}`);
-  if (!isDeployed(rows)) return `${NO_DEPLOYMENT[0]}${file}${NO_DEPLOYMENT[1]}`;
+  if (!rows.some(hasAddress)) return `${NO_DEPLOYMENT[0]}${file}${NO_DEPLOYMENT[1]}`;
   const cell = (d: Deployment, key: "address" | "tx") => {
     const href = deploymentHref(d, key);
     return d[key] === "" ? "" : href ? link(code(d[key]), href) : code(d[key]);

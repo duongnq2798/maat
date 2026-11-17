@@ -8,7 +8,7 @@ import {
   deploymentHref,
   DEPLOYMENTS_CAPTION,
   DEPLOYMENTS_FILE,
-  isDeployed,
+  hasAddress,
   kindLabels,
   NO_DEFAULT,
   NO_DEPLOYMENT,
@@ -443,7 +443,7 @@ function DeploymentCell({ row, cell }: { row: Deployment; cell: "address" | "tx"
  * says so; once one has, every row shows. A page takes the committed table; `rows` is for tests.
  */
 export function DeploymentTable({ rows = docsData.deployments }: { rows?: readonly Deployment[] }) {
-  if (!isDeployed(rows)) {
+  if (!rows.some(hasAddress)) {
     return (
       <p>
         {NO_DEPLOYMENT[0]}

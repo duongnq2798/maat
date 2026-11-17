@@ -25,6 +25,7 @@ import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
 import { docsFrontmatter } from "@/lib/docs/frontmatter";
 import { DOCS_IA } from "@/lib/docs/ia";
 import { docsSlug, headingId, urlSlug } from "@/lib/docs/links";
+import { hasAddress, isDeployed } from "@/lib/docs/reference-labels";
 import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { SITE } from "@/lib/site";
 import { docsPages } from "./helpers/docs";
@@ -315,31 +316,60 @@ describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
 });
 
 /**
- * Every line of a docs page that still says nothing is deployed (notDeployedClaims), once a row of the table in
- * deployments/README.md has an address; nothing while no row has one.
+ * Code whose words a reader gets and no test ties to a page, so the launch list reads it too: lib/docs/abi.ts holds
+ * ABI_NOTE, the note in every /data/abi/<name>.json. The status lines of the Markdown copies and of the labels are tied
+ * to the pages that say them (test/docs-page.test.tsx), and reference-labels.ts holds the deployments table's own
+ * sentence for while nothing is deployed.
+ */
+const LAUNCH_CODE = ["lib/docs/abi.ts"] as const;
+
+/**
+ * Every line of a docs page, and of LAUNCH_CODE, that still says nothing is deployed (notDeployedClaims), once a Base
+ * mainnet row of the table in deployments/README.md has a full address (isDeployed); nothing until then.
  */
 function launchList(deployments: readonly Deployment[]): string[] {
-  if (deployments.every((d) => d.address === "")) return [];
-  return pages.flatMap((p) => notDeployedClaims(p.source).map((f) => at(p.slug, f)));
+  if (!isDeployed(deployments)) return [];
+  return [
+    ...pages.flatMap((p) => notDeployedClaims(p.source).map((f) => at(p.slug, f))),
+    ...LAUNCH_CODE.flatMap((file) => notDeployedClaims(readRepo(`web/${file}`)).map((f) => `${file}:${f.line} ${f.text}`)),
+  ];
 }
 
-describe("the launch list: once deployments/README.md records an address, no page may still say nothing is deployed", () => {
+describe("the launch list: once deployments/README.md records a Base mainnet address, no page may still say nothing is deployed", () => {
   const readme = readRepo("deployments/README.md").replace(/\r\n/g, "\n");
+  const VAULT = `0x${"11".repeat(20)}`;
+  const withVaultRow = (row: string) => parseDeployments(readme.replace(/^\| Base mainnet \| MandateVault \|.*$/m, row));
+  /** The line number of the first line of `source` that holds `text`; 0 when none does. */
+  const lineOf = (source: string, text: string) => source.split("\n").findIndex((l) => l.includes(text)) + 1;
 
-  it("lists every line of every page that says nothing is deployed, once a row has an address", () => {
-    const filled = parseDeployments(
-      readme.replace(/^\| Base mainnet \| MandateVault \|.*$/m, `| Base mainnet | MandateVault | 0x${"11".repeat(20)} | 0x${"22".repeat(32)} | 2026-12-01 |`),
-    );
-    expect(filled.filter((d) => d.address !== "").map((d) => d.contract)).toEqual(["MandateVault"]);
+  it("lists every line of every page, and the ABI files' note, that says nothing is deployed, once a Base mainnet row has an address", () => {
+    const filled = withVaultRow(`| Base mainnet | MandateVault | ${VAULT} | 0x${"22".repeat(32)} | 2026-12-01 |`);
+    expect(filled.filter(hasAddress).map((d) => d.contract)).toEqual(["MandateVault"]);
     const status = bySlug.get("get-started/status") ?? "";
-    const liveRow = status.split("\n").findIndex((l) => l.startsWith('| <StatusBadge status="live" />')) + 1;
-    expect(liveRow).toBeGreaterThan(0);
+    const faq = bySlug.get("help/faq") ?? "";
+    const abi = readRepo("web/lib/docs/abi.ts");
     const list = launchList(filled);
-    expect(list).toContain(`content/docs/get-started/status.mdx:${liveRow} No Maat contract is deployed`);
-    expect(list).toEqual(pages.flatMap((p) => notDeployedClaims(p.source).map((f) => at(p.slug, f))));
+    expect(list).toContain(`content/docs/get-started/status.mdx:${lineOf(status, '| <StatusBadge status="live" />')} No Maat contract is deployed`);
+    expect(list).toContain(`content/docs/help/faq.mdx:${lineOf(faq, "Today that table is empty")} table is empty`);
+    expect(list).toContain(`lib/docs/abi.ts:${lineOf(abi, "export const ABI_NOTE")} not deployed`);
+    for (const page of ["index", "help/faq", "security/not-claimed", "reference/repository-map"]) {
+      expect(list.some((l) => l.startsWith(`content/docs/${page}.mdx:`)), page).toBe(true);
+    }
   });
 
-  it("is empty while no row has an address; once one has, rewrite every line it lists", () => {
+  it("waits for a full address on a Base mainnet row: a row on another network, or a placeholder, starts nothing", () => {
+    const row = (network: string, address: string) => ({ network, contract: "MandateVault", address, tx: "", date: "" });
+    expect(isDeployed([row("Base mainnet", VAULT)])).toBe(true);
+    expect(isDeployed([row("Base Sepolia", VAULT)])).toBe(false);
+    expect(isDeployed([row("Base mainnet", "0x1111…1111")])).toBe(false);
+    expect(isDeployed([row("Base mainnet", "TBD")])).toBe(false);
+    expect(isDeployed([row("Base mainnet", "")])).toBe(false);
+    const testnet = withVaultRow(`| Base Sepolia | MandateVault | ${VAULT} | | |`);
+    expect(testnet.filter(hasAddress)).toHaveLength(1);
+    expect(launchList(testnet)).toEqual([]);
+  });
+
+  it("is empty while no row has an address; once a Base mainnet row has one, rewrite every line it lists", () => {
     expect(launchList(parseDeployments(readme))).toEqual([]);
   });
 });

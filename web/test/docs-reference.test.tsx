@@ -352,6 +352,15 @@ describe("agent, address and fact entries", () => {
     expect(screen.getByText(/^From the table in/).closest("figcaption")).not.toBeNull();
   });
 
+  it("DeploymentTable shows the table for a row on another network too, since its sentence says no row has an address", () => {
+    const vault = `0x${"11".repeat(20)}`;
+    render(<DeploymentTable rows={[{ network: "Base Sepolia", contract: "MandateVault", address: vault, tx: "", date: "" }]} />);
+    const region = screen.getByRole("region", { name: "Deployments" });
+    expect(within(region).getAllByRole("row")).toHaveLength(2);
+    expect(within(region).queryByRole("link")).toBeNull();
+    expect(screen.queryByText(/^No Maat contract is deployed/)).toBeNull();
+  });
+
   it("FactTable shows a setting's plain name, its name in the code, its value and the file that sets it", () => {
     render(<FactTable names={["timelockHours", "mandate.maxPremiumBps", "earlyClose"]} />);
     const region = screen.getByRole("region", { name: "Defaults" });

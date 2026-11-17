@@ -210,6 +210,18 @@ describe("deployments", () => {
       ].join("\n"),
     );
   });
+
+  it("prints the table for a row on another network too, since the sentence says no row has an address", () => {
+    expect(deploymentText([row("MandateVault", VAULT, "", "", "Base Sepolia")])).toBe(
+      [
+        "| Network | Contract | Address | Tx | Date |",
+        "| --- | --- | --- | --- | --- |",
+        `| Base Sepolia | \`MandateVault\` | \`${VAULT}\` |  |  |`,
+        "",
+        `From the table in ${README}.`,
+      ].join("\n"),
+    );
+  });
 });
 
 describe("tables of shared data", () => {

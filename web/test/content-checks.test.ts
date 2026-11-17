@@ -253,6 +253,9 @@ describe("notDeployedClaims", () => {
       "It is fork-tested, not live, and none is live: there is no live vault and no live system to probe.",
       "The address table is empty today. No mainnet deploy has been run.",
       "| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | No | x |",
+      "Its address cells are empty today.",
+      "- Today that table is empty, and no page carries the Live on mainnet label.",
+      "The table in `deployments/README.md` is empty. The table of deployed addresses, which is empty, waits.",
     ].join("\n");
     expect(notDeployedClaims(src)).toEqual([
       { line: 2, text: "no mainnet deployment" },
@@ -263,12 +266,15 @@ describe("notDeployedClaims", () => {
       { line: 8, text: "has not broadcast, Nothing was broadcast, nothing has been broadcast" },
       { line: 9, text: "Not on mainnet" },
       { line: 10, text: "not live, none is live, no live vault, no live system" },
-      { line: 11, text: "empty today, No mainnet deploy" },
+      { line: 11, text: "table is empty, No mainnet deploy" },
       { line: 12, text: "deployed to [Base](/docs/help/glossary#base) mainnet? | No" },
+      { line: 13, text: "empty today" },
+      { line: 14, text: "table is empty" },
+      { line: 15, text: "table in `deployments/README.md` is empty, table of deployed addresses, which is empty" },
     ]);
   });
 
-  it("leaves out what stays true after a deploy: a fork run broadcasts nothing, the agent's own mode, what a deployed vault does, a question answered otherwise", () => {
+  it("leaves out what stays true after a deploy: a fork run broadcasts nothing, the agent's own mode, what a deployed vault does, a question answered otherwise, a sentence about a table that ends before the words is empty", () => {
     const src = [
       "Nothing is broadcast: Foundry forks the chain locally.",
       "The agent has not run live.",
@@ -276,6 +282,7 @@ describe("notDeployedClaims", () => {
       "On a Saturday the DEX price has no live reference.",
       "| Has a third party audited the contracts? | No | x |",
       "| Is Maat deployed to Base mainnet? | Yes | x |",
+      "The table has four rows. Each new line is empty of code.",
     ].join("\n");
     expect(notDeployedClaims(src)).toEqual([]);
   });

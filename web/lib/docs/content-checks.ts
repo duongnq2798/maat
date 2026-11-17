@@ -76,10 +76,10 @@ export function handTypedFacts(source: string, facts: Readonly<Record<string, st
 }
 
 /**
- * The phrases a page uses to say that nothing of Maat is deployed. Once deployments/README.md records an address,
- * test/docs-content.test.ts fails on every line that still holds one, so the launch edit starts from a list. Left out
- * are words that stay true after a deploy: a fork run broadcasts nothing ("Nothing is broadcast"), the agent's own
- * mode ("has not run live"), and what a deployed vault would do ("Once a vault is deployed").
+ * The phrases a page uses to say that nothing of Maat is deployed. Once deployments/README.md records a Base mainnet
+ * address, test/docs-content.test.ts fails on every line that still holds one, so the launch edit starts from a list.
+ * Left out are words that stay true after a deploy: a fork run broadcasts nothing ("Nothing is broadcast"), the agent's
+ * own mode ("has not run live"), and what a deployed vault would do ("Once a vault is deployed").
  */
 const NOT_DEPLOYED = new RegExp(
   [
@@ -94,6 +94,9 @@ const NOT_DEPLOYED = new RegExp(
     String.raw`\b(?:not|none is) live\b`,
     String.raw`\bno live (?:vault|system)\b`,
     String.raw`\bempty today\b`,
+    // "that table is empty", "the table in `deployments/README.md` is empty": within one sentence, so a dot counts only
+    // inside a word such as a file name.
+    String.raw`\btable\b(?:[^.|\n]|\.(?=\S))*\bis empty\b`,
     // A table row that asks about the deploy and answers No: "| Is Maat deployed to Base mainnet? | No |".
     String.raw`\bdeployed\b[^|\n]*\?\s*\|\s*No\b`,
   ].join("|"),

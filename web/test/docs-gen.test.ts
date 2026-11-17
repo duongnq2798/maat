@@ -526,4 +526,17 @@ describe("parseDeployments", () => {
     );
     expect(() => parseDeployments("# Deployments\n\nNone yet.\n")).toThrow("deployments/README.md has no table");
   });
+
+  it("fails on an address that is neither empty nor 0x and 40 hex digits, so a placeholder never reads as a deployment", () => {
+    for (const address of ["TBD", "-", "0x1234…abcd", `0x${"11".repeat(19)}`]) {
+      const row = `| Base mainnet | MandateVault | ${address} | | |`;
+      expect(() => parseDeployments(table(row))).toThrow(
+        `deployments/README.md: the row ${row} has the address ${address}, not an empty cell or 0x and 40 hex digits`,
+      );
+    }
+    expect(() => parseDeployments(table(`| Base mainnet | MandateVault | [0x1234…abcd](https://basescan.org/address/${VAULT}) | | |`))).toThrow(
+      "has the address 0x1234…abcd,",
+    );
+    expect(parseDeployments(table(`| Base Sepolia | MandateVault | ${VAULT} | | |`)).map((d) => d.address)).toEqual([VAULT]);
+  });
 });

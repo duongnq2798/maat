@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
-import { DEPLOYMENT_HEAD, DEPLOYMENTS_FILE } from "./reference-labels";
+import { DEPLOYMENT_HEAD, DEPLOYMENTS_FILE, FULL_ADDRESS } from "./reference-labels";
 import { buildSurface, type SolSource, type SolSurface } from "./sol-surface";
 
 /** Maat's own contracts and interfaces; third-party interfaces (Aave, Chainlink, B20, ERC-20) are left out. */
@@ -163,7 +163,7 @@ export function parseBaseAddresses(text: string): BaseConstant[] {
 /**
  * The rows of the first table in deployments/README.md, whose columns must be Network | Contract | Address | Tx | Date.
  * A cell is its text: a link gives its text, and code marks are dropped. The table ends at the first line that is not
- * a row; any later table is not read.
+ * a row; any later table is not read. An Address is empty or a full address, so a placeholder fails here.
  */
 export function parseDeployments(text: string): Deployment[] {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -194,6 +194,9 @@ export function parseDeployments(text: string): Deployment[] {
       throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has ${row.length} cells, not ${DEPLOYMENT_HEAD.length}`);
     }
     const [network = "", contract = "", address = "", tx = "", date = ""] = row;
+    if (address !== "" && !FULL_ADDRESS.test(address)) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the address ${address}, not an empty cell or 0x and 40 hex digits`);
+    }
     out.push({ network, contract, address, tx, date });
   }
   return out;
