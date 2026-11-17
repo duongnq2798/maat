@@ -49,7 +49,7 @@ The docs center is one MDX file per page, `content/docs/<section>/<page>.mdx`, w
 | `content/generated/contracts.json` | the functions, events and errors of the contracts that `DOCUMENTED_CONTRACTS` in `lib/docs/docs-data.ts` names, and the enums and structs in `contracts/src/Types.sol` |
 | `content/generated/base-addresses.json` | `contracts/script/BaseAddresses.sol` |
 | `content/generated/deployments.json` | the table in `deployments/README.md` |
-| `content/generated/agent.json` | the settings in `agent/.env.example` with their defaults in `agent/src/config.ts`, the scripts in `agent/package.json`, and the files in `agent/scripts` |
+| `content/generated/agent.json` | the settings in `agent/.env.example` with their defaults in `agent/src/config.ts`, the scripts in `agent/package.json`, and the `.ts` files in `agent/scripts` |
 | `content/generated/tests.json` | the line each test starts on, in `contracts/test` and `agent/test` |
 | `content/generated/abi.json` | `agent/src/abi/generated.ts`, which `npm run gen:abi` writes in `agent/` |
 
@@ -63,7 +63,7 @@ The docs center is one MDX file per page, `content/docs/<section>/<page>.mdx`, w
 | `type` | One of `concept`, `guide`, `reference`, `help`, `overview` |
 | `audience` | One or more of `newcomer`, `watcher`, `developer`, `builder`, `evaluator` |
 | `status` | One of `fork-tested`, `live`, `planned`, shown as Fork-tested, Live on mainnet and Planned. The table on the status page says what each means. The docs home and the Help pages show no label |
-| `lastReviewed` | The day the page was last checked against the code, as YYYY-MM-DD. The page header shows it, and `sitemap.xml` gives it as the page's last change |
+| `lastReviewed` | The day the page was last checked against the code, as YYYY-MM-DD. Every page's header but the docs home's shows it, and `sitemap.xml` gives it as the page's last change |
 | `sources` | Paths from the repository root that prove the page; each must exist. They fill the Source of truth box |
 | `next` | One to three pages to read next, each a page of `lib/docs/ia.ts` named by its path, such as concepts/nine-checks. A section's own page has none. Two pages may not name each other as their first `next` page. A page with its own Next steps or Related section ends with it, and links there every page `next` names |
 
@@ -90,6 +90,7 @@ Conventions no test checks:
 - Command output on a page is copied from a real run and says what produced it. A placeholder looks like `<VAULT_ADDRESS>`.
 - Every `<Callout>` has a `title`.
 - A command that signs or broadcasts, such as `cast send` or `forge script --broadcast`, sits inside a `<Callout type="warning" title="Owner only">`.
+- An `execute` command in such a callout also passes `--gas-limit` of at least `<Fact name="executeGasFloor" />` (`EXECUTE_GAS_FLOOR` in `agent/src/exec/calls.ts`). The callout says why, and links the Gas estimation section of `content/docs/security/not-claimed.mdx`: a plain gas estimate can record a false failure and use up the intent id.
 
 ### Add a number
 
@@ -100,7 +101,7 @@ Conventions no test checks:
 
 ### Reference entries
 
-When the code gains something public, its reference page needs an entry, or `test/docs-coverage.test.ts` fails. That test reads the names from `content/generated/`, so run `npm run docs:gen` first.
+When the code gains something public, its reference page needs an entry, or a test fails: `test/docs-coverage.test.ts`, unless its row below names another. `test/docs-coverage.test.ts` reads the names from `content/generated/`, so run `npm run docs:gen` first.
 
 | The code gains | Page | Entry |
 |---|---|---|
@@ -124,18 +125,29 @@ A contract is documented only while `DOCUMENTED_CONTRACTS` in `lib/docs/docs-dat
 3. Add its file name, without `.mdx`, to `pages` in the section's `meta.json`, in the same order. `meta.json` also holds each group separator, such as `---Contracts---`, and each link to another section's page, where the section's `groups` and `links` in `lib/docs/ia.ts` put them; `test/docs-ia.test.ts` compares the two.
 4. Add `<section>/<page>` to `SHIPPED` in `test/docs-ia.test.ts`.
 5. If the page is long, or shows a table, diagram or card no listed page has, add its URL to `PAGES` in `e2e/docs.spec.ts` (no page scroll and no console error at each width in `WIDTHS`) and to `PAGES` in `e2e/docs-a11y.spec.ts` (axe, in the light and the dark theme).
+6. If the page's `audience` names a reader its section's `index.mdx` does not, add that reader there, in the order of `AUDIENCES` (`lib/docs/frontmatter.ts`): `test/docs-ia.test.ts` wants a section's own page written for exactly the readers of its other pages. A new Help page shows no status label, so it also goes in the list of pages without one in `test/docs-frontmatter.test.ts`.
 
 The page's card on its section page, its previous and next cards, its search records, its Markdown copy, its link preview image and its lines in `llms.txt`, `llms-full.txt` and `sitemap.xml` are all built from the page, with nothing to add.
 
 A new section is a folder with a `meta.json` and its own `index.mdx`: titled like the section, `type: overview`, `status: fork-tested`, no `next`, the audiences of all its pages in the order of `AUDIENCES` (`lib/docs/frontmatter.ts`), and a body of one sentence and then `<SectionIndex section="<dir>" />`. It also needs a section in `DOCS_IA` that starts with that page, the folder in `content/docs/meta.json`, and a row in `SECTIONS` in `e2e/docs.spec.ts`.
 
+### Add a component
+
+A component that prints data on a page, such as a reference entry, a table or a diagram, is a self-closing tag whose props are literal values. Besides the component itself, it needs:
+
+1. Its entry in `getMDXComponents` in `components/docs/mdx.tsx`, so pages can use it.
+2. Its name in `DATA_COMPONENTS` in `lib/docs/data-components.ts`. `test/data-components.test.ts` fails on a tag a page uses, or a component `getMDXComponents` registers, that the list leaves out, and on a name in the list that no page uses or `getMDXComponents` does not register.
+3. Its text in the Markdown copies, in `COMPONENT_TEXT` in `lib/docs/component-text.ts`, built from the tag's props. Without it the typecheck and `test/component-text.test.ts` fail. `check:out` also fails on any tag of `DATA_COMPONENTS` left in a Markdown copy.
+
+A component that wraps Markdown text, such as `<Callout>`, stays out of `DATA_COMPONENTS`, because its tag stays in the copies around that text. Add it to `KEPT` in `test/data-components.test.ts` instead.
+
 ### What check:out checks
 
-It reads `out/` only, so run it after `npm run build`.
+It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
 
 - The files a deploy needs, among them `index.html`, `404.html`, `docs.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
 - The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
-- Every docs page: `lang`, a title that ends in "· Maat Docs" (the docs home is "Maat Docs"), a description of 50 to 160 characters, absolute canonical and Open Graph URLs, scripts only from `/_next/`, no Google Fonts, no block element inside a paragraph, and links that lead to a heading of the page, an exported docs page or a file in `out/`.
+- Every docs page: `lang`, a title that ends in "· Maat Docs" (the docs home is "Maat Docs"), a description of 50 to 160 characters, an absolute canonical URL and `og:image`, scripts only from `/_next/`, no Google Fonts, no block element inside a paragraph, and links that lead to a heading of the page, an exported docs page or a file in `out/`.
 - Each docs page's link preview image: a PNG of the size its tags give, named by both `og:image` and `twitter:image`.
 - Each docs page's Markdown copy: no component tag left in place of its text, the index note first, and the status label, review date and Source of truth files of its page.
 - `llms.txt`, `llms-full.txt` and `sitemap.xml` list every docs page, and `llms.txt` gives the status under its summary and links each page's Markdown copy.
@@ -145,7 +157,7 @@ It reads `out/` only, so run it after `npm run build`.
 
 ### Site URL
 
-`siteUrl()` in `lib/site.ts` is the base of every absolute link to the site that the export writes: canonical and Open Graph URLs, `robots.txt`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the Markdown copies. It takes `NEXT_PUBLIC_SITE_URL`, then the Vercel production domain (`VERCEL_PROJECT_PRODUCTION_URL`), then `http://localhost:3000`, so a local build links localhost. When `CI` or `VERCEL` is set, `check:out` fails if the site URL is a loopback address such as localhost, or if an exported file links a localhost URL that no docs page writes in its own text. Set `NEXT_PUBLIC_SITE_URL` to the public site and build again.
+`siteUrl()` in `lib/site.ts` is the base of every absolute link to the site that the export writes: canonical and Open Graph URLs, `robots.txt`, `sitemap.xml`, `llms.txt`, `llms-full.txt`, the Markdown copies, and the page URL that each docs page's feedback links quote in the issue they open. It takes `NEXT_PUBLIC_SITE_URL`, then the Vercel production domain (`VERCEL_PROJECT_PRODUCTION_URL`), then `http://localhost:3000`, so a local build links localhost. When `CI` or `VERCEL` is set, `check:out` fails if the site URL is a loopback address such as localhost, or if an exported file links a localhost URL that no docs page writes in its own text. Set `NEXT_PUBLIC_SITE_URL` to the public site and build again.
 
 ## Deploy (owner)
 

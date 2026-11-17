@@ -1,18 +1,33 @@
 // @vitest-environment node
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import { pageSchema } from "fumadocs-core/source/schema";
 import { describe, expect, it } from "vitest";
+import { Callout } from "@/components/docs/Callout";
+import { ALLOWED_SYMBOLS } from "@/lib/docs/content-checks";
 import { AUDIENCES, DOC_TYPES, docsFrontmatter, STATUSES } from "@/lib/docs/frontmatter";
+import { IA_SLUGS } from "@/lib/docs/ia";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // web/README.md tells a maintainer the rules the docs tests enforce, and the root README's Documentation table points
-// at it. These tests hold both to the code they describe, so a rule cannot change in one place only.
+// at it. These tests hold to the code the parts of both that name something the code holds: the scripts, the
+// frontmatter fields and values, the files docs:gen writes, the environment settings, the symbols a page may use, the
+// callout types, the description bounds, the paths and the links. The wording of each rule is checked by reading it.
 
 const lf = (rel: string) => readRepo(rel).replace(/\r\n/g, "\n");
 const webReadme = lf("web/README.md");
 const rootReadme = lf("README.md");
+
+let trackedPaths: readonly string[] | undefined;
+/** Every path the repository tracks, as `git ls-files` lists it: in its exact case, which GitHub's links need. */
+const tracked = () =>
+  (trackedPaths ??= execFileSync("git", ["ls-files"], { cwd: REPO_ROOT, encoding: "utf8" })
+    .split("\n")
+    .filter((p) => p !== ""));
+/** Whether `path`, from the repository root, is a tracked file or a folder that holds one. */
+const isTracked = (path: string) => {
+  const p = path.replace(/\/$/, "");
+  return p !== "" && tracked().some((t) => t === p || t.startsWith(`${p}/`));
+};
 
 /** The lines under the heading line `heading` ("## Docs content"), up to the next heading of its level or above. */
 function under(md: string, heading: string): string {
@@ -82,18 +97,39 @@ describe("web/README.md", () => {
     expect([...new Set(read)].filter((name) => !spans.some((c) => new RegExp(`\\b${name}\\b`).test(c)))).toEqual([]);
   });
 
-  it("names in code only paths that exist, under web/ or the repository root", () => {
-    // A path has a slash, no placeholder or wildcard, and starts with a folder of web/ or of the repository; a docs path
-    // such as concepts/nine-checks does not. out/ is the build's output, which check:out checks itself.
-    const top = (c: string) => c.split("/")[0] ?? "";
+  it("names in code only paths the repository tracks, under web/ or the repository root", () => {
+    // A path has a slash and no placeholder or wildcard. A docs page named by its path, such as concepts/nine-checks,
+    // is not a file, and out/ is the build's output, which check:out checks itself.
     const paths = codes(webReadme).filter(
-      (c) =>
-        /^[\w@.-]+(\/[\w@.-]+)+\/?$/.test(c) &&
-        top(c) !== "out" &&
-        (existsSync(join(REPO_ROOT, "web", top(c))) || existsSync(join(REPO_ROOT, top(c)))),
+      (c) => /^[\w@.-]+(\/[\w@.-]+)+\/?$/.test(c) && !IA_SLUGS.includes(c.replace(/\/$/, "")) && !c.startsWith("out/"),
     );
     expect(paths).toContain("lib/docs/ia.ts");
-    expect(paths.filter((p) => !existsSync(join(REPO_ROOT, "web", p)) && !existsSync(join(REPO_ROOT, p)))).toEqual([]);
+    expect(paths.filter((p) => !isTracked(`web/${p}`) && !isTracked(p))).toEqual([]);
+  });
+
+  /** The first cell of the row of "Rules the tests enforce" that opens with `**<name>.**`. */
+  const rule = (name: string) =>
+    tableRows(under(under(webReadme, "## Docs content"), "### Rules the tests enforce")).find(([r = ""]) => r.startsWith(`**${name}.**`))?.[0] ?? "";
+
+  it("allows in its Characters rule exactly the symbols foreignCharacters lets through", () => {
+    expect(codes(rule("Characters"))).toEqual([...ALLOWED_SYMBOLS]);
+  });
+
+  it("gives in its Callouts rule exactly the types <Callout> renders", () => {
+    const types = [.../type CalloutType = ([^;]+);/.exec(readRepo("web/components/docs/Callout.tsx"))?.[1]?.matchAll(/"(\w+)"/g) ?? []].map((m) => m[1] ?? "");
+    expect(types.length).toBeGreaterThan(0);
+    // The component's own check, which MDX needs because it does not type-check props, accepts each of them.
+    for (const type of types) expect(() => Callout({ type: type as never, title: "T", children: "x" })).not.toThrow();
+    expect(codes(rule("Callouts")).filter((c) => /^\w+$/.test(c))).toEqual(types);
+  });
+
+  it("gives the description bounds that the IA test and check:out apply", () => {
+    const ia = /description\.length < (\d+) \|\| p\.description\.length > (\d+)/.exec(readRepo("web/test/docs-ia.test.ts"));
+    const out = /length >= (\d+) && length <= (\d+)/.exec(readRepo("web/lib/check-out.ts"));
+    expect(ia?.slice(1)).toEqual(out?.slice(1));
+    const stated = [...under(webReadme, "## Docs content").matchAll(/(\d+) to (\d+) characters/g)].map((m) => m.slice(1));
+    expect(stated.length).toBeGreaterThan(0);
+    expect(stated.filter((bounds) => bounds.join() !== out?.slice(1).join())).toEqual([]);
   });
 
   it("links only to headings it has", () => {
@@ -117,10 +153,11 @@ describe("the root README's Documentation section", () => {
     expect(tracked.filter((p) => !listed.includes(p))).toEqual([]);
   });
 
-  it("links only files that exist, and headings those files have", () => {
+  it("links only files or folders the repository tracks, in their exact case, and headings those files have", () => {
+    expect(links).toContain("web/content/docs");
     const bad = links.filter((link) => {
       const [path = "", id] = link.split("#");
-      if (!existsSync(join(REPO_ROOT, path))) return true;
+      if (!isTracked(path)) return true;
       return id !== undefined && !headingIds(lf(path)).includes(id);
     });
     expect(bad).toEqual([]);
