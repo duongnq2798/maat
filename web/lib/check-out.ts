@@ -107,7 +107,8 @@ export function checkLandingIsolation(html: string, read: (url: string) => strin
 /**
  * Problems with the machine-readable copies of the docs. `urls` holds the absolute URL of every exported docs page;
  * `exported` says whether a URL path is a file in out/. llms.txt gives the status under its summary and links each
- * page's Markdown copy, with the web page after it, and each of its links on the site leads to an exported file.
+ * page's Markdown copy, with the web page after it, and each of its links on the site leads to an exported file and
+ * never to a docs web page.
  */
 export function checkDocsIndexes(
   files: { llms: string; llmsFull: string; sitemap: string },
@@ -126,7 +127,12 @@ export function checkDocsIndexes(
   const origin = urls[0] && new URL(urls[0]).origin;
   for (const [, link] of files.llms.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) {
     const target = new URL(link!);
-    if (target.origin === origin && !exported(target.pathname)) problems.push(`llms.txt links ${link}, which is not in out/`);
+    if (target.origin !== origin) continue;
+    if (!exported(target.pathname)) problems.push(`llms.txt links ${link}, which is not in out/`);
+    // A tool reads the Markdown copy, not the HTML with its navigation; "Web page:" names the HTML as text, not a link.
+    if (target.pathname === "/docs" || target.pathname.startsWith("/docs/")) {
+      problems.push(`llms.txt links the web page ${link}: link its Markdown copy ${new URL(markdownUrl(target.pathname), target).href}`);
+    }
   }
   if (files.llmsFull.includes(INDEX_NOTE_START)) problems.push("llms-full.txt repeats the index note of the pages' own Markdown files");
   return problems;
@@ -200,17 +206,25 @@ function localhostUrls(text: string): string[] {
   return [...text.matchAll(/http:\/\/localhost[^\s"'<>()[\]`\\]*/g)].map(([url]) => url.replace(/[.,;:!?]+$/, ""));
 }
 
+/** Host names that only ever mean the machine the build ran on. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
 /**
  * Problems with exported files that name an http://localhost URL. A build that sets neither NEXT_PUBLIC_SITE_URL nor
  * the Vercel domain falls back to localhost (lib/site.ts), and every absolute link it writes then leads nowhere: llms.txt,
  * the sitemap, the Markdown copies, canonical and Open Graph URLs. `allowed` holds the localhost URLs the docs write in
  * their own text, such as the quickstart's dev server, which stay. One problem per file, with its first such URL.
+ * `site` is the site URL the export was built for (siteUrl()). On loopback it is a problem by itself: the fallback is the
+ * bare origin http://localhost:3000, the same URL the quickstart writes, so a file whose only leak is that origin, such
+ * as the landing page's canonical URL, would pass the file scan alone.
  */
-export function checkLocalhost(files: Iterable<{ path: string; text: string }>, allowed: ReadonlySet<string>): string[] {
+export function checkLocalhost(files: Iterable<{ path: string; text: string }>, allowed: ReadonlySet<string>, site: URL): string[] {
+  const fix = "set NEXT_PUBLIC_SITE_URL to the public site and build again";
   const problems: string[] = [];
+  if (LOOPBACK_HOSTS.has(site.hostname)) problems.push(`the site URL is ${site.href}: ${fix}`);
   for (const { path, text } of files) {
     const url = localhostUrls(text).find((u) => !allowed.has(u));
-    if (url) problems.push(`${path} links ${url}: set NEXT_PUBLIC_SITE_URL to the public site and build again`);
+    if (url) problems.push(`${path} links ${url}: ${fix}`);
   }
   return problems;
 }

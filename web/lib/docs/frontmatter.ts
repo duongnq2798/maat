@@ -44,6 +44,22 @@ export const STATUS_MEANING: Record<DocStatus, string> = {
   planned: "Designed but not built.",
 };
 
+/**
+ * What a docs page's header shows of its frontmatter, by its slugs (fumadocs' page.slugs; [] is the docs home). The docs
+ * home has no frame at all: it renders HomeHeader, with no label and no date. The Help pages show the date without a
+ * label: they are aids around the docs, and the label states how far the project is built and tested (status.mdx says
+ * the same). The page (app/(docs)/docs/[[...slug]]/page.tsx) and its Markdown copy (lib/docs-source.ts) both use it,
+ * so a copy claims no more than its page.
+ */
+export function headerFrame(page: {
+  slugs: readonly string[];
+  data: { status: DocStatus; lastReviewed: string };
+}): { status?: DocStatus; lastReviewed: string } | null {
+  if (page.slugs.length === 0) return null;
+  const { status, lastReviewed } = page.data;
+  return page.slugs[0] === "help" ? { lastReviewed } : { status, lastReviewed };
+}
+
 export const AUDIENCE_LABEL: Record<Audience, string> = {
   newcomer: "Newcomer",
   watcher: "Watcher",

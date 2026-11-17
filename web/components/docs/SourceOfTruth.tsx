@@ -1,4 +1,5 @@
 import { type BuildCommit, currentBuildCommit } from "@/lib/build-info";
+import { SOURCES_LEAD } from "@/lib/docs/markdown";
 import { SITE } from "@/lib/site";
 import { BuiltFrom } from "./BuiltFrom";
 
@@ -27,7 +28,8 @@ export function SourceOfTruth({ sources, commit = currentBuildCommit() }: { sour
       <h2 id="source-of-truth" className="font-semibold text-fd-card-foreground">
         Source of truth
       </h2>
-      <p className="mt-1 text-fd-muted-foreground">This page is checked against these files. If they disagree, the files win.</p>
+      {/* The same sentence opens the Source of truth section of the page's Markdown copy. */}
+      <p className="mt-1 text-fd-muted-foreground">{SOURCES_LEAD}</p>
       {sources.length > OPEN_FILES ? (
         // A printout lists the files even with the disclosure closed.
         <details className="mt-2 print:[&::details-content]:[content-visibility:visible]">

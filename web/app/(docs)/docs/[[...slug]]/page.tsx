@@ -8,6 +8,7 @@ import { HomeHeader, PageHeader } from "@/components/docs/PageHeader";
 import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
 import { pagesInSidebarOrder, source } from "@/lib/docs-source";
 import { footerItems } from "@/lib/docs/footer-items";
+import { headerFrame } from "@/lib/docs/frontmatter";
 import { markdownUrl, readingMinutes } from "@/lib/docs/markdown";
 import { SITE, siteUrl } from "@/lib/site";
 
@@ -19,11 +20,13 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
   const page = source.getPage(slug);
   if (!page) notFound();
 
-  const { body: MDX, toc, full, title, description, status, audience, lastReviewed, sources, next } = page.data;
+  const { body: MDX, toc, full, title, description, audience, sources, next } = page.data;
   const markdown = await page.data.getText("processed");
   // The docs home keeps its H1 and lede only, with no Read next block or previous and next cards: its router cards and
   // section map are the ways on.
   const home = page.url === "/docs";
+  // The label and the date the header shows, the same ones the page's Markdown copy gives (lib/docs/frontmatter.ts).
+  const frame = headerFrame(page);
   return (
     <DocsPage
       // A one-letter heading, such as the glossary's A to X, only groups the entries under it: the TOC lists the entries.
@@ -59,19 +62,17 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
         ),
       }}
     >
-      {home ? (
+      {frame === null ? (
         <HomeHeader title={title} description={description} />
       ) : (
         <PageHeader
           url={page.url}
           title={title}
           description={description}
-          // The label states the project's status. The Help pages are aids around the docs, so they carry none
-          // (final-review Minor).
-          status={page.slugs[0] === "help" ? undefined : status}
+          status={frame.status}
           audience={audience}
           readingMinutes={readingMinutes(markdown)}
-          lastReviewed={lastReviewed}
+          lastReviewed={frame.lastReviewed}
         />
       )}
       <DocsBody>

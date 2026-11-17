@@ -1,6 +1,7 @@
 import { loader } from "fumadocs-core/source";
 import { flattenTree } from "fumadocs-core/page-tree";
 import { docs } from "@/.source/server";
+import { headerFrame } from "@/lib/docs/frontmatter";
 import { pageMarkdown } from "@/lib/docs/markdown";
 import { siteUrl } from "@/lib/site";
 
@@ -18,18 +19,18 @@ export function pagesInSidebarOrder(): DocsPage[] {
 }
 
 /**
- * The page as Markdown with absolute links back to the site, for /md/*.md and llms-full.txt. Its header line follows
- * the page's header (app/(docs)/docs/[[...slug]]/page.tsx): the docs home shows no status label and no review date, and
- * the Help pages show the date without a label. check:out compares each copy with its exported page.
+ * The page as Markdown with absolute links back to the site, for /md/*.md and llms-full.txt. Its header line gives what
+ * the page's header gives (headerFrame): the docs home shows no status label and no review date, and the Help pages
+ * show the date without a label. check:out compares each copy with its exported page.
  */
 export async function getPageMarkdown(page: DocsPage): Promise<string> {
-  const home = page.url === "/docs";
+  const frame = headerFrame(page);
   return pageMarkdown({
     title: page.data.title,
     url: new URL(page.url, siteUrl()).href,
     description: page.data.description,
-    status: home || page.slugs[0] === "help" ? undefined : page.data.status,
-    lastReviewed: home ? undefined : page.data.lastReviewed,
+    status: frame?.status,
+    lastReviewed: frame?.lastReviewed,
     sources: page.data.sources,
     body: await page.data.getText("processed"),
   });

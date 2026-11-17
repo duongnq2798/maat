@@ -1,15 +1,11 @@
 import { pagesInSidebarOrder, source } from "@/lib/docs-source";
 import { ABI_NAMES, ABI_NOTE, abiUrl } from "@/lib/docs/abi";
-import { llmsIndex } from "@/lib/docs/markdown";
+import { LLMS_STATUS, llmsIndex, markdownUrl } from "@/lib/docs/markdown";
 import { SITE, siteUrl } from "@/lib/site";
 
 // Exported once at build time to out/llms.txt: every docs page's Markdown copy with its description, then the ABIs, as
 // absolute links.
 export const revalidate = false;
-
-/** What exists today, as the docs home's "Today" paragraph says it (content/docs/index.mdx). Change both together. */
-const STATUS =
-  "built and fork-tested. Nothing is deployed to Base mainnet, the contracts are unaudited, and the real Claude API and the CDP Server Wallet have not run in any Maat test.";
 
 export function GET() {
   const base = siteUrl();
@@ -24,7 +20,8 @@ export function GET() {
   const docs = {
     title: `${SITE.name} docs`,
     summary: home.data.description,
-    status: `${STATUS} Details: [Status and roadmap](${new URL("/docs/get-started/status", base).href}).`,
+    // Like every other link in llms.txt, Details opens the page's Markdown copy, not its web page.
+    status: `${LLMS_STATUS} Details: [Status and roadmap](${new URL(markdownUrl("/docs/get-started/status"), base).href}).`,
     fullUrl: new URL("/llms-full.txt", base).href,
   };
   const abis = ABI_NAMES.map((name) => ({ title: `${name} ABI`, url: new URL(abiUrl(name), base).href, description: ABI_NOTE }));

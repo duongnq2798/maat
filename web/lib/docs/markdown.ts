@@ -55,8 +55,8 @@ function absoluteSiteLinks(markdown: string, pageUrl: string): string {
     .join("\n");
 }
 
-/** The sentence above the files of the Source of truth box (components/docs/SourceOfTruth.tsx). */
-const SOURCES_LEAD = "This page is checked against these files. If they disagree, the files win.";
+/** The sentence above the files of the Source of truth box (components/docs/SourceOfTruth.tsx) and of each Markdown copy. */
+export const SOURCES_LEAD = "This page is checked against these files. If they disagree, the files win.";
 
 /**
  * A page as one Markdown document: title, absolute URL, the status label and review date its header shows, the
@@ -88,6 +88,13 @@ export function pageMarkdown(page: {
   }
   return `${parts.join("\n\n")}\n`;
 }
+
+/**
+ * What exists today, the status line llms.txt gives under its summary, in the words of the docs home's "Today" paragraph
+ * (content/docs/index.mdx). test/docs-page.test.tsx checks each of its clauses against that paragraph.
+ */
+export const LLMS_STATUS =
+  "built and fork-tested. Nothing is deployed to Base mainnet, the contracts are unaudited, and the real Claude API and CDP wallet have not run in any Maat test.";
 
 /** The line that opens each page's own Markdown file: where the index and the other pages are. */
 export const INDEX_NOTE_START = "> Index of every page: ";

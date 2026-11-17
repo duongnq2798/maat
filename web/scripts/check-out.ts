@@ -99,7 +99,13 @@ if (shipsPublicly()) {
     readdirSync(dir, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? files(join(dir, e.name)) : [join(dir, e.name)]));
   const allowed = docsLocalhostUrls(files(DOCS_CONTENT).filter((f) => f.endsWith(".mdx")).map((f) => readFileSync(f, "utf8")));
   const exportedFiles = existsSync(OUT) ? files(OUT) : [];
-  problems.push(...checkLocalhost(exportedFiles.map((f) => ({ path: `out/${relative(OUT, f).split(sep).join("/")}`, text: readFileSync(f, "utf8") })), allowed));
+  problems.push(
+    ...checkLocalhost(
+      exportedFiles.map((f) => ({ path: `out/${relative(OUT, f).split(sep).join("/")}`, text: readFileSync(f, "utf8") })),
+      allowed,
+      siteUrl(),
+    ),
+  );
 }
 
 // The search index: within its gzipped budget, and every result opens an exported page and heading.

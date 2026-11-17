@@ -189,7 +189,18 @@ describe("checkDocsIndexes", () => {
 
   it("flags an llms.txt that links a page's HTML instead of its Markdown copy", () => {
     const llms = LLMS.replace(`](${md})`, `](${url})`);
-    expect(checkDocsIndexes({ ...good, llms }, [url], exported)).toEqual([`llms.txt does not link the Markdown copy ${md}`]);
+    expect(checkDocsIndexes({ ...good, llms }, [url], exported)).toEqual([
+      `llms.txt does not link the Markdown copy ${md}`,
+      `llms.txt links the web page ${url}: link its Markdown copy ${md}`,
+    ]);
+  });
+
+  it("flags any llms.txt link to a docs web page, such as the status line's Details link", () => {
+    const status = "https://maat.example/docs/get-started/status";
+    const llms = LLMS.replace("Details: https://maat.example/docs/get-started/status", `Details: [Status and roadmap](${status}#x).`);
+    expect(checkDocsIndexes({ ...good, llms }, [url], (path) => exported(path) || path === "/docs/get-started/status")).toEqual([
+      `llms.txt links the web page ${status}#x: link its Markdown copy https://maat.example/md/docs/get-started/status.md`,
+    ]);
   });
 
   it("flags a link in llms.txt that leads to no exported file", () => {
@@ -260,10 +271,11 @@ describe("checkAbiFiles", () => {
 
 describe("checkLocalhost", () => {
   const allowed = new Set(["http://localhost:3000"]);
+  const site = new URL("https://maat.example");
 
   it("accepts files whose only localhost URL is one the docs write in their text", () => {
     const quickstart = '<a href="http://localhost:3000" rel="noreferrer">http://localhost:3000</a>, and `npm run dev` serves the site on http://localhost:3000.';
-    expect(checkLocalhost([{ path: "out/docs/get-started/quickstart.html", text: quickstart }], allowed)).toEqual([]);
+    expect(checkLocalhost([{ path: "out/docs/get-started/quickstart.html", text: quickstart }], allowed, site)).toEqual([]);
   });
 
   it("flags each file that holds the fallback base URL, with what to set", () => {
@@ -272,10 +284,22 @@ describe("checkLocalhost", () => {
       { path: "out/sitemap.xml", text: "<loc>http://localhost:3000/docs</loc>" },
       { path: "out/robots.txt", text: "Sitemap: https://maat.example/sitemap.xml" },
     ];
-    expect(checkLocalhost(files, allowed)).toEqual([
+    expect(checkLocalhost(files, allowed, site)).toEqual([
       "out/llms.txt links http://localhost:3000/md/docs.md: set NEXT_PUBLIC_SITE_URL to the public site and build again",
       "out/sitemap.xml links http://localhost:3000/docs: set NEXT_PUBLIC_SITE_URL to the public site and build again",
     ]);
+  });
+
+  it("flags a site URL on localhost, so a file whose only leak is the bare origin the docs also write does not pass", () => {
+    // The landing page's canonical and og:url are the bare origin, which the quickstart's dev-server address matches.
+    const files = [{ path: "out/index.html", text: '<link rel="canonical" href="http://localhost:3000"/><meta property="og:url" content="http://localhost:3000"/>' }];
+    expect(checkLocalhost(files, allowed, new URL("http://localhost:3000"))).toEqual([
+      "the site URL is http://localhost:3000/: set NEXT_PUBLIC_SITE_URL to the public site and build again",
+    ]);
+    expect(checkLocalhost([], allowed, new URL("http://127.0.0.1:3000"))).toEqual([
+      "the site URL is http://127.0.0.1:3000/: set NEXT_PUBLIC_SITE_URL to the public site and build again",
+    ]);
+    expect(checkLocalhost([], allowed, site)).toEqual([]);
   });
 
   it("runs on CI and on Vercel only, where the export is about to ship", () => {

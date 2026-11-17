@@ -11,7 +11,16 @@ import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
 import { StatusBadge } from "@/components/docs/StatusBadge";
 import { footerItems } from "@/lib/docs/footer-items";
 import { STATUS_MEANING } from "@/lib/docs/frontmatter";
-import { llmsIndex, markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath, standaloneMarkdown } from "@/lib/docs/markdown";
+import {
+  LLMS_STATUS,
+  llmsIndex,
+  markdownUrl,
+  pageMarkdown,
+  readingMinutes,
+  slugsFromMarkdownPath,
+  SOURCES_LEAD,
+  standaloneMarkdown,
+} from "@/lib/docs/markdown";
 import { SITE } from "@/lib/site";
 
 // A small docs tree for the breadcrumb, and the one page NextLinks looks up.
@@ -311,6 +320,13 @@ describe("SourceOfTruth", () => {
     render(<SourceOfTruth sources={files(1)} commit={{ short: "def033c", dirty: true }} />);
     expect(within(box()).getByText(/^Built from commit/)).toHaveTextContent(/^Built from commit def033c, with uncommitted changes\.$/);
   });
+
+  it("opens with the sentence a page's Markdown copy gives above its files", () => {
+    render(<SourceOfTruth sources={files(1)} commit={null} />);
+    expect(within(box()).getByText(RULE).tagName).toBe("P");
+    expect(SOURCES_LEAD).toBe(RULE);
+    expect(pageMarkdown({ title: "T", url: "https://x/docs/a", sources: files(1), body: "Body\n" })).toContain(`\n## Source of truth\n\n${RULE}\n\n`);
+  });
 });
 
 describe("PageFooter", () => {
@@ -391,5 +407,14 @@ describe("llmsIndex", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("gives the status in the words of the docs home's Today paragraph, clause by clause", () => {
+    const home = readFileSync("content/docs/index.mdx", "utf8").replace(/\r\n/g, "\n");
+    const today = home.split("\n\n").find((p) => p.startsWith("Today ")) ?? "";
+    const words = today.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").toLowerCase();
+    const clauses = LLMS_STATUS.replace(/\.$/, "").split(/[.,:] /);
+    expect(clauses).toHaveLength(4);
+    for (const clause of clauses) expect(words, clause).toContain(clause.toLowerCase());
   });
 });
