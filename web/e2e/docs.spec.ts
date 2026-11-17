@@ -836,6 +836,15 @@ test.describe("glossary previews", () => {
     await first.focus();
     await expect(await previewOf(first)).toBeVisible();
     await expect(await previewOf(first)).toHaveText(b20);
+    // The pointer resting on another term shows that term's preview instead. Once it leaves, the focused term's comes back.
+    const base = termOf(page, "base");
+    await base.hover();
+    await expect(await previewOf(base)).toBeVisible();
+    await expect(await previewOf(first)).toBeHidden();
+    await page.mouse.move(0, 0);
+    await expect(await previewOf(base)).toBeHidden();
+    await expect(await previewOf(first)).toBeVisible();
+    await expect(first).toBeFocused();
     const term = termOf(page, "cdp-server-wallet");
     const preview = await previewOf(term);
     await term.focus();
@@ -843,6 +852,14 @@ test.describe("glossary previews", () => {
     await expect(preview).toBeVisible();
     await expect(preview).toHaveText(cdp);
     await page.keyboard.press("Escape");
+    await expect(preview).toBeHidden();
+    await expect(term).toBeFocused();
+    // Dismissed, it stays closed after the pointer passes over another term and leaves.
+    const fork = termOf(page, "fork-test");
+    await fork.hover();
+    await expect(await previewOf(fork)).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(await previewOf(fork)).toBeHidden();
     await expect(preview).toBeHidden();
     await expect(term).toBeFocused();
     await page.keyboard.press("Tab");
@@ -958,57 +975,117 @@ test.describe("glossary previews", () => {
     await expect(preview).toBeHidden();
   });
 
+  /** Entries too tall to show beside a term in the middle of a short window: the page that links one, and the entry. */
+  const LONG_ENTRIES = [
+    { path: WHAT_IS_MAAT, id: "cdp-server-wallet" },
+    { path: "/docs/concepts/mandate", id: "revert" },
+    { path: "/docs/guides/watch-decisions-onchain", id: "change-hash" },
+    { path: "/docs/help/glossary", id: "runway" },
+    { path: "/docs/help/glossary", id: "uimultiplier" },
+  ] as const;
+  /**
+   * Whether a term's preview shows. One that shows is whole: inside the window, beside its term, and never cut to a box
+   * that only a wheel could scroll. One that does not show is not open either.
+   */
+  async function shownWhole(term: Locator, preview: Locator): Promise<boolean> {
+    if (!(await preview.isVisible())) {
+      expect(await preview.evaluate((el) => el.matches(":popover-open")), "a preview that does not show is closed").toBe(false);
+      return false;
+    }
+    const { width, height } = term.page().viewportSize()!;
+    const t = (await term.boundingBox())!;
+    const p = (await preview.boundingBox())!;
+    expect(p.x).toBeGreaterThanOrEqual(0);
+    expect(p.x + p.width).toBeLessThanOrEqual(width);
+    expect(p.y).toBeGreaterThanOrEqual(0);
+    expect(p.y + p.height).toBeLessThanOrEqual(height);
+    const gap = p.y >= t.y + t.height ? p.y - (t.y + t.height) : t.y - (p.y + p.height);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(16);
+    expect(await preview.evaluate((el) => el.scrollHeight <= el.clientHeight), "the preview is not cut").toBe(true);
+    return true;
+  }
+
   for (const { width, height } of [
     { width: 320, height: 256 },
     { width: 640, height: 360 },
   ] as const) {
-    test(`in a ${width}x${height} window a preview too tall for either side of its term stays inside the window and scrolls`, async ({ page }) => {
+    test(`in a ${width}x${height} window a preview shows only whole, by keyboard or pointer, and the link keeps the whole entry`, async ({ page }) => {
       await page.setViewportSize({ width, height });
-      await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
-      // Its status is in its last sentence.
-      const term = termOf(page, "cdp-server-wallet");
-      const preview = await previewOf(term);
-      await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
-      await term.focus();
-      await expect(preview).toBeVisible();
-      const t = (await term.boundingBox())!;
-      const p = (await preview.boundingBox())!;
-      expect(p.x).toBeGreaterThanOrEqual(0);
-      expect(p.x + p.width).toBeLessThanOrEqual(width);
-      expect(p.y).toBeGreaterThanOrEqual(0);
-      expect(p.y + p.height).toBeLessThanOrEqual(height);
-      const gap = p.y >= t.y + t.height ? p.y - (t.y + t.height) : t.y - (p.y + p.height);
-      expect(gap).toBeGreaterThanOrEqual(0);
-      expect(gap).toBeLessThanOrEqual(16);
-      // Cut to the room it has, it scrolls, and the wheel brings its last sentence into view.
-      expect(await preview.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-      expect(await inView(preview, CDP_STATUS)).toBe(false);
-      await page.mouse.move(p.x + p.width / 2, p.y + p.height / 2);
-      await page.mouse.wheel(0, 600);
-      await expect.poll(() => inView(preview, CDP_STATUS)).toBe(true);
-      await expect(preview).toBeVisible();
+      const entries = new Map<string, string>();
+      for (const { id } of LONG_ENTRIES) entries.set(id, await entryWithoutPointer(page, id));
+      for (const { path, id } of LONG_ENTRIES) {
+        await page.goto(path, { waitUntil: "networkidle" });
+        const term = termOf(page, id);
+        const preview = await previewOf(term);
+        await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
+        // Keyboard focus: no wheel reaches a preview it opens.
+        await term.focus();
+        await expect(term).toBeFocused();
+        const byKey = await shownWhole(term, preview);
+        // The CDP Server Wallet entry, its status last, is taller than any room a 320x256 window has beside a term.
+        if (width === 320 && id === "cdp-server-wallet") expect(byKey, id).toBe(false);
+        await expect(term, `${path}: ${id}`).toHaveAccessibleDescription(entries.get(id)!);
+        await expect(term).toHaveAttribute("href", `/docs/help/glossary#${id}`);
+        await term.evaluate((a) => a.blur());
+        await expect(preview).toBeHidden();
+        // The pointer, resting well past the delay.
+        await term.hover();
+        await page.waitForTimeout(700);
+        await shownWhole(term, preview);
+        await page.mouse.move(0, 0);
+        await expect(preview).toBeHidden();
+      }
     });
   }
 
-  test("a preview cut in a short window shows its whole entry once the page scrolls its term up", async ({ page }) => {
+  test("a preview with no room beside its term opens whole once the page scrolls its term up, and closes when the room goes", async ({ page }) => {
     await page.setViewportSize({ width: 640, height: 360 });
     await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
     const term = termOf(page, "cdp-server-wallet");
     const preview = await previewOf(term);
     await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
     await term.focus();
-    await expect(preview).toBeVisible();
-    const uncut = () => preview.evaluate((el) => el.scrollHeight <= el.clientHeight);
-    expect(await uncut()).toBe(false);
-    // The reader scrolls the page, with the keys or the wheel: the preview follows its term, with the room it now has.
+    await expect(term).toBeFocused();
+    expect(await shownWhole(term, preview)).toBe(false);
+    // The reader scrolls the page, with the keys or the wheel: the preview follows its term, and opens once it has room.
     const y = (await term.boundingBox())!.y;
     await page.evaluate((by) => window.scrollBy(0, by), y - 80);
-    await expect.poll(uncut).toBe(true);
-    await expect.poll(() => inView(preview, CDP_STATUS)).toBe(true);
-    const p = (await preview.boundingBox())!;
-    expect(p.y).toBeGreaterThanOrEqual(0);
-    expect(p.y + p.height).toBeLessThanOrEqual(360);
+    await expect(preview).toBeVisible();
+    expect(await shownWhole(term, preview)).toBe(true);
+    expect(await inView(preview, CDP_STATUS)).toBe(true);
+    await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
+    await expect(preview).toBeHidden();
+    expect(await shownWhole(term, preview)).toBe(false);
     await expect(term).toBeFocused();
+  });
+
+  test("in a 320x256 window, with keyboard focus on a term whose entry has no room, Mandate has no serious or critical axe violations", async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 256 });
+    await page.goto("/docs/concepts/mandate", { waitUntil: "networkidle" });
+    await expect(page.locator('[data-overflow="unmeasured"]')).toHaveCount(0);
+    const term = termOf(page, "revert");
+    await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
+    await term.focus();
+    await expect(term).toBeFocused();
+    const { violations } = await new AxeBuilder({ page }).analyze();
+    const blocking = violations
+      .filter((v) => v.impact === "serious" || v.impact === "critical")
+      .map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }));
+    expect(blocking).toEqual([]);
+    // The scan ran with focus on the term.
+    await expect(term).toBeFocused();
+  });
+
+  test("a preview still waiting to open when a link is followed opens nothing and logs no error", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+    await termOf(page, "b20").hover();
+    // Followed from a script, before the preview's delay is up, so the pointer stays on the term that has left the page.
+    await page.evaluate(() => document.querySelector<HTMLAnchorElement>('#nd-page .prose a[href="/docs/concepts/treasury-loop"]')!.click());
+    await expect(page).toHaveURL(/\/docs\/concepts\/treasury-loop$/);
+    await page.waitForTimeout(1200);
+    expect(errors).toEqual([]);
   });
 
   test("with a scrollbar that takes room, a preview in a narrow window stays clear of it", async ({ playwright, baseURL }) => {
