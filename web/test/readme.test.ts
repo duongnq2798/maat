@@ -144,13 +144,11 @@ describe("the root README's Documentation section", () => {
   const links = [...section.matchAll(/\]\(([^)\s]+)\)/g)].map((m) => m[1] ?? "").filter((l) => !/^[a-z]+:/.test(l));
 
   it("lists the docs center, and every spec and plan the repository tracks", () => {
-    const tracked = execFileSync("git", ["ls-files", "docs/superpowers/specs", "docs/superpowers/plans"], { cwd: REPO_ROOT, encoding: "utf8" })
-      .split("\n")
-      .filter((p) => /^docs\/superpowers\/(specs|plans)\/[^/]+\.md$/.test(p));
-    expect(tracked).toContain("docs/superpowers/specs/2026-11-07-maat-docs-center-design.md");
+    const specsAndPlans = tracked().filter((p) => /^docs\/superpowers\/(specs|plans)\/[^/]+\.md$/.test(p));
+    expect(specsAndPlans).toContain("docs/superpowers/specs/2026-11-07-maat-docs-center-design.md");
     const listed = tableRows(section).flatMap(([doc = ""]) => [...doc.matchAll(/\]\(([^)\s#]+)\)/g)].map((m) => m[1] ?? ""));
     expect(listed).toContain("web/content/docs");
-    expect(tracked.filter((p) => !listed.includes(p))).toEqual([]);
+    expect(specsAndPlans.filter((p) => !listed.includes(p))).toEqual([]);
   });
 
   it("links only files or folders the repository tracks, in their exact case, and headings those files have", () => {

@@ -190,8 +190,11 @@ export function quotedTestTitles(source: string, repoUrl: string): QuotedTitle[]
   return out;
 }
 
-/** A span that runs a program, such as `npm test` or `npm run test:integration`: an instruction, not a quote. */
-const COMMAND = /^(?:cd|npm|npx|node|tsx|vitest|forge|cast|anvil|git)\s/;
+/**
+ * A span that runs a program, after any environment settings, such as `npm test`, `MAAT_MODE=dry-run npm test` or
+ * `npm run test:integration`: an instruction, not a quote.
+ */
+const COMMAND = /^(?:\w+=\S*\s+)*(?:cd|npm|npx|node|tsx|vitest|forge|cast|anvil|git)\s/;
 
 /**
  * Vitest titles a page cites in inline code: each span with a space in it, in a prose line or in one cell of a table

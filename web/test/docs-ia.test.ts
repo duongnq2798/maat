@@ -8,6 +8,7 @@ import { docsLinks, frontmatterOf, headingIds } from "@/lib/docs/content-checks"
 import { AUDIENCES } from "@/lib/docs/frontmatter";
 import { DOCS_IA, IA_SLUGS, type IaSection } from "@/lib/docs/ia";
 import { docsSlug, headingId, urlSlug } from "@/lib/docs/links";
+import { READER_PATHS } from "@/lib/docs/reader-paths";
 import { docsTree } from "@/lib/docs/remark-component-text";
 import { DOCS_DIR, docsPages } from "./helpers/docs";
 
@@ -238,6 +239,14 @@ describe("docs pages follow the IA (docs spec §3)", () => {
     expect(IA_SLUGS.filter((slug) => !urls.includes(url(slug)))).toEqual([]);
     expect(url("concepts/index")).toBe("/docs/concepts");
     expect(url("index")).toBe("/docs");
+  });
+
+  it("each reader path names a written page served at /docs/<slug>, not a section's own page", () => {
+    // RouterCards, its Markdown text and the search start list link /docs/<slug>, and pageExists reads the slug as a URL.
+    for (const p of READER_PATHS) {
+      expect(written, p.slug).toContain(p.slug);
+      expect(urlSlug(p.slug).join("/"), p.slug).toBe(p.slug);
+    }
   });
 
   it("the root meta.json lists the home page, then each section that has pages", () => {

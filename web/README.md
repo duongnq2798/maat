@@ -90,7 +90,7 @@ Conventions no test checks:
 - Command output on a page is copied from a real run and says what produced it. A placeholder looks like `<VAULT_ADDRESS>`.
 - Every `<Callout>` has a `title`.
 - A command that signs or broadcasts, such as `cast send` or `forge script --broadcast`, sits inside a `<Callout type="warning" title="Owner only">`.
-- An `execute` command in such a callout also passes `--gas-limit` of at least `<Fact name="executeGasFloor" />` (`EXECUTE_GAS_FLOOR` in `agent/src/exec/calls.ts`). The callout says why, and links the Gas estimation section of `content/docs/security/not-claimed.mdx`: a plain gas estimate can record a false failure and use up the intent id.
+- An `execute` command in such a callout also passes `--gas-limit` of at least `<Fact name="executeGasFloor" />` (`EXECUTE_GAS_FLOOR` in `agent/src/exec/calls.ts`). The callout says why, and links the Gas estimation section of `content/docs/security/not-claimed.mdx`: a plain gas estimate can record a false failure and use up the intent id. The number in each command is typed by hand inside a code fence, where the numbers rule does not look, and no test ties it to `EXECUTE_GAS_FLOOR`: when the floor changes, update the number after each `--gas-limit` in the code fences of `content/docs/`.
 
 ### Add a number
 
@@ -164,6 +164,7 @@ It checks the `out/` the last build left and does not build, so run it after `np
 1. **Vercel:** Add New → Project → import this GitHub repo.
    - Root Directory: `web`.
    - Framework preset: Next.js.
+   - Build Command: `npm run build && npm run check:out`. Vercel's default, `npm run build`, does not run `check:out`, so without this no deploy runs the checks in [What check:out checks](#what-checkout-checks) or the localhost checks in [Site URL](#site-url).
    - Node.js version: 24.x.
    - No environment variables are needed for the first deploy.
 2. **Deploy.** The site works on its `*.vercel.app` URL, and the OG and Twitter cards use that URL automatically.

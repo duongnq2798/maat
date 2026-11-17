@@ -223,6 +223,11 @@ describe("cited tests", () => {
     ]);
   });
 
+  it("codedTestTitles skips a command that starts with environment settings", () => {
+    const text = "Run `MAAT_MODE=dry-run npm test` for `agent/test/policy.test.ts`.";
+    expect(codedTestTitles(text, repo, ["agent/test/policy.test.ts"])).toEqual([]);
+  });
+
   it("testNameLinks reads every link whose text is a test name, with the file it opens", () => {
     const src = [
       `[\`test_replayReverts\`](${repo}/blob/main/contracts/test/MandateVault.t.sol) and [the file](${repo}/blob/main/contracts/test/GuardLib.t.sol).`,

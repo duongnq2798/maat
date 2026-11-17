@@ -105,10 +105,12 @@ describe("ogAlt", () => {
     expect(ogAlt({ title: "FAQ", section: "Help" })).toBe("Maat Docs, Help: FAQ.");
   });
 
-  it("reads the docs home's description after the docs center's name, and ends it with one full stop", () => {
+  it("reads the docs home's description after the docs center's name, and ends it with one closing mark, a full stop when it has none", () => {
     expect(ogAlt({ description: "Understand Maat. Pick a path." })).toBe("Maat Docs: Understand Maat. Pick a path.");
     expect(ogAlt({ description: "Understand Maat" })).toBe("Maat Docs: Understand Maat.");
-    expect(ogAlt(ogCard(home, tree))).toBe(`Maat Docs: ${home.data.description}`);
+    const alt = ogAlt(ogCard(home, tree));
+    expect(alt.startsWith(`Maat Docs: ${home.data.description.replace(/[.!?]$/, "")}`)).toBe(true);
+    expect(alt).toMatch(/[^.!?][.!?]$/);
   });
 });
 

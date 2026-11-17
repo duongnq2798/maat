@@ -52,6 +52,11 @@ describe("testLinesIn", () => {
       "runs alone": 4,
     });
   });
+
+  it("reads a title after a modifier whose arguments hold a call, as in describe.skipIf(!fn())(\"...\")", () => {
+    const ts = ['it.each([[1, f(2)]])("nested %s", () => {});', 'describe.skipIf(!fn())("needs fn", () => {});'].join("\n");
+    expect(testLinesIn("agent/test/x.test.ts", ts)).toEqual({ "nested %s": 1, "needs fn": 2 });
+  });
 });
 
 describe("collectTestLines", () => {

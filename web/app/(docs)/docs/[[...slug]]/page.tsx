@@ -23,11 +23,11 @@ export default async function Page({ params }: PageProps<"/docs/[[...slug]]">) {
 
   const { body: MDX, toc, full, title, description, audience, sources, next } = page.data;
   const markdown = await page.data.getText("processed");
-  // The docs home keeps its H1 and lede only, with no Read next block or previous and next cards: its router cards and
-  // section map are the ways on.
-  const home = page.url === "/docs";
   // The label and the date the header shows, the same ones the page's Markdown copy gives (lib/docs/frontmatter.ts).
   const frame = headerFrame(page);
+  // The docs home, the one page headerFrame gives no frame, keeps its H1 and lede only, with no Read next block or
+  // previous and next cards: its router cards and section map are the ways on.
+  const home = frame === null;
   return (
     <DocsPage
       // A one-letter heading, such as the glossary's A to X, only groups the entries under it: the TOC lists the entries.

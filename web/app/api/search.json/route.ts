@@ -17,8 +17,10 @@ export const { staticGET: GET } = createFromSource(source, {
       await page.data.getText("processed"),
       page.data.toc,
       page.url,
-      // The docs home and the section pages leave their section index out: each card repeats a page found on its own.
-      page.data.type === "overview" ? sectionIndexLines(source.getPageTree()) : undefined,
+      // The docs home and the section pages (the index.mdx files, which render a SectionIndex) leave out the lines
+      // their section index prints: each card repeats a page found on its own. Other overview pages, such as Status,
+      // keep every line outside code blocks.
+      /(^|\/)index\.mdx$/.test(page.path) ? sectionIndexLines(source.getPageTree()) : undefined,
     ),
   }),
   tokenizer: SEARCH_TOKENIZER,
