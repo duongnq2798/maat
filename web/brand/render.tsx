@@ -1,8 +1,8 @@
 import { Resvg } from "@resvg/resvg-js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 import satori, { type SatoriOptions } from "satori";
+import { OG_IMAGE_SIZE, type OgCard } from "../lib/docs/og";
 import { SITE } from "../lib/site";
 import { MARK, PALETTE } from "./mark";
 
@@ -12,7 +12,9 @@ export interface BrandFile {
   data: Buffer | string;
 }
 
-const FONT_DIR = fileURLToPath(new URL("../node_modules/geist/dist/fonts/", import.meta.url));
+// From web/, where npm runs the brand script, the tests and next build. Not new URL(..., import.meta.url): next build
+// bundles this file for app/og/[...slug]/route.ts, and Turbopack cannot resolve a folder named that way.
+const FONT_DIR = join(process.cwd(), "node_modules/geist/dist/fonts");
 const OG_ALT = "Maat: the AI agent that knows when not to trade. A Saturday trade refused with MARKET_CLOSED.";
 /** Wide enough for mark + gap + "maat". Tune by eye in Step 5 so the wordmark ends 4-8 px from the right edge. */
 const LOCKUP_WIDTH = 184;
@@ -238,6 +240,68 @@ function Badge({ text, fail }: { text: string; fail?: boolean }) {
   );
 }
 
+/**
+ * A docs page's link preview (lib/docs/og.ts): the lockup and "Docs", then the page's section, its title and its status
+ * label, inside the same 64 x 72 px margins as the landing's image. Boxes do not shrink, so a title too long to fit
+ * pushes the label past the bottom margin, where test/docs-og.test.ts sees it, instead of overflowing a squeezed box.
+ */
+function DocsOg({ card }: { card: OgCard }) {
+  return (
+    <div
+      style={{
+        width: OG_IMAGE_SIZE.width,
+        height: OG_IMAGE_SIZE.height,
+        display: "flex",
+        position: "relative",
+        backgroundColor: PALETTE.paper,
+        fontFamily: "Geist",
+        color: PALETTE.ink,
+      }}
+    >
+      <Grid />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          // Grows to the whole image: a width or height here would not include the padding.
+          flexGrow: 1,
+          padding: "64px 72px",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16, flexShrink: 0 }}>
+          <Lockup mark={44} />
+          <span style={{ fontSize: 31, fontWeight: 500, letterSpacing: "-0.03em", color: PALETTE.ink2 }}>Docs</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, flexShrink: 0 }}>
+          {card.section === undefined ? null : (
+            <span style={{ fontFamily: "Geist Mono", fontSize: 26, fontWeight: 500, color: PALETTE.accent }}>{card.section}</span>
+          )}
+          <span style={{ fontSize: 72, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1.05 }}>{card.title}</span>
+        </div>
+        {/* A fixed height, so the title sits at the same place on a page with no label. */}
+        <div style={{ display: "flex", alignItems: "center", height: 56, flexShrink: 0 }}>
+          {card.status === undefined ? null : (
+            <span
+              style={{
+                fontSize: 24,
+                fontWeight: 500,
+                padding: "8px 18px",
+                borderRadius: 24,
+                border: `1px solid ${PALETTE.line}`,
+                backgroundColor: PALETTE.lineSoft,
+              }}
+            >
+              {card.status}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Content sits right of x = 560 so the avatar never covers it. */
 function Banner() {
   return (
@@ -306,4 +370,19 @@ export async function renderBrand(): Promise<BrandFile[]> {
     { path: "app/opengraph-image.png", data: og },
     { path: "app/opengraph-image.alt.txt", data: OG_ALT },
   ];
+}
+
+// Read once per process: the build draws one image per docs page, and satori keeps each parsed font by its data, so the
+// same buffers are parsed once.
+let docsOgFonts: SatoriOptions["fonts"] | undefined;
+
+/** The SVG of a docs page's link preview. `onNodeDetected` gets the box of every element, so a test can see what fits. */
+export function docsOgSvg(card: OgCard, onNodeDetected?: SatoriOptions["onNodeDetected"]): Promise<string> {
+  docsOgFonts ??= fonts();
+  return satori(<DocsOg card={card} />, { ...OG_IMAGE_SIZE, fonts: docsOgFonts, onNodeDetected });
+}
+
+/** A docs page's link preview as a PNG, drawn when the site is built (app/og/[...slug]/route.ts). */
+export async function renderDocsOg(card: OgCard): Promise<Buffer> {
+  return png(await docsOgSvg(card), OG_IMAGE_SIZE.width);
 }

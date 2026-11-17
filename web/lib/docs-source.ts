@@ -3,6 +3,7 @@ import { flattenTree } from "fumadocs-core/page-tree";
 import { docs } from "@/.source/server";
 import { headerFrame } from "@/lib/docs/frontmatter";
 import { pageMarkdown } from "@/lib/docs/markdown";
+import { type OgCard, ogCard } from "@/lib/docs/og";
 import { siteUrl } from "@/lib/site";
 
 /** The docs page tree and page lookup, built from content/docs by fumadocs-mdx. */
@@ -34,6 +35,11 @@ export async function getPageMarkdown(page: DocsPage): Promise<string> {
     sources: page.data.sources,
     body: await page.data.getText("processed"),
   });
+}
+
+/** What a docs page's link preview image shows (lib/docs/og.ts), with its section named as the sidebar names it. */
+export function getPageOgCard(page: DocsPage): OgCard {
+  return ogCard(page, source.getPageTree());
 }
 
 /** Whether a docs page exists, by slug ("concepts/nine-checks"; "" or "index" for the home page). */

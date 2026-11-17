@@ -8,6 +8,7 @@ import {
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
+  checkOgImage,
   checkSearchIndex,
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
@@ -249,6 +250,76 @@ describe("checkMarkdownCopy", () => {
     ["a Source of truth the page does not have", `<header>${LABEL}${DATE}</header>`, MD, "lists Source of truth files, but its page has no Source of truth box"],
   ])("flags %s", (_name, html, md, problem) => {
     expect(checkMarkdownCopy(html, md, PATH)).toEqual([`${PATH} ${problem}`]);
+  });
+});
+
+describe("checkOgImage", () => {
+  const OWN = "https://maat.example/og/docs/concepts/nine-checks.png";
+  const FILE = "og/docs/concepts/nine-checks.png";
+  const html = DOC.replace(
+    '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
+    [
+      `<meta property="og:image" content="${OWN}"/>`,
+      '<meta property="og:image:width" content="1200"/>',
+      '<meta property="og:image:height" content="630"/>',
+      `<meta name="twitter:image" content="${OWN}"/>`,
+    ].join(""),
+  );
+  /** The first 24 bytes of a PNG: its signature and the IHDR chunk's width and height, all a size check reads. */
+  const png = (width: number, height: number) => {
+    const head = Buffer.alloc(24);
+    head.writeUInt32BE(0x89504e47, 0);
+    head.writeUInt32BE(0x0d0a1a0a, 4);
+    head.writeUInt32BE(13, 8);
+    head.write("IHDR", 12, "latin1");
+    head.writeUInt32BE(width, 16);
+    head.writeUInt32BE(height, 20);
+    return head;
+  };
+  const read = (path: string) => (path === FILE ? png(1200, 630) : undefined);
+
+  it("accepts a page whose og:image and twitter:image are its own 1200x630 PNG in out/", () => {
+    expect(checkOgImage(html, "/docs/concepts/nine-checks", PATH, read)).toEqual([]);
+  });
+
+  it.each([
+    [
+      "the landing's image",
+      html.replace(`property="og:image" content="${OWN}"`, 'property="og:image" content="https://maat.example/opengraph-image.png"'),
+      read,
+      "og:image is https://maat.example/opengraph-image.png, not the page's own image /og/docs/concepts/nine-checks.png",
+    ],
+    [
+      "another page's image",
+      html.replace(`property="og:image" content="${OWN}"`, 'property="og:image" content="https://maat.example/og/docs/concepts/refusal-codes.png"'),
+      read,
+      "og:image is https://maat.example/og/docs/concepts/refusal-codes.png, not the page's own image /og/docs/concepts/nine-checks.png",
+    ],
+    ["no og:image", html.replace(/<meta property="og:image" [^>]*>/, ""), read, "og:image is missing, not the page's own image /og/docs/concepts/nine-checks.png"],
+    [
+      "a twitter:image that is the landing's",
+      html.replace(`name="twitter:image" content="${OWN}"`, 'name="twitter:image" content="https://maat.example/opengraph-image.png"'),
+      read,
+      "twitter:image is https://maat.example/opengraph-image.png, not the page's own image /og/docs/concepts/nine-checks.png",
+    ],
+    [
+      "a relative twitter:image",
+      html.replace(`name="twitter:image" content="${OWN}"`, 'name="twitter:image" content="/og/docs/concepts/nine-checks.png"'),
+      read,
+      "twitter:image is /og/docs/concepts/nine-checks.png, not the page's own image /og/docs/concepts/nine-checks.png",
+    ],
+    ["no twitter:image", html.replace(/<meta name="twitter:image" [^>]*>/, ""), read, "twitter:image is missing, not the page's own image /og/docs/concepts/nine-checks.png"],
+    ["a size the tags misstate", html.replace('content="630"', 'content="600"'), read, "og:image:width and og:image:height say 1200x600, want 1200x630"],
+    ["a missing file", html, () => undefined, "missing out/og/docs/concepts/nine-checks.png"],
+    ["a file that is not a PNG", html, () => Buffer.from("<svg xmlns='http://www.w3.org/2000/svg'/>"), "out/og/docs/concepts/nine-checks.png is not a PNG"],
+    ["an image of another size", html, () => png(1200, 600), "out/og/docs/concepts/nine-checks.png is 1200x600, want 1200x630"],
+  ])("flags %s", (_name, page, readFile, problem) => {
+    expect(checkOgImage(page, "/docs/concepts/nine-checks", PATH, readFile)).toEqual([`${PATH}: ${problem}`]);
+  });
+
+  it("wants the docs home's image at /og/docs.png", () => {
+    const home = html.replaceAll(OWN, "https://maat.example/og/docs.png");
+    expect(checkOgImage(home, "/docs", "out/docs.html", (path) => (path === "og/docs.png" ? png(1200, 630) : undefined))).toEqual([]);
   });
 });
 

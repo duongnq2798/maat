@@ -2,6 +2,7 @@ import { isDeepStrictEqual } from "node:util";
 import { MOMENTS } from "../content/engine";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
+import { OG_IMAGE_SIZE, ogImageUrl } from "./docs/og";
 import { SITE } from "./site";
 
 /** Problems with the exported landing page; an empty list means it is ready to ship. */
@@ -82,6 +83,37 @@ export function checkDocsPage(html: string, path: string, known: ReadonlySet<str
     for (const [, href] of html.matchAll(/<a[^>]*\shref="(\/(?!\/|docs[/"#?])[^"#?]*)/g)) {
       need(exported(href!), `link ${href} points to no exported file`);
     }
+  }
+  return problems;
+}
+
+/**
+ * Problems with the link preview of one exported docs page, whose URL path is `pageUrl` (/docs, /docs/x). Its og:image
+ * and twitter:image both name the page's own image (lib/docs/og.ts), so a shared link shows this page and no other, and
+ * that file is a PNG in out/ of the size the tags give. `read` returns an exported file by its path under out/, or
+ * undefined. `path` names the page in each problem.
+ */
+export function checkOgImage(html: string, pageUrl: string, path: string, read: (path: string) => Buffer | undefined): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`${path}: ${problem}`);
+  };
+  const own = ogImageUrl(pageUrl);
+  for (const [name, attribute] of [["og:image", "property"], ["twitter:image", "name"]] as const) {
+    const url = new RegExp(`<meta ${attribute}="${name}" content="([^"]+)"`).exec(html)?.[1];
+    // An absolute URL whose path is the page's own image; checkDocsPage already wants og:image absolute.
+    need(url !== undefined && /^https?:\/\/[^/]+(\/[^?#]*)/.exec(url)?.[1] === own, `${name} is ${url ?? "missing"}, not the page's own image ${own}`);
+  }
+  const { width, height } = OG_IMAGE_SIZE;
+  const tag = (name: string) => new RegExp(`<meta property="og:image:${name}" content="([^"]*)"`).exec(html)?.[1] ?? "none";
+  const said = `${tag("width")}x${tag("height")}`;
+  need(said === `${width}x${height}`, `og:image:width and og:image:height say ${said}, want ${width}x${height}`);
+  const file = read(own.slice(1));
+  if (file === undefined) need(false, `missing out${own}`);
+  else if (file.length < 24 || file.readUInt32BE(0) !== 0x89504e47 || file.readUInt32BE(4) !== 0x0d0a1a0a) need(false, `out${own} is not a PNG`);
+  else {
+    const size = `${file.readUInt32BE(16)}x${file.readUInt32BE(20)}`;
+    need(size === `${width}x${height}`, `out${own} is ${size}, want ${width}x${height}`);
   }
   return problems;
 }

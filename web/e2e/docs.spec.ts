@@ -624,10 +624,18 @@ test.describe("page frame", () => {
     }
   });
 
-  test("the image a shared link shows is named", async ({ page }) => {
+  test("the image a shared link shows is the page's own, and named by the text it shows", async ({ page, request }) => {
     await page.goto("/docs/concepts/nine-checks");
-    await expect(page.locator('head meta[property="og:image:alt"]')).toHaveAttribute("content", SITE.name);
-    await expect(page.locator('head meta[name="twitter:image:alt"]')).toHaveAttribute("content", SITE.name);
+    const alt = `${SITE.name} Docs, Concepts: The nine checks. Status: Fork-tested.`;
+    await expect(page.locator('head meta[property="og:image:alt"]')).toHaveAttribute("content", alt);
+    await expect(page.locator('head meta[name="twitter:image:alt"]')).toHaveAttribute("content", alt);
+    for (const tag of ['head meta[property="og:image"]', 'head meta[name="twitter:image"]']) {
+      const url = new URL((await page.locator(tag).getAttribute("content")) ?? "");
+      expect(url.pathname, tag).toBe("/og/docs/concepts/nine-checks.png");
+    }
+    const image = await request.get("/og/docs/concepts/nine-checks.png");
+    expect(image.status()).toBe(200);
+    expect(image.headers()["content-type"]).toBe("image/png");
   });
 
   test("every docs page ends with the MIT License and the site's disclaimer, once, on a phone and in a printout too", async ({ page }) => {

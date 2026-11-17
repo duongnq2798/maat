@@ -11,6 +11,7 @@ import {
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
+  checkOgImage,
   checkSearchIndex,
   docsLocalhostUrls,
   SEARCH_INDEX_GZIP_BUDGET,
@@ -67,6 +68,8 @@ for (const file of docsFiles) {
   const url = urlOf(file);
   const html = readFileSync(file, "utf8");
   problems.push(...checkDocsPage(html, `out${url}.html`, known, exported));
+  // Its own link preview image, out/og/docs/....png, which a link shared on X shows.
+  problems.push(...checkOgImage(html, url, `out${url}.html`, (path) => (isFile(join(OUT, path)) ? readFileSync(join(OUT, path)) : undefined)));
   const md = `md${url}.md`;
   if (!existsSync(join(OUT, md))) problems.push(`missing out/${md}`);
   else {

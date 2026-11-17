@@ -6,10 +6,11 @@ import { listsNextInBody, NextLinks } from "@/components/docs/NextLinks";
 import { PageFooter } from "@/components/docs/PageFooter";
 import { HomeHeader, PageHeader } from "@/components/docs/PageHeader";
 import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
-import { pagesInSidebarOrder, source } from "@/lib/docs-source";
+import { getPageOgCard, pagesInSidebarOrder, source } from "@/lib/docs-source";
 import { footerItems } from "@/lib/docs/footer-items";
 import { headerFrame } from "@/lib/docs/frontmatter";
 import { markdownUrl, readingMinutes } from "@/lib/docs/markdown";
+import { OG_IMAGE_SIZE, ogAlt, ogImageUrl } from "@/lib/docs/og";
 import { SITE, siteUrl } from "@/lib/site";
 
 // Static export: every docs URL comes from generateStaticParams, nothing is rendered on request.
@@ -94,8 +95,10 @@ export async function generateMetadata({ params }: PageProps<"/docs/[[...slug]]"
   const page = source.getPage(slug);
   if (!page) notFound();
   const { title, description } = page.data;
-  // This openGraph object replaces the file-based image from app/opengraph-image.png, so name it here.
-  const images = { url: "/opengraph-image.png", width: 1200, height: 630, alt: SITE.name };
+  // The page's own link preview, drawn at build time by app/og/[...slug]/route.ts, in place of the landing's
+  // app/opengraph-image.png, so a shared link to one page does not look like a link to any other.
+  const card = getPageOgCard(page);
+  const images = { url: ogImageUrl(page.url), type: "image/png", ...OG_IMAGE_SIZE, alt: ogAlt(card) };
   return {
     // The docs home is the docs center itself: "Maat Docs", not "Maat docs · Maat Docs".
     title: page.url === "/docs" ? { absolute: `${SITE.name} Docs` } : title,
