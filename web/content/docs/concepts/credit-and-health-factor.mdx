@@ -71,7 +71,7 @@ The second is the figure Aave reports now, `healthFactor()`. The adapter, not th
 
 Two numbers in the mandate set how much room a credit action must leave:
 
-- The floor, `minHealthFactor`, is <Fact name="mandate.minHealthFactor" /> by default. A borrow, or a collateral withdrawal against debt, that would leave the health factor below it returns [`HEALTH_FACTOR_LOW`](/docs/concepts/refusal-codes#health_factor_low).
+- The floor, `minHealthFactor`, is <Fact name="mandate.minHealthFactor" /> by default. A borrow, or a collateral withdrawal against debt, that would leave the health factor below it returns [`HEALTH_FACTOR_LOW`](/docs/concepts/refusal-codes#health_factor_low). The exception is a withdrawal that Aave's spoke refuses before the adapter's own check: that returns [`CREDIT_FAILED`](/docs/concepts/refusal-codes#credit_failed). The mock Aave spoke in the unit tests refuses one that would leave less than <Fact name="healthFactorBound" />, and no test sends such a withdrawal.
 - The target, `targetHealthFactor`, is <Fact name="mandate.targetHealthFactor" /> by default. It replaces the floor inside the [de-risk window](#the-de-risk-window). An action that would leave the health factor at or above the floor but below the target returns [`DERISK_WINDOW`](/docs/concepts/refusal-codes#derisk_window) there.
 
 [The mandate](/docs/concepts/mandate#minhealthfactor) describes both fields. One function turns a health factor into a reason, and it reads like the rule:

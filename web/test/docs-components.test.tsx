@@ -212,7 +212,7 @@ describe("diagrams", () => {
       ["2.0 and above", "Allowed"],
       ["1.5 to under 2.0", "DERISK_WINDOW in the window"],
       ["1.0 to under 1.5", "HEALTH_FACTOR_LOW"],
-      ["Below 1.0", "Never a floor"],
+      ["Below 1.0", "Below the lowest floor allowed"],
     ]);
   });
 

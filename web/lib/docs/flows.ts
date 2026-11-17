@@ -87,7 +87,7 @@ export const MULTIPLIER_FLOW: FlowData = {
     {
       title: "The vault records it",
       detail:
-        "A syncMultiplier from anyone, an execute that names the stock, or an applyTokenConfig for it stores the new value and emits an event. The cooldown counts from this recording.",
+        "When the value has changed, a syncMultiplier from anyone, an execute that names the stock, or an applyTokenConfig for it stores the new value and emits an event. The cooldown counts from this recording.",
     },
     {
       title: "The cooldown",
@@ -120,6 +120,8 @@ const hfFloor = f("mandate.minHealthFactor");
 const hfTarget = f("mandate.targetHealthFactor");
 
 // MandateVault._healthReason, and _requireValidCredit for the lowest floor a mandate with a credit adapter may set.
+// Below that floor a withdrawal has no projection: AaveV4CreditAdapter.withdraw calls the spoke before its own check,
+// MockSpoke refuses below 1.0, and _creditFailure makes any revert but a 68-byte HealthFactorTooLow CREDIT_FAILED.
 export const HEALTH_FACTOR_SCALE: ScaleData = {
   label: "What the vault returns for the health factor a BORROW, or a WITHDRAW_COLLATERAL against debt, would leave",
   bands: [
@@ -144,9 +146,8 @@ export const HEALTH_FACTOR_SCALE: ScaleData = {
     },
     {
       range: `Below ${hfBound}`,
-      title: "Never a floor",
-      detail:
-        "A mandate with a credit adapter cannot set its floor here: the vault rejects it with InvalidConfig. An action that would land here is below every floor, so it returns HEALTH_FACTOR_LOW.",
+      title: "Below the lowest floor allowed",
+      detail: `A mandate with a credit adapter cannot set its floor here: the vault rejects it with InvalidConfig. A BORROW projected to land here returns HEALTH_FACTOR_LOW. A WITHDRAW_COLLATERAL is not projected, and the adapter asks the spoke to withdraw before it checks the health factor. If the spoke refuses first, as the mock Aave spoke in the unit tests does below ${hfBound}, the vault returns CREDIT_FAILED.`,
       tone: "refused",
     },
   ],
