@@ -11,6 +11,7 @@ sources:
   - contracts/src/MandateVault.sol
   - agent/src/loop/runOnce.ts
   - agent/src/policy.ts
+  - agent/src/ledger/store.ts
   - agent/test/integration/agent.fork.test.ts
 next: [get-started/what-is-maat, help/faq]
 ---
@@ -186,7 +187,7 @@ The gap between the pool's [TWAP](/docs/help/glossary#twap) and the oracle price
 
 ### Preview
 
-A read-only call, `previewIntent`, made with `eth_call` as the executor, that returns the verdict the vault's checks would give an [intent](/docs/help/glossary#intent) without sending a transaction. It returns the check verdict, not the execution result, so it cannot see `SWAP_FAILED` or `TRANSFER_FAILED` ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)).
+A read-only call, `previewIntent`, made with `eth_call` as the executor, that returns the verdict the vault's checks would give an [intent](/docs/help/glossary#intent) without sending a transaction. It returns the check verdict, not the execution result, so it cannot see `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or a `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit adapter's own check ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send), [Preview cannot see everything](/docs/security/not-claimed#preview-cannot-see-everything)).
 
 ## R
 
@@ -204,7 +205,7 @@ The enum in `Types.sol` that says why the vault allowed or refused an action, an
 
 ### Refusal
 
-A [Decision](/docs/help/glossary#decision) with `allowed` set to false: the vault records a [reason](/docs/help/glossary#reason) instead of reverting. Most refusals come from a failed check, while `SWAP_FAILED` and `TRANSFER_FAILED` mean the checks passed and the action then failed. See [Read a decision](/docs/get-started/read-a-decision#reading-a-refusal) and [Refusal codes](/docs/concepts/refusal-codes).
+A [Decision](/docs/help/glossary#decision) with `allowed` set to false: the vault records a [reason](/docs/help/glossary#reason) instead of reverting. Most refusals come from a failed check, while `SWAP_FAILED`, `TRANSFER_FAILED`, and a `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit call itself mean the checks passed and the action then failed. See [Read a decision](/docs/get-started/read-a-decision#reading-a-refusal) and [Refusal codes](/docs/concepts/refusal-codes).
 
 ### Revert
 
@@ -216,7 +217,7 @@ One pass of the agent's loop, `runOnce`: read the vault, settle any send left fr
 
 ### Runway
 
-The USDC the agent's policy keeps back for compute: <Fact name="runwayDays" /> of the average daily compute cost over the days of the week before today that have a record, or `MAAT_DEFAULT_DAILY_COMPUTE_USD` (<Fact name="dailyComputeUsd" />) when none has, plus any unpaid [compute bill](/docs/help/glossary#compute-bill). The policy does not suggest spending it on buys or repayments. When the vault's USDC falls short of it by at least <Fact name="minTradeUsd" />, the policy suggests a `BORROW`, but only while the vault is not paused, the credit position can be read and stock from the policy's basket with a valid feed price is supplied as collateral: a rule in the agent, not a vault check ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
+The USDC the agent's policy keeps back for compute: <Fact name="runwayDays" /> of the average daily compute cost over the days of the week before today that have a record, or `MAAT_DEFAULT_DAILY_COMPUTE_USD` (<Fact name="dailyComputeUsd" />) when none has. The policy does not suggest spending it, or any unpaid [compute bill](/docs/help/glossary#compute-bill), on buys or repayments. When the vault's USDC falls short of the runway plus the unpaid bill by at least <Fact name="minTradeUsd" />, the policy suggests a `BORROW`, but only while the vault is not paused, the credit position can be read and stock from the policy's basket with a valid feed price is supplied as collateral: a rule in the agent, not a vault check ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
 
 ## S
 

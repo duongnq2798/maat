@@ -30,7 +30,7 @@ Each step is a rule in the agent's policy, `agent/src/policy.ts`, and an action 
 | Step | What the agent is built to do | Vault action | What the vault checks |
 | --- | --- | --- | --- |
 | Buy | Keep an equal-weight basket and rebalance when a weight drifts | `BUY`, `SELL` | [The nine checks](/docs/concepts/nine-checks) |
-| Supply | Put idle stock into Aave as collateral | `SUPPLY`, and `WITHDRAW_COLLATERAL` before a sale | [The credit checks](/docs/concepts/credit-and-health-factor) |
+| Supply | Put idle stock into [Aave](/docs/help/glossary#aave-v4) as collateral | `SUPPLY`, and `WITHDRAW_COLLATERAL` before a sale | [The credit checks](/docs/concepts/credit-and-health-factor) |
 | Borrow | Keep a runway of compute cost in USDC | `BORROW` | An open market, every supplied stock allowed and unpaused with a valid, fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and a [health factor](/docs/help/glossary#health-factor) at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window) |
 | Pay | Pay the unpaid compute bill | `PAY_EXPENSE` | The payee allowlist and the caps |
 
@@ -88,14 +88,14 @@ The test `all cash: buys each token toward 23.33%, capped by spendable cash` in 
 
 ## Runway and borrowing
 
-The agent keeps a runway: enough USDC to cover a number of days of its own compute cost, plus any bill it has not paid yet. The daily cost is the average of the days it has recorded over the previous week. If it has recorded none, it uses a default, <Fact name="dailyComputeUsd" /> a day, which the `MAAT_DEFAULT_DAILY_COMPUTE_USD` setting changes. Cash that the policy spends on stock is whatever is left after the unpaid bill and the runway, so a suggested purchase never eats the runway. This is the policy's rule, not the vault's:
+The agent keeps a runway: enough USDC to cover a number of days of its own compute cost. It also keeps back any bill it has not paid yet. The daily cost is the average of the days it has recorded over the previous week. If it has recorded none, it uses a default, <Fact name="dailyComputeUsd" /> a day, which the `MAAT_DEFAULT_DAILY_COMPUTE_USD` setting changes. Cash that the policy spends on stock is whatever is left after the unpaid bill and the runway, so a suggested purchase never eats the runway. This is the policy's rule, not the vault's:
 
 ```typescript title="agent/src/policy.ts#L63-L64"
   const runwayNeedUsd6 = BigInt(params.runwayDays) * bills.dailyComputeUsd6;
   let spendable = maxBig(0n, s.usdcBalance - bills.unpaidUsd6 - runwayNeedUsd6);
 ```
 
-When USDC falls below that need, the policy suggests a borrow of the shortfall, but only if some stock is supplied as collateral and the credit position can be read:
+When USDC falls below the runway plus the unpaid bill, the policy suggests a borrow of the shortfall, but only if some stock is supplied as collateral and the credit position can be read:
 
 ```typescript title="agent/src/policy.ts#L114-L120"
   // 7. BORROW
@@ -107,9 +107,9 @@ When USDC falls below that need, the policy suggests a borrow of the shortfall, 
   }
 ```
 
-The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock's feed is stale or its multiplier has changed, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
+The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock is not allowed, is paused, has no valid, fresh feed answer or has no stable multiplier, when a credit view cannot be read, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
 
-The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing in this repository sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
+The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing in this repository sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
 
 ## Paying its own bill
 
