@@ -13,6 +13,7 @@ sources:
   - contracts/src/MandateVault.sol
   - contracts/src/MarketCalendar.sol
   - contracts/src/GuardLib.sol
+  - contracts/test/GuardLib.t.sol
   - contracts/src/Types.sol
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/adapters/AaveV4CreditAdapter.sol
@@ -28,6 +29,7 @@ sources:
   - agent/src/chain/preview.ts
   - agent/src/exec/calls.ts
   - agent/src/abi/generated.ts
+  - agent/scripts/gen-abis.ts
   - agent/scripts/cdp-setup.ts
   - agent/src/policy.ts
   - agent/src/chain/state.ts
@@ -48,7 +50,7 @@ The Maat team has not broadcast this deploy. The address table in `deployments/R
 
 <Callout type="fork" title="Not run on mainnet">
 
-Nobody has followed this path on Base mainnet. Each step links the section that has its commands, and this list does not repeat them.
+Nobody has followed this path on Base mainnet. Each step links the sections that explain it.
 
 </Callout>
 
@@ -297,7 +299,7 @@ deployments/README.md prints no output for these commands, so none is shown. The
 
 ### Run the smoke test
 
-Send one small BUY of NVDAc, then one on a weekend. Do the first only during US market hours, which the calendar sets at <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, on a day that is not a market holiday. New York is <Fact name="etOffsetHours.dst" /> behind UTC during US daylight saving time and <Fact name="etOffsetHours.standard" /> behind otherwise. In UTC the session is 14:30 to 21:00 under US standard time (until 2027-03-14) and 13:30 to 20:00 under daylight saving time. On an early-close day the session ends earlier, and an `execute` outside it is refused with `MARKET_CLOSED`.
+Send one small BUY of NVDAc, then one on a weekend. Do the first only during US market hours, which the calendar sets at <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, on a day that is not a market holiday. New York is <Fact name="etOffsetHours.dst" /> behind UTC during US daylight saving time and <Fact name="etOffsetHours.standard" /> behind otherwise. In UTC the session is 14:30 to 21:00 under US standard time (until 2027-03-14) and 13:30 to 20:00 under daylight saving time. On an early-close day the session ends earlier, and an `execute` outside it is [refused](/docs/help/glossary#refusal) with `MARKET_CLOSED`.
 
 The owner's wallet is the executor at this stage, so it can send `execute` itself. Run the smoke tests before you hand the executor role to the CDP Server Wallet, because after the handover the owner's own `execute` calls revert with `NotExecutor`. The BUY amount in the commands is `5000000` ($5), in USDC units too.
 
@@ -348,7 +350,7 @@ The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-polic
 
 **Adapted from the runbook, not run.** This step tests the [Aave V4](/docs/help/glossary#aave-v4) path on your vault: it supplies the NVDAc from the BUY, borrows USDC against it, repays, and takes the collateral back. Run it in a US market session, after the BUY smoke test, while your wallet is still the executor. The action codes are `SUPPLY` = 2, `WITHDRAW_COLLATERAL` = 3, `BORROW` = 4 and `REPAY` = 5. The credit [reasons](/docs/help/glossary#reason) are `CREDIT_FAILED` = 17, `HEALTH_FACTOR_LOW` = 18 and `DERISK_WINDOW` = 19 ([Refusal codes](/docs/concepts/refusal-codes#credit)).
 
-The `BORROW` needs an open market and healthy collateral: every stock the vault has supplied must be unpaused and not [exit-only](/docs/help/glossary#exit-only), with a readable, fresh oracle price and a stable [multiplier](/docs/help/glossary#uimultiplier). The projected [health factor](/docs/help/glossary#health-factor) after the borrow must then be at least <Fact name="mandate.minHealthFactor" />, or at least <Fact name="mandate.targetHealthFactor" /> inside the [de-risk window](/docs/help/glossary#de-risk-window). By default that window is the last <Fact name="mandate.deriskWindowSec" /> before <Fact name="feedEdge" /> on a Friday, and on a Monday to Thursday before a holiday ([The de-risk window](/docs/concepts/credit-and-health-factor#the-de-risk-window) has the rules). A closed market refuses the borrow with `MARKET_CLOSED`. A supplied stock that fails returns `TOKEN_NOT_ALLOWED`, `TOKEN_PAUSED`, `BAD_PRICE`, `FEED_STALE` or `MULTIPLIER_COOLDOWN`. A health factor under the floor returns `HEALTH_FACTOR_LOW`, and one under the target inside the window `DERISK_WINDOW`. An adapter read that fails returns `CREDIT_FAILED`. [Other actions](/docs/concepts/nine-checks#other-actions) lists these checks in the order the vault runs them.
+The `BORROW` needs an open market and healthy collateral: every stock the vault has supplied must still be [allowed](/docs/concepts/mandate#allowed) (an [exit-only](/docs/help/glossary#exit-only) stock is not) and unpaused, with a readable, fresh oracle price and a stable [multiplier](/docs/help/glossary#uimultiplier). The projected [health factor](/docs/help/glossary#health-factor) after the borrow must then be at least <Fact name="mandate.minHealthFactor" />, or at least <Fact name="mandate.targetHealthFactor" /> inside the [de-risk window](/docs/help/glossary#de-risk-window). By default that window is the last <Fact name="mandate.deriskWindowSec" /> before <Fact name="feedEdge" /> on a Friday, and on a Monday to Thursday before a holiday ([The de-risk window](/docs/concepts/credit-and-health-factor#the-de-risk-window) has the rules). A closed market refuses the borrow with `MARKET_CLOSED`. A supplied stock that fails returns `TOKEN_NOT_ALLOWED`, `TOKEN_PAUSED`, `BAD_PRICE`, `FEED_STALE` or `MULTIPLIER_COOLDOWN`. A health factor under the floor returns `HEALTH_FACTOR_LOW`, and one under the target inside the window `DERISK_WINDOW`. An adapter read that fails returns `CREDIT_FAILED`. [Other actions](/docs/concepts/nine-checks#other-actions) lists these checks in the order the vault runs them.
 
 First set the variables. These lines only read. The `PREVIEW` and `EXECUTOR` lines are added here, and the others are the runbook's. `STOCK` is the vault's [raw](/docs/help/glossary#raw-amount) NVDAc balance from the BUY, and `cut` keeps only the first field of what `cast` prints. `VAULT` and `USDC` come from the funding step.
 
@@ -415,7 +417,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - The simulation with your real `.env` printed the addresses you set on the `owner (immutable)`, `executor` and `expense payee` lines, and no `vault address mismatch`.
 - After the broadcast, a read-only call returns your addresses from the vault: `cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"` prints the owner, and `cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"` prints the executor.
 - `previewIntent` returned `0`, and `cast logs` shows the BUY's `Decision` with `allowed=true` and `reason=0`.
-- The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A [refusal](/docs/help/glossary#refusal) moves no funds.
+- The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A refusal moves no funds.
 - The four credit intents emitted a `Decision` with `allowed=true` each, and the adapter reads `debt()` as `0` and `hasPosition()` as `false`.
 - The table in deployments/README.md has your four addresses.
 
@@ -455,7 +457,7 @@ export function rationaleHash(text: string): Hex {
 }
 ```
 
-3. **Preview from the executor's address.** Call [`previewIntent`](/docs/reference/mandate-vault#previewintent) with `eth_call`, sent from the executor, as the agent does in `agent/src/chain/preview.ts`. [Check 3](/docs/concepts/nine-checks#3-transfer-policy) reads `tx.origin` (the callout in [Run the smoke test](#run-the-smoke-test) says why). If your transactions start from another address, such as a relayer or an ERC-4337 bundler, check 3 checks that address instead, and it can get `POLICY_BLOCKED`. No test sends an intent through a relayer or a bundler. The `GuardLib` unit tests `test_buyExecutorTxOrigin` and `test_sellExecutorTxOrigin` only check that the market checks return `POLICY_BLOCKED` for a `tx.origin` the stock's executor policy does not allow, and `OK` once it does.
+3. **Preview from the executor's address.** Call [`previewIntent`](/docs/reference/mandate-vault#previewintent) with `eth_call`, sent from the executor, as the agent does in `agent/src/chain/preview.ts`. [Check 3](/docs/concepts/nine-checks#3-transfer-policy) reads `tx.origin` (the callout in [Run the smoke test](#run-the-smoke-test) says why). If your transactions start from another address, such as a relayer or an ERC-4337 bundler, check 3 checks that address instead, and it can get `POLICY_BLOCKED`. No test sends an intent through a relayer or a bundler. The `GuardLib` unit tests `test_buyExecutorTxOrigin` and `test_sellExecutorTxOrigin` only check that the market checks return `POLICY_BLOCKED` for a `tx.origin` the stock's executor policy does not allow, and `OK` once it does. `test_transferableChecksTxOrigin` only checks that `GuardLib.transferable`, the policy check of a `SUPPLY` and a `WITHDRAW_COLLATERAL`, returns false for such a `tx.origin`.
 4. **Send `execute` with an explicit gas limit**, never a plain estimate. The Maat agent uses at least <Fact name="executeGasFloor" />. That is its own floor, sized from gas measured on a fork, not a vault rule ([Troubleshooting](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit)).
 5. **Read the verdict from the `Decision` event** in the receipt ([Events](/docs/reference/events#decision)). A receipt does not carry the call's return values, so `allowed` and `reason` come from the log. If a send leaves you unsure, read `usedIntent(id)` and then the `Decision` for that id ([Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent)). An `execute` that reverts emits nothing and leaves the id unused.
 6. **The ABI** is `mandateVaultAbi` in [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts. The same ABI is published as <a href="/data/abi/MandateVault.json">ABI (JSON)</a>.
