@@ -246,7 +246,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "reference/agent-scripts",
         "Agent scripts",
-        "The npm scripts in the agent package: what each runs, the modes they take, what they need and how they exit.",
+        "The npm scripts in the agent package: what each runs, the modes they take, what they need, how they exit and the messages the agent prints.",
       ),
       page(
         "reference/base-addresses",
@@ -313,7 +313,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "help/troubleshooting",
         "Troubleshooting",
-        "Fixes for problems that happened while building and testing Maat: line endings, Foundry versions, fork RPCs, submodules and gas.",
+        "Fixes for problems that happened while building and testing Maat, and where to look when the agent prints an error or a Decision looks wrong.",
       ),
       page(
         "help/glossary",

@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -128,6 +128,96 @@ describe("the test gate", () => {
 });
 
 const FENCED = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
+
+/** The agent's code: every .ts file under agent/src and agent/scripts, by repo path, read from the sources now. */
+function agentCode(): Map<string, string> {
+  const out = new Map<string, string>();
+  const walk = (dir: string) => {
+    for (const e of readdirSync(join(REPO_ROOT, dir), { withFileTypes: true })) {
+      const rel = `${dir}/${e.name}`;
+      if (e.isDirectory()) walk(rel);
+      else if (e.name.endsWith(".ts")) out.set(rel, readRepo(rel));
+    }
+  };
+  walk("agent/src");
+  walk("agent/scripts");
+  return out;
+}
+
+/** The id of the H2 on Agent scripts that lists the agent's messages. */
+const MESSAGES_ID = "messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run";
+
+/**
+ * The messages a page quotes under the H2 whose id is `id`, up to the next H2: the inline code in the first cell of
+ * each table row. A placeholder such as <FILE> stands for a value the code puts in.
+ */
+function quotedMessages(source: string, id: string): { line: number; text: string }[] {
+  const out: { line: number; text: string }[] = [];
+  let inside = false;
+  source
+    .replace(FENCED, (m) => m.replace(/[^\n]/g, " "))
+    .split("\n")
+    .forEach((line, i) => {
+      const h2 = /^##\s+(.+?)\s*$/.exec(line)?.[1];
+      if (h2 !== undefined) inside = headingId(h2) === id;
+      else if (inside && line.startsWith("|")) {
+        const cell = line.split(/(?<!\\)\|/)[1] ?? "";
+        for (const [, text = ""] of cell.matchAll(/`([^`\n]+)`/g)) out.push({ line: i + 1, text });
+      }
+    });
+  return out;
+}
+
+/** The quoted messages that no file of `code` holds word for word: each piece between placeholders must be in one file. */
+function unknownMessages(messages: readonly { line: number; text: string }[], code: ReadonlyMap<string, string>) {
+  return messages.filter((m) => {
+    const pieces = m.text.split(/<[A-Z][A-Z_]*>/).filter((p) => p !== "");
+    return ![...code.values()].some((src) => pieces.every((p) => src.includes(p)));
+  });
+}
+
+describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
+  const code = agentCode();
+  const page = [
+    "## Messages the agent prints (from the code and unit tests; none seen in a live run)",
+    "",
+    "| Message | What it means |",
+    "| --- | --- |",
+    "| `lock file unreadable; delete if no agent runs` | x |",
+    "| `another agent (pid <PID>) is running; lock <FILE>` | `not a message` |",
+    "| `lock file is unreadable; delete if no agent runs` | x |",
+    "",
+    "## Related",
+    "",
+    "| `not a message either` | x |",
+  ].join("\n");
+
+  it("are each still in agent/src or agent/scripts, word for word", () => {
+    const messages = quotedMessages(bySlug.get("reference/agent-scripts") ?? "", MESSAGES_ID);
+    expect(messages.length, `reference/agent-scripts has no message table under #${MESSAGES_ID}`).toBeGreaterThan(0);
+    expect(unknownMessages(messages, code).map((f) => at("reference/agent-scripts", f))).toEqual([]);
+  });
+
+  it("are where Troubleshooting sends a reader whose agent stopped or printed an error", () => {
+    expect(docsLinks(bySlug.get("help/troubleshooting") ?? "")).toContain(`/docs/reference/agent-scripts#${MESSAGES_ID}`);
+  });
+
+  it("reads the first cell of each row in the section, with a placeholder for each value the code puts in", () => {
+    expect(quotedMessages(page, MESSAGES_ID).map((m) => m.text)).toEqual([
+      "lock file unreadable; delete if no agent runs",
+      "another agent (pid <PID>) is running; lock <FILE>",
+      "lock file is unreadable; delete if no agent runs",
+    ]);
+  });
+
+  it("fails a message reworded on the page, and one reworded in the code", () => {
+    const messages = quotedMessages(page, MESSAGES_ID);
+    expect(unknownMessages(messages, code).map((f) => at("x", f))).toEqual(["content/docs/x.mdx:7 lock file is unreadable; delete if no agent runs"]);
+    const reworded = new Map(code);
+    reworded.set("agent/src/loop/lock.ts", (code.get("agent/src/loop/lock.ts") ?? "").replace("lock file unreadable", "lock file not readable"));
+    expect(unknownMessages(messages, reworded).map((f) => f.line)).toEqual([5, 7]);
+  });
+});
 
 /**
  * Every heading id on a page that an earlier heading already has (h2 to h6, outside fenced code), with its line.

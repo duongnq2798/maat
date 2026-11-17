@@ -353,6 +353,8 @@ test.describe("search finds what readers type", () => {
     ["agent", "/docs/guides/run-the-agent"],
     ["reason code", "/docs/concepts/refusal-codes"],
     ["environment variables", "/docs/reference/agent-configuration"],
+    // A message the agent prints, as the reader pastes it: Agent scripts lists them.
+    ["could not acquire", "/docs/reference/agent-scripts"],
   ] as const) {
     test(`"${query}" lists ${url} in the first three pages`, async ({ page }) => {
       const dialog = await searchFor(page, query);

@@ -1,6 +1,6 @@
 ---
 title: Agent scripts
-description: "The npm scripts in the agent package: what each runs, the modes they take, what they need and how they exit."
+description: "The npm scripts in the agent package: what each runs, the modes they take, what they need, how they exit and the messages the agent prints."
 type: reference
 audience: [builder, developer]
 status: fork-tested
@@ -12,10 +12,19 @@ sources:
   - agent/scripts/cdp-setup.ts
   - agent/scripts/smoke-claude.ts
   - agent/README.md
+  - agent/src/config.ts
+  - agent/src/loop/lock.ts
+  - agent/src/ledger/store.ts
+  - agent/src/exec/builderCode.ts
+  - agent/src/exec/cdpSender.ts
+  - agent/src/loop/runOnce.ts
+  - agent/src/llm/proposer.ts
+  - agent/src/intent.ts
+  - agent/src/loop/scheduler.ts
 next: [guides/run-the-agent, guides/run-the-tests]
 ---
 
-This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and it has not run live.
+This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and it has not run live. The last section lists the messages the agent prints when it stops or a round goes wrong.
 
 | Entry | What it does | What it needs | Outside services |
 | --- | --- | --- | --- |
@@ -56,7 +65,7 @@ At startup the agent takes a lock on its data directory, before it opens its fil
 - Without `--once` it runs a round, then waits. The wait is <Fact name="loopMinutes" /> after a round that saw the market open, and <Fact name="offSessionMinutes" /> after any other round, including a round that threw an error. The agent logs a round that throws and tries again after the longer wait.
 - A stop signal (Ctrl+C, or SIGTERM) ends the wait. It does not interrupt a round in progress: the agent finishes that round, releases the lock and exits.
 
-The exit code does not tell you how a round went. `main.ts` sets no exit code, so a round that halts exits like a round that completes, and the `status` in the report is the thing to read. The process ends with an error when something throws outside the round's own handling, for example an invalid configuration, a lock held by another agent, a failed CDP lookup in live mode, or an unexpected error in a `--once` round. When a round halts or leaves a transaction pending, [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#after-a-halted-or-pending-tx-cycle) says what to read and what the next round does.
+The exit code does not tell you how a round went. `main.ts` sets no exit code, so a round that halts exits like a round that completes, and the `status` in the report is the thing to read. The process ends with an error when something throws outside the round's own handling, for example an invalid configuration, a lock held by another agent, a failed CDP lookup in live mode, or an unexpected error in a `--once` round. [Messages the agent prints](#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run) quotes the agent's own errors that stop a start. When a round halts or leaves a transaction pending, [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#after-a-halted-or-pending-tx-cycle) says what to read and what the next round does.
 
 ### test
 
@@ -180,6 +189,54 @@ node --env-file=.env --import tsx scripts/smoke-claude.ts
 ```
 
 This page shows no output for it, because the script calls the paid API.
+
+## Messages the agent prints (from the code and unit tests; none seen in a live run)
+
+The agent has not run live, so no message below has been seen in a live run. Each one is quoted from `agent/src`, with what it means and the page that explains it. Text in angle brackets stands for a value the agent fills in. The last column names the unit test file that checks the message's text, with fakes in place of Claude, the CDP wallet and the chain, and None means that only the code holds it. For `invalid agent config`, the tests check the setting and the problem after the prefix.
+
+### When the agent starts
+
+The start stops with one of these errors before the `maat agent: mode=` line, so no round runs.
+
+| Message | What it means | Read | Unit test |
+| --- | --- | --- | --- |
+| `invalid agent config: <SETTING>: <PROBLEM>` | A setting is missing or not valid, and several problems are joined with a semicolon. Live mode without a [Builder Code](/docs/help/glossary#builder-code-erc-8021) gives `invalid agent config: MAAT_BUILDER_CODE: MAAT_BUILDER_CODE is required in live mode`. | [Agent configuration](/docs/reference/agent-configuration) | [`config.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/config.test.ts) |
+| `another agent (pid <PID>) is running; lock <FILE>` | A running process has the pid that the lock file holds: another agent on the same data folder, or a process that took over the pid of an agent that has exited. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | [`lock.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/lock.test.ts) |
+| `lock file unreadable; delete if no agent runs` | The lock file holds no pid the agent can read, and it is younger than <Fact name="lockStaleSec" />. Delete it only when no agent runs. An older one is removed at the next start. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | [`lock.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/lock.test.ts) |
+| `could not acquire <FILE>` | The start removed a stale lock file, one whose pid no longer runs or that is unreadable and older than <Fact name="lockStaleSec" />, then met a stale one again on its second and last try. | [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder) | None |
+| `unsupported state version <N>` | The `version` in `data/state.json` is not 1. A `state.json` that is not valid JSON stops the start too, with the parser's error. | [State file format](/docs/guides/run-the-agent#state-file-format) | [`store.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/store.test.ts) |
+| `invalid builder code "<CODE>"` | In live mode, `MAAT_BUILDER_CODE` does not match `^[a-z0-9_]{1,32}$`. The agent checks it before any CDP call. | [MAAT_BUILDER_CODE](/docs/reference/agent-configuration#maat_builder_code) | [`builderCode.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/builderCode.test.ts), [`runtime.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runtime.test.ts) |
+| `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>` | In live mode, the CDP account that `CDP_ACCOUNT_NAME` names has another address than `MAAT_EXECUTOR`. One cause is a `MAAT_EXECUTOR` already set in your shell, which `.env` does not replace. This is tested against a fake CDP client only. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | [`cdpSender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpSender.test.ts) |
+
+### In the journal
+
+A round writes these to its [journal](/docs/help/glossary#journal), `data/journal.jsonl`, as the `message` of an `error` or a `mismatch` line, or as the `error` of a `run` or a `skip` line. Each row says which. When a `run` line has an `error`, the round has no proposals from Claude, and a [compute bill](/docs/help/glossary#compute-bill) that is due, at least <Fact name="billMinUsd" />, is still queued as a `PAY_EXPENSE`. A `skip` line means that the proposal never became an [intent](/docs/help/glossary#intent), so nothing was previewed or sent for it.
+
+| Message | What it means | Read | Unit test |
+| --- | --- | --- | --- |
+| `state unavailable: <ERROR>` | An `error` line. A required read of the vault failed, and the round ended `no-state` without doing anything else. | [Run one round](/docs/guides/run-the-agent#run-one-round) | None |
+| `vault executor is <ADDRESS>, agent is <ADDRESS>` | An `error` line. The vault's executor is not `MAAT_EXECUTOR`. The round ended `wrong-executor` right after it read the vault, before the policy or Claude, so it sent nothing. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | None |
+| `claude: <ERROR>` | A `run` line. The request to Claude failed before an answer came back. The agent records a cost of zero for it. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
+| `claude: malformed response: <ERROR>` | A `run` line. The answer had no usage or no content to read. The agent records a cost of zero for it. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | None |
+| `claude refused` | A `run` line. Claude declined to answer. The agent adds the answer's token cost to the compute bill. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
+| `claude output truncated` | A `run` line. The answer reached the request's token limit and was cut off. The agent adds its token cost to the compute bill. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
+| `invalid proposal JSON: <ERROR>` | A `run` line. The answer is not JSON, or it does not fit the proposal schema. The agent adds its token cost to the compute bill. | [Step 2: the policy and Claude](/docs/get-started/how-a-decision-is-made#step-2-the-policy-and-claude) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts), [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
+| `symbol <SYMBOL> does not fit <ACTION>` | A `skip` line. `BORROW`, `REPAY` and `PAY_EXPENSE` take `USDC`, and the other actions take a stock. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts), [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
+| `invalid amount <AMOUNT>` | A `skip` line. The dollar amount is negative or not a finite number. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | None |
+| `<SYMBOL> is not listed in the vault` | A `skip` line. The vault's token list does not hold that stock. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | None |
+| `no price for <SYMBOL>` | A `skip` line. A `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL` needs the stock's price to turn dollars into the stock's units, and the stock has no feed, or its feed's answer could not be read or is not valid. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts) |
+| `amount rounds to zero` | A `skip` line. The amount comes to zero in the token's own units, after the agent caps it at the vault's balance, its supplied stock or its debt, as the action requires. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts) |
+| `mismatch: preview <REASON>, vault <REASON>` | A `mismatch` line. The vault's [Decision](/docs/help/glossary#decision) gave another reason than the [preview](/docs/help/glossary#preview). When the preview was `OK`, the round also halts with this message. | [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
+| `halted: <REASON>` | An `error` line. The round stopped at once. `<REASON>` is one of the runner's halt reasons, or the message of another error thrown during the round. | [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) | None |
+
+### After each round of the loop
+
+Without `--once`, the loop prints one of these lines after each round. With `--once`, the agent prints the round's report instead, and an error ends the process.
+
+| Message | What it means | Read | Unit test |
+| --- | --- | --- | --- |
+| `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | The round returned its report. Any `<STATUS>` other than `done` needs a look. | [What to watch while it runs](/docs/guides/run-the-agent#what-to-watch-while-it-runs) | None |
+| `round failed: <ERROR>` | The round threw an error instead of returning a report. The loop prints the error's stack and runs the next round after <Fact name="offSessionMinutes" />. | [Run it continuously](/docs/guides/run-the-agent#run-it-continuously) | None |
 
 ## Related
 
