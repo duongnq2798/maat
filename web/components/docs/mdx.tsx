@@ -2,14 +2,16 @@ import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
-import type { ComponentProps, HTMLAttributes } from "react";
+import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { pageExists, source } from "@/lib/docs-source";
 import { excerptHref } from "@/lib/docs/content-checks";
+import { GLOSSARY_URL, glossaryId, glossaryPreviews, previewRuns } from "@/lib/docs/glossary-preview";
 import { docsSlug } from "@/lib/docs/links";
 import { SITE } from "@/lib/site";
 import { Callout } from "./Callout";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "./content";
 import { Architecture, DecisionLoop, MarketWeek, TimelockFlow, TreasuryLoop } from "./diagrams";
+import { GlossaryTerm } from "./GlossaryTerm";
 import {
   AddressTable,
   EnvTable,
@@ -33,13 +35,39 @@ function Fact({ name }: { name?: string }): never {
 
 const BaseLink = defaultMdxComponents.a;
 
+/** The glossary's previews as a term draws them, by entry: built once, and again only when the glossary changes. */
+let glossary: { markdown: string; previews: ReadonlyMap<string, ReactNode> } | undefined;
+
+async function glossaryPreview(id: string): Promise<ReactNode | undefined> {
+  const page = source.getPage(docsSlug(GLOSSARY_URL) ?? []);
+  const markdown = page ? await page.data.getText("processed") : "";
+  if (glossary?.markdown !== markdown) {
+    const previews = [...glossaryPreviews(markdown)].map(([entry, text]): [string, ReactNode] => [
+      entry,
+      previewRuns(text).map((run, i) => (run.code ? <code key={i}>{run.text}</code> : run.text)),
+    ]);
+    glossary = { markdown, previews: new Map(previews) };
+  }
+  return glossary.previews.get(id);
+}
+
+/** A link to a glossary entry, with the whole entry as its preview (components/docs/GlossaryTerm.tsx). */
+async function GlossaryLink({ entry, ...props }: ComponentProps<"a"> & { entry: string }) {
+  const preview = await glossaryPreview(entry);
+  if (preview === undefined) throw new Error(`${props.href ?? ""}: content/docs/help/glossary.mdx has no entry with this anchor`);
+  return <GlossaryTerm {...props} preview={preview} />;
+}
+
 /**
  * A link to a docs page that is in the IA but not written yet renders as plain text until the page ships, so
- * no build ever ships a dead docs link. test/docs-content.test.ts still fails on a link outside the IA.
+ * no build ever ships a dead docs link. test/docs-content.test.ts still fails on a link outside the IA. A link to a
+ * glossary entry previews the entry. The Markdown copies keep it a plain link: they are printed from the source.
  */
 function DocsLink(props: ComponentProps<"a">) {
   const slug = props.href ? docsSlug(props.href) : null;
   if (slug && !pageExists(slug.join("/"))) return <span>{props.children}</span>;
+  const entry = props.href ? glossaryId(props.href) : null;
+  if (entry !== null) return <GlossaryLink {...props} entry={entry} />;
   return <BaseLink {...props} />;
 }
 

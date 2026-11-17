@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 import { DOCS_IA } from "../lib/docs/ia";
@@ -767,6 +768,197 @@ test.describe("files for tools", () => {
     expect(file.source).toContain("agent/src/abi/generated.ts");
     expect(file.note).toContain("not deployed");
     expect(file.abi.some((e) => e.type === "function" && e.name === "execute")).toBe(true);
+  });
+});
+
+test.describe("glossary previews", () => {
+  const WHAT_IS_MAAT = "/docs/get-started/what-is-maat";
+  /** The first link in the page's body to a glossary entry. */
+  const termOf = (page: Page, id: string) => page.locator(`#nd-page .prose a[href="/docs/help/glossary#${id}"]`).first();
+  /** The preview a term opens: the element its aria-describedby names. */
+  async function previewOf(term: Locator): Promise<Locator> {
+    const id = await term.getAttribute("aria-describedby");
+    expect(id, "the term names its preview").toBeTruthy();
+    return term.page().locator(`[id="${id}"]`);
+  }
+  /** An entry as the glossary page shows it, without the trailing "See …" sentence that points to the page about it. */
+  async function entryWithoutPointer(page: Page, id: string): Promise<string> {
+    await page.goto("/docs/help/glossary");
+    const text = (await page.locator(`#nd-page .prose h3[id="${id}"] + p`).innerText()).replace(/\s+/g, " ").trim();
+    const at = text.lastIndexOf(". See ");
+    return at === -1 ? text : text.slice(0, at + 1);
+  }
+
+  test("pointing at B20 on What is Maat shows its whole entry, Escape closes it, and a click opens the entry", async ({ page }) => {
+    const b20 = await entryWithoutPointer(page, "b20");
+    // Its second sentence, which a preview cut to the first would lose.
+    expect(b20).toContain("and the vault reads all three before it trades.");
+    await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+    const term = termOf(page, "b20");
+    const preview = await previewOf(term);
+    await expect(preview).toBeHidden();
+    await term.hover();
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveRole("tooltip");
+    await expect(preview).toHaveText(b20);
+    await expect(term).toHaveAccessibleDescription(b20);
+    await page.keyboard.press("Escape");
+    await expect(preview).toBeHidden();
+    await term.click();
+    await expect(page).toHaveURL(/\/docs\/help\/glossary#b20$/);
+  });
+
+  test("a term previews on keyboard focus, and Escape or moving focus on closes it", async ({ page }) => {
+    const b20 = await entryWithoutPointer(page, "b20");
+    const cdp = await entryWithoutPointer(page, "cdp-server-wallet");
+    // The status of the term is in its last sentence.
+    expect(cdp).toContain("has never run against the real CDP");
+    await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+    const first = termOf(page, "b20");
+    await first.focus();
+    await expect(await previewOf(first)).toBeVisible();
+    await expect(await previewOf(first)).toHaveText(b20);
+    const term = termOf(page, "cdp-server-wallet");
+    const preview = await previewOf(term);
+    await term.focus();
+    await expect(await previewOf(first)).toBeHidden();
+    await expect(preview).toBeVisible();
+    await expect(preview).toHaveText(cdp);
+    await page.keyboard.press("Escape");
+    await expect(preview).toBeHidden();
+    await expect(term).toBeFocused();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(term).toBeFocused();
+    await expect(preview).toBeVisible();
+    await page.keyboard.press("Tab");
+    await expect(term).not.toBeFocused();
+    await expect(preview).toBeHidden();
+  });
+
+  test("the pointer can move onto a preview without closing it, and leaving both closes it", async ({ page }) => {
+    await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+    const term = termOf(page, "b20");
+    const preview = await previewOf(term);
+    await term.hover();
+    await expect(preview).toBeVisible();
+    await preview.hover();
+    // Longer than a preview stays open once the pointer has left it.
+    await page.waitForTimeout(500);
+    await expect(preview).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(preview).toBeHidden();
+  });
+
+  for (const width of [360, 1440] as const) {
+    test(`at ${width}px a preview opens beside its term, inside the window`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 800 });
+      await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+      const term = termOf(page, "b20");
+      const preview = await previewOf(term);
+      await term.hover();
+      await expect(preview).toBeVisible();
+      const t = (await term.boundingBox())!;
+      const p = (await preview.boundingBox())!;
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x + p.width).toBeLessThanOrEqual(width);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y + p.height).toBeLessThanOrEqual(800);
+      // Below or above the term, never over it, and close to it.
+      const gap = p.y >= t.y + t.height ? p.y - (t.y + t.height) : t.y - (p.y + p.height);
+      expect(gap).toBeGreaterThanOrEqual(0);
+      expect(gap).toBeLessThanOrEqual(16);
+    });
+  }
+
+  test("every glossary link in a page's body names a preview with the entry's text", async ({ page }) => {
+    for (const path of [WHAT_IS_MAAT, "/docs/security/model", "/docs/help/glossary"]) {
+      await page.goto(path);
+      const links = await page.locator('#nd-page .prose a[href^="/docs/help/glossary#"]').evaluateAll((as) =>
+        as.map((a) => {
+          const tip = document.getElementById(a.getAttribute("aria-describedby") ?? "");
+          return { href: a.getAttribute("href"), role: tip?.getAttribute("role"), popover: tip?.getAttribute("popover"), text: tip?.textContent?.trim() };
+        }),
+      );
+      expect(links.length, path).toBeGreaterThan(0);
+      expect(links.filter((l) => l.role !== "tooltip" || l.popover !== "manual" || !l.text), path).toEqual([]);
+    }
+  });
+
+  test("the Markdown copies keep plain glossary links, with no definition inlined", async ({ request }) => {
+    const md = await (await request.get("/md/docs/get-started/what-is-maat.md")).text();
+    expect(md).toMatch(/\[B20\]\(https?:\/\/[^)\s]+\/docs\/help\/glossary#b20\)/);
+    const definition = "The token type behind the tokenized stocks";
+    expect(md).not.toContain(definition);
+    // llms-full.txt holds the entry once: in the glossary.
+    const full = await (await request.get("/llms-full.txt")).text();
+    expect(full.split(definition)).toHaveLength(2);
+  });
+
+  for (const theme of ["light", "dark"] as const) {
+    test(`What is Maat with a preview open in ${theme} has no serious or critical axe violations`, async ({ page }) => {
+      await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
+      await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+      await expect(page.locator("html")).toHaveClass(theme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/);
+      await expect(page.locator('[data-overflow="unmeasured"]')).toHaveCount(0);
+      const term = termOf(page, "b20");
+      const preview = await previewOf(term);
+      await term.hover();
+      await expect(preview).toBeVisible();
+      const { violations } = await new AxeBuilder({ page }).analyze();
+      const blocking = violations
+        .filter((v) => v.impact === "serious" || v.impact === "critical")
+        .map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }));
+      expect(blocking).toEqual([]);
+      // The scan ran on the open preview.
+      await expect(preview).toBeVisible();
+    });
+  }
+
+  test.describe("on a touch screen", () => {
+    test.use({ hasTouch: true });
+
+    test("a tap on a term opens no preview and follows the link", async ({ page }) => {
+      await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+      // Kept in sessionStorage, so a preview the tap opened is still known after the page changes.
+      await page.evaluate(() =>
+        document.addEventListener(
+          "toggle",
+          (e) => {
+            if ((e as ToggleEvent).newState === "open") sessionStorage.setItem("previewOpened", "yes");
+          },
+          true,
+        ),
+      );
+      // The recorder sees a preview the mouse opens.
+      const vault = termOf(page, "vault");
+      await vault.hover();
+      await expect(await previewOf(vault)).toBeVisible();
+      await expect.poll(() => page.evaluate(() => sessionStorage.getItem("previewOpened"))).toBe("yes");
+      await page.mouse.move(0, 0);
+      await expect(await previewOf(vault)).toBeHidden();
+      await page.evaluate(() => sessionStorage.removeItem("previewOpened"));
+      await termOf(page, "b20").tap();
+      await expect(page).toHaveURL(/\/docs\/help\/glossary#b20$/);
+      expect(await page.evaluate(() => sessionStorage.getItem("previewOpened"))).toBeNull();
+    });
+  });
+
+  test.describe("without JavaScript", () => {
+    test.use({ javaScriptEnabled: false });
+
+    test("a term is a plain link to its entry, with a dotted underline and no preview showing", async ({ page }) => {
+      await page.goto(WHAT_IS_MAAT);
+      const term = termOf(page, "b20");
+      await expect(term).toHaveAttribute("href", "/docs/help/glossary#b20");
+      await expect(await previewOf(term)).toBeHidden();
+      expect(await term.evaluate((a) => getComputedStyle(a).textDecorationStyle)).toBe("dotted");
+      // A link to any other page keeps the solid underline.
+      const other = page.locator('#nd-page .prose a[href="/docs/concepts/treasury-loop"]').first();
+      expect(await other.evaluate((a) => getComputedStyle(a).textDecorationStyle)).toBe("solid");
+      await term.click();
+      await expect(page).toHaveURL(/\/docs\/help\/glossary#b20$/);
+    });
   });
 });
 
