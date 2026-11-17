@@ -781,6 +781,24 @@ test.describe("glossary previews", () => {
     expect(id, "the term names its preview").toBeTruthy();
     return term.page().locator(`[id="${id}"]`);
   }
+  /** The CDP Server Wallet entry's last sentence, its status. */
+  const CDP_STATUS = "has never run against the real CDP";
+  /** Whether these words of a preview are inside the part of it the window shows. */
+  const inView = (preview: Locator, words: string) =>
+    preview.evaluate((el, w) => {
+      const box = el.getBoundingClientRect();
+      const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+        const at = node.textContent?.indexOf(w) ?? -1;
+        if (at === -1) continue;
+        const range = document.createRange();
+        range.setStart(node, at);
+        range.setEnd(node, at + w.length);
+        const r = range.getBoundingClientRect();
+        return r.top >= box.top && r.bottom <= box.bottom && r.bottom <= window.innerHeight;
+      }
+      return false;
+    }, words);
   /** An entry as the glossary page shows it, without the trailing "See …" sentence that points to the page about it. */
   async function entryWithoutPointer(page: Page, id: string): Promise<string> {
     await page.goto("/docs/help/glossary");
@@ -871,17 +889,145 @@ test.describe("glossary previews", () => {
     });
   }
 
-  test("every glossary link in a page's body names a preview with the entry's text", async ({ page }) => {
+  test("every glossary link in a page's body names a preview with the entry's text, one preview per entry", async ({ page }) => {
+    // Each entry as the glossary shows it, without the previews of the terms it links.
+    await page.goto("/docs/help/glossary");
+    const entries = new Map(
+      await page.locator("#nd-page .prose h3[id] + p").evaluateAll((ps) =>
+        ps.map((p) => {
+          const copy = p.cloneNode(true) as HTMLElement;
+          for (const tip of copy.querySelectorAll('[role="tooltip"]')) tip.remove();
+          return [p.previousElementSibling?.id ?? "", (copy.textContent ?? "").replace(/\s+/g, " ").trim()] as const;
+        }),
+      ),
+    );
+    expect(entries.size).toBeGreaterThan(0);
     for (const path of [WHAT_IS_MAAT, "/docs/security/model", "/docs/help/glossary"]) {
       await page.goto(path);
       const links = await page.locator('#nd-page .prose a[href^="/docs/help/glossary#"]').evaluateAll((as) =>
         as.map((a) => {
-          const tip = document.getElementById(a.getAttribute("aria-describedby") ?? "");
-          return { href: a.getAttribute("href"), role: tip?.getAttribute("role"), popover: tip?.getAttribute("popover"), text: tip?.textContent?.trim() };
+          const id = a.getAttribute("aria-describedby") ?? "";
+          const tip = document.getElementById(id);
+          return {
+            href: a.getAttribute("href") ?? "",
+            id,
+            count: document.querySelectorAll(`[id="${CSS.escape(id)}"]`).length,
+            role: tip?.getAttribute("role"),
+            popover: tip?.getAttribute("popover"),
+            text: (tip?.textContent ?? "").replace(/\s+/g, " ").trim(),
+          };
         }),
       );
       expect(links.length, path).toBeGreaterThan(0);
-      expect(links.filter((l) => l.role !== "tooltip" || l.popover !== "manual" || !l.text), path).toEqual([]);
+      expect(links.filter((l) => l.count !== 1 || l.role !== "tooltip" || l.popover !== "manual" || !l.text), path).toEqual([]);
+      // Every link to one entry names the same preview, and that preview is the entry less its closing See pointer.
+      const byHref = new Map<string, typeof links>();
+      for (const l of links) byHref.set(l.href, [...(byHref.get(l.href) ?? []), l]);
+      for (const [href, group] of byHref) {
+        expect(new Set(group.map((l) => l.id)).size, `${path}: ${href}`).toBe(1);
+        const entry = entries.get(href.slice(href.indexOf("#") + 1)) ?? "";
+        const { text } = group[0]!;
+        const rest = entry.slice(text.length).trim();
+        expect(entry.startsWith(text) && (rest === "" || rest.startsWith("See ")), `${path}: ${href} shows "${text}"`).toBe(true);
+      }
+      // The page draws each entry's preview once.
+      expect(await page.locator('#nd-page [role="tooltip"][popover]').count(), path).toBe(byHref.size);
+    }
+  });
+
+  test("a later link to an entry opens the page's one preview of it, beside that link", async ({ page }) => {
+    await page.goto("/docs/security/model", { waitUntil: "networkidle" });
+    const links = page.locator('#nd-page .prose a[href="/docs/help/glossary#timelock"]');
+    expect(await links.count()).toBeGreaterThan(1);
+    const later = links.last();
+    expect(await later.getAttribute("aria-describedby")).toBe(await links.first().getAttribute("aria-describedby"));
+    const preview = await previewOf(later);
+    await later.scrollIntoViewIfNeeded();
+    await later.hover();
+    await expect(preview).toBeVisible();
+    const t = (await later.boundingBox())!;
+    const p = (await preview.boundingBox())!;
+    const gap = p.y >= t.y + t.height ? p.y - (t.y + t.height) : t.y - (p.y + p.height);
+    expect(gap).toBeGreaterThanOrEqual(0);
+    expect(gap).toBeLessThanOrEqual(16);
+    // The pointer can move onto it, as onto the preview of a first link.
+    await preview.hover();
+    await page.waitForTimeout(500);
+    await expect(preview).toBeVisible();
+    await page.mouse.move(0, 0);
+    await expect(preview).toBeHidden();
+  });
+
+  for (const { width, height } of [
+    { width: 320, height: 256 },
+    { width: 640, height: 360 },
+  ] as const) {
+    test(`in a ${width}x${height} window a preview too tall for either side of its term stays inside the window and scrolls`, async ({ page }) => {
+      await page.setViewportSize({ width, height });
+      await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+      // Its status is in its last sentence.
+      const term = termOf(page, "cdp-server-wallet");
+      const preview = await previewOf(term);
+      await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
+      await term.focus();
+      await expect(preview).toBeVisible();
+      const t = (await term.boundingBox())!;
+      const p = (await preview.boundingBox())!;
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x + p.width).toBeLessThanOrEqual(width);
+      expect(p.y).toBeGreaterThanOrEqual(0);
+      expect(p.y + p.height).toBeLessThanOrEqual(height);
+      const gap = p.y >= t.y + t.height ? p.y - (t.y + t.height) : t.y - (p.y + p.height);
+      expect(gap).toBeGreaterThanOrEqual(0);
+      expect(gap).toBeLessThanOrEqual(16);
+      // Cut to the room it has, it scrolls, and the wheel brings its last sentence into view.
+      expect(await preview.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+      expect(await inView(preview, CDP_STATUS)).toBe(false);
+      await page.mouse.move(p.x + p.width / 2, p.y + p.height / 2);
+      await page.mouse.wheel(0, 600);
+      await expect.poll(() => inView(preview, CDP_STATUS)).toBe(true);
+      await expect(preview).toBeVisible();
+    });
+  }
+
+  test("a preview cut in a short window shows its whole entry once the page scrolls its term up", async ({ page }) => {
+    await page.setViewportSize({ width: 640, height: 360 });
+    await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+    const term = termOf(page, "cdp-server-wallet");
+    const preview = await previewOf(term);
+    await term.evaluate((a) => a.scrollIntoView({ block: "center" }));
+    await term.focus();
+    await expect(preview).toBeVisible();
+    const uncut = () => preview.evaluate((el) => el.scrollHeight <= el.clientHeight);
+    expect(await uncut()).toBe(false);
+    // The reader scrolls the page, with the keys or the wheel: the preview follows its term, with the room it now has.
+    const y = (await term.boundingBox())!.y;
+    await page.evaluate((by) => window.scrollBy(0, by), y - 80);
+    await expect.poll(uncut).toBe(true);
+    await expect.poll(() => inView(preview, CDP_STATUS)).toBe(true);
+    const p = (await preview.boundingBox())!;
+    expect(p.y).toBeGreaterThanOrEqual(0);
+    expect(p.y + p.height).toBeLessThanOrEqual(360);
+    await expect(term).toBeFocused();
+  });
+
+  test("with a scrollbar that takes room, a preview in a narrow window stays clear of it", async ({ playwright, baseURL }) => {
+    // Headless Chromium hides scrollbars unless told not to.
+    const browser = await playwright.chromium.launch({ ignoreDefaultArgs: ["--hide-scrollbars"] });
+    try {
+      const page = await browser.newPage({ baseURL, viewport: { width: 400, height: 800 } });
+      await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
+      const { inner, client } = await page.evaluate(() => ({ inner: innerWidth, client: document.documentElement.clientWidth }));
+      expect(client, "the page has a scrollbar that takes room").toBeLessThan(inner);
+      const term = termOf(page, "b20");
+      const preview = await previewOf(term);
+      await term.hover();
+      await expect(preview).toBeVisible();
+      const p = (await preview.boundingBox())!;
+      expect(p.x).toBeGreaterThanOrEqual(0);
+      expect(p.x + p.width).toBeLessThanOrEqual(client);
+    } finally {
+      await browser.close();
     }
   });
 
@@ -938,6 +1084,14 @@ test.describe("glossary previews", () => {
       await page.mouse.move(0, 0);
       await expect(await previewOf(vault)).toBeHidden();
       await page.evaluate(() => sessionStorage.removeItem("previewOpened"));
+      // A finger held on a term, well past the time a resting mouse pointer takes to open its preview, opens none.
+      const b20 = (await termOf(page, "b20").boundingBox())!;
+      const touch = await page.context().newCDPSession(page);
+      const point = { x: b20.x + b20.width / 2, y: b20.y + b20.height / 2 };
+      await touch.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [point] });
+      await page.waitForTimeout(700);
+      expect(await page.evaluate(() => sessionStorage.getItem("previewOpened"))).toBeNull();
+      await touch.send("Input.dispatchTouchEvent", { type: "touchCancel", touchPoints: [] });
       await termOf(page, "b20").tap();
       await expect(page).toHaveURL(/\/docs\/help\/glossary#b20$/);
       expect(await page.evaluate(() => sessionStorage.getItem("previewOpened"))).toBeNull();

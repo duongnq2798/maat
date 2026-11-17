@@ -33,14 +33,19 @@ const entries = processed
 
 const previews = glossaryPreviews(processed);
 
+/** The glossary entries a page's source links to, through a Markdown link or an `href` attribute. */
+function linkedEntries(source: string): string[] {
+  const ids: string[] = [];
+  for (const [, markdown, attribute] of source.matchAll(/\]\((\/docs\/help\/glossary#[^)\s]*)\)|href=["'](\/docs\/help\/glossary#[^"']*)["']/g)) {
+    const id = glossaryId(markdown ?? attribute ?? "");
+    if (id !== null) ids.push(id);
+  }
+  return ids;
+}
+
 /** Every glossary entry the docs pages link to, with a page that links it. */
 const linked = new Map<string, string>();
-for (const page of pages) {
-  for (const [, href = ""] of page.source.matchAll(/\]\((\/docs\/help\/glossary#[^)\s]*)\)|href=["'](\/docs\/help\/glossary#[^"']*)["']/g)) {
-    const id = glossaryId(href);
-    if (id !== null) linked.set(id, page.slug);
-  }
-}
+for (const page of pages) for (const id of linkedEntries(page.source)) linked.set(id, page.slug);
 
 /**
  * Words that give a term's status: how far it is built and what it has run against. A preview cut to its first sentence
@@ -145,6 +150,15 @@ describe("the glossary's previews", () => {
   it("has one preview for every entry of the glossary", () => {
     expect(entries.length).toBeGreaterThan(0);
     expect([...previews.keys()].sort()).toEqual(entries.map((e) => e.id).sort());
+  });
+
+  it("finds a page's links to the glossary, in Markdown and in an href attribute", () => {
+    const source = [
+      "A [B20](/docs/help/glossary#b20) token, and the [glossary](/docs/help/glossary) itself.",
+      '<a href="/docs/help/glossary#vault">vault</a> and <Link href=\'/docs/help/glossary#owner\'>owner</Link>.',
+      '[Mandate](/docs/concepts/mandate) and <a href="/docs/concepts/mandate#limits">limits</a>.',
+    ].join("\n");
+    expect(linkedEntries(source)).toEqual(["b20", "vault", "owner"]);
   });
 
   it("has a preview for every glossary entry the docs link to", () => {

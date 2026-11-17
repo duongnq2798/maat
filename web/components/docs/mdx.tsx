@@ -2,7 +2,7 @@ import { CodeBlock, Pre } from "fumadocs-ui/components/codeblock";
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import defaultMdxComponents from "fumadocs-ui/mdx";
 import type { MDXComponents } from "mdx/types";
-import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
+import { type ComponentProps, cache, type HTMLAttributes, type ReactNode } from "react";
 import { pageExists, source } from "@/lib/docs-source";
 import { excerptHref } from "@/lib/docs/content-checks";
 import { GLOSSARY_URL, glossaryId, glossaryPreviews, previewRuns } from "@/lib/docs/glossary-preview";
@@ -51,11 +51,21 @@ async function glossaryPreview(id: string): Promise<ReactNode | undefined> {
   return glossary.previews.get(id);
 }
 
+/**
+ * The glossary entries whose preview the page being rendered has drawn: one set per page render. A page draws each
+ * entry's preview once, beside its first link to the entry, and every later link names that one, so a page that links
+ * an entry many times, as the glossary itself does, carries its text once.
+ */
+const drawnPreviews = cache(() => new Set<string>());
+
 /** A link to a glossary entry, with the whole entry as its preview (components/docs/GlossaryTerm.tsx). */
 async function GlossaryLink({ entry, ...props }: ComponentProps<"a"> & { entry: string }) {
+  const drawn = drawnPreviews();
+  const first = !drawn.has(entry);
+  drawn.add(entry);
   const preview = await glossaryPreview(entry);
   if (preview === undefined) throw new Error(`${props.href ?? ""}: content/docs/help/glossary.mdx has no entry with this anchor`);
-  return <GlossaryTerm {...props} preview={preview} />;
+  return <GlossaryTerm {...props} previewId={`glossary-preview-${entry}`} preview={first ? preview : undefined} />;
 }
 
 /**
