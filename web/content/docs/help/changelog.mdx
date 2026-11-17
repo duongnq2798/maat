@@ -16,7 +16,7 @@ sources:
 next: [get-started/status, help/faq]
 ---
 
-This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and none is live. No Maat contract is deployed to Base mainnet and the agent has not run live, so each entry says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
+This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and the contracts and the agent are fork-tested. No Maat contract is deployed to [Base](/docs/help/glossary#base) mainnet, and the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer and a local sender, so each entry says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
 
 Dates are the author dates that `git log --date=short` prints for the first and last commit of each milestone. A commit is cited only after checking that `main` contains it. Work on branches that have not been merged into `main` is not listed, except the docs center, which is the work this site is part of and is marked as not merged.
 
@@ -49,7 +49,7 @@ Dates are the author dates that `git log --date=short` prints for the first and 
 
 **Dates.** 2026-11-06. The first commit is `16903ae`, the plan, and the last is `1193248`. The branch was merged in `4700f47` on 2026-11-07.
 
-**Scope.** The TypeScript agent in `agent/`: a vault reader pinned to one block, a rule-based policy, the Claude proposer, a [preview](/docs/help/glossary#preview) from the [executor](/docs/help/glossary#executor), a guarded sender that adds the [Builder Code](/docs/help/glossary#builder-code-erc-8021), the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) sender, the journal, the scheduler and a [fork test](/docs/help/glossary#fork-test) that runs the whole round. The Claude proposer and the CDP sender are tested against fakes only, and the fork run uses a scripted proposer and a local sender.
+**Scope.** The TypeScript agent in `agent/`: a [vault](/docs/help/glossary#vault) reader pinned to one block, a rule-based policy, the Claude proposer, a [preview](/docs/help/glossary#preview) from the [executor](/docs/help/glossary#executor), a guarded sender that adds the [Builder Code](/docs/help/glossary#builder-code-erc-8021), the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) sender, the [journal](/docs/help/glossary#journal), the scheduler and a [fork test](/docs/help/glossary#fork-test) that runs the whole [round](/docs/help/glossary#round). The Claude proposer and the CDP sender are tested against fakes only, and the fork run uses a scripted proposer and a local sender.
 
 **Read.** [Plan 2B](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) and [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent).
 
@@ -65,7 +65,7 @@ Dates are the author dates that `git log --date=short` prints for the first and 
 
 **Dates.** 2026-11-06. The first commit is `a5a82ab` and the last is `3af1ad8`. The branch was merged in `55e25b5` on 2026-11-07.
 
-**Scope.** `MarketCalendar`, `PriceLib`, `GuardLib`, the Aerodrome swap adapter and `MandateVault` with its [`Decision`](/docs/help/glossary#decision) log and [timelock](/docs/help/glossary#timelock), the Base mainnet deploy script, unit tests and fork tests.
+**Scope.** `MarketCalendar`, `PriceLib`, `GuardLib`, the [Aerodrome](/docs/help/glossary#aerodrome-slipstream) swap adapter and `MandateVault` with its [`Decision`](/docs/help/glossary#decision) log and [timelock](/docs/help/glossary#timelock), the Base mainnet deploy script, unit tests and fork tests.
 
 **Read.** [Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) and [`contracts/`](https://github.com/duongnq2798/maat/tree/main/contracts).
 
