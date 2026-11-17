@@ -130,7 +130,7 @@ Expected output, from README.md, How to evaluate Maat in 5 minutes, with the cou
 
 ### Run the website's tests and build it
 
-The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if its text outside the frontmatter, code and the attributes of component tags types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
+The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if its text outside the frontmatter, code and the attributes of component tags types out by hand a fact, one of the named values the docs render with `<Fact>`, that contains three or more digits in a row (dates aside), a dollar amount or a [bps](/docs/help/glossary#basis-point-bps) value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
 
 ```bash
 cd ../web

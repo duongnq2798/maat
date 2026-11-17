@@ -42,7 +42,7 @@ Every step that changes the vault is signed by the owner, the one address that i
 | Need | Detail |
 | --- | --- |
 | The owner wallet | Imported as the Foundry keystore `maat-owner` in the runbook, and passed to `cast send` as `--account`. Only the owner can queue, apply or cancel. |
-| `cast` | From [Foundry](https://getfoundry.sh). The logs commands were checked with the Foundry version noted in [Watch decisions onchain](/docs/guides/watch-decisions-onchain); an older `cast` may print raw logs. |
+| `cast` | From [Foundry](https://getfoundry.sh). The `cast logs` commands decode events as the help text of `cast logs` describes it in the Foundry version that [Watch decisions onchain](/docs/guides/watch-decisions-onchain) names. The Maat team has not run them, and an older `cast` may print raw logs. |
 | A vault and an RPC | Written `<VAULT_ADDRESS>` and `<BASE_RPC_URL>` here. The Maat team has deployed no vault, so there is nothing to read yet. |
 | The new values | The whole new mandate, or the new settings of one stock, or the payee and a flag. Check them against [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects) first. |
 | bash | Linux, macOS, or Git Bash on Windows, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). The commands use bash syntax (`export`, `NAME=value` and `$(...)` command substitution), which PowerShell and cmd do not run as written. |

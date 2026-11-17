@@ -281,7 +281,7 @@ To leave with USDC rather than stock, the owner can sell each stock in session b
 - **Expecting a pause to stop the owner.** The owner's functions ignore the flag. It stops the executor's actions only, except `REPAY`.
 - **Expecting a pause to stop a `REPAY`.** It does not, by design, so that debt can always be reduced.
 - **Withdrawing collateral while paused.** `WITHDRAW_COLLATERAL` is refused with `VAULT_PAUSED`. The vault has to be unpaused for that step of an unwind.
-- **A mistyped token address.** `withdraw` sends USDC or a stock to the owner. It does not check that `token` is a contract, so an address without code makes the call do nothing and `Withdrawn` is still emitted. Compare the owner's balance before and after.
+- **A mistyped token address.** `withdraw` sends USDC or a stock to the owner. It does not check that `token` is a contract, so a `token` that is a plain account with no code makes the call do nothing and `Withdrawn` is still emitted. Compare the owner's balance before and after.
 - **Expecting `withdraw` to reach Aave.** It moves only what the vault holds. Collateral comes home through `WITHDRAW_COLLATERAL`.
 - **Expecting `withdraw` to pay someone else.** It sends only to the owner address.
 - **Reusing an intent id.** A used id reverts with `IntentAlreadyUsed`, and a refused intent uses its id as well.
