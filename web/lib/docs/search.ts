@@ -84,15 +84,19 @@ const CONTRACT = /\s+\([^()]*\)$/;
  * in any case and maybe with its own backticks, its parameters or its contract: "execute", "supply (ICreditAdapter)",
  * not "executor", "Execution" or "Execute an intent". Plain words name a heading made of exactly those words, stemmed as
  * the index stems them: "environment variables" names "Environment variable", not "Set the environment variables".
+ * A heading of one character names nothing: the Glossary heads each letter's section with the letter alone ("A"), and
+ * the first letter a reader types would otherwise lift the Glossary.
  */
 export function namesQuery(query: string, tokenize: (text: string) => string[]): (heading: string) => boolean {
+  const letter = (heading: string) => heading.trim().length < 2;
   const code = CODE_NAME.exec(query.trim());
   if (code && /[`.(]/.test(query)) {
     const name = code[1]!.toLowerCase();
-    return (heading) => CODE_NAME.exec(heading.trim().replace(CONTRACT, ""))?.[1]?.toLowerCase() === name;
+    return (heading) => !letter(heading) && CODE_NAME.exec(heading.trim().replace(CONTRACT, ""))?.[1]?.toLowerCase() === name;
   }
   const terms = new Set(tokenize(query));
   return (heading) => {
+    if (letter(heading)) return false;
     const words = new Set(tokenize(heading));
     return terms.size > 0 && words.size === terms.size && [...words].every((w) => terms.has(w));
   };

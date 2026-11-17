@@ -3,7 +3,7 @@ import type { SortedResult } from "fumadocs-core/search";
 import { type AdvancedIndex, initAdvancedSearch } from "fumadocs-core/search/server";
 import { describe, expect, it } from "vitest";
 import { READER_PATHS } from "@/lib/docs/reader-paths";
-import { namesQuery, SEARCH_INDEX_URL, SEARCH_START_PAGES, SEARCH_TOKENIZER, searchTokenizer, titleFirst } from "@/lib/docs/search";
+import { namesQuery, SEARCH_INDEX_URL, SEARCH_PARAMS, SEARCH_START_PAGES, SEARCH_TOKENIZER, searchTokenizer, titleFirst } from "@/lib/docs/search";
 import { docsSearch } from "@/lib/docs/search-client";
 import { componentText } from "@/lib/docs/component-text";
 import { docsTree } from "@/lib/docs/remark-component-text";
@@ -21,6 +21,16 @@ function page(url: string, title: string, ...records: string[]): SortedResult[] 
   ];
 }
 const pagesOf = (results: SortedResult[]) => results.filter((r) => r.type === "page").map((r) => r.url);
+
+/** The results split into pages the way the dialog splits them (byPage in lib/docs/search.ts): a page, then its records. */
+function byPage(results: SortedResult[]): SortedResult[][] {
+  const pages: SortedResult[][] = [];
+  for (const result of results) {
+    if (result.type === "page" || pages.length === 0) pages.push([result]);
+    else pages.at(-1)!.push(result);
+  }
+  return pages;
+}
 
 describe("titleFirst", () => {
   const results = [
@@ -121,6 +131,15 @@ describe("namesQuery", () => {
     expect(named(" ", "execute")).toBe(false);
     expect(named("(", "(")).toBe(false);
   });
+
+  it("names no heading of one character, like each letter of the Glossary, for plain words or code", () => {
+    expect(named("a", "A")).toBe(false);
+    expect(named("a(", "A")).toBe(false);
+    expect(named("c", " C ")).toBe(false);
+    // A short name is still a name.
+    expect(named("WAD", "WAD")).toBe(true);
+    expect(named("b20(", "B20")).toBe(true);
+  });
 });
 
 describe("the dialog's search", () => {
@@ -158,8 +177,41 @@ describe("the dialog's search", () => {
       const vault = results.findIndex((r) => r.id === "/docs/reference/vault");
       expect(results[vault + 1]).toMatchObject({ type: "heading", content: "execute" });
       expect(pagesOf(results)[0]).toBe("/docs/reference/vault");
+      // Each page is listed once, under the cap and with at most the one heading that names the query on top of it: the
+      // near misses "executor" and "Executor only" are not lifted past the cap.
+      expect(new Set(pagesOf(results)).size).toBe(pagesOf(results).length);
+      for (const [page, ...records] of byPage(results)) {
+        expect(records.length, page!.url).toBeLessThanOrEqual(SEARCH_PARAMS.groupBy.maxResult + 1);
+      }
     });
   }
+
+  /** A page like the Glossary, one section per letter, whose letters' headings hold the letter alone. */
+  const glossary = doc("/docs/help/glossary", "Glossary", ["A", "B", "C"], ["Definitions of the terms the docs use, one section per letter."]);
+  /** Pages that hold the words "a" and "c" in their text, and more words that start with them. */
+  const shares = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      doc(`/docs/notes/${i}`, `Note ${i}`, [], [1, 2, 3, 4].map((k) => `At step ${k} of round ${i} the agent buys class A and class C shares, checks the cap and counts the collateral.`)),
+    );
+
+  it("leaves a page matched only by a heading of one letter where the engine ranks it, for a one-letter query", async () => {
+    const search = await searchOver([glossary, ...shares(3)]);
+    for (const query of ["a", "c"]) {
+      const pages = pagesOf(await search(query));
+      expect(pages, query).toHaveLength(4);
+      expect(pages.at(-1), query).toBe("/docs/help/glossary");
+    }
+  });
+
+  it("does not bring back a page the result limit left out, for its heading of one letter", async () => {
+    // From 16 of these pages on, five results each, they take all of the result limit's 80 places.
+    const search = await searchOver([glossary, ...shares(20)]);
+    for (const query of ["a", "c"]) {
+      const results = await search(query);
+      expect(pagesOf(results), query).not.toContain("/docs/help/glossary");
+      expect(results.length, query).toBeLessThanOrEqual(SEARCH_PARAMS.limit);
+    }
+  });
 
   it("finds nothing for a name that no heading or prose holds, written as code or not", async () => {
     const search = await searchOver([doc("/docs/concepts/market-hours", "Market hours", ["Holidays"], ["The calendar lists each holiday."])]);
