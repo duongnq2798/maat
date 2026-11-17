@@ -1,5 +1,5 @@
 import { decodePaymentResponseHeader, wrapFetchWithPayment } from "@x402/fetch";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { getAddress } from "viem";
 import { BASKET, USDC } from "../src/addresses.js";
 import { createGuardApp, type GuardClient } from "../src/guard/app.js";
@@ -195,5 +195,57 @@ describe("guard app: paid GET /check", () => {
     const res = await setup({ builderCode: "bc_maat" }).app.request(CHECK);
     const required = JSON.parse(Buffer.from(res.headers.get("payment-required")!, "base64").toString("utf8"));
     expect(required.extensions["builder-code"].info).toMatchObject({ a: "bc_maat" });
+  });
+});
+
+describe("guard app: unexpected errors", () => {
+  const CHECK = "/check?token=NVDAc&side=buy&sizeUSD=1000";
+
+  /** A chain whose latest block throws a plain Error (not StateUnavailable) when read, with a secret on its second line. */
+  function explodingChain() {
+    const chain = marketScene();
+    chain.block = {
+      get number(): bigint {
+        throw new Error("boom\nURL: https://secret");
+      },
+      timestamp: 1_794_000_000n,
+    } as never;
+    return chain;
+  }
+
+  function spyOnLogs() {
+    const logged: unknown[][] = [];
+    const spies = (["error", "warn", "log"] as const).map((m) => vi.spyOn(console, m).mockImplementation((...a: unknown[]) => void logged.push(a)));
+    return { logged, restore: () => spies.forEach((x) => x.mockRestore()) };
+  }
+
+  it("answers a paid /check with 500 INTERNAL, never settles, and logs only the first line", async () => {
+    const logs = spyOnLogs();
+    try {
+      const { paidFetch, facilitator } = setup({ chain: explodingChain() });
+      const res = await paidFetch(url(CHECK));
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "INTERNAL" });
+      expect(facilitator.verified).toHaveLength(1);
+      expect(facilitator.settled).toHaveLength(0);
+      expect(res.headers.get("payment-response")).toBeNull();
+      expect(logs.logged.length).toBeGreaterThan(0);
+      expect(JSON.stringify(logs.logged)).toContain("boom");
+      expect(JSON.stringify(logs.logged)).not.toContain("secret");
+    } finally {
+      logs.restore();
+    }
+  });
+
+  it("answers a free endpoint with 500 INTERNAL too", async () => {
+    const logs = spyOnLogs();
+    try {
+      const res = await setup({ chain: explodingChain() }).app.request("/state/NVDAc");
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: "INTERNAL" });
+      expect(JSON.stringify(logs.logged)).not.toContain("secret");
+    } finally {
+      logs.restore();
+    }
   });
 });

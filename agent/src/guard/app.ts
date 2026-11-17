@@ -45,7 +45,7 @@ const checkQuery = z.object({
   sizeUSD: z.coerce.number().positive().max(1_000_000_000),
 });
 
-function send(c: Context, body: unknown, status: 200 | 400 | 404 | 503 = 200) {
+function send(c: Context, body: unknown, status: 200 | 400 | 404 | 500 | 503 = 200) {
   return c.body(toJson(body), status, { "content-type": "application/json; charset=utf-8" });
 }
 
@@ -72,6 +72,12 @@ export function createGuardApp(d: GuardDeps): Hono {
   };
 
   const app = new Hono();
+  // Backstop for anything unexpected. Only the first line of the message is logged: a viem error's later lines can carry
+  // the RPC URL (an API key). 500 is at or above 400, so x402 does not settle and the caller is not charged.
+  app.onError((e, c) => {
+    console.error(`maat guard: unexpected error: ${String((e as Error)?.message ?? e).split("\n")[0]}`);
+    return send(c, { error: "INTERNAL" }, 500);
+  });
   app.use("*", cors({ origin: d.corsOrigins, allowMethods: ["GET", "POST"] }));
   app.get("/health", (c) => c.json({ ok: true }));
   app.use("/state/*", rateLimit(new RateLimiter(d.rateLimitPerMinute, now)));

@@ -85,6 +85,7 @@ How the endpoints behave:
 - If the RPC is down, `/state`, `/preview` and `/check` answer 503 `{"reason":"UNKNOWN"}`, and `/check` does not charge.
 - If Coinbase is down, `nav` is `null` and everything else still answers.
 - A bad `/check` query gets 400 before any payment request.
+- An unexpected error returns 500 `{"error":"INTERNAL"}` and is never charged. Only the first line of its message is logged.
 
 x402 payments go straight to the vault (`payTo` = `MAAT_VAULT`; the S4 fallback overrides it with `GUARD_PAY_TO`). The agent records them as revenue: once at least `MAAT_REVENUE_MIN_USD` (default 0.05) of new USDC has arrived, its next live round sends `notifyRevenue()` and journals `call: "notifyRevenue"`. A dry-run round only journals it, and a live round skips it (journaling the skip) once half of `MAAT_MAX_TX_PER_DAY` is used, so revenue recording never crowds out trades and bills.
 
