@@ -206,7 +206,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "reference/index",
         "Reference",
-        "The contracts' functions, events, errors and types, the calendar and the adapters, the agent's settings and scripts, and the addresses and defaults.",
+        "The repository map, the contracts' functions, events, errors and types, the calendar and adapters, the agent's settings and scripts, addresses and defaults.",
       ),
       page(
         "reference/repository-map",
