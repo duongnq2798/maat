@@ -410,6 +410,13 @@ describe("the repository map maps folders that exist to the pages that explain t
     expect(rows.filter((r) => r.table === 0).map((r) => r.path ?? `line ${r.line}`).sort()).toEqual(top);
   });
 
+  it("names in code each file the repository tracks at its root", () => {
+    const rootFiles = tracked().filter((p) => !p.includes("/"));
+    expect(rootFiles).toContain("README.md");
+    const page = bySlug.get(MAP) ?? "";
+    expect(rootFiles.filter((f) => !page.includes(`\`${f}\``))).toEqual([]);
+  });
+
   it("names only folders and files the repository tracks, a folder with a trailing slash and a file without", () => {
     const named = rows.flatMap((r) => (r.path === undefined ? [] : [r]));
     const bad = new Set(misnamedPaths(named.map((r) => r.path ?? ""), tracked()));
