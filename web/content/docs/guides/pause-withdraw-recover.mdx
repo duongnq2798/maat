@@ -36,7 +36,7 @@ When something looks wrong, the [owner](/docs/help/glossary#owner) of a [vault](
 
 <Callout type="fork" title="What is tested">
 
-Unit tests with mocks pin the rules on this page: `test_vaultPaused`, `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` and `test_executorCannotUseOwnerFunctions`. In the [fork tests](/docs/help/glossary#fork-test), which run against [Base](/docs/help/glossary#base) at a pinned block, `test_creditLoopInSession` and `test_weekendBlocksBorrowButAllowsRepayAndWithdraw` send a `REPAY` and then a `WITHDRAW_COLLATERAL` against the real [Aave V4](/docs/help/glossary#aave-v4), from a made-up executor address. Nothing in the fork tests pauses the vault, makes the owner the executor, or withdraws a stock. The `setExecutor` commands below are copied from `deployments/README.md`. The unwind's signed commands are adapted from it: one `WITHDRAW_COLLATERAL` per supplied stock, and an explicit `--gas-limit` on each `execute`. The pause, withdraw and read commands, including the unwind's position reads and [previews](/docs/help/glossary#preview), were written for this page. The Maat team has not run any of them, and no Maat vault is deployed.
+Unit tests with mocks pin the rules on this page: `test_vaultPaused`, `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` and `test_executorCannotUseOwnerFunctions`. In the [fork tests](/docs/help/glossary#fork-test), which run against [Base](/docs/help/glossary#base) at a pinned block, `test_creditLoopInSession` and `test_weekendBlocksBorrowButAllowsRepayAndWithdraw` send a `REPAY` and then a `WITHDRAW_COLLATERAL` against the real [Aave V4](/docs/help/glossary#aave-v4), from a made-up executor address. Nothing in the fork tests pauses the vault, makes the owner the executor, or withdraws a stock. The two `setExecutor` commands below, and the `executor()` read in [Rotate the executor](#rotate-the-executor), are copied from `deployments/README.md`. The unwind's `execute` commands are adapted from it: one `WITHDRAW_COLLATERAL` per supplied stock, and an explicit `--gas-limit` on each. The pause and withdraw commands and the other reads, including the unwind's position reads and [previews](/docs/help/glossary#preview), were written for this page. The Maat team has not run any of them, and no Maat vault is deployed.
 
 </Callout>
 
@@ -66,7 +66,7 @@ Time: each signed command is one transaction that takes effect in that transacti
 | The agent halted, or its last [round](/docs/help/glossary#round) is `pending-tx` | None of these | Read the [journal](/docs/help/glossary#journal): [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round). |
 | The owner key itself is lost or leaked | Nothing in the contracts helps | The owner cannot be changed, and `withdraw` pays only the owner. See [the threat model](/docs/security/threat-model). |
 
-You can combine them. A pause stops trading at once, and the executor rotation then removes the old key, while the rest waits until you know more.
+You can combine them. A pause stops trading at once, and the executor rotation then removes the old key, while the rest waits until you know more. Whichever step you start with, first set the variables at the top of [The emergency steps](#the-emergency-steps).
 
 ## The emergency steps
 
@@ -190,7 +190,7 @@ Check the result by reading the owner's balance of the token before and after, w
 
 ### Unwind the credit position
 
-`withdraw` can take out only assets that sit in the vault. Collateral supplied to Aave stays in the position, and while debt is open the vault lets collateral out only in an open market and with a healthy position. Repaying first removes those limits. The repay and the collateral withdrawal are `execute` calls, and only the executor can call `execute`. So the owner makes itself the executor, sends one `REPAY` and then one `WITHDRAW_COLLATERAL` for each supplied stock, and finally calls `withdraw` as usual. This follows deployments/README.md, Unwinding the credit position, which withdraws NVDAc only. This page covers every stock the adapter holds.
+`withdraw` can take out only assets that sit in the vault. Collateral supplied to Aave stays in the position, and while debt is open the vault lets collateral out only in an open market and with a healthy position. Repaying first removes those limits. The repay and the collateral withdrawal are `execute` calls, and only the executor can call `execute`. So the owner makes itself the executor, sends one `REPAY` when there is debt, then one `WITHDRAW_COLLATERAL` for each supplied stock, and finally calls `withdraw` as usual. This follows deployments/README.md, Unwinding the credit position, which withdraws NVDAc only. This page covers every stock the adapter holds.
 
 The order depends on the pause flag:
 
@@ -209,7 +209,7 @@ for T in $(cast call "$ADAPTER" "collaterals()(address[])" --rpc-url "$BASE_RPC_
 done
 ```
 
-The debt and the supplied amounts are the numbers the unwind commands need. The vault has to hold enough USDC to cover the `REPAY` amount, or the vault answers `INSUFFICIENT_BALANCE`. A `REPAY` for more than is owed pulls only the debt, so the amount can be a little above the debt for the interest. A refused `execute` does not revert and still uses its intent id, so preview each intent as the owner before you send it. The preview reads `tx.origin`, which in a `cast call` is the `--from` address. The `WITHDRAW_COLLATERAL` path checks `tx.origin` as an executor too ([check 3](/docs/concepts/nine-checks#3-transfer-policy)), so the address that sends the transaction (the owner itself when it is an EOA) has to pass the stock's executor policy, or the vault refuses with `POLICY_BLOCKED`. A preview cannot see the adapter's own health check after a withdrawal against debt, or a failure inside the credit call.
+The debt and the supplied amounts are the numbers the unwind commands need. If `debt()` prints 0, skip the `REPAY` and its preview, because a `REPAY` of 0 is refused with `INSUFFICIENT_BALANCE` and uses up its intent id. The other commands stay as they are. The vault has to hold enough USDC to cover the `REPAY` amount, or the vault answers `INSUFFICIENT_BALANCE`. A `REPAY` for more than is owed pulls only the debt, so the amount can be a little above the debt for the interest. A refused `execute` does not revert and still uses its intent id, so preview each intent as the owner before you send it. The preview reads `tx.origin`, which in a `cast call` is the `--from` address. The `WITHDRAW_COLLATERAL` path checks `tx.origin` as an executor too ([check 3](/docs/concepts/nine-checks#3-transfer-policy)), so the address that sends the transaction (the owner itself when it is an EOA) has to pass the stock's executor policy, or the vault refuses with `POLICY_BLOCKED`. A preview cannot see the adapter's own health check after a withdrawal against debt, or a failure inside the credit call.
 
 ```bash
 EXEC="execute((bytes32,uint8,address,uint256,uint256,address,bytes32))"
@@ -222,7 +222,7 @@ The second line previews a `WITHDRAW_COLLATERAL` of NVDAc. Preview one for each 
 
 <Callout type="warning" title="Owner only">
 
-These commands are signed by the owner wallet. They are adapted from deployments/README.md, Unwinding the credit position, with the variables above, one `WITHDRAW_COLLATERAL` per stock, and an explicit `--gas-limit` added to each `execute`. The first makes the owner the executor. The second sends `REPAY` (action 5) as `maat-unwind-1`. The third sends `WITHDRAW_COLLATERAL` (action 3) for NVDAc as `maat-unwind-2`: send one for each stock with an amount above zero, with the ids you previewed. Replace each placeholder with the number you read. Every intent id works once, so a retry needs a new id such as `maat-unwind-retry-1`.
+These commands are signed by the owner wallet. They are adapted from deployments/README.md, Unwinding the credit position, with the variables above, one `WITHDRAW_COLLATERAL` per stock, and an explicit `--gas-limit` added to each `execute`. The first makes the owner the executor. The second sends `REPAY` (action 5) as `maat-unwind-1`; skip it when `debt()` printed 0. The third sends `WITHDRAW_COLLATERAL` (action 3) for NVDAc as `maat-unwind-2`: send one for each stock with an amount above zero, with the ids you previewed. Replace each placeholder with the number you read. Every intent id works once, so a retry needs a new id such as `maat-unwind-retry-1`.
 
 Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why. For a `REPAY` or a `WITHDRAW_COLLATERAL`, a starved credit call records `CREDIT_FAILED`.
 
@@ -255,7 +255,7 @@ If the Aave spoke's views start to revert, the README says what to expect. The a
 - After a pause, `paused()` returns `true`, a `PausedSet` event with `true` was emitted, and a preview of a `BUY` returns `VAULT_PAUSED`, which is reason 1.
 - After a rotation, `executor()` prints the new address, and the old executor's `execute` reverts with `NotExecutor`.
 - After a withdrawal, the owner's balance of the token is higher by the amount, the vault's balance is lower by the same amount, and a `Withdrawn` event names the token and the amount.
-- After an unwind, `debt()` and `suppliedOf` for every address in `collaterals()` are zero, so `hasPosition()` returns `false`. Each stock is back in the vault's balance, and the receipts of the `REPAY` and of each `WITHDRAW_COLLATERAL` hold a `Decision` with `allowed` true. While `hasPosition()` returns `true`, a queued mandate that switches or removes the credit adapter cannot be applied: `applyMandate` reverts with `CreditPositionOpen`.
+- After an unwind, `debt()` and `suppliedOf` for every address in `collaterals()` are zero, so `hasPosition()` returns `false`. Each stock is back in the vault's balance, and the receipts of the `REPAY`, when one was sent, and of each `WITHDRAW_COLLATERAL` hold a `Decision` with `allowed` true. While `hasPosition()` returns `true`, a queued mandate that switches or removes the credit adapter cannot be applied: `applyMandate` reverts with `CreditPositionOpen`.
 
 ## Retire a vault or move to a new one
 
