@@ -14,6 +14,8 @@ next: [reference/events, guides/change-a-rule]
 
 `MarketCalendar` answers one question for the [vault](/docs/help/glossary#vault): is the market open at this moment? It works in New York time, applies daylight saving by rule, and ships with a few holidays and early closes. Its owner can only make it stricter, by adding a holiday or moving a close earlier. A calendar that is looser has to be a new contract, switched in through the mandate and its [timelock](/docs/help/glossary#timelock). This page lists each function and the dates the constructor ships. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
+To call or decode the calendar from code without building the repo, use its <a href="/data/abi/MarketCalendar.json">ABI (JSON)</a>: `marketCalendarAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
+
 <FunctionIndex contract="MarketCalendar" />
 
 ## Functions

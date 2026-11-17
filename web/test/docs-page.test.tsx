@@ -6,11 +6,12 @@ import { describe, expect, it, vi } from "vitest";
 import { getMDXComponents } from "@/components/docs/mdx";
 import { listsNextInBody, NextLinks } from "@/components/docs/NextLinks";
 import { feedbackHref, PageFooter } from "@/components/docs/PageFooter";
-import { HomeHeader, PageHeader, STATUS_MEANING } from "@/components/docs/PageHeader";
+import { HomeHeader, PageHeader } from "@/components/docs/PageHeader";
 import { SourceOfTruth } from "@/components/docs/SourceOfTruth";
 import { StatusBadge } from "@/components/docs/StatusBadge";
 import { footerItems } from "@/lib/docs/footer-items";
-import { llmsIndex, markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath } from "@/lib/docs/markdown";
+import { STATUS_MEANING } from "@/lib/docs/frontmatter";
+import { llmsIndex, markdownUrl, pageMarkdown, readingMinutes, slugsFromMarkdownPath, standaloneMarkdown } from "@/lib/docs/markdown";
 import { SITE } from "@/lib/site";
 
 // A small docs tree for the breadcrumb, and the one page NextLinks looks up.
@@ -58,6 +59,31 @@ describe("docs Markdown helpers", () => {
     );
   });
 
+  it("gives the status label and its meaning, then the review date, after the URL, as the page's header shows them", () => {
+    const page = { title: "T", url: "https://x/docs/a", description: "D", status: "fork-tested", lastReviewed: "2026-11-07", body: "Body\n" } as const;
+    expect(pageMarkdown(page)).toBe(
+      `# T\n\nURL: https://x/docs/a\n\nStatus: Fork-tested. ${STATUS_MEANING["fork-tested"]} Last reviewed: 2026-11-07.\n\nD\n\nBody\n`,
+    );
+  });
+
+  it("gives only the review date on a page whose header shows no label, such as a Help page", () => {
+    expect(pageMarkdown({ title: "T", url: "https://x/docs/help/a", description: "D", lastReviewed: "2026-11-07", body: "Body\n" })).toBe(
+      "# T\n\nURL: https://x/docs/help/a\n\nLast reviewed: 2026-11-07.\n\nD\n\nBody\n",
+    );
+  });
+
+  it("ends with the Source of truth files, each linked on main, as the page's box lists them", () => {
+    const sources = ["contracts/src/MandateVault.sol", "README.md"];
+    expect(pageMarkdown({ title: "T", url: "https://x/docs/a", sources, body: "Body\n" })).toBe(
+      [
+        "# T\n\nURL: https://x/docs/a\n\nBody\n\n## Source of truth\n\nThis page is checked against these files. If they disagree, the files win.\n",
+        `- [\`contracts/src/MandateVault.sol\`](${SITE.repoUrl}/blob/main/contracts/src/MandateVault.sol)`,
+        `- [\`README.md\`](${SITE.repoUrl}/blob/main/README.md)\n`,
+      ].join("\n"),
+    );
+    expect(pageMarkdown({ title: "T", url: "https://x/docs/a", sources: [], body: "Body\n" })).not.toContain("Source of truth");
+  });
+
   it("makes links to the site's own pages absolute, so a copy read elsewhere still leads back", () => {
     const body = "See [the checks](/docs/concepts/nine-checks#x), [the home](/docs) and [its copy](/md/docs.md).\n";
     expect(pageMarkdown({ title: "T", url: "http://localhost:3000/docs/a", body })).toBe(
@@ -72,12 +98,21 @@ describe("docs Markdown helpers", () => {
     );
   });
 
+  it("makes every other root-relative link absolute too: the landing page, its ledger, and the files at the site's root", () => {
+    const body = 'The [engine](/), the [ledger](/#ledger) and [a page](/documents). <a href="/llms.txt">llms.txt</a>, <a href="/data/abi/V.json">ABI (JSON)</a>.\n';
+    expect(pageMarkdown({ title: "T", url: "https://x.dev/docs/a", body })).toBe(
+      "# T\n\nURL: https://x.dev/docs/a\n\nThe [engine](https://x.dev/), the [ledger](https://x.dev/#ledger) and [a page](https://x.dev/documents). " +
+        '<a href="https://x.dev/llms.txt">llms.txt</a>, <a href="https://x.dev/data/abi/V.json">ABI (JSON)</a>.\n',
+    );
+  });
+
   it("leaves other links alone, and everything inside code fences", () => {
     const body = [
-      "[out](https://other.dev/docs) [near](/documents) [file](./a.md)",
+      '[out](https://other.dev/docs) [cdn](//cdn.example/a) [file](./a.md) <a href="https://other.dev/">o</a> <a href="//cdn.example/b">c</a>',
       "",
       "```md",
       "[kept](/docs/a)",
+      '<a href="/llms.txt">kept</a> [root](/)',
       "```",
       "",
       "````md",
@@ -90,6 +125,13 @@ describe("docs Markdown helpers", () => {
     ].join("\n");
     expect(pageMarkdown({ title: "T", url: "https://x.dev/docs", body })).toBe(
       `# T\n\nURL: https://x.dev/docs\n\n${body.replace("[after](/docs/b)", "[after](https://x.dev/docs/b)")}\n`,
+    );
+  });
+
+  it("opens a page's own Markdown file with where the index and the other pages are", () => {
+    expect(standaloneMarkdown("# T\n\nURL: https://x.dev/docs/a\n", new URL("https://x.dev/"))).toBe(
+      "> Index of every page: [llms.txt](https://x.dev/llms.txt). All pages in one file: [llms-full.txt](https://x.dev/llms-full.txt).\n\n" +
+        "# T\n\nURL: https://x.dev/docs/a\n",
     );
   });
 });
@@ -324,11 +366,30 @@ describe("code block titles", () => {
 });
 
 describe("llmsIndex", () => {
-  it("gives the summary, the full file and every page as an absolute link", () => {
-    const docs = { title: "Maat docs", summary: "S.", fullUrl: "https://x.dev/llms-full.txt" };
-    const pages = [{ title: "A", url: "https://x.dev/docs", description: "D" }, { title: "B", url: "https://x.dev/docs/b" }];
-    expect(llmsIndex(docs, pages)).toBe(
-      "# Maat docs\n\n> S.\n\nEvery page as one Markdown file: https://x.dev/llms-full.txt\n\n## Pages\n\n- [A](https://x.dev/docs): D\n- [B](https://x.dev/docs/b)\n",
+  it("gives the summary, the status, the full file, every page as a link to its Markdown copy with its web page, and the ABIs", () => {
+    const docs = { title: "Maat docs", summary: "S.", status: "built. Details: https://x.dev/docs/s", fullUrl: "https://x.dev/llms-full.txt" };
+    const pages = [{ title: "A", url: "https://x.dev/docs", description: "D." }, { title: "B", url: "https://x.dev/docs/b" }];
+    const abis = [{ title: "V ABI", url: "https://x.dev/data/abi/V.json", description: "N." }];
+    expect(llmsIndex(docs, pages, abis)).toBe(
+      [
+        "# Maat docs",
+        "",
+        "> S.",
+        "",
+        "Status: built. Details: https://x.dev/docs/s",
+        "",
+        "Every page as one Markdown file: https://x.dev/llms-full.txt",
+        "",
+        "## Pages",
+        "",
+        "- [A](https://x.dev/md/docs.md): D. Web page: https://x.dev/docs",
+        "- [B](https://x.dev/md/docs/b.md): Web page: https://x.dev/docs/b",
+        "",
+        "## Contract ABIs",
+        "",
+        "- [V ABI](https://x.dev/data/abi/V.json): N.",
+        "",
+      ].join("\n"),
     );
   });
 });

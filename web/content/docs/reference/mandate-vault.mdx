@@ -15,6 +15,8 @@ next: [reference/events, concepts/timelock-and-roles]
 
 `MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it [reverts](/docs/help/glossary#revert) or refuses. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet, so there is no address to give ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
+To call or decode a vault from code without building the repo, use its <a href="/data/abi/MandateVault.json">ABI (JSON)</a>: `mandateVaultAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
+
 <Callout type="note" title="Refusals are not reverts">
 
 By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed` ([some failures escape](/docs/security/model#fail-closed)). The [README](https://github.com/duongnq2798/maat/blob/main/README.md) assumes that the plain `balanceOf` and `decimals` reads on USDC and the stocks do not revert. A transaction that runs out of gas reverts too. A reverted `execute` records nothing: `usedIntent` stays false, so the same id can be sent again. Everything else that blocks an action is a refusal: `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The owner functions revert with the errors named under each entry, and [Errors](/docs/reference/errors) lists them all.

@@ -34,6 +34,16 @@ export const STATUS_LABEL: Record<DocStatus, string> = {
   planned: "Planned",
 };
 
+/**
+ * Each label's meaning, word for word from the table on the status page (test/docs-page.test.tsx compares them). The
+ * page header's label and the Status line of each Markdown copy both give it.
+ */
+export const STATUS_MEANING: Record<DocStatus, string> = {
+  "fork-tested": "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
+  live: "Deployed to Base mainnet by the owner, with the addresses recorded in deployments/README.md.",
+  planned: "Designed but not built.",
+};
+
 export const AUDIENCE_LABEL: Record<Audience, string> = {
   newcomer: "Newcomer",
   watcher: "Watcher",

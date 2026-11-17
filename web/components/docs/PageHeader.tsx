@@ -3,7 +3,7 @@ import { DocsDescription, DocsTitle } from "fumadocs-ui/layouts/docs/page";
 import Link from "next/link";
 import { Fragment, type ReactNode } from "react";
 import { source } from "@/lib/docs-source";
-import { AUDIENCE_LABEL, type Audience, type DocStatus, STATUS_LABEL } from "@/lib/docs/frontmatter";
+import { AUDIENCE_LABEL, type Audience, type DocStatus, STATUS_LABEL, STATUS_MEANING } from "@/lib/docs/frontmatter";
 import { StatusBadge } from "./StatusBadge";
 
 interface PageHeaderProps {
@@ -22,13 +22,6 @@ interface PageHeaderProps {
 }
 
 const reviewed = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-
-/** Each label's meaning, word for word from the table on the status page (test/docs-page.test.tsx compares them). */
-export const STATUS_MEANING: Record<DocStatus, string> = {
-  "fork-tested": "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
-  live: "Deployed to Base mainnet by the owner, with the addresses recorded in deployments/README.md.",
-  planned: "Designed but not built.",
-};
 
 /** The highlight the label takes on hover, and on keyboard focus too. */
 const STATUS_LINK_HIGHLIGHT = [

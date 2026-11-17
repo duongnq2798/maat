@@ -733,6 +733,43 @@ test.describe("build commit and line links", () => {
   });
 });
 
+test.describe("files for tools", () => {
+  test("llms.txt gives the status and links every page's Markdown copy, which opens with the index and keeps its page's status and sources", async ({
+    request,
+  }) => {
+    const llms = await (await request.get("/llms.txt")).text();
+    expect(llms).toMatch(/^> .+\n\nStatus: built and fork-tested\. Nothing is deployed to Base mainnet, the contracts are unaudited, /m);
+    const copies = [...llms.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+\/md\/docs[^)]*\.md)\): .*Web page: (\S+)$/gm)];
+    expect(copies).toHaveLength(DOCS_IA.flatMap((s) => s.pages).length);
+    for (const [, md = "", web] of copies) {
+      const response = await request.get(new URL(md).pathname);
+      expect(response.status(), md).toBe(200);
+      const text = await response.text();
+      expect(text, md).toMatch(/^> Index of every page: \[llms\.txt\]/);
+      expect(text, md).toContain(`\nURL: ${web}\n`);
+    }
+    const nine = await (await request.get("/md/docs/concepts/nine-checks.md")).text();
+    expect(nine).toMatch(/\nURL: [^\n]+\n\nStatus: Fork-tested\. Built and tested; [^\n]+; not deployed\. Last reviewed: \d{4}-\d{2}-\d{2}\.\n/);
+    expect(nine).toContain(`\n## Source of truth\n`);
+    expect(nine).toContain(`(${SITE.repoUrl}/blob/main/contracts/src/GuardLib.sol)`);
+    // llms-full.txt is every page already, so no page in it repeats the note.
+    expect(await (await request.get("/llms-full.txt")).text()).not.toContain("> Index of every page:");
+  });
+
+  test("the MandateVault page links its ABI as JSON: the agent's own mandateVaultAbi, with where it comes from", async ({ page, request }) => {
+    await page.goto("/docs/reference/mandate-vault");
+    const link = page.locator("#nd-page .prose").getByRole("link", { name: "ABI (JSON)", exact: true });
+    await expect(link).toHaveAttribute("href", "/data/abi/MandateVault.json");
+    const response = await request.get("/data/abi/MandateVault.json");
+    expect(response.headers()["content-type"]).toContain("application/json");
+    const file = (await response.json()) as { source: string; note: string; abi: { type: string; name?: string }[] };
+    expect(Object.keys(file)).toEqual(["source", "note", "abi"]);
+    expect(file.source).toContain("agent/src/abi/generated.ts");
+    expect(file.note).toContain("not deployed");
+    expect(file.abi.some((e) => e.type === "function" && e.name === "execute")).toBe(true);
+  });
+});
+
 test("the 404 page offers search and the docs sections", async ({ page }) => {
   for (const path of ["/does-not-exist", "/docs/does-not-exist"]) {
     const response = await page.goto(path);
@@ -757,7 +794,10 @@ test.describe("copy", () => {
     await expect(page.getByRole("status").filter({ hasText: "Copied" })).toHaveText("Copied");
     // The Windows clipboard stores line breaks as CRLF.
     const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
-    expect(text).toMatch(/^# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/);
+    // The page's own file opens with where the other pages are, then the page.
+    expect(text).toMatch(
+      /^> Index of every page: \[llms\.txt\]\(https?:\/\/[^)]+\/llms\.txt\)\. All pages in one file: \[llms-full\.txt\]\(https?:\/\/[^)]+\/llms-full\.txt\)\.\n\n# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/,
+    );
     expect(text).toContain(`passes up to ${FACT_TEXT.checksPerTrade.text} checks`);
     expect(text).not.toContain("<Fact");
   });

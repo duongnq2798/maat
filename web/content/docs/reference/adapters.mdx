@@ -59,6 +59,8 @@ The pool calls this function during a swap to collect the input, and nobody else
 
 One lending position owned by one vault. Stock amounts are raw units, USDC amounts have <Fact name="usdcDecimals" />, and [health factors](/docs/help/glossary#health-factor) are [WAD](/docs/help/glossary#wad), with the largest `uint256` meaning no debt. The vault accepts a credit adapter only if it reports this vault from `vault()` and this vault's USDC from `usdc()`, and rejects the mandate with `InvalidConfig` otherwise. It trusts the return data of the view functions. The four functions that change the position are low-level calls whose return data it ignores, so neither a revert nor malformed return data can revert `execute`.
 
+To call a credit adapter from code without building the repo, use the interface's <a href="/data/abi/ICreditAdapter.json">ABI (JSON)</a>: `creditAdapterAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts. That file holds no ABI for `ISwapAdapter` or `AerodromeSwapAdapter`, so none is published for them.
+
 <FunctionIndex contract="ICreditAdapter" qualify />
 
 ### vault (ICreditAdapter)

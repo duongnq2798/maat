@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { generateDocsData, parseAgentEnv, parseBaseAddresses, serialize } from "@/lib/docs/docs-data";
+import { ABI_NAMES, abiFile, abiUrl } from "@/lib/docs/abi";
+import { generateAbis, generateDocsData, parseAbis, parseAgentEnv, parseBaseAddresses, serialize } from "@/lib/docs/docs-data";
 import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { buildSurface, type SolContract } from "@/lib/docs/sol-surface";
 import { readRepo, REPO_ROOT } from "./helpers/solidity";
@@ -190,12 +191,45 @@ describe("parity with the compiled ABI", () => {
   });
 });
 
+describe("the published ABIs", () => {
+  it.each([
+    ["MandateVault", "mandateVaultAbi"],
+    ["ICreditAdapter", "creditAdapterAbi"],
+    ["MarketCalendar", "marketCalendarAbi"],
+  ] as const)("%s.json is {source, note, abi}, with exactly %s from agent/src/abi/generated.ts", (name, abiName) => {
+    const file = abiFile(name);
+    expect(Object.keys(file)).toEqual(["source", "note", "abi"]);
+    expect(file.abi).toEqual(agentAbi(abiName));
+    expect(file.source).toBe(
+      `${abiName} in agent/src/abi/generated.ts (https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which npm run gen:abi in agent/ generates from the compiled contracts in contracts/out.`,
+    );
+    expect(file.note).toBe("ABI of contracts that are built and fork-tested, not deployed. The contracts are unaudited.");
+    expect(abiUrl(name)).toBe(`/data/abi/${name}.json`);
+  });
+
+  it("publishes Maat's own contracts only: no third-party interface, and no swap adapter, which generated.ts does not hold", () => {
+    expect(ABI_NAMES).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar"]);
+    expect(Object.keys(parseAbis(readRepo("agent/src/abi/generated.ts")))).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar"]);
+  });
+
+  it("reads the ABIs the same from a CRLF checkout", () => {
+    const lf = readRepo("agent/src/abi/generated.ts").replace(/\r\n/g, "\n");
+    expect(parseAbis(lf.replace(/\n/g, "\r\n"))).toEqual(parseAbis(lf));
+  });
+
+  it("fails when generated.ts lacks an ABI it publishes", () => {
+    expect(() => parseAbis("export const erc20Abi = [] as const;\n")).toThrow(/mandateVaultAbi is not in agent\/src\/abi\/generated\.ts/);
+  });
+});
+
 describe("committed data is current", () => {
   const data = generateDocsData(REPO_ROOT);
   it.each([
     ["web/content/generated/contracts.json", data.surface],
     ["web/content/generated/base-addresses.json", data.addresses],
     ["web/content/generated/agent.json", data.agent],
+    // The ABIs that /data/abi/*.json publish: the build reads this copy, never agent/ (spec §5.3).
+    ["web/content/generated/abi.json", generateAbis(REPO_ROOT)],
     // A test that moves changes its line, so the links that remarkTestAnchors points at it need a regeneration too.
     ["web/content/generated/tests.json", collectTestLines(REPO_ROOT)],
   ] as const)("%s matches the sources (run `npm run docs:gen` in web/ if this fails)", (file, value) => {

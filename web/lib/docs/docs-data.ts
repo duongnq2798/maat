@@ -16,6 +16,22 @@ export const DOCUMENTED_CONTRACTS = [
 const TYPES_FILE = "contracts/src/Types.sol";
 const ADDRESSES_FILE = "contracts/script/BaseAddresses.sol";
 
+/** The ABIs the agent compiled with `npm run gen:abi`; the docs publish some of them as /data/abi/<contract>.json. */
+export const AGENT_ABI_FILE = "agent/src/abi/generated.ts";
+
+/**
+ * The ABIs the docs publish, by contract, each with its export in AGENT_ABI_FILE. Maat's own contracts only: the
+ * third-party interfaces in that file (IB20Asset, IAggregatorV3, IERC20Minimal) are left out, and it holds no ABI for
+ * the swap adapter.
+ */
+export const PUBLISHED_ABIS = {
+  MandateVault: "mandateVaultAbi",
+  ICreditAdapter: "creditAdapterAbi",
+  MarketCalendar: "marketCalendarAbi",
+} as const;
+
+export type AbiName = keyof typeof PUBLISHED_ABIS;
+
 export interface BaseConstant {
   readonly name: string;
   readonly type: "address" | "uint256";
@@ -155,6 +171,27 @@ export function generateDocsData(root: string): DocsData {
         .sort(),
     },
   };
+}
+
+/**
+ * The ABI behind each `export const <name> = [...] as const;` of agent/src/abi/generated.ts that PUBLISHED_ABIS names,
+ * by contract. gen:abi writes each array as JSON, so it parses as JSON.
+ */
+export function parseAbis(generatedTs: string): Record<AbiName, unknown[]> {
+  const text = generatedTs.replace(/\r\n/g, "\n");
+  const out = {} as Record<AbiName, unknown[]>;
+  for (const [contract, name] of Object.entries(PUBLISHED_ABIS) as [AbiName, string][]) {
+    const head = `export const ${name} = `;
+    const start = text.indexOf(head);
+    if (start < 0) throw new Error(`${name} is not in ${AGENT_ABI_FILE} (run npm run gen:abi in agent/)`);
+    out[contract] = JSON.parse(text.slice(start + head.length, text.indexOf(" as const;", start))) as unknown[];
+  }
+  return out;
+}
+
+/** The published ABIs, read from the repo at `root`, as docs-gen writes them to content/generated/abi.json. */
+export function generateAbis(root: string): Record<AbiName, unknown[]> {
+  return parseAbis(readFileSync(join(root, AGENT_ABI_FILE), "utf8"));
 }
 
 /** JSON as committed: two-space indent and a trailing newline, so the sync test compares text exactly. */

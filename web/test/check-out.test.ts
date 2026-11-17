@@ -1,12 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  checkAbiFiles,
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
   checkLandingIsolation,
+  checkLocalhost,
   checkMarkdownCopies,
+  checkMarkdownCopy,
   checkSearchIndex,
   SEARCH_INDEX_GZIP_BUDGET,
+  shipsPublicly,
 } from "@/lib/check-out";
 import { SITE } from "@/lib/site";
 
@@ -101,6 +105,19 @@ describe("checkDocsPage", () => {
   it("names the page in every problem", () => {
     expect(checkDocsPage(DOC.replace(' lang="en"', ""), PATH, KNOWN)[0]).toMatch(/^out\/docs\/concepts\/nine-checks\.html: /);
   });
+
+  it("wants every other root-relative link to lead to an exported file: the landing page, llms.txt, an ABI", () => {
+    const files = new Set(["/", "/llms.txt", "/data/abi/MandateVault.json"]);
+    const exported = (path: string) => files.has(path);
+    const links = '<a href="/">Home</a> <a href="/#ledger">Ledger</a> <a href="/llms.txt">llms.txt</a> <a href="/data/abi/MandateVault.json">ABI (JSON)</a>';
+    const html = DOC.replace("</body>", `${links}</body>`);
+    expect(checkDocsPage(html, PATH, KNOWN, exported)).toEqual([]);
+    expect(checkDocsPage(html.replace("MandateVault.json", "Gone.json"), PATH, KNOWN, exported)).toEqual([
+      `${PATH}: link /data/abi/Gone.json points to no exported file`,
+    ]);
+    // Another host's link is not the export's to check.
+    expect(checkDocsPage(DOC.replace("</body>", '<a href="//cdn.example/x">x</a></body>'), PATH, KNOWN, exported)).toEqual([]);
+  });
 });
 
 const LANDING = [
@@ -134,22 +151,138 @@ describe("checkLandingIsolation", () => {
 
 describe("checkDocsIndexes", () => {
   const url = "https://maat.example/docs/concepts/nine-checks";
+  const md = "https://maat.example/md/docs/concepts/nine-checks.md";
+  const abi = "https://maat.example/data/abi/MandateVault.json";
+  const LLMS = [
+    "# Maat docs",
+    "",
+    "> Understand Maat.",
+    "",
+    "Status: built and fork-tested. Details: https://maat.example/docs/get-started/status",
+    "",
+    "## Pages",
+    "",
+    `- [The nine checks](${md}): The order of the checks. Web page: ${url}`,
+    "",
+    "## Contract ABIs",
+    "",
+    `- [MandateVault ABI](${abi}): Built and fork-tested, not deployed.`,
+    "",
+  ].join("\n");
+  const FILES = new Set(["/docs/concepts/nine-checks", "/md/docs/concepts/nine-checks.md", "/data/abi/MandateVault.json"]);
+  const exported = (path: string) => FILES.has(path);
+  const good = { llms: LLMS, llmsFull: `# The nine checks\n\nURL: ${url}\n\nBody\n`, sitemap: `<url><loc>${url}</loc></url>` };
 
-  it("accepts indexes that list every docs page", () => {
-    const files = {
-      llms: `- [The nine checks](${url}): The order of the checks.\n`,
-      llmsFull: `# The nine checks\n\nURL: ${url}\n\nBody\n`,
-      sitemap: `<url><loc>${url}</loc></url>`,
-    };
-    expect(checkDocsIndexes(files, [url])).toEqual([]);
+  it("accepts indexes that list every docs page, llms.txt by its Markdown copy", () => {
+    expect(checkDocsIndexes(good, [url], exported)).toEqual([]);
   });
 
   it("names each index that misses a page", () => {
-    expect(checkDocsIndexes({ llms: "", llmsFull: "", sitemap: "" }, [url])).toEqual([
-      `llms.txt does not link ${url}`,
+    expect(checkDocsIndexes({ llms: "", llmsFull: "", sitemap: "" }, [url], exported)).toEqual([
+      "llms.txt has no Status line under its summary",
+      `llms.txt does not link the Markdown copy ${md}`,
+      `llms.txt does not give the web page ${url}`,
       `llms-full.txt has no page with URL ${url}`,
       `sitemap.xml does not list ${url}`,
     ]);
+  });
+
+  it("flags an llms.txt that links a page's HTML instead of its Markdown copy", () => {
+    const llms = LLMS.replace(`](${md})`, `](${url})`);
+    expect(checkDocsIndexes({ ...good, llms }, [url], exported)).toEqual([`llms.txt does not link the Markdown copy ${md}`]);
+  });
+
+  it("flags a link in llms.txt that leads to no exported file", () => {
+    const llms = LLMS.replace(abi, "https://maat.example/data/abi/Gone.json");
+    expect(checkDocsIndexes({ ...good, llms }, [url], exported)).toEqual([
+      "llms.txt links https://maat.example/data/abi/Gone.json, which is not in out/",
+    ]);
+  });
+
+  it("flags llms-full.txt when it repeats the index note that opens each page's own file", () => {
+    const llmsFull = `> Index of every page: [llms.txt](https://maat.example/llms.txt).\n\n${good.llmsFull}`;
+    expect(checkDocsIndexes({ ...good, llmsFull }, [url], exported)).toEqual(["llms-full.txt repeats the index note of the pages' own Markdown files"]);
+  });
+});
+
+describe("checkMarkdownCopy", () => {
+  const NOTE = "> Index of every page: [llms.txt](https://maat.example/llms.txt). All pages in one file: [llms-full.txt](https://maat.example/llms-full.txt).";
+  const src = `${SITE.repoUrl}/blob/main/contracts/src/GuardLib.sol`;
+  const LABEL = '<a aria-label="Status: Fork-tested. What this label means" href="/docs/get-started/status#what-the-three-labels-mean">';
+  const DATE = 'Last reviewed <time dateTime="2026-11-07">7 Nov 2026</time>';
+  const BOX = `<aside aria-labelledby="source-of-truth"><h2 id="source-of-truth">Source of truth</h2><ul><li><a href="${src}">contracts/src/GuardLib.sol</a></li></ul><p>Built from commit <code>abc1234</code>.</p></aside>`;
+  const HTML = `<header>${LABEL}${DATE}</header><main>Body</main>${BOX}`;
+  const SOURCES = `## Source of truth\n\nThis page is checked against these files. If they disagree, the files win.\n\n- [\`contracts/src/GuardLib.sol\`](${src})\n`;
+  const copy = (frame: string | null, sources = SOURCES) =>
+    [NOTE, "", "# T", "", "URL: https://maat.example/docs/a", "", ...(frame === null ? [] : [frame, ""]), "D", "", "Body", "", sources].join("\n");
+  const MD = copy("Status: Fork-tested. Built and tested; not deployed. Last reviewed: 2026-11-07.");
+  const PATH = "out/md/docs/a.md";
+
+  it("accepts a copy that opens with the index note and carries the page's label, review date and sources", () => {
+    expect(checkMarkdownCopy(HTML, MD, PATH)).toEqual([]);
+  });
+
+  it("accepts a Help page's copy with the date alone, and the home's with neither, as their headers show them", () => {
+    expect(checkMarkdownCopy(`<header>${DATE}</header>${BOX}`, copy("Last reviewed: 2026-11-07."), PATH)).toEqual([]);
+    expect(checkMarkdownCopy(`<header></header>${BOX}`, copy(null), PATH)).toEqual([]);
+  });
+
+  it.each([
+    ["no index note", HTML, MD.replace(`${NOTE}\n\n`, ""), "does not open with the index note"],
+    ["no label where the page shows one", HTML, copy("Last reviewed: 2026-11-07."), 'does not say "Status: Fork-tested." after its URL, as its page does'],
+    ["a label where the page shows none", `<header>${DATE}</header>${BOX}`, MD, "gives a Status line, but its page shows no status label"],
+    ["another review date", HTML, MD.replace("2026-11-07.", "2026-11-08."), 'does not say "Last reviewed: 2026-11-07." after its URL, as its page does'],
+    ["a review date where the page shows none", `<header></header>${BOX}`, copy("Last reviewed: 2026-11-07."), "gives a review date, but its page shows none"],
+    ["no Source of truth", HTML, copy("Status: Fork-tested. Built. Last reviewed: 2026-11-07.", ""), "does not list the page's Source of truth files"],
+    ["other source files", HTML, MD.replace(src, src.replace("GuardLib", "PriceLib")), "does not list the page's Source of truth files"],
+    ["a Source of truth the page does not have", `<header>${LABEL}${DATE}</header>`, MD, "lists Source of truth files, but its page has no Source of truth box"],
+  ])("flags %s", (_name, html, md, problem) => {
+    expect(checkMarkdownCopy(html, md, PATH)).toEqual([`${PATH} ${problem}`]);
+  });
+});
+
+describe("checkAbiFiles", () => {
+  const expected = { MandateVault: { source: "S", note: "N", abi: [{ type: "function", name: "execute" }] } };
+  const good = `${JSON.stringify(expected.MandateVault, null, 2)}\n`;
+
+  it("accepts each ABI file as its route writes it", () => {
+    expect(checkAbiFiles(expected, (path) => (path === "data/abi/MandateVault.json" ? good : undefined))).toEqual([]);
+  });
+
+  it.each([
+    ["a missing file", () => undefined, "missing out/data/abi/MandateVault.json"],
+    ["a file that is not JSON", () => "{", "out/data/abi/MandateVault.json is not JSON"],
+    ["another ABI", () => good.replace("execute", "executeAll"), "out/data/abi/MandateVault.json is not the committed ABI (run npm run docs:gen and build again)"],
+  ])("flags %s", (_name, read, problem) => {
+    expect(checkAbiFiles(expected, read)).toEqual([problem]);
+  });
+});
+
+describe("checkLocalhost", () => {
+  const allowed = new Set(["http://localhost:3000"]);
+
+  it("accepts files whose only localhost URL is one the docs write in their text", () => {
+    const quickstart = '<a href="http://localhost:3000" rel="noreferrer">http://localhost:3000</a>, and `npm run dev` serves the site on http://localhost:3000.';
+    expect(checkLocalhost([{ path: "out/docs/get-started/quickstart.html", text: quickstart }], allowed)).toEqual([]);
+  });
+
+  it("flags each file that holds the fallback base URL, with what to set", () => {
+    const files = [
+      { path: "out/llms.txt", text: "- [A](http://localhost:3000/md/docs.md): D. Web page: http://localhost:3000/docs\n" },
+      { path: "out/sitemap.xml", text: "<loc>http://localhost:3000/docs</loc>" },
+      { path: "out/robots.txt", text: "Sitemap: https://maat.example/sitemap.xml" },
+    ];
+    expect(checkLocalhost(files, allowed)).toEqual([
+      "out/llms.txt links http://localhost:3000/md/docs.md: set NEXT_PUBLIC_SITE_URL to the public site and build again",
+      "out/sitemap.xml links http://localhost:3000/docs: set NEXT_PUBLIC_SITE_URL to the public site and build again",
+    ]);
+  });
+
+  it("runs on CI and on Vercel only, where the export is about to ship", () => {
+    expect(shipsPublicly({})).toBe(false);
+    expect(shipsPublicly({ CI: "" })).toBe(false);
+    expect(shipsPublicly({ CI: "true" })).toBe(true);
+    expect(shipsPublicly({ VERCEL: "1" })).toBe(true);
   });
 });
 
