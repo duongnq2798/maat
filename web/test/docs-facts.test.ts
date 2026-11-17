@@ -54,6 +54,10 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(vault).toMatch(/m\.minHealthFactor < WAD\b/);
   });
 
+  it("the mock Aave spoke in the unit tests refuses below the same health factor, as the credit page and its scale say", () => {
+    expect(readRepo("contracts/test/mocks/MockSpoke.sol")).toMatch(new RegExp(`healthFactor < ${DOCS_FACTS.healthFactorBound.value}e18\\)`));
+  });
+
   it("agent settings defaults", () => {
     expect(zodDefault("MAAT_MAX_TX_PER_DAY")).toBe(DOCS_FACTS.maxTxPerDay.value);
     expect(zodDefault("MAAT_DEFAULT_DAILY_COMPUTE_USD")).toBe(DOCS_FACTS.dailyComputeUsd.value);

@@ -38,7 +38,7 @@ first, and the balance guard runs after check 7. A dot in the first column marks
 | 8 | The notional fits the per-trade and daily caps | `SIZE_LIMIT` | `MandateVault._withinCaps` |
 | 9 | After a `BUY`, the stock's weight stays within its cap | `CONCENTRATION` | `MandateVault._weightAfterBuyBps` |
 
-The market checks live in one function. Checks 2 to 7 are in `GuardLib.checkMarket`; check 1 and the guards around it are in `MandateVault._check`, which calls `checkMarket` in the middle.
+The market checks sit in one function. Checks 2 to 7 are in `GuardLib.checkMarket`; check 1 and the guards around it are in `MandateVault._check`, which calls `checkMarket` in the middle.
 
 ```solidity title="contracts/src/GuardLib.sol#L44-L62"
     function checkMarket(MarketCheck memory c) internal view returns (Reason, uint256) {

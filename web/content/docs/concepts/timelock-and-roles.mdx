@@ -9,6 +9,7 @@ sources:
   - contracts/src/MandateVault.sol
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/GuardLib.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
   - contracts/test/MandateVaultAdmin.t.sol
   - contracts/test/fork/MandateVaultFork.t.sol
 next: [guides/change-a-rule, security/threat-model]
@@ -160,7 +161,7 @@ Three of the instant actions are what the README calls the owner's escape hatche
 - **`setExecutor`.** The owner swaps the executor key. The old key stops working at once (`test_rotatingExecutorRevokesOldOne`).
 - **`withdraw`.** The owner takes tokens out of the vault, to the owner address only (`test_withdrawOnlyGoesToOwner`).
 
-`withdraw` cannot reach collateral that is supplied to Aave. To unwind a position, the owner makes itself the executor, sends `REPAY` and then `WITHDRAW_COLLATERAL`, and withdraws. `REPAY` goes through a pause, but `WITHDRAW_COLLATERAL` does not: if the vault is paused, unpause it before the withdrawal, or the vault refuses it with `VAULT_PAUSED` and its intent id is used up. Each stock it takes back must also not be paused by the token itself: a stock whose own transfers are paused, or whose pause flag cannot be read, returns `TOKEN_PAUSED` ([check 2](/docs/concepts/nine-checks#2-token-not-paused)). [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover#unwind-the-credit-position) has the steps. Changing a rule is never instant: even a tighter limit waits for the timelock.
+`withdraw` cannot reach collateral that is supplied to Aave. To unwind a position, the owner makes itself the executor, sends `REPAY`, which needs enough USDC in the vault to cover it, and then `WITHDRAW_COLLATERAL`, and withdraws. `REPAY` goes through a pause, but `WITHDRAW_COLLATERAL` does not: if the vault is paused, unpause it before the withdrawal, or the vault refuses it with `VAULT_PAUSED` and its intent id is used up. Each stock it takes back must also not be paused by the token itself: a stock whose own transfers are paused, or whose pause flag cannot be read, returns `TOKEN_PAUSED` ([check 2](/docs/concepts/nine-checks#2-token-not-paused)). If any debt is left after the `REPAY`, the withdrawal also needs an open market and every supplied stock unpaused, with a valid, fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and the adapter then checks the [health factor](/docs/help/glossary#health-factor) ([Credit and the health factor](/docs/concepts/credit-and-health-factor#the-four-credit-actions)). [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover#unwind-the-credit-position) has the steps. Changing a rule is never instant: even a tighter limit waits for the timelock.
 
 ## If a key leaks
 
@@ -171,7 +172,7 @@ If the executor key leaks, the attacker controls the machine that sends intents.
 | Call `execute` with any intent, once per intent id | Skip the vault's checks for that action, buy a stock that is not allowed, trade a stock that has no market in the vault, or trade outside the session |
 | Make bad trades that stay inside the [mandate](/docs/help/glossary#mandate) | Go over the per-trade cap (<Fact name="mandate.perTradeCapUsd" />) or the daily cap (<Fact name="mandate.dailyCapUsd" />) with a trade or a bill payment |
 | Pay a payee on the allowlist, up to those caps | Pay any other address: the vault returns [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed) |
-| Supply stock to Aave and borrow USDC against it | Send a swap's output, borrowed USDC or withdrawn collateral anywhere but the vault, or leave the [health factor](/docs/help/glossary#health-factor) under the floor (<Fact name="mandate.minHealthFactor" />), or under the target (<Fact name="mandate.targetHealthFactor" />) inside the [de-risk window](/docs/help/glossary#de-risk-window) |
+| Supply stock to Aave and borrow USDC against it | Send a swap's output, borrowed USDC or withdrawn collateral anywhere but the vault, or leave the health factor under the floor (<Fact name="mandate.minHealthFactor" />), or under the target (<Fact name="mandate.targetHealthFactor" />) inside the [de-risk window](/docs/help/glossary#de-risk-window) |
 | Stop sending intents | Change the mandate, withdraw, unpause, or keep the key once the owner rotates it |
 
 <Callout type="fork" title="Fork run">
