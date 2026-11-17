@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventSignature } from "@/components/docs/content";
 import {
   AddressTable,
+  DeploymentTable,
   EnvTable,
   EnvVar,
   ErrorEntry,
@@ -316,6 +317,39 @@ describe("agent, address and fact entries", () => {
     }
     const notes = [...container.querySelectorAll("tbody td:nth-child(3)")].map((td) => td.textContent).filter(Boolean);
     expect(notes).toEqual(docsData.addresses.map((a) => a.note).filter(Boolean));
+  });
+
+  it("DeploymentTable says no Maat contract is deployed while no row has an address, and links deployments/README.md", () => {
+    const rows = ["MarketCalendar", "MandateVault"].map((contract) => ({ network: "Base mainnet", contract, address: "", tx: "", date: "" }));
+    const { container } = render(<DeploymentTable rows={rows} />);
+    expect(container.textContent).toBe("No Maat contract is deployed: no row of the table in deployments/README.md has an address.");
+    expect(screen.getByRole("link", { name: "deployments/README.md" })).toHaveAttribute(
+      "href",
+      "https://github.com/duongnq2798/maat/blob/main/deployments/README.md",
+    );
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("DeploymentTable shows every row once one has an address, with a Base mainnet address and transaction on Basescan", () => {
+    const vault = `0x${"11".repeat(20)}`;
+    const tx = `0x${"22".repeat(32)}`;
+    render(
+      <DeploymentTable
+        rows={[
+          { network: "Base mainnet", contract: "MarketCalendar", address: "", tx: "", date: "" },
+          { network: "Base mainnet", contract: "MandateVault", address: vault, tx, date: "2026-12-01" },
+          { network: "Base Sepolia", contract: "MandateVault", address: vault, tx: "", date: "" },
+        ]}
+      />,
+    );
+    const region = screen.getByRole("region", { name: "Deployments" });
+    expect(within(region).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Network", "Contract", "Address", "Tx", "Date"]);
+    expect(within(region).getAllByRole("row")).toHaveLength(4);
+    expect(within(region).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
+      `https://basescan.org/address/${vault}`,
+      `https://basescan.org/tx/${tx}`,
+    ]);
+    expect(screen.getByText(/^From the table in/).closest("figcaption")).not.toBeNull();
   });
 
   it("FactTable shows a setting's plain name, its name in the code, its value and the file that sets it", () => {

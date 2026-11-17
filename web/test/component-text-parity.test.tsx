@@ -12,6 +12,7 @@ import {
 } from "@/components/docs/diagrams";
 import {
   AddressTable,
+  DeploymentTable,
   EnvTable,
   EnvVar,
   ErrorEntry,
@@ -25,7 +26,7 @@ import {
 } from "@/components/docs/reference";
 import { SectionIndex } from "@/components/docs/SectionIndex";
 import { StatusBadge } from "@/components/docs/StatusBadge";
-import { componentText, type Props, type TextContext } from "@/lib/docs/component-text";
+import { componentText, deploymentText, type Props, type TextContext } from "@/lib/docs/component-text";
 import type { DataComponent } from "@/lib/docs/data-components";
 import { docsData } from "@/lib/docs/generated";
 import { docsTree } from "@/lib/docs/remark-component-text";
@@ -128,6 +129,35 @@ describe("tables", () => {
     const names = ["timelockHours"] as const;
     const { container } = render(<FactTable names={names} caption="Set in the vault." />);
     expect(lastBlock(md("FactTable", { names, caption: "Set in the vault." }))).toBe(container.querySelector("figcaption")!.textContent);
+  });
+});
+
+describe("deployments", () => {
+  const VAULT = `0x${"11".repeat(20)}`;
+  const TX = `0x${"22".repeat(32)}`;
+  const row = (contract: string, address = "", tx = "", date = "", network = "Base mainnet") => ({ network, contract, address, tx, date });
+  const empty = [row("MarketCalendar"), row("MandateVault")];
+  const filled = [row("MarketCalendar"), row("MandateVault", VAULT, TX, "2026-12-01"), row("MandateVault", VAULT, "", "", "Base Sepolia")];
+  /** The Markdown links' targets, in order. */
+  const targets = (text: string) => [...text.matchAll(/\]\(([^)]*)\)/g)].map((m) => m[1]);
+
+  it("DeploymentTable draws the committed table of deployments/README.md", () => {
+    expect(render(<DeploymentTable />).container.innerHTML).toBe(render(<DeploymentTable rows={docsData.deployments} />).container.innerHTML);
+  });
+
+  it("while no row has an address, has the sentence and the link of the rendered paragraph", () => {
+    const { container } = render(<DeploymentTable rows={empty} />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(plain(deploymentText(empty))).toBe(container.textContent);
+    expect(targets(deploymentText(empty))).toEqual([...container.querySelectorAll("a")].map((a) => a.getAttribute("href")));
+  });
+
+  it("once a row has an address, has the cells, the links and the caption of the rendered table", () => {
+    const { container } = render(<DeploymentTable rows={filled} />);
+    const text = deploymentText(filled);
+    expect(mdRows(text)).toEqual(domRows(container));
+    expect(targets(text)).toEqual([...container.querySelectorAll("a")].map((a) => a.getAttribute("href")));
+    expect(plain(lastBlock(text))).toBe(container.querySelector("figcaption")!.textContent);
   });
 });
 

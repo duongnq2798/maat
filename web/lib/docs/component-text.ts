@@ -3,6 +3,7 @@ import { REASON_MEANING_DOCS, REASONS } from "../../content/reasons";
 import { SITE } from "../site";
 import { forkLedger, GROUP_OF, decisionEventSource, mandateTable } from "./content-data";
 import { DATA_COMPONENTS, type DataComponent } from "./data-components";
+import type { Deployment } from "./docs-data";
 import { codeParts, FACT_TABLE_HEAD, type FactCode, factTable } from "./fact-text";
 import {
   type FlowData,
@@ -21,8 +22,14 @@ import { docsData } from "./generated";
 import { headingId } from "./links";
 import { READER_PATHS } from "./reader-paths";
 import {
+  DEPLOYMENT_HEAD,
+  deploymentHref,
+  DEPLOYMENTS_CAPTION,
+  DEPLOYMENTS_FILE,
+  isDeployed,
   kindLabels,
   NO_DEFAULT,
+  NO_DEPLOYMENT,
   NO_EXAMPLE,
   READ_BY,
   readByDetail,
@@ -225,6 +232,28 @@ const addressTable: Render = () =>
     }),
   );
 
+/**
+ * The table of deployments/README.md: while no row has an address, one sentence that says so; once one has, every row,
+ * with a Base mainnet address and transaction linked to Basescan, then the file it comes from.
+ */
+export function deploymentText(rows: readonly Deployment[]): string {
+  const file = link(code(DEPLOYMENTS_FILE), `${SITE.repoUrl}/blob/main/${DEPLOYMENTS_FILE}`);
+  if (!isDeployed(rows)) return `${NO_DEPLOYMENT[0]}${file}${NO_DEPLOYMENT[1]}`;
+  const cell = (d: Deployment, key: "address" | "tx") => {
+    const href = deploymentHref(d, key);
+    return d[key] === "" ? "" : href ? link(code(d[key]), href) : code(d[key]);
+  };
+  return blocks(
+    mdTable(
+      DEPLOYMENT_HEAD,
+      rows.map((d) => [d.network, code(d.contract), cell(d, "address"), cell(d, "tx"), d.date]),
+    ),
+    `${DEPLOYMENTS_CAPTION[0]}${file}${DEPLOYMENTS_CAPTION[1]}`,
+  );
+}
+
+const deploymentTable: Render = () => deploymentText(docsData.deployments);
+
 const inCode = (c: FactCode) => codeParts(c).map((p) => (p.code ? code(p.text) : p.text)).join("");
 
 const factTableText: Render = (props) => {
@@ -318,6 +347,7 @@ export const COMPONENT_TEXT: Readonly<Record<DataComponent, Render>> = {
   ScriptEntry: scriptEntry,
   ScriptFile: scriptFile,
   AddressTable: addressTable,
+  DeploymentTable: deploymentTable,
   FactTable: factTableText,
   ReasonTable: reasonTable,
   MandateTable: mandateTableText,

@@ -14,11 +14,13 @@ import {
   handTypedFacts,
   headingIds,
   malformedExcerptTitles,
+  notDeployedClaims,
   quotedTestTitles,
   repoPaths,
   testNameLinks,
   unknownTestNames,
 } from "@/lib/docs/content-checks";
+import { type Deployment, parseDeployments } from "@/lib/docs/docs-data";
 import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
 import { docsFrontmatter } from "@/lib/docs/frontmatter";
 import { DOCS_IA } from "@/lib/docs/ia";
@@ -309,6 +311,36 @@ describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
     expect(unknownConfigExamples(examples, config)).toEqual([]);
     const reworded = config.replace('"MAAT_BUILDER_CODE is required in live mode"', '"MAAT_BUILDER_CODE must be set in live mode"');
     expect(unknownConfigExamples(examples, reworded).map((f) => f.line)).toEqual([5]);
+  });
+});
+
+/**
+ * Every line of a docs page that still says nothing is deployed (notDeployedClaims), once a row of the table in
+ * deployments/README.md has an address; nothing while no row has one.
+ */
+function launchList(deployments: readonly Deployment[]): string[] {
+  if (deployments.every((d) => d.address === "")) return [];
+  return pages.flatMap((p) => notDeployedClaims(p.source).map((f) => at(p.slug, f)));
+}
+
+describe("the launch list: once deployments/README.md records an address, no page may still say nothing is deployed", () => {
+  const readme = readRepo("deployments/README.md").replace(/\r\n/g, "\n");
+
+  it("lists every line of every page that says nothing is deployed, once a row has an address", () => {
+    const filled = parseDeployments(
+      readme.replace(/^\| Base mainnet \| MandateVault \|.*$/m, `| Base mainnet | MandateVault | 0x${"11".repeat(20)} | 0x${"22".repeat(32)} | 2026-12-01 |`),
+    );
+    expect(filled.filter((d) => d.address !== "").map((d) => d.contract)).toEqual(["MandateVault"]);
+    const status = bySlug.get("get-started/status") ?? "";
+    const liveRow = status.split("\n").findIndex((l) => l.startsWith('| <StatusBadge status="live" />')) + 1;
+    expect(liveRow).toBeGreaterThan(0);
+    const list = launchList(filled);
+    expect(list).toContain(`content/docs/get-started/status.mdx:${liveRow} No Maat contract is deployed`);
+    expect(list).toEqual(pages.flatMap((p) => notDeployedClaims(p.source).map((f) => at(p.slug, f))));
+  });
+
+  it("is empty while no row has an address; once one has, rewrite every line it lists", () => {
+    expect(launchList(parseDeployments(readme))).toEqual([]);
   });
 });
 

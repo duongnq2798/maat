@@ -1,11 +1,17 @@
 import { Fragment, type ReactNode } from "react";
-import type { BaseConstant } from "@/lib/docs/docs-data";
+import type { BaseConstant, Deployment } from "@/lib/docs/docs-data";
 import { codeParts, FACT_TABLE_HEAD, type FactCode, type FactName, factTable } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
 import { headingId } from "@/lib/docs/links";
 import {
+  DEPLOYMENT_HEAD,
+  deploymentHref,
+  DEPLOYMENTS_CAPTION,
+  DEPLOYMENTS_FILE,
+  isDeployed,
   kindLabels,
   NO_DEFAULT,
+  NO_DEPLOYMENT,
   NO_EXAMPLE,
   READ_BY,
   readByDetail,
@@ -102,7 +108,7 @@ function SourceComment({ text }: { text: string }) {
  * A table that scrolls inside its own region on small screens, never the page; the region is a tab stop only while it
  * scrolls (ScrollRegion.tsx). A caption goes below it.
  */
-function ScrollTable({ label, caption, children }: { label: string; caption?: string; children: ReactNode }) {
+function ScrollTable({ label, caption, children }: { label: string; caption?: ReactNode; children: ReactNode }) {
   const region = (
     <ScrollRegion label={label} className={caption ? "relative overflow-x-auto" : "relative my-6 overflow-x-auto"}>
       <table className="my-0">{children}</table>
@@ -406,6 +412,73 @@ export function AddressTable() {
           ))}
         </tbody>
       ))}
+    </ScrollTable>
+  );
+}
+
+/** deployments/README.md on main, which the deployments table names as its source. */
+function DeploymentsFile() {
+  return (
+    <a href={`${SITE.repoUrl}/blob/main/${DEPLOYMENTS_FILE}`}>
+      <code>{DEPLOYMENTS_FILE}</code>
+    </a>
+  );
+}
+
+/** A deployment's address or transaction: linked to Basescan on a Base mainnet row, as code otherwise, nothing when empty. */
+function DeploymentCell({ row, cell }: { row: Deployment; cell: "address" | "tx" }) {
+  if (row[cell] === "") return null;
+  const href = deploymentHref(row, cell);
+  return href ? (
+    <a href={href}>
+      <code>{row[cell]}</code>
+    </a>
+  ) : (
+    <code>{row[cell]}</code>
+  );
+}
+
+/**
+ * The table in deployments/README.md, where the owner records a deployment. While no row has an address, one sentence
+ * says so; once one has, every row shows. A page takes the committed table; `rows` is for tests.
+ */
+export function DeploymentTable({ rows = docsData.deployments }: { rows?: readonly Deployment[] }) {
+  if (!isDeployed(rows)) {
+    return (
+      <p>
+        {NO_DEPLOYMENT[0]}
+        <DeploymentsFile />
+        {NO_DEPLOYMENT[1]}
+      </p>
+    );
+  }
+  const caption = (
+    <>
+      {DEPLOYMENTS_CAPTION[0]}
+      <DeploymentsFile />
+      {DEPLOYMENTS_CAPTION[1]}
+    </>
+  );
+  return (
+    <ScrollTable label="Deployments" caption={caption}>
+      <thead>
+        <tr>
+          {DEPLOYMENT_HEAD.map((h) => (
+            <th key={h}>{h}</th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((d, i) => (
+          <tr key={`${i}-${d.contract}`}>
+            <td>{d.network}</td>
+            <td><code>{d.contract}</code></td>
+            <td><DeploymentCell row={d} cell="address" /></td>
+            <td><DeploymentCell row={d} cell="tx" /></td>
+            <td>{d.date}</td>
+          </tr>
+        ))}
+      </tbody>
     </ScrollTable>
   );
 }

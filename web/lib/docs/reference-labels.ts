@@ -1,4 +1,4 @@
-import type { AgentEnvVar } from "./docs-data";
+import type { AgentEnvVar, Deployment } from "./docs-data";
 import type { Mutability, SolFunction } from "./sol-surface";
 
 // Relative imports only: source.config.ts loads this file through the fumadocs-mdx bundler, outside Next.
@@ -53,3 +53,25 @@ export const NO_DEFAULT = "None";
 
 /** The .env.example column when a setting's line is empty. */
 export const NO_EXAMPLE = "Empty: set your own";
+
+/** Where the owner records a deployment. docs-gen reads its first table into content/generated/deployments.json. */
+export const DEPLOYMENTS_FILE = "deployments/README.md";
+
+/** The deployments table's columns, as the table in DEPLOYMENTS_FILE heads them. */
+export const DEPLOYMENT_HEAD = ["Network", "Contract", "Address", "Tx", "Date"] as const;
+
+/** Whether the owner has recorded a deployment: a row of the table has an address. */
+export const isDeployed = (rows: readonly Deployment[]) => rows.some((d) => d.address !== "");
+
+/** What the deployments table says, around a link to DEPLOYMENTS_FILE, while no row has an address. */
+export const NO_DEPLOYMENT = ["No Maat contract is deployed: no row of the table in ", " has an address."] as const;
+
+/** The caption under the deployments table, around a link to DEPLOYMENTS_FILE. */
+export const DEPLOYMENTS_CAPTION = ["From the table in ", "."] as const;
+
+/** Where a deployment's address or transaction links on Basescan: only a full address or hash, on a Base mainnet row. */
+export function deploymentHref(d: Deployment, cell: "address" | "tx"): string | null {
+  if (d.network !== "Base mainnet") return null;
+  if (cell === "address") return /^0x[0-9a-fA-F]{40}$/.test(d.address) ? `https://basescan.org/address/${d.address}` : null;
+  return /^0x[0-9a-fA-F]{64}$/.test(d.tx) ? `https://basescan.org/tx/${d.tx}` : null;
+}

@@ -5,7 +5,7 @@ import { getDecisions } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
 import { mandateRows } from "@/content/mandate";
 import { REASONS } from "@/content/reasons";
-import { COMPONENT_TEXT, componentText, mdTable, type TextContext } from "@/lib/docs/component-text";
+import { COMPONENT_TEXT, componentText, deploymentText, mdTable, type TextContext } from "@/lib/docs/component-text";
 import { DATA_COMPONENTS } from "@/lib/docs/data-components";
 import { factFor } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
@@ -176,6 +176,39 @@ describe("reference entries", () => {
     expect(out.filter((l) => l.includes(pools))).toEqual([`| ${pools} |`]);
     const head = out.indexOf(`| ${pools} |`);
     expect(out[head + 1]).toMatch(/^\| `NVDAC_USDC_POOL` \| .+ \|  \|$/);
+  });
+});
+
+describe("deployments", () => {
+  const README = `[\`deployments/README.md\`](${SITE.repoUrl}/blob/main/deployments/README.md)`;
+  const VAULT = `0x${"11".repeat(20)}`;
+  const TX = `0x${"22".repeat(32)}`;
+  const row = (contract: string, address = "", tx = "", date = "", network = "Base mainnet") => ({ network, contract, address, tx, date });
+
+  it("DeploymentTable prints the committed table of deployments/README.md", () => {
+    expect(text("DeploymentTable")).toBe(deploymentText(docsData.deployments));
+  });
+
+  it("says no Maat contract is deployed while no row has an address, linking the file, even if a row has a date", () => {
+    const expected = `No Maat contract is deployed: no row of the table in ${README} has an address.`;
+    expect(deploymentText([row("MarketCalendar"), row("MandateVault")])).toBe(expected);
+    expect(deploymentText([row("MandateVault", "", "", "2026-12-01")])).toBe(expected);
+  });
+
+  it("once a row has an address, prints every row, links a Base mainnet address and transaction to Basescan, then names its source", () => {
+    expect(
+      deploymentText([row("MarketCalendar"), row("MandateVault", VAULT, TX, "2026-12-01"), row("MandateVault", VAULT, "", "", "Base Sepolia")]),
+    ).toBe(
+      [
+        "| Network | Contract | Address | Tx | Date |",
+        "| --- | --- | --- | --- | --- |",
+        "| Base mainnet | `MarketCalendar` |  |  |  |",
+        `| Base mainnet | \`MandateVault\` | [\`${VAULT}\`](https://basescan.org/address/${VAULT}) | [\`${TX}\`](https://basescan.org/tx/${TX}) | 2026-12-01 |`,
+        `| Base Sepolia | \`MandateVault\` | \`${VAULT}\` |  |  |`,
+        "",
+        `From the table in ${README}.`,
+      ].join("\n"),
+    );
   });
 });
 

@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { DEPLOYMENT_HEAD, DEPLOYMENTS_FILE } from "./reference-labels";
 import { buildSurface, type SolSource, type SolSurface } from "./sol-surface";
 
 /** Maat's own contracts and interfaces; third-party interfaces (Aave, Chainlink, B20, ERC-20) are left out. */
@@ -42,6 +43,15 @@ export interface BaseConstant {
   readonly group: string;
 }
 
+/** A row of the table in deployments/README.md. The owner fills in Address, Tx and Date after a deploy; until then they are empty. */
+export interface Deployment {
+  readonly network: string;
+  readonly contract: string;
+  readonly address: string;
+  readonly tx: string;
+  readonly date: string;
+}
+
 export interface AgentEnvVar {
   readonly name: string;
   /** The value in agent/.env.example: an example or an empty placeholder, never a secret. */
@@ -74,6 +84,7 @@ export interface AgentData {
 export interface DocsData {
   readonly surface: SolSurface;
   readonly addresses: readonly BaseConstant[];
+  readonly deployments: readonly Deployment[];
   readonly agent: AgentData;
 }
 
@@ -149,6 +160,45 @@ export function parseBaseAddresses(text: string): BaseConstant[] {
   return out;
 }
 
+/**
+ * The rows of the first table in deployments/README.md, whose columns must be Network | Contract | Address | Tx | Date.
+ * A cell is its text: a link gives its text, and code marks are dropped. The table ends at the first line that is not
+ * a row; any later table is not read.
+ */
+export function parseDeployments(text: string): Deployment[] {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const isRow = (line: string) => line.trimStart().startsWith("|");
+  const cells = (line: string) =>
+    line
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) =>
+        c
+          .trim()
+          .replace(/^\[([^\]]*)\]\([^)]*\)$/, "$1")
+          .replace(/^`([^`]*)`$/, "$1"),
+      );
+  const start = lines.findIndex(isRow);
+  if (start < 0) throw new Error(`${DEPLOYMENTS_FILE} has no table`);
+  const head = cells(lines[start] ?? "");
+  if (head.join(" | ") !== DEPLOYMENT_HEAD.join(" | ")) {
+    throw new Error(`${DEPLOYMENTS_FILE}: the table's columns are ${head.join(" | ")}, not ${DEPLOYMENT_HEAD.join(" | ")}`);
+  }
+  const out: Deployment[] = [];
+  // The row after the header is the |---| separator.
+  for (const line of lines.slice(start + 2)) {
+    if (!isRow(line)) break;
+    const row = cells(line);
+    if (row.length !== DEPLOYMENT_HEAD.length) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has ${row.length} cells, not ${DEPLOYMENT_HEAD.length}`);
+    }
+    const [network = "", contract = "", address = "", tx = "", date = ""] = row;
+    out.push({ network, contract, address, tx, date });
+  }
+  return out;
+}
+
 /** Everything docs-gen writes, built from the repo at `root`. Pure apart from reading the sources. */
 export function generateDocsData(root: string): DocsData {
   const read = (rel: string) => readFileSync(join(root, rel), "utf8");
@@ -161,6 +211,7 @@ export function generateDocsData(root: string): DocsData {
       structs: full.structs.filter((s) => s.file === TYPES_FILE),
     },
     addresses: parseBaseAddresses(read(ADDRESSES_FILE)),
+    deployments: parseDeployments(read(DEPLOYMENTS_FILE)),
     agent: {
       env: parseAgentEnv(read("agent/.env.example"), read("agent/src/config.ts")),
       scripts: Object.entries(JSON.parse(read("agent/package.json")).scripts as Record<string, string>).map(

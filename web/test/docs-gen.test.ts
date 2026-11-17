@@ -3,7 +3,15 @@ import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { ABI_NAMES, abiFile, abiUrl } from "@/lib/docs/abi";
-import { generateAbis, generateDocsData, parseAbis, parseAgentEnv, parseBaseAddresses, serialize } from "@/lib/docs/docs-data";
+import {
+  generateAbis,
+  generateDocsData,
+  parseAbis,
+  parseAgentEnv,
+  parseBaseAddresses,
+  parseDeployments,
+  serialize,
+} from "@/lib/docs/docs-data";
 import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { buildSurface, type SolContract } from "@/lib/docs/sol-surface";
 import { readRepo, REPO_ROOT } from "./helpers/solidity";
@@ -352,6 +360,8 @@ describe("committed data is current", () => {
   it.each([
     ["web/content/generated/contracts.json", data.surface],
     ["web/content/generated/base-addresses.json", data.addresses],
+    // The table in deployments/README.md, which the owner fills in after a deploy.
+    ["web/content/generated/deployments.json", data.deployments],
     ["web/content/generated/agent.json", data.agent],
     // The ABIs that /data/abi/*.json publish: the build reads this copy, never agent/ (spec §5.3).
     ["web/content/generated/abi.json", generateAbis(REPO_ROOT)],
@@ -467,5 +477,53 @@ describe("parseBaseAddresses", () => {
     expect(groups.map((g) => g.split(" ").slice(0, 3).join(" "))).toEqual(["Aerodrome Slipstream pools,", "Aave V4 Equities"]);
     expect(parsed.filter((a) => a.group !== "").every((a) => a.note === "")).toBe(true);
     expect(parsed.filter((a) => a.note !== "").map((a) => a.name)).toEqual(["BLOCK_SESSION", "BLOCK_WEEKEND"]);
+  });
+});
+
+describe("parseDeployments", () => {
+  const VAULT = `0x${"11".repeat(20)}`;
+  const TX = `0x${"22".repeat(32)}`;
+  const table = (...rows: string[]) => ["# Deployments", "", "| Network | Contract | Address | Tx | Date |", "|---|---|---|---|---|", ...rows].join("\n");
+
+  it("reads one row per contract the deploy script deploys, on Base mainnet, from deployments/README.md", () => {
+    const rows = parseDeployments(readRepo("deployments/README.md"));
+    expect(rows.map((r) => [r.network, r.contract])).toEqual([
+      ["Base mainnet", "MarketCalendar"],
+      ["Base mainnet", "AerodromeSwapAdapter"],
+      ["Base mainnet", "AaveV4CreditAdapter"],
+      ["Base mainnet", "MandateVault"],
+    ]);
+  });
+
+  it("reads the first table only, an empty cell as empty, and a cell's text without its link or code marks", () => {
+    const text = table(
+      "| Base mainnet | MarketCalendar | | | |",
+      `| Base mainnet | MandateVault | [\`${VAULT}\`](https://basescan.org/address/${VAULT}) | \`${TX}\` | 2026-12-01 |`,
+      "",
+      "Owner = your wallet.",
+      "",
+      "| Network | Contract | Address | Tx | Date |",
+      "|---|---|---|---|---|",
+      "| Base mainnet | Later | 0x | | |",
+    );
+    expect(parseDeployments(text)).toEqual([
+      { network: "Base mainnet", contract: "MarketCalendar", address: "", tx: "", date: "" },
+      { network: "Base mainnet", contract: "MandateVault", address: VAULT, tx: TX, date: "2026-12-01" },
+    ]);
+  });
+
+  it("gives the same rows for a CRLF checkout", () => {
+    const lf = readRepo("deployments/README.md").replace(/\r\n/g, "\n");
+    expect(parseDeployments(lf.replace(/\n/g, "\r\n"))).toEqual(parseDeployments(lf));
+  });
+
+  it("fails on a table whose columns change, naming them, on a row with another number of cells, and on a file with no table", () => {
+    expect(() => parseDeployments(table("| Base mainnet | MandateVault | | | |").replace("| Tx |", "| Commit | Tx |"))).toThrow(
+      "deployments/README.md: the table's columns are Network | Contract | Address | Commit | Tx | Date, not Network | Contract | Address | Tx | Date",
+    );
+    expect(() => parseDeployments(table("| Base mainnet | MandateVault | | |"))).toThrow(
+      "deployments/README.md: the row | Base mainnet | MandateVault | | | has 4 cells, not 5",
+    );
+    expect(() => parseDeployments("# Deployments\n\nNone yet.\n")).toThrow("deployments/README.md has no table");
   });
 });

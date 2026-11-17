@@ -75,6 +75,39 @@ export function handTypedFacts(source: string, facts: Readonly<Record<string, st
   return out;
 }
 
+/**
+ * The phrases a page uses to say that nothing of Maat is deployed. Once deployments/README.md records an address,
+ * test/docs-content.test.ts fails on every line that still holds one, so the launch edit starts from a list. Left out
+ * are words that stay true after a deploy: a fork run broadcasts nothing ("Nothing is broadcast"), the agent's own
+ * mode ("has not run live"), and what a deployed vault would do ("Once a vault is deployed").
+ */
+const NOT_DEPLOYED = new RegExp(
+  [
+    String.raw`\bnot deployed\b`,
+    String.raw`\bnothing is deployed\b`,
+    String.raw`\bno (?:Maat )?(?:contract|vault|calendar) is deployed\b`,
+    String.raw`\bhas deployed (?:no|none)\b`,
+    String.raw`\bhas not broadcast\b`,
+    String.raw`\bnothing (?:was|has been) broadcast\b`,
+    String.raw`\bnot on mainnet\b`,
+    String.raw`\bno mainnet deploy(?:ment)?\b`,
+    String.raw`\b(?:not|none is) live\b`,
+    String.raw`\bno live (?:vault|system)\b`,
+    String.raw`\bempty today\b`,
+    // A table row that asks about the deploy and answers No: "| Is Maat deployed to Base mainnet? | No |".
+    String.raw`\bdeployed\b[^|\n]*\?\s*\|\s*No\b`,
+  ].join("|"),
+  "gi",
+);
+
+/** Lines that say nothing is deployed, with the phrases found, anywhere in the source: frontmatter, JSX, code and prose. */
+export function notDeployedClaims(source: string): Finding[] {
+  return source.split("\n").flatMap((line, i) => {
+    const found = [...line.matchAll(NOT_DEPLOYED)].map((m) => m[0]);
+    return found.length > 0 ? [{ line: i + 1, text: found.join(", ") }] : [];
+  });
+}
+
 /** Every `<Fact name="…" />` name on the page, outside code. */
 export function factNames(source: string): Finding[] {
   const lines = source.replace(FENCE, blank).replace(/`[^`\n]*`/g, blank).split("\n");

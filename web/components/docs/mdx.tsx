@@ -14,6 +14,7 @@ import { Architecture, DecisionLoop, HealthFactorScale, MarketWeek, MultiplierFl
 import { GlossaryTerm } from "./GlossaryTerm";
 import {
   AddressTable,
+  DeploymentTable,
   EnvTable,
   EnvVar,
   ErrorEntry,
@@ -137,6 +138,7 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     HealthFactorScale,
     MarketWeek,
     AddressTable,
+    DeploymentTable,
     EnvTable,
     EnvVar,
     ErrorEntry,

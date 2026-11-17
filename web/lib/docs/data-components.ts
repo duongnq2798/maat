@@ -16,6 +16,7 @@ export const DATA_COMPONENTS = [
   "ScriptEntry",
   "ScriptFile",
   "AddressTable",
+  "DeploymentTable",
   "FactTable",
   "ReasonTable",
   "MandateTable",

@@ -11,6 +11,7 @@ import {
   headingIds,
   isDistinctive,
   malformedExcerptTitles,
+  notDeployedClaims,
   prose,
   quotedTestTitles,
   repoPaths,
@@ -234,5 +235,48 @@ describe("cited tests", () => {
       { line: 1, name: "test_replayReverts", file: "contracts/test/MandateVault.t.sol" },
       { line: 5, name: "test_concentration", file: "contracts/test/MandateVault.t.sol" },
     ]);
+  });
+});
+
+describe("notDeployedClaims", () => {
+  it("finds each phrase that says nothing is deployed, in any case, one finding per line, in frontmatter, JSX, tables and prose", () => {
+    const src = [
+      "---",
+      'description: "No audit, no mainnet deployment yet."',
+      "---",
+      '<Callout type="fork" title="Not deployed yet">',
+      "Nothing is deployed, and no Maat vault is deployed.",
+      "| Deployment | None. No Maat contract is deployed |",
+      "No vault is deployed. No Maat calendar is deployed. The team has deployed no vault; it has deployed none.",
+      "The owner has not broadcast it. Nothing was broadcast, and nothing has been broadcast.",
+      "## Not on mainnet yet",
+      "It is fork-tested, not live, and none is live: there is no live vault and no live system to probe.",
+      "The address table is empty today. No mainnet deploy has been run.",
+      "| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | No | x |",
+    ].join("\n");
+    expect(notDeployedClaims(src)).toEqual([
+      { line: 2, text: "no mainnet deployment" },
+      { line: 4, text: "Not deployed" },
+      { line: 5, text: "Nothing is deployed, no Maat vault is deployed" },
+      { line: 6, text: "No Maat contract is deployed" },
+      { line: 7, text: "No vault is deployed, No Maat calendar is deployed, has deployed no, has deployed none" },
+      { line: 8, text: "has not broadcast, Nothing was broadcast, nothing has been broadcast" },
+      { line: 9, text: "Not on mainnet" },
+      { line: 10, text: "not live, none is live, no live vault, no live system" },
+      { line: 11, text: "empty today, No mainnet deploy" },
+      { line: 12, text: "deployed to [Base](/docs/help/glossary#base) mainnet? | No" },
+    ]);
+  });
+
+  it("leaves out what stays true after a deploy: a fork run broadcasts nothing, the agent's own mode, what a deployed vault does, a question answered otherwise", () => {
+    const src = [
+      "Nothing is broadcast: Foundry forks the chain locally.",
+      "The agent has not run live.",
+      "Once a vault is deployed on Base mainnet, the same steps read it.",
+      "On a Saturday the DEX price has no live reference.",
+      "| Has a third party audited the contracts? | No | x |",
+      "| Is Maat deployed to Base mainnet? | Yes | x |",
+    ].join("\n");
+    expect(notDeployedClaims(src)).toEqual([]);
   });
 });

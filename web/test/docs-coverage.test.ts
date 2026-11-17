@@ -108,6 +108,18 @@ describe("base addresses page lists every constant", () => {
   });
 });
 
+describe("the table of deployments/README.md", () => {
+  const lf = (slug: string) => page(slug).replace(/\r\n/g, "\n");
+
+  it("opens Base addresses, above its first paragraph", () => {
+    expect(lf("reference/base-addresses").replace(/^---\n[\s\S]*?\n---\n\n/, "")).toMatch(/^<DeploymentTable \/>\n\n/);
+  });
+
+  it("opens the Next: mainnet section of Status and roadmap", () => {
+    expect(lf("get-started/status")).toMatch(/^## Next: mainnet\n\n<DeploymentTable \/>\n\n/m);
+  });
+});
+
 describe("default parameters page", () => {
   it("default-parameters lists every fact once", () => {
     const src = page("reference/default-parameters");
