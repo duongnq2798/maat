@@ -40,7 +40,7 @@ This guide takes you from a clone of the repository to one [round](/docs/help/gl
 
 <Callout type="fork" title="What has run">
 
-The agent's rounds and its send path ran on a [Base](/docs/help/glossary#base) mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. The two journal commands in [step 4](#read-the-journal), the suffix check in [Switch to live mode and run one round](#switch-to-live-mode-and-run-one-round) and the commands in [What to watch while it runs](#what-to-watch-while-it-runs) were written for this guide, and have not been run either. The `smoke-claude.ts` command comes from [Agent scripts](/docs/reference/agent-scripts#smoke-claudets). No Maat vault is deployed, so the checklist for live mode is untested on mainnet.
+The agent's rounds and its send path ran on a [Base](/docs/help/glossary#base) mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. The two journal commands in [step 4](#read-the-journal), the suffix check in [Switch to live mode and run one round](#switch-to-live-mode-and-run-one-round) and the commands in [What to watch while it runs](#what-to-watch-while-it-runs), apart from the `executor()` read copied from `deployments/README.md`, were written for this guide, and have not been run either. The `smoke-claude.ts` command comes from [Agent scripts](/docs/reference/agent-scripts#smoke-claudets). No Maat vault is deployed, so the checklist for live mode is untested on mainnet.
 
 </Callout>
 
@@ -483,8 +483,8 @@ interface Data {
 This section follows agent/README.md, After a halted or pending-tx cycle. A round that ends `halted` or `pending-tx` needs a look at the journal, not a restart in the dark.
 
 1. Read `data/journal.jsonl`: the `error`, `mismatch`, `sent` and `reconcile` lines. Then look up the transaction hash on Basescan.
-2. `pending-tx` means a transaction was sent and its outcome is still unknown. The next round settles it first, on its own, and the table below shows what it decides. No manual fix is needed, unless the same entry stays `pending` round after round: then follow [A pending entry that halts every round](#a-pending-entry-that-halts-every-round).
-3. `halted` because of a `mismatch` or a missing `Decision`: read the transaction on Basescan before the next round runs, so stop the agent first. A mismatch has already cleared its pending entry. If a `pending` entry halts every round, do not just delete it: follow [A pending entry that halts every round](#a-pending-entry-that-halts-every-round).
+2. `pending-tx` means a transaction was sent and its outcome is still unknown. The next round settles it first, on its own, and the table below shows what it decides. No manual fix is needed, unless the same entry stays `pending` round after round: then follow [A pending entry that blocks every round](#a-pending-entry-that-blocks-every-round).
+3. `halted` because of a `mismatch` or a missing `Decision`: read the transaction on Basescan before the next round runs, so stop the agent first. A mismatch has already cleared its pending entry. If a `pending` entry halts every round, do not just delete it: follow [A pending entry that blocks every round](#a-pending-entry-that-blocks-every-round).
 4. An emergency stop is the owner's call and needs a signature: the owner can pause the vault, or take the executor role back. [Pause, withdraw and recover](/docs/guides/pause-withdraw-recover) has the steps.
 
 What the next round does with a pending send:
@@ -514,7 +514,7 @@ These are the halt reasons the runner writes itself. Any other error thrown afte
 | `state unavailable after a transaction` | The vault could not be read again after a send. |
 | `syncMultiplier ... no MultiplierChangeDetected` | A `syncMultiplier` call succeeded but the vault did not record a change. |
 
-### A pending entry that halts every round
+### A pending entry that blocks every round
 
 <Callout type="note" title="Not run">
 
@@ -567,7 +567,7 @@ A pending entry looks like this, with placeholders for the values that vary. `tx
 - **Two agents on one data folder.** The second stops at startup with `another agent (pid N) is running; lock <FILE>`. A lock left by a process that has exited is removed at the next start, unless the system has given that pid to another running process: the start then names that pid.
 - **A leftover lock file that is empty or garbled.** While it is at most <Fact name="lockStaleSec" /> old, the start stops with `lock file unreadable; delete if no agent runs`. Delete it only when no agent runs. An older one is removed at the next start.
 - **Editing `state.json` while the agent runs.** The agent writes its in-memory copy back after each round and overwrites your edit.
-- **Deleting a `pending` entry to unstick a round.** It can pay the same bill twice. Follow [A pending entry that halts every round](#a-pending-entry-that-halts-every-round).
+- **Deleting a `pending` entry to unstick a round.** It can pay the same bill twice. Follow [A pending entry that blocks every round](#a-pending-entry-that-blocks-every-round).
 - **Looking for a transaction in dry-run mode.** There is none. The `intent` line says what the agent would have done.
 
 Problems with the setup and the tests are in [Troubleshooting](/docs/help/troubleshooting). The messages the agent prints when it stops or a round goes wrong are quoted, with what each means, in [Messages the agent prints](/docs/reference/agent-scripts#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run).
