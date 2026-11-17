@@ -279,10 +279,10 @@ describe("notDeployedClaims", () => {
     ]);
   });
 
-  it("leaves out what stays true after a deploy: a fork run broadcasts nothing, the agent's own mode, what a deployed vault does, a question answered otherwise, a sentence about a table that ends before the words is empty", () => {
+  it("leaves out what stays true after a deploy: a fork run broadcasts nothing, where the agent has run, what a deployed vault does, a question answered otherwise, a sentence about a table that ends before the words is empty", () => {
     const src = [
       "Nothing is broadcast: Foundry forks the chain locally.",
-      "The agent has not run live.",
+      "The agent has run in live mode only on a fork.",
       "Once a vault is deployed on Base mainnet, the same steps read it.",
       "On a Saturday the DEX price has no live reference.",
       "| Has a third party audited the contracts? | No | x |",
