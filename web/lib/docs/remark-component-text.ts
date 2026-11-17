@@ -4,7 +4,7 @@ import type { Root } from "fumadocs-core/page-tree";
 import { loader, type VirtualFile } from "fumadocs-core/source";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
-import { componentText, isDataComponent, type Props } from "./component-text";
+import { componentText, isDataComponent, type PropList, type Props } from "./component-text";
 import type { MdNode } from "./remark-facts";
 
 // Relative imports only: source.config.ts loads this file through the fumadocs-mdx bundler, outside Next.
@@ -48,14 +48,17 @@ export function docsTree(docsDir: string, onRead?: (file: string) => void): Root
 
 const isElement = (node: MdNode) => node.type === "mdxJsxFlowElement" || node.type === "mdxJsxTextElement";
 
-/** The value of an attribute written as {expression}: a string, a boolean or a list of strings, read from the parsed JS. */
+/**
+ * The value of an attribute written as {expression}: a string, a boolean, or a list of strings and lists, read from the
+ * parsed JS.
+ */
 function literal(value: unknown): PropValue | undefined {
   const node = value as { type?: string; value?: unknown; elements?: unknown[]; expressions?: unknown[]; quasis?: { value: { cooked: string } }[] } | null;
   if (node?.type === "Literal" && (typeof node.value === "string" || typeof node.value === "boolean")) return node.value;
   if (node?.type === "TemplateLiteral" && node.expressions?.length === 0) return node.quasis?.[0]?.value.cooked;
   if (node?.type === "ArrayExpression" && node.elements) {
     const items = node.elements.map(literal);
-    if (items.every((i): i is string => typeof i === "string")) return items;
+    if (items.every((i): i is PropList[number] => typeof i === "string" || Array.isArray(i))) return items;
   }
   return undefined;
 }

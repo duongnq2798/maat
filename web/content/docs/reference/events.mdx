@@ -12,27 +12,27 @@ sources:
 next: [guides/watch-decisions-onchain, get-started/read-a-decision]
 ---
 
-The [vault](/docs/help/glossary#vault) and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+The [vault](/docs/help/glossary#vault) and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. Each entry also gives the event's topic 0, the keccak-256 hash of its canonical ABI signature (the name and the parameter types, with a struct as a tuple and an enum as `uint8`): every log of the event carries it as its first topic, so a log filter can match on it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 | Event | Emitted by |
 | --- | --- |
-| [`Decision`](#decision) | `execute` |
-| [`ChangeCancelled`](#changecancelled) | `cancelChange` |
-| [`ExecutorSet`](#executorset) | `setExecutor` |
-| [`Funded`](#funded) | `fund` |
-| [`MandateApplied`](#mandateapplied) | the constructor, `applyMandate` |
-| [`MandateChangeQueued`](#mandatechangequeued) | `queueMandate` |
-| [`MultiplierChangeDetected`](#multiplierchangedetected) | `execute`, `syncMultiplier`, `applyTokenConfig` |
-| [`PausedSet`](#pausedset) | `setPaused` |
-| [`PayeeApplied`](#payeeapplied) | the constructor, `applyPayee` |
-| [`PayeeChangeQueued`](#payeechangequeued) | `queuePayee` |
-| [`PolicyHashUpdated`](#policyhashupdated) | the constructor, `applyMandate`, `applyTokenConfig`, `applyPayee` |
-| [`RevenueReceived`](#revenuereceived) | `notifyRevenue`, which `execute` and `withdraw` also call |
-| [`TokenConfigApplied`](#tokenconfigapplied) | the constructor, `applyTokenConfig` |
-| [`TokenConfigChangeQueued`](#tokenconfigchangequeued) | `queueTokenConfig` |
-| [`Withdrawn`](#withdrawn) | `withdraw` |
-| [`HolidayAdded`](#holidayadded) | the `MarketCalendar` constructor, `addHoliday` |
-| [`EarlyCloseSet`](#earlycloseset) | the `MarketCalendar` constructor, `setEarlyClose` |
+| [`Decision`](#decision) | [`execute`](/docs/reference/mandate-vault#execute) |
+| [`ChangeCancelled`](#changecancelled) | [`cancelChange`](/docs/reference/mandate-vault#cancelchange) |
+| [`ExecutorSet`](#executorset) | [`setExecutor`](/docs/reference/mandate-vault#setexecutor) |
+| [`Funded`](#funded) | [`fund`](/docs/reference/mandate-vault#fund) |
+| [`MandateApplied`](#mandateapplied) | the constructor, [`applyMandate`](/docs/reference/mandate-vault#applymandate) |
+| [`MandateChangeQueued`](#mandatechangequeued) | [`queueMandate`](/docs/reference/mandate-vault#queuemandate) |
+| [`MultiplierChangeDetected`](#multiplierchangedetected) | [`execute`](/docs/reference/mandate-vault#execute), [`syncMultiplier`](/docs/reference/mandate-vault#syncmultiplier), [`applyTokenConfig`](/docs/reference/mandate-vault#applytokenconfig) |
+| [`PausedSet`](#pausedset) | [`setPaused`](/docs/reference/mandate-vault#setpaused) |
+| [`PayeeApplied`](#payeeapplied) | the constructor, [`applyPayee`](/docs/reference/mandate-vault#applypayee) |
+| [`PayeeChangeQueued`](#payeechangequeued) | [`queuePayee`](/docs/reference/mandate-vault#queuepayee) |
+| [`PolicyHashUpdated`](#policyhashupdated) | the constructor, [`applyMandate`](/docs/reference/mandate-vault#applymandate), [`applyTokenConfig`](/docs/reference/mandate-vault#applytokenconfig), [`applyPayee`](/docs/reference/mandate-vault#applypayee) |
+| [`RevenueReceived`](#revenuereceived) | [`notifyRevenue`](/docs/reference/mandate-vault#notifyrevenue), which [`execute`](/docs/reference/mandate-vault#execute) and [`withdraw`](/docs/reference/mandate-vault#withdraw) also call |
+| [`TokenConfigApplied`](#tokenconfigapplied) | the constructor, [`applyTokenConfig`](/docs/reference/mandate-vault#applytokenconfig) |
+| [`TokenConfigChangeQueued`](#tokenconfigchangequeued) | [`queueTokenConfig`](/docs/reference/mandate-vault#queuetokenconfig) |
+| [`Withdrawn`](#withdrawn) | [`withdraw`](/docs/reference/mandate-vault#withdraw) |
+| [`HolidayAdded`](#holidayadded) | the `MarketCalendar` constructor, [`addHoliday`](/docs/reference/market-calendar#addholiday) |
+| [`EarlyCloseSet`](#earlycloseset) | the `MarketCalendar` constructor, [`setEarlyClose`](/docs/reference/market-calendar#setearlyclose) |
 
 ## MandateVault
 

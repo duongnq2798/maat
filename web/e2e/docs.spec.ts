@@ -908,6 +908,84 @@ test.describe("contract reference", () => {
     await expect(page.locator("#queuemandate")).toBeInViewport();
     await context.close();
   });
+
+  // A signature, a declaration or a table is a tab stop only while it is wider than its box (components/docs/ScrollRegion.tsx).
+  for (const width of [360, 1440] as const) {
+    for (const path of ["/docs/reference/mandate-vault", "/docs/reference/events", "/docs/concepts/refusal-codes"]) {
+      test(`${path} at ${width}px: after hydration, exactly the blocks that scroll sideways are tab stops`, async ({ page }) => {
+        await page.setViewportSize({ width, height: 900 });
+        await page.goto(path, { waitUntil: "networkidle" });
+        await page.evaluate(() => document.fonts.ready);
+        await expect(page.locator('[data-overflow="unmeasured"]')).toHaveCount(0);
+        await expect(async () => {
+          const blocks = await page.evaluate(() =>
+            [...document.querySelectorAll("#nd-page [data-overflow]")].map((el) => ({
+              label: el.getAttribute("aria-label"),
+              state: el.getAttribute("data-overflow"),
+              scrolls: el.scrollWidth > el.clientWidth,
+              stop: el.getAttribute("tabindex") === "0" && el.getAttribute("role") === "region",
+            })),
+          );
+          expect(blocks.length).toBeGreaterThan(0);
+          expect(blocks.filter((b) => b.stop !== b.scrolls || b.state !== (b.scrolls ? "scrolls" : "fits"))).toEqual([]);
+          expect(blocks.filter((b) => b.stop && !b.label)).toEqual([]);
+          if (width === 1440) expect(blocks.filter((b) => b.stop).length).toBeLessThan(blocks.length);
+        }).toPass();
+      });
+    }
+  }
+
+  test("a block that grows wider than its box becomes a tab stop again", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/docs/reference/mandate-vault", { waitUntil: "networkidle" });
+    const pre = page.locator("#nd-page pre[data-overflow]").first();
+    await expect(pre).toHaveAttribute("data-overflow", "fits");
+    await page.setViewportSize({ width: 360, height: 900 });
+    await expect(pre).toHaveAttribute("data-overflow", "scrolls");
+    await expect(pre).toHaveAttribute("tabindex", "0");
+    await expect(pre).toHaveAttribute("role", "region");
+  });
+
+  test("on the contract reference pages, every name in code that links goes to a heading its target page has", async ({ page, request }) => {
+    const ids = new Map<string, Set<string>>();
+    const idsOf = async (path: string) => {
+      if (!ids.has(path)) {
+        const html = await (await request.get(path)).text();
+        ids.set(path, new Set([...html.matchAll(/\sid="([^"]+)"/g)].map((m) => m[1]!)));
+      }
+      return ids.get(path)!;
+    };
+    // Names with more than one entry. The page may link one itself, to the entry it means; the build never guesses one.
+    const ambiguous = ["LengthMismatch", "ZeroAddress", "NotVault", "HealthFactorTooLow", "UnsupportedToken", "TransferFailed", "NotOwner", "withdraw", "usdc", "owner"];
+    const linked: Record<string, string[]> = {};
+    for (const slug of ["mandate-vault", "events", "errors", "types", "market-calendar", "adapters"]) {
+      const path = `/docs/reference/${slug}`;
+      const source = readFileSync(`content/docs/reference/${slug}.mdx`, "utf8");
+      await page.goto(path);
+      // Names in code that link, and the types that link inside a signature. `entry`: drawn by a reference entry or an
+      // index from the contract's own data, such as the index's row for its own `withdraw`, not linked in the prose.
+      const links = await page
+        .locator("#nd-page .prose a:has(> code), #nd-page .prose pre a")
+        .evaluateAll((as) =>
+          as.map((a) => ({ code: a.textContent ?? "", href: a.getAttribute("href") ?? "", entry: a.closest("[data-overflow]") !== null })),
+        );
+      linked[slug] = links.map((l) => l.href);
+      const broken: string[] = [];
+      for (const { code, href } of links) {
+        if (!href.startsWith("#") && !href.startsWith("/docs/")) continue;
+        const [target = "", id = ""] = href.startsWith("#") ? [path, href.slice(1)] : href.split("#");
+        if (id && !(await idsOf(target)).has(id)) broken.push(`${code} -> ${href}`);
+      }
+      expect(broken, path).toEqual([]);
+      const guessed = links.filter(
+        (l) => !l.entry && ambiguous.includes(l.code.replace(/\(\)$/, "")) && !source.includes(`[\`${l.code}\`](${l.href})`),
+      );
+      expect(guessed, path).toEqual([]);
+    }
+    expect(linked["mandate-vault"]!.some((h) => h.startsWith("/docs/reference/events#"))).toBe(true);
+    expect(linked["mandate-vault"]!.some((h) => h.startsWith("/docs/reference/errors#"))).toBe(true);
+    expect(linked.events!.filter((h) => h === "/docs/reference/mandate-vault#execute").length).toBeGreaterThan(0);
+  });
 });
 
 test("a setting name finds its entry first", async ({ page }) => {

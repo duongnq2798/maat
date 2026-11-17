@@ -5,8 +5,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentText } from "@/lib/docs/component-text";
+import { docsData } from "@/lib/docs/generated";
 import { type MdNode } from "@/lib/docs/remark-facts";
 import { type ComponentTextOptions, remarkComponentText } from "@/lib/docs/remark-component-text";
+import { findContract } from "@/lib/docs/signatures";
 
 const PATH = "content/docs/reference/mandate-vault.mdx";
 const ALL = { exists: () => true };
@@ -100,6 +102,34 @@ describe("remarkComponentText", () => {
     const out = run(source, { type: "root", children: nodes, position: whole });
     expect(out).toBe(
       `${componentText("FunctionIndex", { contract: "MarketCalendar", qualify: true }, ALL)}\n\n${componentText("FactTable", { names: ["checksPerTrade"] }, ALL)}\n`,
+    );
+  });
+
+  it("reads a list of lists, as a grouped FunctionIndex writes its groups", () => {
+    const names = findContract(docsData.surface, "MarketCalendar").functions.map((f) => f.name);
+    const index = `<FunctionIndex contract="MarketCalendar" groups={[["All", ${JSON.stringify(names)}]]} />`;
+    const str = (value: string) => ({ type: "Literal", value });
+    const groups = {
+      type: "mdxJsxAttributeValueExpression",
+      value: `[["All", ${JSON.stringify(names)}]]`,
+      data: {
+        estree: {
+          type: "Program",
+          body: [
+            {
+              type: "ExpressionStatement",
+              expression: {
+                type: "ArrayExpression",
+                elements: [{ type: "ArrayExpression", elements: [str("All"), { type: "ArrayExpression", elements: names.map(str) }] }],
+              },
+            },
+          ],
+        },
+      },
+    };
+    const { nodes, whole } = parse(index, { [index]: flow("FunctionIndex", [attr("contract", "MarketCalendar"), attr("groups", groups)]) });
+    expect(run(index, { type: "root", children: nodes, position: whole })).toBe(
+      componentText("FunctionIndex", { contract: "MarketCalendar", groups: [["All", names]] }, ALL),
     );
   });
 

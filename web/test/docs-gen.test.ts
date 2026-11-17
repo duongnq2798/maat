@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
 import { ABI_NAMES, abiFile, abiUrl } from "@/lib/docs/abi";
 import { generateAbis, generateDocsData, parseAbis, parseAgentEnv, parseBaseAddresses, serialize } from "@/lib/docs/docs-data";
@@ -15,7 +17,16 @@ const one = (text: string, name: string): SolContract => {
 describe("buildSurface", () => {
   it("keeps external and public functions with their access, mutability, params, returns and notice", () => {
     const c = one(
-      `contract V {
+      `struct Intent {
+    bytes32 id;
+}
+struct Mandate {
+    uint256 cap;
+}
+enum Reason {
+    OK
+}
+contract V {
     address public immutable owner;
     modifier onlyOwner() { if (msg.sender != owner) revert(); _; }
     /// @notice Pauses it.
@@ -115,7 +126,12 @@ describe("buildSurface", () => {
     ]);
     const v = s.contracts.find((c) => c.name === "V");
     expect(v?.events).toEqual([
-      { name: "Done", notice: "", params: [{ type: "bytes32", name: "id", indexed: true }, { type: "bool", name: "ok" }] },
+      {
+        name: "Done",
+        notice: "",
+        params: [{ type: "bytes32", name: "id", indexed: true }, { type: "bool", name: "ok" }],
+        topic0: keccak("Done(bytes32,bool)"),
+      },
     ]);
     expect(v?.errors.map((e) => e.name)).toEqual(["NotOwner", "TransferFailed"]);
     expect(s.contracts.map((c) => c.name)).toEqual(["IE", "V"]); // libraries are not listed
@@ -149,12 +165,19 @@ describe("buildSurface", () => {
   });
 });
 
+/** A parameter of the compiled ABI: a tuple names its fields in `components`. */
+interface AbiParam {
+  type: string;
+  indexed?: boolean;
+  components?: AbiParam[];
+}
+
 /** The ABI the agent compiled from the same sources (agent/src/abi/generated.ts, written by forge). */
 function agentAbi(name: string): {
   type: string;
   name?: string;
   stateMutability?: string;
-  inputs?: { indexed?: boolean }[];
+  inputs?: AbiParam[];
   outputs?: unknown[];
 }[] {
   const src = readRepo("agent/src/abi/generated.ts");
@@ -185,6 +208,108 @@ describe("parity with the compiled ABI", () => {
         const n = `${e.type} ${e.name}/${e.inputs?.length ?? 0}`;
         if (e.type === "function") return `function ${e.name}/${e.inputs?.length ?? 0}/${e.outputs?.length ?? 0} ${e.stateMutability}`;
         return e.type === "event" ? `${n} ${flags(e.inputs ?? [])}` : n;
+      })
+      .sort();
+    expect(ours).toEqual(abi);
+  });
+});
+
+const keccak = (text: string) => `0x${bytesToHex(keccak_256(utf8ToBytes(text)))}`;
+/** The first four bytes of the hash: a function's or an error's selector. */
+const selector = (text: string) => keccak(text).slice(0, 10);
+
+describe("selectors and topic 0", () => {
+  it("hashes the canonical signature: an enum as uint8, a contract or an interface as an address, a struct as the tuple of its fields", () => {
+    const s = buildSurface([
+      {
+        file: "contracts/src/X.sol",
+        text: [
+          "enum Side {",
+          "    BUY,",
+          "    SELL",
+          "}",
+          "struct Inner {",
+          "    uint a;",
+          "    Side side;",
+          "}",
+          "struct Order {",
+          "    Inner inner;",
+          "    address[] list;",
+          "}",
+          "interface IPool {}",
+          "contract V {",
+          "    event Placed(Order indexed order, Side side);",
+          "    error Bad(uint256 got, IPool pool);",
+          "    mapping(address => mapping(uint256 => bool)) public seen;",
+          "    function place(Order calldata order, IPool pool, Inner[] memory inners, bytes calldata data) external {}",
+          "}",
+        ].join("\n"),
+      },
+    ]);
+    const v = s.contracts.find((c) => c.name === "V");
+    expect(v?.functions.map((f) => [f.name, f.selector])).toEqual([
+      ["place", selector("place(((uint256,uint8),address[]),address,(uint256,uint8)[],bytes)")],
+      ["seen", selector("seen(address,uint256)")],
+    ]);
+    expect(v?.events.map((e) => e.topic0)).toEqual([keccak("Placed(((uint256,uint8),address[]),uint8)")]);
+    expect(v?.errors.map((e) => e.selector)).toEqual([selector("Bad(uint256,address)")]);
+  });
+
+  it("fails on a parameter type it cannot encode, instead of hashing a wrong signature", () => {
+    const text = "contract V {\n    function f(Unknown u) external {}\n}";
+    expect(() => buildSurface([{ file: "contracts/src/V.sol", text }])).toThrow("V.f: cannot encode the type Unknown");
+  });
+
+  it("fails on an anonymous event, whose logs carry no topic 0", () => {
+    const text = "contract V {\n    event Quiet(uint256 a) anonymous;\n}";
+    expect(() => buildSurface([{ file: "contracts/src/V.sol", text }])).toThrow("V.Quiet: an anonymous event has no topic 0");
+  });
+
+  it("gives the values computed independently with viem and cast", () => {
+    const vault = generateDocsData(REPO_ROOT).surface.contracts.find((c) => c.name === "MandateVault");
+    const fn = (name: string) => vault?.functions.find((f) => f.name === name)?.selector;
+    const err = (contract: string, name: string) =>
+      generateDocsData(REPO_ROOT)
+        .surface.contracts.find((c) => c.name === contract)
+        ?.errors.find((e) => e.name === name)?.selector;
+    const topic = (name: string) => vault?.events.find((e) => e.name === name)?.topic0;
+    expect(fn("execute")).toBe("0x4ad3993f");
+    expect(fn("previewIntent")).toBe("0x0ee774db");
+    expect(err("MandateVault", "NotExecutor")).toBe("0xc32d1d76");
+    expect(err("MandateVault", "IntentAlreadyUsed")).toBe("0xb256356e");
+    expect(err("MandateVault", "NotOwner")).toBe("0x30cd7471");
+    expect(err("MandateVault", "InvalidConfig")).toBe("0x35be3ac8");
+    expect(err("MandateVault", "ChangeNotQueued")).toBe("0x8b2bb7d5");
+    expect(err("MandateVault", "ChangeNotReady")).toBe("0x2b169f55");
+    expect(err("MandateVault", "ChangeExpired")).toBe("0x051a48c0");
+    expect(err("ICreditAdapter", "HealthFactorTooLow")).toBe("0x7e7222b7");
+    expect(err("AerodromeSwapAdapter", "InsufficientOutput")).toBe("0x2c19b8b8");
+    expect(topic("Decision")).toBe("0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322");
+    // The two queue events whose topic 0 guides/watch-decisions-onchain prints.
+    expect(topic("MandateChangeQueued")).toBe("0x7fa3c0bb17162e829120b28266b7550061c3b40db9435802b3b81b4be2f1d4b1");
+    expect(topic("TokenConfigChangeQueued")).toBe("0x52c7e79abff67f340ea03b262ee706f9f7b59fd984c52ae45155eaef031057d9");
+  });
+
+  /** A parameter's type as the compiled ABI encodes it: a tuple is its components in brackets. */
+  const abiType = (p: AbiParam): string => (p.type.startsWith("tuple") ? `(${(p.components ?? []).map(abiType).join(",")})${p.type.slice(5)}` : p.type);
+
+  it.each([
+    ["MandateVault", "mandateVaultAbi"],
+    ["MarketCalendar", "marketCalendarAbi"],
+    ["ICreditAdapter", "creditAdapterAbi"],
+  ])("%s has the selector and the topic 0 of every function, error and event in the compiled ABI", (contract, abiName) => {
+    const c = generateDocsData(REPO_ROOT).surface.contracts.find((k) => k.name === contract);
+    if (!c) throw new Error(`${contract} missing from the generated surface`);
+    const ours = [
+      ...c.functions.map((f) => `function ${f.name} ${f.selector}`),
+      ...c.events.map((e) => `event ${e.name} ${e.topic0}`),
+      ...c.errors.map((e) => `error ${e.name} ${e.selector}`),
+    ].sort();
+    const abi = agentAbi(abiName)
+      .filter((e) => e.type !== "constructor")
+      .map((e) => {
+        const hash = keccak(`${e.name}(${(e.inputs ?? []).map(abiType).join(",")})`);
+        return `${e.type} ${e.name} ${e.type === "event" ? hash : hash.slice(0, 10)}`;
       })
       .sort();
     expect(ours).toEqual(abi);

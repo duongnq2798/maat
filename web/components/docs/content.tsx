@@ -2,20 +2,23 @@ import type { ReactNode } from "react";
 import { REASON_MEANING_DOCS, REASONS } from "@/content/reasons";
 import { decisionEventSource, forkLedger, GROUP_OF, mandateTable } from "@/lib/docs/content-data";
 import { READER_PATHS, type ReaderPath } from "@/lib/docs/reader-paths";
+import { ScrollPre, ScrollRegion } from "./ScrollRegion";
 
 export { READER_PATHS, type ReaderPath };
 
 // Tables and cards the docs share with the landing page's data, so a page and the site never disagree. The rows
 // and captions come from lib/docs/content-data.ts, which the Markdown copies of the pages print too.
 
-/** A table that scrolls inside its own focusable region on small screens, never the page. */
+/**
+ * A table that scrolls inside its own region on small screens, never the page; the region is a tab stop only while it
+ * scrolls (ScrollRegion.tsx).
+ */
 function ScrollTable({ label, caption, children }: { label: string; caption?: string; children: ReactNode }) {
   return (
     <figure className="my-6">
-      {/* tabIndex: a scrollable region must be reachable by keyboard (axe rule scrollable-region-focusable). */}
-      <div className="relative overflow-x-auto" role="region" aria-label={label} tabIndex={0}>
+      <ScrollRegion label={label} className="relative overflow-x-auto">
         <table className="my-0">{children}</table>
-      </div>
+      </ScrollRegion>
       {caption ? <figcaption className="mt-2 text-sm text-fd-muted-foreground">{caption}</figcaption> : null}
     </figure>
   );
@@ -78,13 +81,13 @@ export function MandateTable() {
 export function EventSignature({ name }: { name: string }) {
   const source = decisionEventSource(name);
   return (
-    // tabIndex: a scrollable region must be reachable by keyboard (axe rule scrollable-region-focusable).
-    <pre
+    // A tab stop only while it is wider than the column (ScrollRegion.tsx).
+    <ScrollPre
+      label={`${name} event declaration`}
       className="not-prose my-4 overflow-x-auto rounded-lg border border-fd-border bg-fd-muted px-4 py-3 font-mono text-[13px] leading-6 text-fd-foreground"
-      tabIndex={0}
     >
       <code>{source}</code>
-    </pre>
+    </ScrollPre>
   );
 }
 

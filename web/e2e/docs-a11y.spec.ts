@@ -17,6 +17,8 @@ for (const theme of ["light", "dark"] as const) {
       await page.addInitScript((t) => localStorage.setItem("theme", t), theme);
       await page.goto(path, { waitUntil: "networkidle" });
       await expect(page.locator("html")).toHaveClass(theme === "dark" ? /\bdark\b/ : /^(?!.*\bdark\b)/);
+      // Hydrated: each block that scrolls sideways has measured itself, so it is a tab stop only if it scrolls.
+      await expect(page.locator('[data-overflow="unmeasured"]')).toHaveCount(0);
       const { violations } = await new AxeBuilder({ page }).analyze();
       const blocking = violations
         .filter((v) => v.impact === "serious" || v.impact === "critical")

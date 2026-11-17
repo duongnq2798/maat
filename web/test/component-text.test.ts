@@ -26,12 +26,13 @@ describe("componentText", () => {
   it("fails on a missing or non-literal prop, naming the component and the prop", () => {
     expect(() => text("Fn", { contract: "MandateVault" })).toThrow('<Fn /> needs a plain-string "name"');
     expect(() => text("FactTable", { names: "mandate.sessionMode" })).toThrow('<FactTable /> needs a list of strings for "names"');
+    expect(() => text("FactTable", { names: [["mandate.sessionMode"]] })).toThrow('<FactTable /> needs a list of strings for "names"');
     expect(() => text("StatusBadge", { status: "nope" })).toThrow('<StatusBadge status="nope" /> is not a status');
   });
 });
 
 describe("reference entries", () => {
-  it("Fn gives the signature in a solidity fence, who may call it and what it does to state", () => {
+  it("Fn gives the signature in a solidity fence, who may call it, what it does to state and its selector", () => {
     expect(text("Fn", { contract: "MandateVault", name: "execute" })).toBe(
       [
         "```solidity",
@@ -39,16 +40,34 @@ describe("reference entries", () => {
         "```",
         "",
         "Who may call: Executor only. Kind: Changes state.",
+        "",
+        "Selector: `0x4ad3993f`",
       ].join("\n"),
     );
   });
 
-  it("Fn adds the notice, and says Public state for a getter", () => {
+  it("Fn adds the notice as the source's comment, and says Public state for a getter", () => {
     const vault = findContract(docsData.surface, "MandateVault");
     const withNotice = vault.functions.find((f) => f.notice)!;
-    expect(text("Fn", { contract: "MandateVault", name: withNotice.name }).endsWith(`\n\n${withNotice.notice}`)).toBe(true);
+    expect(text("Fn", { contract: "MandateVault", name: withNotice.name }).endsWith(`\n\nSource comment: ${withNotice.notice}`)).toBe(true);
     const getter = vault.functions.find((f) => f.kind === "getter" && !f.notice)!;
     expect(text("Fn", { contract: "MandateVault", name: getter.name })).toContain("Kind: Read only, Public state.");
+  });
+
+  it("FunctionIndex in groups heads each group with a one-cell row and says only what each function does to state", () => {
+    const fns = findContract(docsData.surface, "MarketCalendar").functions;
+    const reads = fns.filter((f) => f.mutability === "view" || f.mutability === "pure").map((f) => f.name);
+    const writes = fns.map((f) => f.name).filter((n) => !reads.includes(n));
+    const out = lines(text("FunctionIndex", { contract: "MarketCalendar", qualify: true, groups: [["Writes", writes], ["Reads", reads]] }));
+    expect(out.slice(0, 4)).toEqual(["| Function | Kind |", "| --- | --- |", "| Writes |", `| \`${writes[0]}\` | Changes state |`]);
+    expect(out[3 + writes.length]).toBe("| Reads |");
+    expect(out).toHaveLength(2 + 2 + fns.length);
+    expect(() => text("FunctionIndex", { contract: "MarketCalendar", groups: [["Writes", writes]] })).toThrow(
+      `<FunctionIndex contract="MarketCalendar" /> groups leave out ${reads.join(", ")}`,
+    );
+    expect(() => text("FunctionIndex", { contract: "MarketCalendar", groups: ["Writes", writes] })).toThrow(
+      '<FunctionIndex /> needs a list of ["group", ["function", ...]] for "groups"',
+    );
   });
 
   it("Fn fails on a name the contract does not have", () => {
@@ -63,12 +82,16 @@ describe("reference entries", () => {
     expect(out[2]).toMatch(/^\| `\w+` \| (Anyone|Owner only|Executor only) \| (Read only|Changes state)/);
   });
 
-  it("EventEntry gives the signature and a table of its parameters with which are indexed", () => {
+  it("EventEntry gives the signature, its topic 0 and a table of its parameters with which are indexed", () => {
+    const { topic0 } = findContract(docsData.surface, "MandateVault").events.find((e) => e.name === "ChangeCancelled")!;
+    expect(topic0).toMatch(/^0x[0-9a-f]{64}$/);
     expect(text("EventEntry", { contract: "MandateVault", name: "ChangeCancelled" })).toBe(
       [
         "```solidity",
         "event ChangeCancelled(bytes32 indexed changeHash)",
         "```",
+        "",
+        `Topic 0: \`${topic0}\``,
         "",
         "| Name | Type | Indexed |",
         "| --- | --- | --- |",
@@ -78,12 +101,14 @@ describe("reference entries", () => {
     expect(text("EventEntry", { contract: "MandateVault", name: "Decision" })).toContain("| `amount` | `uint256` | No |");
   });
 
-  it("ErrorEntry gives the signature and a table of its parameters", () => {
+  it("ErrorEntry gives the signature, its selector and a table of its parameters", () => {
     expect(text("ErrorEntry", { contract: "MandateVault", name: "ChangeExpired" })).toBe(
       [
         "```solidity",
         "error ChangeExpired(bytes32 changeHash)",
         "```",
+        "",
+        "Selector: `0x051a48c0`",
         "",
         "| Name | Type |",
         "| --- | --- |",
@@ -92,10 +117,10 @@ describe("reference entries", () => {
     );
   });
 
-  it("TypeEntry gives an enum's members with their ids, and a struct's fields with its notice", () => {
+  it("TypeEntry gives an enum's members with their ids, and a struct's fields with its notice as the source's comment", () => {
     expect(lines(text("TypeEntry", { name: "Action" })).slice(0, 5)).toEqual(["| Id | Member |", "| --- | --- |", "| 0 | `BUY` |", "| 1 | `SELL` |", "| 2 | `SUPPLY` |"]);
     const intent = lines(text("TypeEntry", { name: "Intent" }));
-    expect(intent[0]).toMatch(/^BUY: amount = USDC in/);
+    expect(intent[0]).toMatch(/^Source comment: BUY: amount = USDC in/);
     expect(intent).toContain("| `minOut` | `uint256` |");
     expect(() => text("TypeEntry", { name: "Nope" })).toThrow("type Nope is not in content/generated/contracts.json");
   });

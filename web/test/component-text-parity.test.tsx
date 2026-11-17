@@ -19,7 +19,9 @@ import { SectionIndex } from "@/components/docs/SectionIndex";
 import { StatusBadge } from "@/components/docs/StatusBadge";
 import { componentText, type Props, type TextContext } from "@/lib/docs/component-text";
 import type { DataComponent } from "@/lib/docs/data-components";
+import { docsData } from "@/lib/docs/generated";
 import { docsTree } from "@/lib/docs/remark-component-text";
+import { findContract } from "@/lib/docs/signatures";
 
 // The Markdown copies print the same data as the components. These tests render a component and read its text
 // back out of the HTML, so a column, a caption or a label that changes in one place and not the other fails here.
@@ -46,10 +48,30 @@ function domRows(container: HTMLElement): string[][] {
 /** The text after the last blank line: where the Markdown copies put a caption. */
 const lastBlock = (text: string) => text.split("\n\n").at(-1)!;
 
+/**
+ * The paragraphs of a rendered entry, and those of its Markdown after the signature fence, as a reader sees them. A
+ * NatSpec comment can hold backticks, which the page prints as they are and the Markdown makes code marks.
+ */
+const entryParagraphs = (container: HTMLElement) => [...container.querySelectorAll("[data-entry] > p")].map((p) => plain(p.textContent!));
+const mdParagraphs = (text: string) =>
+  text
+    .split("\n\n")
+    .filter((b) => !b.startsWith("```") && !b.startsWith("| ") && !b.startsWith("Who may call: "))
+    .map(plain);
+
+/** The vault's functions in two groups, those that change state and those that read, as a grouped index takes them. */
+const VAULT_FUNCTIONS = findContract(docsData.surface, "MandateVault").functions;
+const READS = VAULT_FUNCTIONS.filter((f) => f.mutability === "view" || f.mutability === "pure").map((f) => f.name);
+const GROUPS: [string, string[]][] = [
+  ["Changes state", VAULT_FUNCTIONS.map((f) => f.name).filter((n) => !READS.includes(n))],
+  ["Read only", READS],
+];
+
 describe("tables", () => {
   const cases: [string, DataComponent, Props, React.ReactElement][] = [
     ["FunctionIndex", "FunctionIndex", { contract: "MarketCalendar", qualify: true }, <FunctionIndex contract="MarketCalendar" qualify />],
     ["FunctionIndex of the vault", "FunctionIndex", { contract: "MandateVault" }, <FunctionIndex contract="MandateVault" />],
+    ["FunctionIndex in groups", "FunctionIndex", { contract: "MandateVault", groups: GROUPS }, <FunctionIndex contract="MandateVault" groups={GROUPS} />],
     ["EnvTable", "EnvTable", {}, <EnvTable />],
     ["AddressTable", "AddressTable", {}, <AddressTable />],
     ["FactTable of settings", "FactTable", { names: ["nyseOpen", "mandate.sessionMode", "maxTokenDecimals"] }, <FactTable names={["nyseOpen", "mandate.sessionMode", "maxTokenDecimals"]} />],
@@ -99,25 +121,37 @@ describe("tables", () => {
 });
 
 describe("reference entries", () => {
-  it("Fn has the signature, the chips and the notice of the rendered entry", () => {
-    for (const name of ["execute", "fund", "executor"]) {
+  it("Fn has the signature, the chips, the selector and the source comment of the rendered entry", () => {
+    for (const name of ["execute", "fund", "executor", "previewIntent"]) {
       const { container, unmount } = render(<Fn contract="MandateVault" name={name} />);
-      const chips = [...container.querySelectorAll("span")].map((s) => s.textContent);
+      const chips = [...container.querySelectorAll("[data-entry] > div > span")].map((s) => s.textContent);
       const [access, ...kind] = chips as string[];
-      const notice = container.querySelector("p")?.textContent;
       const text = md("Fn", { contract: "MandateVault", name });
       expect(text).toContain(`\`\`\`solidity\n${container.querySelector("pre")!.textContent}\n\`\`\``);
       expect(text).toContain(`Who may call: ${access}. Kind: ${kind.join(", ")}.`);
-      if (notice) expect(text.endsWith(`\n\n${notice}`)).toBe(true);
+      expect(mdParagraphs(text)).toEqual(entryParagraphs(container));
       unmount();
     }
   });
 
-  it("EventEntry and ErrorEntry have the signature of the rendered entry", () => {
-    const event = render(<EventEntry contract="MandateVault" name="Decision" />).container;
-    expect(md("EventEntry", { contract: "MandateVault", name: "Decision" })).toContain(`\`\`\`solidity\n${event.querySelector("pre")!.textContent}\n\`\`\``);
-    const error = render(<ErrorEntry contract="MandateVault" name="ChangeExpired" />).container;
-    expect(md("ErrorEntry", { contract: "MandateVault", name: "ChangeExpired" })).toContain(`\`\`\`solidity\n${error.querySelector("pre")!.textContent}\n\`\`\``);
+  it.each([
+    ["EventEntry", "Decision", <EventEntry contract="MandateVault" name="Decision" />],
+    ["EventEntry", "PausedSet", <EventEntry contract="MandateVault" name="PausedSet" />],
+    ["ErrorEntry", "ChangeExpired", <ErrorEntry contract="MandateVault" name="ChangeExpired" />],
+    ["ErrorEntry", "InsufficientOutput", <ErrorEntry contract="AerodromeSwapAdapter" name="InsufficientOutput" />],
+    ["ErrorEntry", "HealthFactorTooLow", <ErrorEntry contract="ICreditAdapter" name="HealthFactorTooLow" />],
+  ] as const)("%s %s has the signature, the hash and the source comment of the rendered entry", (name, item, element) => {
+    const { container } = render(element);
+    const contract = (element.props as { contract: string }).contract;
+    const text = md(name, { contract, name: item });
+    expect(text).toContain(`\`\`\`solidity\n${container.querySelector("pre")!.textContent}\n\`\`\``);
+    expect(mdParagraphs(text)).toEqual(entryParagraphs(container));
+  });
+
+  it("a struct's TypeEntry has the source comment of the rendered entry", () => {
+    const { container } = render(<TypeEntry name="Intent" />);
+    expect(entryParagraphs(container)).toHaveLength(1);
+    expect(mdParagraphs(md("TypeEntry", { name: "Intent" }))).toEqual(entryParagraphs(container));
   });
 
   it.each(["BASE_RPC_URL", "MAAT_VAULT", "ANTHROPIC_API_KEY"])("EnvVar %s has the fields of the rendered entry", (name) => {

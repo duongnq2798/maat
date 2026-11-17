@@ -13,10 +13,22 @@ const MUTABILITY_LABEL: Readonly<Record<Mutability, string>> = {
   payable: "Changes state, takes ETH",
 };
 
+/** What a function does to state: a grouped <FunctionIndex> says only this, since its groups say who calls and what is state. */
+export function stateLabel(f: SolFunction): string {
+  return MUTABILITY_LABEL[f.mutability];
+}
+
 /** What a function does to state, then "Public state" for a getter: the words <Fn> and <FunctionIndex> both use. */
 export function kindLabels(f: SolFunction): string[] {
-  return f.kind === "getter" ? [MUTABILITY_LABEL[f.mutability], "Public state"] : [MUTABILITY_LABEL[f.mutability]];
+  return f.kind === "getter" ? [stateLabel(f), "Public state"] : [stateLabel(f)];
 }
+
+/** The label of a function's or an error's selector, and of an event's topic 0. */
+export const SELECTOR = "Selector";
+export const TOPIC0 = "Topic 0";
+
+/** Leads a NatSpec comment the entry quotes from the source, so it does not read as the docs' own words. */
+export const SOURCE_COMMENT = "Source comment:";
 
 /** Who reads a setting, for the settings table. */
 export const READ_BY = { agent: "Agent config", sdk: "SDK" } as const;

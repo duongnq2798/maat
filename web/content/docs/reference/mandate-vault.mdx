@@ -13,7 +13,7 @@ sources:
 next: [reference/events, concepts/timelock-and-roles]
 ---
 
-`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it [reverts](/docs/help/glossary#revert) or refuses. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet, so there is no address to give ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it [reverts](/docs/help/glossary#revert) or refuses. Each entry also gives the function's selector, the first four bytes of the keccak-256 hash of its canonical ABI signature (the name and the parameter types, with a struct as a tuple and an enum as `uint8`): the calldata of a call to the function starts with it. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet, so there is no address to give ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 To call or decode a [vault](/docs/help/glossary#vault) from code without building the repo, use its <a href="/data/abi/MandateVault.json">ABI (JSON)</a>: `mandateVaultAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
 
@@ -23,7 +23,36 @@ By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed` ([so
 
 </Callout>
 
-<FunctionIndex contract="MandateVault" />
+<FunctionIndex
+  contract="MandateVault"
+  groups={[
+    ["Executor only", ["execute"]],
+    ["Anyone", ["previewIntent", "notifyRevenue", "syncMultiplier"]],
+    ["Owner, instant", ["setExecutor", "setPaused", "withdraw", "fund"]],
+    ["Owner, timelocked", ["queueMandate", "queueTokenConfig", "queuePayee", "cancelChange", "applyMandate", "applyTokenConfig", "applyPayee"]],
+    ["Views", ["mandate", "mandateHash", "tokens", "payees", "policyHash", "today", "mandateChangeHash", "tokenChangeHash", "payeeChangeHash"]],
+    [
+      "Public state",
+      [
+        "owner",
+        "usdc",
+        "policyRegistry",
+        "executor",
+        "paused",
+        "tokenConfig",
+        "allowedPayee",
+        "usedIntent",
+        "spentOnDay",
+        "lastMultiplier",
+        "multiplierChangedAt",
+        "queuedAt",
+        "recordedUsdc",
+        "TIMELOCK",
+        "GRACE_PERIOD",
+      ],
+    ],
+  ]}
+/>
 
 ## Executor only
 

@@ -8,9 +8,21 @@ import { type FlowData, ARCHITECTURE, DECISION_LOOP, MARKET_WEEK_CAPTION, MARKET
 import { STATUS_LABEL, STATUSES, type DocStatus } from "./frontmatter";
 import { docsData } from "./generated";
 import { READER_PATHS } from "./reader-paths";
-import { kindLabels, NO_DEFAULT, NO_EXAMPLE, READ_BY, readByDetail, requiredDetail, requiredLabel } from "./reference-labels";
+import {
+  kindLabels,
+  NO_DEFAULT,
+  NO_EXAMPLE,
+  READ_BY,
+  readByDetail,
+  requiredDetail,
+  requiredLabel,
+  SELECTOR,
+  SOURCE_COMMENT,
+  stateLabel,
+  TOPIC0,
+} from "./reference-labels";
 import { sectionIndex } from "./sections";
-import { accessLabel, errorSignature, eventSignature, findContract, findItem, functionSignature } from "./signatures";
+import { accessLabel, errorSignature, eventSignature, findContract, findItem, type FunctionGroup, functionGroups, functionSignature } from "./signatures";
 import type { SolParam } from "./sol-surface";
 
 // Relative imports only: source.config.ts loads this file through the fumadocs-mdx bundler, outside Next.
@@ -19,8 +31,11 @@ import type { SolParam } from "./sol-surface";
 // the real components from the same data; lib/docs/remark-component-text.ts prints these in their place. Plain
 // Markdown, no HTML, so a reader or a model gets the signatures, the tables and the steps, not a raw tag.
 
-/** The literal attributes of a tag: a string, a bare flag, or a list of strings. */
-export type Props = Readonly<Record<string, string | boolean | readonly string[]>>;
+/** A list written as an expression: of strings, or of lists, as a grouped <FunctionIndex> writes its groups. */
+export type PropList = readonly (string | PropList)[];
+
+/** The literal attributes of a tag: a string, a bare flag, or a list. */
+export type Props = Readonly<Record<string, string | boolean | PropList>>;
 
 export interface TextContext {
   /** Whether a docs page has shipped, by slug ("get-started/quickstart"). */
@@ -61,13 +76,27 @@ function optionalStr(name: string, props: Props, key: string): string | undefine
   return props[key] === undefined ? undefined : str(name, props, key);
 }
 
+const isStrings = (v: unknown): v is readonly string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
+
 function strings(name: string, props: Props, key: string): readonly string[] {
   const v = props[key];
-  if (!Array.isArray(v)) throw new Error(`<${name} /> needs a list of strings for "${key}"`);
+  if (!isStrings(v)) throw new Error(`<${name} /> needs a list of strings for "${key}"`);
+  return v;
+}
+
+/** The groups of a <FunctionIndex>: each a section name, then the names of its functions. */
+function groupList(name: string, props: Props, key: string): readonly FunctionGroup[] | undefined {
+  const v = props[key];
+  if (v === undefined) return undefined;
+  const isGroup = (g: unknown): g is FunctionGroup => Array.isArray(g) && g.length === 2 && typeof g[0] === "string" && isStrings(g[1]);
+  if (!Array.isArray(v) || !v.every(isGroup)) throw new Error(`<${name} /> needs a list of ["group", ["function", ...]] for "${key}"`);
   return v;
 }
 
 // Reference entries
+
+const hash = (label: string, value: string) => `${label}: ${code(value)}`;
+const sourceComment = (notice: string) => notice && `${SOURCE_COMMENT} ${notice}`;
 
 function paramRows(params: readonly SolParam[], indexed: boolean): string | undefined {
   if (params.length === 0) return undefined;
@@ -83,26 +112,35 @@ const fn: Render = (props) => {
   return blocks(
     fence("solidity", functionSignature(f)),
     `Who may call: ${accessLabel(f.access)}. Kind: ${kindLabels(f).join(", ")}.`,
-    f.notice,
+    hash(SELECTOR, f.selector),
+    sourceComment(f.notice),
   );
 };
 
+/** Grouped, a group's name heads its rows as a one-cell row, and a row says only what the function does to state. */
 const functionIndex: Render = (props) => {
-  const c = findContract(surface, str("FunctionIndex", props, "contract"));
+  const contract = str("FunctionIndex", props, "contract");
+  const groups = groupList("FunctionIndex", props, "groups");
+  if (groups) {
+    return mdTable(
+      ["Function", "Kind"],
+      functionGroups(surface, contract, groups).flatMap((g) => [[g.name], ...g.functions.map((f) => [code(f.name), stateLabel(f)])]),
+    );
+  }
   return mdTable(
     ["Function", "Who may call", "Kind"],
-    c.functions.map((f) => [code(f.name), accessLabel(f.access), kindLabels(f).join(", ")]),
+    findContract(surface, contract).functions.map((f) => [code(f.name), accessLabel(f.access), kindLabels(f).join(", ")]),
   );
 };
 
 const eventEntry: Render = (props) => {
   const e = findItem(surface, str("EventEntry", props, "contract"), "events", str("EventEntry", props, "name"));
-  return blocks(fence("solidity", eventSignature(e)), e.notice, paramRows(e.params, true));
+  return blocks(fence("solidity", eventSignature(e)), hash(TOPIC0, e.topic0), sourceComment(e.notice), paramRows(e.params, true));
 };
 
 const errorEntry: Render = (props) => {
   const e = findItem(surface, str("ErrorEntry", props, "contract"), "errors", str("ErrorEntry", props, "name"));
-  return blocks(fence("solidity", errorSignature(e)), e.notice, paramRows(e.params, false));
+  return blocks(fence("solidity", errorSignature(e)), hash(SELECTOR, e.selector), sourceComment(e.notice), paramRows(e.params, false));
 };
 
 const typeEntry: Render = (props) => {
@@ -116,7 +154,7 @@ const typeEntry: Render = (props) => {
   }
   const st = surface.structs.find((s) => s.name === name);
   if (!st) throw new Error(`type ${name} is not in content/generated/contracts.json (run npm run docs:gen)`);
-  return blocks(st.notice, paramRows(st.fields, false));
+  return blocks(sourceComment(st.notice), paramRows(st.fields, false));
 };
 
 const envVars = docsData.agent.env;
