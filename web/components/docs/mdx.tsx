@@ -9,7 +9,7 @@ import { GLOSSARY_URL, glossaryId, glossaryPreviews, previewRuns } from "@/lib/d
 import { docsSlug } from "@/lib/docs/links";
 import { SITE } from "@/lib/site";
 import { Callout } from "./Callout";
-import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "./content";
+import { EventSignature, ForkLedger, MandateTable, MarkdownTable, ReasonTable, RouterCards } from "./content";
 import { Architecture, DecisionLoop, HealthFactorScale, MarketWeek, MultiplierFlow, TimelockFlow, TreasuryLoop } from "./diagrams";
 import { GlossaryTerm } from "./GlossaryTerm";
 import {
@@ -118,6 +118,9 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     ...defaultMdxComponents,
     pre: CodeBlockPre,
     a: DocsLink,
+    // A Markdown table, like every block built on ScrollRegion.tsx, is a tab stop until the page has measured it, then
+    // only while it scrolls. Fumadocs' code blocks keep their own stop.
+    table: MarkdownTable,
     Fact,
     Callout,
     Steps,

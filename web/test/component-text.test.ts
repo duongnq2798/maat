@@ -131,7 +131,7 @@ describe("reference entries", () => {
     expect(() => text("TypeEntry", { name: "Nope" })).toThrow("type Nope is not in content/generated/contracts.json");
   });
 
-  it("EnvVar lists the fields the entry shows, then its note", () => {
+  it("EnvVar lists the fields the entry shows, then its note, labelled as the comment in .env.example", () => {
     expect(text("EnvVar", { name: "BASE_RPC_URL" })).toBe(
       [
         "- Read by: agent/src/config.ts",
@@ -139,7 +139,7 @@ describe("reference entries", () => {
         "- Default: None",
         "- In .env.example: `https://mainnet.base.org`",
         "",
-        "RPC for Base mainnet (archive not required for the agent itself).",
+        "Comment in .env.example: RPC for Base mainnet (archive not required for the agent itself).",
       ].join("\n"),
     );
     expect(() => text("EnvVar", { name: "NOPE" })).toThrow("NOPE is not in agent/.env.example");
@@ -406,7 +406,7 @@ describe("diagrams", () => {
         `- **${target} and above**: Allowed. At or above the target, targetHealthFactor: allowed, inside the de-risk window too. The action's other checks still apply.`,
         `- **${floor} to under ${target}**: DERISK_WINDOW in the window. From the floor up to the target: allowed outside the de-risk window, DERISK_WINDOW inside it.`,
         `- **${bound} to under ${floor}**: HEALTH_FACTOR_LOW. Below the floor, minHealthFactor: refused, inside the de-risk window or not.`,
-        `- **Below ${bound}**: Below the lowest floor allowed. A mandate with a credit adapter cannot set its floor here: the vault rejects it with InvalidConfig. A BORROW projected to land here returns HEALTH_FACTOR_LOW. A WITHDRAW_COLLATERAL is not projected, and the adapter asks the spoke to withdraw before it checks the health factor. If the spoke refuses first, as the mock Aave spoke in the unit tests does below ${bound}, the vault returns CREDIT_FAILED.`,
+        `- **Below ${bound}**: Below the lowest floor allowed. A mandate with a credit adapter cannot set its floor here: the vault rejects it with InvalidConfig. A BORROW projected to land here returns HEALTH_FACTOR_LOW. A WITHDRAW_COLLATERAL is not projected, and the adapter asks the spoke to withdraw before it checks the health factor. If the spoke refuses first, as the mock Aave spoke in the unit tests does below ${bound}, the vault returns CREDIT_FAILED. If the spoke lets it through, the adapter's own check refuses it and the vault returns HEALTH_FACTOR_LOW.`,
         "",
         `Shown with the default floor and target. A mandate with a credit adapter can set others, as long as the floor is at least ${bound} and the target is at least the floor. SUPPLY and REPAY are never refused for the health factor.`,
       ].join("\n"),

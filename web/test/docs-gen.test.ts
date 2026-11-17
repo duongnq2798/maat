@@ -537,6 +537,20 @@ describe("parseDeployments", () => {
     expect(() => parseDeployments(table(`| Base mainnet | MandateVault | [0x1234…abcd](https://basescan.org/address/${VAULT}) | | |`))).toThrow(
       "has the address 0x1234…abcd,",
     );
-    expect(parseDeployments(table(`| Base Sepolia | MandateVault | ${VAULT} | | |`)).map((d) => d.address)).toEqual([VAULT]);
+  });
+
+  it("fails on a row on any network but Base mainnet, and on a Tx that is neither empty nor 0x and 64 hex digits", () => {
+    // DEPLOYMENT_NETWORK: the deploy script and the agent are built for Base mainnet only.
+    for (const network of ["Base", "Base Mainnet", "Base Sepolia"]) {
+      const row = `| ${network} | MandateVault | ${VAULT} | | |`;
+      expect(() => parseDeployments(table(row))).toThrow(`deployments/README.md: the row ${row} is on the network ${network}, not Base mainnet`);
+    }
+    for (const tx of ["TBD", "0xabc…", `0x${"22".repeat(31)}`]) {
+      const row = `| Base mainnet | MandateVault | ${VAULT} | ${tx} | 2026-12-01 |`;
+      expect(() => parseDeployments(table(row))).toThrow(
+        `deployments/README.md: the row ${row} has the transaction ${tx}, not an empty cell or 0x and 64 hex digits`,
+      );
+    }
+    expect(parseDeployments(table(`| Base mainnet | MandateVault | ${VAULT} | ${TX} | 2026-12-01 |`)).map((d) => d.tx)).toEqual([TX]);
   });
 });

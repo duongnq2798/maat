@@ -2,7 +2,7 @@ import { act, render, screen, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EventSignature } from "@/components/docs/content";
+import { EventSignature, MarkdownTable } from "@/components/docs/content";
 import {
   AddressTable,
   DeploymentTable,
@@ -261,6 +261,8 @@ describe("agent, address and fact entries", () => {
     render(<EnvVar name="MAAT_MODE" />);
     expect(screen.getAllByText("dry-run")).toHaveLength(2);
     expect(screen.getByText("agent/src/config.ts")).toBeInTheDocument();
+    // The note is the comment above the setting in .env.example, so it says so rather than read as the docs' own words.
+    expect(screen.getByText("Comment in .env.example:")).toBeInTheDocument();
   });
 
   it("a setting that is required only in live mode says so, in the table and in its entry", () => {
@@ -502,6 +504,62 @@ describe("tab stops", () => {
     blocks.forEach((el, i) => isStop(el, names[i]!));
     resize(300);
     for (const el of blocks) isPlain(el);
+  });
+
+  /** A Markdown table as MDX hands it over: `th` and `td` are plain elements, and a header cell may hold a link. */
+  const markdownTable = (
+    <MarkdownTable>
+      <thead>
+        <tr>
+          <th>What you see</th>
+          <th>
+            Where to <a href="/docs/help/troubleshooting">look</a>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>An error</td>
+          <td>Troubleshooting</td>
+        </tr>
+      </tbody>
+    </MarkdownTable>
+  );
+
+  it("a Markdown table is a tab stop, named by its column headers, only while it is wider than its box", () => {
+    const resize = layout(300);
+    const { container } = render(markdownTable);
+    const region = container.querySelector("[data-overflow]");
+    expect(region?.firstElementChild?.tagName).toBe("TABLE");
+    isPlain(region);
+    resize(600);
+    isStop(region, "Table: What you see, Where to look");
+    resize(300);
+    isPlain(region);
+  });
+
+  it("a Markdown table with no header row is named Table", () => {
+    layout(600);
+    const { container } = render(
+      <MarkdownTable>
+        <tbody>
+          <tr>
+            <td>x</td>
+          </tr>
+        </tbody>
+      </MarkdownTable>,
+    );
+    isStop(container.querySelector("[data-overflow]"), "Table");
+  });
+
+  it("before the page can measure a Markdown table, as in the exported HTML, it stays a tab stop", () => {
+    // jsdom has no ResizeObserver, like a browser that cannot run the page's script.
+    const { container } = render(markdownTable);
+    const region = container.querySelector("[data-overflow]");
+    expect(region).toHaveAttribute("data-overflow", "unmeasured");
+    expect(region).toHaveAttribute("tabindex", "0");
+    expect(region).toHaveAttribute("role", "region");
+    expect(region).toHaveAccessibleName("Table: What you see, Where to look");
   });
 
   it("before the page can measure a block, as in the exported HTML, the block stays a tab stop", () => {

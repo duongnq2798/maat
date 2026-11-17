@@ -97,7 +97,8 @@ const TONE_CLASSES: Record<ScaleBand["tone"], string> = {
 
 /**
  * Ranges of one value, highest first, each with what the vault does there: a ladder that reads the same from the top on
- * a 360 px phone and in a wide column. Each range's coloured edge repeats its title, so no verdict is told by colour alone.
+ * a 360 px phone and in a wide column. Each range's coloured edge repeats the verdict its title or detail gives, so no
+ * verdict is told by colour alone.
  */
 export function Scale({ label, bands, caption }: ScaleData) {
   return (

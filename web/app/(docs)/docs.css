@@ -74,7 +74,8 @@
 }
 
 /* An owner may print a runbook (the deploy checklist, the emergency playbook) before signing: print the article only,
-   across the page, with long commands wrapped instead of clipped and the address of every external link. */
+   across the page, with long commands wrapped instead of clipped and the address of every external link but an
+   excerpt's title, which already names its file and lines. */
 @media print {
   #nd-subnav,
   [data-sidebar-placeholder],
@@ -114,5 +115,10 @@
 
   #nd-page .prose a[href^="http"]::after {
     content: " (" attr(href) ")";
+  }
+
+  /* An excerpt title already names its file and lines on main, and its title bar would cut the address off. */
+  #nd-page .prose figure > div > figcaption a[href]::after {
+    content: none;
   }
 }

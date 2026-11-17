@@ -101,12 +101,14 @@ export const INDEX_NOTE_START = "> Index of every page: ";
 
 /**
  * A page's own .md file: its Markdown under a note that says where llms.txt and llms-full.txt are, so a reader that lands
- * on one page can find the rest. llms-full.txt joins the pages without it, since it is the rest.
+ * on one page can find the rest, then, when the build knows its commit, the "Built from commit" line the page's footer
+ * and Source of truth box show (`built`). llms-full.txt joins the pages without the note, since it is the rest.
  */
-export function standaloneMarkdown(markdown: string, base: URL): string {
+export function standaloneMarkdown(markdown: string, base: URL, built?: string): string {
   const llms = new URL("/llms.txt", base).href;
   const full = new URL("/llms-full.txt", base).href;
-  return `${INDEX_NOTE_START}[llms.txt](${llms}). All pages in one file: [llms-full.txt](${full}).\n\n${markdown}`;
+  const note = `${INDEX_NOTE_START}[llms.txt](${llms}). All pages in one file: [llms-full.txt](${full}).`;
+  return `${note}\n\n${built ? `${built}\n\n` : ""}${markdown}`;
 }
 
 /**

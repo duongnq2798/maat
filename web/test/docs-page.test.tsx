@@ -143,6 +143,14 @@ describe("docs Markdown helpers", () => {
         "# T\n\nURL: https://x.dev/docs/a\n",
     );
   });
+
+  it("names the commit the file was built from after that note, when the build knows it", () => {
+    expect(standaloneMarkdown("# T\n", new URL("https://x.dev/"), "Built from commit `def033c`.")).toBe(
+      "> Index of every page: [llms.txt](https://x.dev/llms.txt). All pages in one file: [llms-full.txt](https://x.dev/llms-full.txt).\n\n" +
+        "Built from commit `def033c`.\n\n" +
+        "# T\n",
+    );
+  });
 });
 
 describe("footerItems", () => {

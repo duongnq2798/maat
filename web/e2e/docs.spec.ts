@@ -153,8 +153,9 @@ test.describe("reading comfort", () => {
     });
   }
 
-  // The site chrome each layout shows on screen. A4 paper lays out at about 718 to 794 CSS px, below Fumadocs' md
-  // breakpoint, so a printout gets the mobile header and the "On this page" bar, not the sidebar and the TOC.
+  // The site chrome each layout shows on screen. A4 paper with Chrome's default margins lays out at about 718 CSS px,
+  // below Fumadocs' md breakpoint (768 px), so a printout gets the mobile header and the "On this page" bar, not the
+  // sidebar and the TOC.
   for (const { width, shown } of [
     { width: 1440, shown: ["#nd-sidebar", "#nd-toc", "button[data-search-full]"] },
     { width: 718, shown: ["#nd-subnav", "#nd-subnav [data-search]", "[data-toc-popover]"] },
@@ -188,6 +189,7 @@ test.describe("reading comfort", () => {
       const layout = await page.evaluate(() => {
         const regions = [...document.querySelectorAll("#nd-page figure [role=region]")];
         const external = document.querySelector<HTMLAnchorElement>('#nd-page .prose a[href^="https://"]');
+        const excerpt = document.querySelector("#nd-page figure > div > figcaption a");
         return {
           articleWidth: document.querySelector("#nd-page")?.getBoundingClientRect().width,
           pageWidth: document.documentElement.clientWidth,
@@ -196,6 +198,7 @@ test.describe("reading comfort", () => {
           unwrapped: regions.filter((r) => getComputedStyle(r.querySelector("pre") ?? r).whiteSpace !== "pre-wrap").length,
           externalHref: external?.getAttribute("href"),
           externalAfter: external ? getComputedStyle(external, "::after").content : undefined,
+          excerptAfter: excerpt ? getComputedStyle(excerpt, "::after").content : undefined,
         };
       });
       expect(layout.articleWidth).toBe(layout.pageWidth);
@@ -204,6 +207,8 @@ test.describe("reading comfort", () => {
       expect(layout.unwrapped).toBe(0);
       expect(layout.externalHref).toBeTruthy();
       expect(layout.externalAfter).toContain(layout.externalHref);
+      // An excerpt title's link, such as contracts/script/Deploy.s.sol#L23-L26, is not followed by its address.
+      expect(layout.excerptAfter).toBe("none");
     });
   }
 
@@ -364,6 +369,8 @@ test.describe("search finds what readers type", () => {
     // Values only a component prints: the AddressTable rows.
     ["0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", "/docs/reference/base-addresses"],
     ["AAVE_RESERVE_USDC", "/docs/reference/base-addresses"],
+    // A threat a partner searches for by its common name: the threat model's pool-price row.
+    ["MEV", "/docs/security/threat-model"],
   ] as const) {
     test(`"${query}" lists ${url} first`, async ({ page }) => {
       const dialog = await searchFor(page, query);
@@ -638,7 +645,7 @@ test.describe("page frame", () => {
     expect(image.headers()["content-type"]).toBe("image/png");
   });
 
-  test("every docs page ends with the MIT License and the site's disclaimer, once, on a phone and in a printout too", async ({ page }) => {
+  test("the docs home and a guide end with the MIT License and the site's disclaimer, once, on a phone and in a printout too", async ({ page }) => {
     for (const path of ["/docs", "/docs/guides/deploy-your-own-vault"]) {
       for (const width of [1440, 360]) {
         await page.setViewportSize({ width, height: 800 });
@@ -767,7 +774,7 @@ test.describe("build commit and line links", () => {
 });
 
 test.describe("files for tools", () => {
-  test("llms.txt gives the status and links every page's Markdown copy, which opens with the index and keeps its page's status and sources", async ({
+  test("llms.txt gives the status and links every page's Markdown copy, which opens with the index and the commit it was built from, and keeps its page's status and sources", async ({
     request,
   }) => {
     const llms = await (await request.get("/llms.txt")).text();
@@ -779,6 +786,8 @@ test.describe("files for tools", () => {
       expect(response.status(), md).toBe(200);
       const text = await response.text();
       expect(text, md).toMatch(/^> Index of every page: \[llms\.txt\]/);
+      // Then the commit it was built from, as the page's footer names it (a local build's stamp has no link).
+      expect(text, md).toMatch(/^> Index of every page: [^\n]+\n\nBuilt from commit `[0-9a-f]{7,40}`/);
       expect(text, md).toContain(`\nURL: ${web}\n`);
     }
     const nine = await (await request.get("/md/docs/concepts/nine-checks.md")).text();
@@ -1260,9 +1269,9 @@ test.describe("copy", () => {
     await expect(page.getByRole("status").filter({ hasText: "Copied" })).toHaveText("Copied");
     // The Windows clipboard stores line breaks as CRLF.
     const text = (await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n");
-    // The page's own file opens with where the other pages are, then the page.
+    // The page's own file opens with where the other pages are, then the commit it was built from, then the page.
     expect(text).toMatch(
-      /^> Index of every page: \[llms\.txt\]\(https?:\/\/[^)]+\/llms\.txt\)\. All pages in one file: \[llms-full\.txt\]\(https?:\/\/[^)]+\/llms-full\.txt\)\.\n\n# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/,
+      /^> Index of every page: \[llms\.txt\]\(https?:\/\/[^)]+\/llms\.txt\)\. All pages in one file: \[llms-full\.txt\]\(https?:\/\/[^)]+\/llms-full\.txt\)\.\n\n(?:Built from commit [^\n]+\n\n)?# Maat docs\n\nURL: https?:\/\/[^\n]+\/docs\n/,
     );
     expect(text).toContain(`passes up to ${FACT_TEXT.checksPerTrade.text} checks`);
     expect(text).not.toContain("<Fact");
@@ -1375,9 +1384,16 @@ test.describe("contract reference", () => {
     await context.close();
   });
 
-  // A signature, a declaration or a table is a tab stop only while it is wider than its box (components/docs/ScrollRegion.tsx).
+  // A signature, a declaration or a table, a Markdown table too, is a tab stop only while it is wider than its box, after
+  // the page has measured it (components/docs/ScrollRegion.tsx). Fumadocs' code blocks keep their own.
   for (const width of [360, 1440] as const) {
-    for (const path of ["/docs/reference/mandate-vault", "/docs/reference/events", "/docs/concepts/refusal-codes"]) {
+    for (const path of [
+      "/docs/reference/mandate-vault",
+      "/docs/reference/events",
+      "/docs/concepts/refusal-codes",
+      // Markdown tables only, and a code block.
+      "/docs/security/threat-model",
+    ]) {
       test(`${path} at ${width}px: after hydration, exactly the blocks that scroll sideways are tab stops`, async ({ page }) => {
         await page.setViewportSize({ width, height: 900 });
         await page.goto(path, { waitUntil: "networkidle" });
@@ -1396,6 +1412,13 @@ test.describe("contract reference", () => {
           expect(blocks.filter((b) => b.stop !== b.scrolls || b.state !== (b.scrolls ? "scrolls" : "fits"))).toEqual([]);
           expect(blocks.filter((b) => b.stop && !b.label)).toEqual([]);
           if (width === 1440) expect(blocks.filter((b) => b.stop).length).toBeLessThan(blocks.length);
+          // No other tab stop in the article: every one is such a block, or the scrolling box of a code block.
+          const others = await page.evaluate(() =>
+            [...document.querySelectorAll('#nd-page .prose [tabindex="0"]')]
+              .filter((el) => !el.hasAttribute("data-overflow") && !el.closest("figure.shiki"))
+              .map((el) => el.outerHTML.slice(0, 120)),
+          );
+          expect(others).toEqual([]);
         }).toPass();
       });
     }
@@ -1430,10 +1453,15 @@ test.describe("contract reference", () => {
       await page.goto(path);
       // Names in code that link, and the types that link inside a signature. `entry`: drawn by a reference entry or an
       // index from the contract's own data, such as the index's row for its own `withdraw`, not linked in the prose.
+      // A Markdown table the page writes (its box has Fumadocs' prose-no-margin) is prose, so its links are checked.
       const links = await page
         .locator("#nd-page .prose a:has(> code), #nd-page .prose pre a")
         .evaluateAll((as) =>
-          as.map((a) => ({ code: a.textContent ?? "", href: a.getAttribute("href") ?? "", entry: a.closest("[data-overflow]") !== null })),
+          as.map((a) => ({
+            code: a.textContent ?? "",
+            href: a.getAttribute("href") ?? "",
+            entry: a.closest("[data-overflow]:not(.prose-no-margin)") !== null,
+          })),
         );
       linked[slug] = links.map((l) => l.href);
       const broken: string[] = [];

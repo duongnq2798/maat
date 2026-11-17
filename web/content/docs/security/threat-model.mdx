@@ -15,6 +15,9 @@ sources:
   - agent/src/llm/proposer.ts
   - agent/src/llm/prompt.ts
   - agent/src/loop/runOnce.ts
+  - agent/src/ledger/store.ts
+  - agent/src/policy.ts
+  - agent/src/config.ts
   - agent/scripts/cdp-setup.ts
   - agent/README.md
   - contracts/src/adapters/AerodromeSwapAdapter.sol
@@ -23,7 +26,7 @@ sources:
 next: [security/not-claimed, guides/pause-withdraw-recover]
 ---
 
-This page says what Maat protects, who can touch it, and what an attacker gets from each secret that could leak: what they can do, what they cannot, and what the response is. It is about the code and the tests as they are. Nothing is deployed and the agent has not run live, so none of these keys protects a live system yet, and the CDP wallet and the Claude API have never been used by this code. Where a protection is untested against the real service, the row says so. [The security model](/docs/security/model) lists the rules themselves.
+This page says what Maat protects, who can touch it, and what an attacker gets from each secret that could leak: what they can do, what they cannot, and what the response is. It is about the code and the tests as they are. Nothing is deployed, and the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer in place of Claude and a local sender in place of the CDP wallet, so none of these keys protects a deployed system yet, and the CDP wallet and the Claude API have never been used by this code. Where a protection is untested against the real service, the row says so. [The security model](/docs/security/model) lists the rules themselves.
 
 ## Assets
 
@@ -147,7 +150,7 @@ If the agent cannot read the vault's state, it does nothing for that round ([`ru
 | --- | --- | --- |
 | **A bad Claude proposal**, from a wrong idea or from wrong numbers in what it reads ([What Claude reads](/docs/security/threat-model#what-claude-reads)) | The schema and the clamps in the agent, then the mandate: the session, the stock list, the caps, concentration and the health factor. Claude cannot set the slippage, choose a payee or pay a bill | A bad trade inside every limit is allowed. The vault does not judge whether a trade is a good idea |
 | **A stale price** | Check 5 refuses a feed answer that is not positive, or is older than `maxStaleness` (<Fact name="mandate.maxStalenessSec" /> by default): `FEED_STALE` or `BAD_PRICE` | Within that age, the vault trades on the last published price |
-| **A manipulated pool price or a bad fill** | Check 7 refuses a pool [TWAP](/docs/help/glossary#twap) (<Fact name="mandate.twapWindowSec" /> window) that is more than `maxPremiumBps` (<Fact name="mandate.maxPremiumBps" /> by default) from the oracle. The [slippage floor](/docs/help/glossary#slippage-floor), set from the oracle (<Fact name="mandate.maxSlippageBps" /> by default), makes a swap that returns less fail with `SWAP_FAILED`. Under the default mandate, a swap at the per-trade cap can fill at most <Fact name="slippageLossPerTradeUsd" /> below its oracle value, and one UTC day's swaps at most <Fact name="slippageLossPerDayUsd" />, because the daily cap counts buys, sells and bill payments | A pool price inside the [premium](/docs/help/glossary#premium) limit is accepted. Check 7 reads the TWAP, not the pool's spot price at the swap, and the adapter swaps with the widest price limit and checks the output only against `minOut`. So any fill down to the floor is accepted: anyone who trades the pool just before the swap can push it there, up to `maxSlippageBps` of the swap's oracle value. The bound is relative to the oracle, and a wrong but fresh oracle price is trusted |
+| **A manipulated pool price or a bad fill** | Check 7 refuses a pool [TWAP](/docs/help/glossary#twap) (<Fact name="mandate.twapWindowSec" /> window) that is more than `maxPremiumBps` (<Fact name="mandate.maxPremiumBps" /> by default) from the oracle. The [slippage floor](/docs/help/glossary#slippage-floor), set from the oracle (<Fact name="mandate.maxSlippageBps" /> by default), makes a swap that returns less fail with `SWAP_FAILED`. Under the default mandate, a swap at the per-trade cap can fill at most <Fact name="slippageLossPerTradeUsd" /> below its oracle value, and one UTC day's swaps at most <Fact name="slippageLossPerDayUsd" />, because the daily cap counts buys, sells and bill payments | A pool price inside the [premium](/docs/help/glossary#premium) limit is accepted. Check 7 reads the TWAP, not the pool's spot price at the swap, and the adapter swaps with the widest price limit and checks the output only against `minOut`. So any fill down to the floor is accepted: anyone who trades the pool just before the swap, as a sandwich attack does (a kind of MEV, maximal extractable value), can push it there, up to `maxSlippageBps` of the swap's oracle value. The bound is relative to the oracle, and a wrong but fresh oracle price is trusted |
 | **A missed holiday** | Nothing but [staleness](/docs/help/glossary#staleness). A day missing from the calendar counts as a normal session | Until the last answer is older than the staleness limit, the vault can trade on it. The owner has to add the day |
 | **A split or a dividend** | Check 6 blocks a stock when its multiplier differs from the vault's snapshot, has a change scheduled, or is inside the cooldown after a change | The assumption that the feed already includes the multiplier has not been observed across a real split |
 | **The issuer pauses or restricts a token** | Checks 2 and 3 refuse with `TOKEN_PAUSED` or `POLICY_BLOCKED` | The vault can only refuse. It cannot move a token that the token itself will not transfer |
@@ -201,9 +204,9 @@ It holds three kinds of input, all numbers, flags, addresses, fixed names or tex
 
 - **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the market and pause flags, the caps and today's spend, and the Aave position.
 - **The agent's own unpaid Claude bill**, from its data folder.
-- **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers. Each suggestion's `why` is built from numbers and fixed symbols.
+- **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers and from the Claude costs its data folder records for the week before today (`MAAT_DEFAULT_DAILY_COMPUTE_USD` when there are none). Each suggestion's `why` is built from numbers and fixed symbols.
 
-Token names come from a fixed list (`BASKET` in `agent/src/addresses.ts`), and a token that is not on it appears as its address. The agent fetches no news, social post or web page: its only network clients are the RPC, the Claude API and, in [live mode](/docs/help/glossary#live-mode), CDP. So the way to mislead Claude is with wrong numbers, for example from a dishonest RPC, not with written instructions. Its answer must match the proposal schema, or the whole answer is rejected. This describes the code: the agent has never run against the real Claude API.
+Token names come from a fixed list (`BASKET` in `agent/src/addresses.ts`), and a token that is not on it appears as its address. The agent fetches no news, social post or web page: its only network clients are the RPC, the Claude API and, in live mode, CDP. So the way to mislead Claude is with wrong numbers, for example from a dishonest RPC, not with written instructions. Its answer must match the proposal schema, or the whole answer is rejected. This describes the code: the agent has never run against the real Claude API.
 
 ## Mitigations you run
 

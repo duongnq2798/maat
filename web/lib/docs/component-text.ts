@@ -26,6 +26,7 @@ import {
   deploymentHref,
   DEPLOYMENTS_CAPTION,
   DEPLOYMENTS_FILE,
+  ENV_COMMENT,
   hasAddress,
   kindLabels,
   NO_DEFAULT,
@@ -202,7 +203,7 @@ const envVar: Render = (props) => {
     `- Default: ${v.default === null ? NO_DEFAULT : code(v.default)}`,
     `- In .env.example: ${v.example ? code(v.example) : NO_EXAMPLE}`,
   ];
-  return blocks(fields.join("\n"), v.note);
+  return blocks(fields.join("\n"), v.note && `${ENV_COMMENT} ${v.note}`);
 };
 
 const scriptEntry: Render = (props) => {

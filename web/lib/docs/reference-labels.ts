@@ -30,6 +30,9 @@ export const TOPIC0 = "Topic 0";
 /** Leads a NatSpec comment the entry quotes from the source, so it does not read as the docs' own words. */
 export const SOURCE_COMMENT = "Source comment:";
 
+/** Leads the comment lines a setting's entry quotes from above it in agent/.env.example, for the same reason. */
+export const ENV_COMMENT = "Comment in .env.example:";
+
 /** Who reads a setting, for the settings table. */
 export const READ_BY = { agent: "Agent config", sdk: "SDK" } as const;
 
@@ -60,17 +63,20 @@ export const DEPLOYMENTS_FILE = "deployments/README.md";
 /** The deployments table's columns, as the table in DEPLOYMENTS_FILE heads them. */
 export const DEPLOYMENT_HEAD = ["Network", "Contract", "Address", "Tx", "Date"] as const;
 
+/**
+ * The only network the deploy script and the agent are built for (contracts/script/BaseAddresses.sol, viem's `base` in
+ * agent/src/runtime.ts). docs-gen accepts no other in the table's Network column.
+ */
+export const DEPLOYMENT_NETWORK = "Base mainnet";
+
 /** A full address, as Basescan links it: 0x and 40 hex digits. docs-gen accepts only this, or nothing, as an Address. */
 export const FULL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
+/** A full transaction hash, as Basescan links it: 0x and 64 hex digits. docs-gen accepts only this, or nothing, as a Tx. */
+export const FULL_HASH = /^0x[0-9a-fA-F]{64}$/;
+
 /** Whether a row of the table has an address. While none has, the deployments table is one sentence that says so. */
 export const hasAddress = (d: Deployment) => d.address !== "";
-
-/**
- * Whether Maat is deployed to Base mainnet: a Base mainnet row has a full address. The launch list in
- * test/docs-content.test.ts waits for this, so a row on another network or a placeholder starts nothing.
- */
-export const isDeployed = (rows: readonly Deployment[]) => rows.some((d) => d.network === "Base mainnet" && FULL_ADDRESS.test(d.address));
 
 /** What the deployments table says, around a link to DEPLOYMENTS_FILE, while no row has an address. */
 export const NO_DEPLOYMENT = ["No Maat contract is deployed: no row of the table in ", " has an address."] as const;
@@ -80,7 +86,7 @@ export const DEPLOYMENTS_CAPTION = ["From the table in ", "."] as const;
 
 /** Where a deployment's address or transaction links on Basescan: only a full address or hash, on a Base mainnet row. */
 export function deploymentHref(d: Deployment, cell: "address" | "tx"): string | null {
-  if (d.network !== "Base mainnet") return null;
+  if (d.network !== DEPLOYMENT_NETWORK) return null;
   if (cell === "address") return FULL_ADDRESS.test(d.address) ? `https://basescan.org/address/${d.address}` : null;
-  return /^0x[0-9a-fA-F]{64}$/.test(d.tx) ? `https://basescan.org/tx/${d.tx}` : null;
+  return FULL_HASH.test(d.tx) ? `https://basescan.org/tx/${d.tx}` : null;
 }

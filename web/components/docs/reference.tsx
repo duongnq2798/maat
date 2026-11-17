@@ -8,6 +8,7 @@ import {
   deploymentHref,
   DEPLOYMENTS_CAPTION,
   DEPLOYMENTS_FILE,
+  ENV_COMMENT,
   hasAddress,
   kindLabels,
   NO_DEFAULT,
@@ -91,15 +92,14 @@ function Chip({ children }: { children: ReactNode }) {
   );
 }
 
-function Notice({ text }: { text: string }) {
-  return text ? <p className="mt-3 text-fd-muted-foreground">{text}</p> : null;
-}
-
-/** A NatSpec comment, labelled as the source's words so it does not read as the docs' own. */
-function SourceComment({ text }: { text: string }) {
+/**
+ * A comment quoted from a source file, labelled as that file's words so it does not read as the docs' own: a NatSpec
+ * comment by default, or the comment above a setting in agent/.env.example (ENV_COMMENT).
+ */
+function SourceComment({ text, label = SOURCE_COMMENT }: { text: string; label?: string }) {
   return text ? (
     <p className="mt-3 text-fd-muted-foreground">
-      <span className="font-medium text-fd-foreground">{SOURCE_COMMENT}</span> {text}
+      <span className="font-medium text-fd-foreground">{label}</span> {text}
     </p>
   ) : null;
 }
@@ -334,7 +334,7 @@ export function EnvVar({ name }: { name: string }) {
         <dt className="text-fd-muted-foreground">In .env.example</dt>
         <dd>{v.example ? <code>{v.example}</code> : NO_EXAMPLE}</dd>
       </dl>
-      <Notice text={v.note} />
+      <SourceComment text={v.note} label={ENV_COMMENT} />
     </div>
   );
 }

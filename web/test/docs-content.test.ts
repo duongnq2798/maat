@@ -25,7 +25,7 @@ import { FACT_TEXT_MAP, isFactName } from "@/lib/docs/fact-text";
 import { docsFrontmatter } from "@/lib/docs/frontmatter";
 import { DOCS_IA } from "@/lib/docs/ia";
 import { docsSlug, headingId, urlSlug } from "@/lib/docs/links";
-import { hasAddress, isDeployed } from "@/lib/docs/reference-labels";
+import { hasAddress } from "@/lib/docs/reference-labels";
 import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { SITE } from "@/lib/site";
 import { docsPages } from "./helpers/docs";
@@ -192,10 +192,13 @@ const tokensOf = (text: string) => text.split(/(<[A-Z][A-Z_]*>)/).filter((t) => 
 /** One template expression, `${...}`, with at most one level of braces inside it. */
 const EXPRESSION = String.raw`\$\{(?:[^{}]|\{[^{}]*\})*\}`;
 
-/** A whole string literal in the code that reads `tokens`: the pieces in order and next to each other, each placeholder one `${...}`. */
+/**
+ * A whole string literal in the code that reads `tokens`, opened and closed by the same quote: the pieces in order and
+ * next to each other, each placeholder one `${...}`.
+ */
 function literalPattern(tokens: readonly string[]): RegExp {
   const body = tokens.map((t) => (isPlaceholder(t) ? EXPRESSION : t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
-  return new RegExp("(?<=[`\"'])" + body + "(?=[`\"'])");
+  return new RegExp("([`\"'])" + body + "\\1");
 }
 
 /**
@@ -283,17 +286,20 @@ describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
       { line: 1, text: "claude: <ERROR>" },
       { line: 2, text: "invalid agent config: <SETTING>: <PROBLEM>" },
       { line: 3, text: "agent (pid <PID>) is running" },
+      // Cut at a quote inside the message: `CDP account "${...}" is ${...}, ...` opens with a backtick, not that quote.
+      { line: 4, text: 'CDP account "<NAME>' },
     ];
-    expect(unknownMessages(messages, code).map((f) => f.line)).toEqual([3]);
+    expect(unknownMessages(messages, code).map((f) => f.line)).toEqual([3, 4]);
     const reworded = new Map(code);
     reworded.set("agent/src/llm/proposer.ts", (code.get("agent/src/llm/proposer.ts") ?? "").replace("`claude: ${", "`anthropic: ${"));
     reworded.set("agent/src/config.ts", (code.get("agent/src/config.ts") ?? "").replace('${i.path.join(".")}: ${i.message}', '${i.path.join(".")} - ${i.message}'));
-    expect(unknownMessages(messages, reworded).map((f) => f.line)).toEqual([1, 2, 3]);
+    expect(unknownMessages(messages, reworded).map((f) => f.line)).toEqual([1, 2, 3, 4]);
   });
 
-  it("quote each example of invalid agent config with a setting and a problem that agent/src/config.ts gives", () => {
+  it("has each example of invalid agent config name a setting and a problem that agent/src/config.ts gives", () => {
     const config = code.get("agent/src/config.ts") ?? "";
     const examples = configExamples(bySlug.get("reference/agent-scripts") ?? "", MESSAGES_ID);
+    expect(examples.length, "reference/agent-scripts gives no filled-in example of invalid agent config").toBeGreaterThan(0);
     expect(unknownConfigExamples(examples, config).map((f) => at("reference/agent-scripts", f))).toEqual([]);
   });
 
@@ -324,11 +330,12 @@ describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
 const LAUNCH_CODE = ["lib/docs/abi.ts"] as const;
 
 /**
- * Every line of a docs page, and of LAUNCH_CODE, that still says nothing is deployed (notDeployedClaims), once a Base
- * mainnet row of the table in deployments/README.md has a full address (isDeployed); nothing until then.
+ * Every line of a docs page, and of LAUNCH_CODE, that still says nothing is deployed (notDeployedClaims), once a row of
+ * the table in deployments/README.md has an address (docs:gen accepts only Base mainnet rows with full addresses);
+ * nothing until then.
  */
 function launchList(deployments: readonly Deployment[]): string[] {
-  if (!isDeployed(deployments)) return [];
+  if (!deployments.some(hasAddress)) return [];
   return [
     ...pages.flatMap((p) => notDeployedClaims(p.source).map((f) => at(p.slug, f))),
     ...LAUNCH_CODE.flatMap((file) => notDeployedClaims(readRepo(`web/${file}`)).map((f) => `${file}:${f.line} ${f.text}`)),
@@ -357,16 +364,10 @@ describe("the launch list: once deployments/README.md records a Base mainnet add
     }
   });
 
-  it("waits for a full address on a Base mainnet row: a row on another network, or a placeholder, starts nothing", () => {
-    const row = (network: string, address: string) => ({ network, contract: "MandateVault", address, tx: "", date: "" });
-    expect(isDeployed([row("Base mainnet", VAULT)])).toBe(true);
-    expect(isDeployed([row("Base Sepolia", VAULT)])).toBe(false);
-    expect(isDeployed([row("Base mainnet", "0x1111…1111")])).toBe(false);
-    expect(isDeployed([row("Base mainnet", "TBD")])).toBe(false);
-    expect(isDeployed([row("Base mainnet", "")])).toBe(false);
-    const testnet = withVaultRow(`| Base Sepolia | MandateVault | ${VAULT} | | |`);
-    expect(testnet.filter(hasAddress)).toHaveLength(1);
-    expect(launchList(testnet)).toEqual([]);
+  it("starts once any row has an address; docs:gen refuses a row on another network or a placeholder", () => {
+    expect(launchList(withVaultRow(`| Base mainnet | MandateVault | ${VAULT} | | |`)).length).toBeGreaterThan(0);
+    expect(() => withVaultRow(`| Base Sepolia | MandateVault | ${VAULT} | | |`)).toThrow("not Base mainnet");
+    expect(() => withVaultRow("| Base mainnet | MandateVault | TBD | | |")).toThrow("not an empty cell");
   });
 
   it("is empty while no row has an address; once a Base mainnet row has one, rewrite every line it lists", () => {
