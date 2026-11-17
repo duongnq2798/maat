@@ -148,11 +148,11 @@ function agentCode(): Map<string, string> {
 const MESSAGES_ID = "messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run";
 
 /**
- * The messages a page quotes under the H2 whose id is `id`, up to the next H2: the inline code in the first cell of
- * each table row. A placeholder such as <FILE> stands for a value the code puts in.
+ * The inline code in the table rows under the H2 whose id is `id`, up to the next H2, with its line and the cell it
+ * is in (1 is the first cell).
  */
-function quotedMessages(source: string, id: string): { line: number; text: string }[] {
-  const out: { line: number; text: string }[] = [];
+function sectionCode(source: string, id: string): { line: number; cell: number; text: string }[] {
+  const out: { line: number; cell: number; text: string }[] = [];
   let inside = false;
   source
     .replace(FENCED, (m) => m.replace(/[^\n]/g, " "))
@@ -161,19 +161,75 @@ function quotedMessages(source: string, id: string): { line: number; text: strin
       const h2 = /^##\s+(.+?)\s*$/.exec(line)?.[1];
       if (h2 !== undefined) inside = headingId(h2) === id;
       else if (inside && line.startsWith("|")) {
-        const cell = line.split(/(?<!\\)\|/)[1] ?? "";
-        for (const [, text = ""] of cell.matchAll(/`([^`\n]+)`/g)) out.push({ line: i + 1, text });
+        line
+          .split(/(?<!\\)\|/)
+          .slice(1)
+          .forEach((cell, c) => {
+            for (const [, text = ""] of cell.matchAll(/`([^`\n]+)`/g)) out.push({ line: i + 1, cell: c + 1, text });
+          });
       }
     });
   return out;
 }
 
-/** The quoted messages that no file of `code` holds word for word: each piece between placeholders must be in one file. */
+/**
+ * The messages a page quotes under the H2 whose id is `id`, up to the next H2: the inline code in the first cell of
+ * each table row. A placeholder such as <FILE> stands for a value the code puts in.
+ */
+function quotedMessages(source: string, id: string): { line: number; text: string }[] {
+  return sectionCode(source, id)
+    .filter((c) => c.cell === 1)
+    .map(({ line, text }) => ({ line, text }));
+}
+
+const isPlaceholder = (token: string) => /^<[A-Z][A-Z_]*>$/.test(token);
+/** A message split into its literal pieces and its placeholders, in order. */
+const tokensOf = (text: string) => text.split(/(<[A-Z][A-Z_]*>)/).filter((t) => t !== "");
+/** One template expression, `${...}`, with at most one level of braces inside it. */
+const EXPRESSION = String.raw`\$\{(?:[^{}]|\{[^{}]*\})*\}`;
+
+/** A whole string literal in the code that reads `tokens`: the pieces in order and next to each other, each placeholder one `${...}`. */
+function literalPattern(tokens: readonly string[]): RegExp {
+  const body = tokens.map((t) => (isPlaceholder(t) ? EXPRESSION : t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))).join("");
+  return new RegExp("(?<=[`\"'])" + body + "(?=[`\"'])");
+}
+
+/**
+ * Whether `src` holds the message `tokens` as one string literal. A message may also be a literal that ends in one
+ * `${...}` standing for the rest of the message from a placeholder on, when that rest is itself a literal in `src`:
+ * `invalid agent config: ${msg}`, where `msg` is built from `${...}: ${...}`.
+ */
+function holds(src: string, tokens: readonly string[]): boolean {
+  if (literalPattern(tokens).test(src)) return true;
+  return tokens.some(
+    (t, k) =>
+      k > 0 &&
+      isPlaceholder(t) &&
+      tokens.slice(k).some((u) => !isPlaceholder(u)) &&
+      literalPattern([...tokens.slice(0, k), t]).test(src) &&
+      holds(src, tokens.slice(k)),
+  );
+}
+
+/** The quoted messages that no file of `code` holds word for word, as one string literal (see holds()). */
 function unknownMessages(messages: readonly { line: number; text: string }[], code: ReadonlyMap<string, string>) {
-  return messages.filter((m) => {
-    const pieces = m.text.split(/<[A-Z][A-Z_]*>/).filter((p) => p !== "");
-    return ![...code.values()].some((src) => pieces.every((p) => src.includes(p)));
+  return messages.filter((m) => ![...code.values()].some((src) => holds(src, tokensOf(m.text))));
+}
+
+/**
+ * The examples of `invalid agent config` that the section gives after the first cell of a row, with the setting
+ * and the problem filled in.
+ */
+function configExamples(source: string, id: string): { line: number; text: string; setting: string; problem: string }[] {
+  return sectionCode(source, id).flatMap((c) => {
+    const m = c.cell > 1 ? /^invalid agent config: ([A-Z][A-Z0-9_]*): (.+)$/.exec(c.text) : null;
+    return m ? [{ line: c.line, text: c.text, setting: m[1] ?? "", problem: m[2] ?? "" }] : [];
   });
+}
+
+/** The examples whose setting `config` does not name, or whose problem is not one string literal in `config`. */
+function unknownConfigExamples(examples: ReturnType<typeof configExamples>, config: string) {
+  return examples.filter((e) => !new RegExp(`\\b${e.setting}\\b`).test(config) || !holds(config, tokensOf(e.problem)));
 }
 
 describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
@@ -216,6 +272,42 @@ describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
     const reworded = new Map(code);
     reworded.set("agent/src/loop/lock.ts", (code.get("agent/src/loop/lock.ts") ?? "").replace("lock file unreadable", "lock file not readable"));
     expect(unknownMessages(messages, reworded).map((f) => f.line)).toEqual([5, 7]);
+  });
+
+  it("fails a message whose words now occur only inside another message, or only as a fragment", () => {
+    const messages = [
+      { line: 1, text: "claude: <ERROR>" },
+      { line: 2, text: "invalid agent config: <SETTING>: <PROBLEM>" },
+      { line: 3, text: "agent (pid <PID>) is running" },
+    ];
+    expect(unknownMessages(messages, code).map((f) => f.line)).toEqual([3]);
+    const reworded = new Map(code);
+    reworded.set("agent/src/llm/proposer.ts", (code.get("agent/src/llm/proposer.ts") ?? "").replace("`claude: ${", "`anthropic: ${"));
+    reworded.set("agent/src/config.ts", (code.get("agent/src/config.ts") ?? "").replace('${i.path.join(".")}: ${i.message}', '${i.path.join(".")} - ${i.message}'));
+    expect(unknownMessages(messages, reworded).map((f) => f.line)).toEqual([1, 2, 3]);
+  });
+
+  it("quote each example of invalid agent config with a setting and a problem that agent/src/config.ts gives", () => {
+    const config = code.get("agent/src/config.ts") ?? "";
+    const examples = configExamples(bySlug.get("reference/agent-scripts") ?? "", MESSAGES_ID);
+    expect(unknownConfigExamples(examples, config).map((f) => at("reference/agent-scripts", f))).toEqual([]);
+  });
+
+  it("reads the examples of invalid agent config after the first cell, and fails one whose problem is reworded in the code", () => {
+    const examplePage = [
+      "## Messages the agent prints (from the code and unit tests; none seen in a live run)",
+      "",
+      "| Message | What it means |",
+      "| --- | --- |",
+      "| `invalid agent config: <SETTING>: <PROBLEM>` | Live mode gives `invalid agent config: MAAT_BUILDER_CODE: MAAT_BUILDER_CODE is required in live mode`. |",
+      "| `invalid agent config: MAAT_VAULT: not an example` | x |",
+    ].join("\n");
+    const examples = configExamples(examplePage, MESSAGES_ID);
+    expect(examples.map((e) => [e.line, e.setting, e.problem])).toEqual([[5, "MAAT_BUILDER_CODE", "MAAT_BUILDER_CODE is required in live mode"]]);
+    const config = code.get("agent/src/config.ts") ?? "";
+    expect(unknownConfigExamples(examples, config)).toEqual([]);
+    const reworded = config.replace('"MAAT_BUILDER_CODE is required in live mode"', '"MAAT_BUILDER_CODE must be set in live mode"');
+    expect(unknownConfigExamples(examples, reworded).map((f) => f.line)).toEqual([5]);
   });
 });
 
