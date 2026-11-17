@@ -16,7 +16,7 @@ next: [security/testing, security/report-a-vulnerability]
 
 <Callout type="warning" title="Unaudited and not on mainnet">
 
-No third party has reviewed the contracts. No Maat contract is deployed to [Base](/docs/help/glossary#base) mainnet, so there is no live [vault](/docs/help/glossary#vault) address and no mainnet transaction. All execution evidence is from a local fork of Base mainnet, and the fork run used a scripted proposer and a local sender: the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run.
+No third party has reviewed the contracts. No Maat contract is deployed to [Base](/docs/help/glossary#base) mainnet, so there is no [vault](/docs/help/glossary#vault) address and no mainnet transaction. All execution evidence is from a local fork of Base mainnet, and the fork run used a scripted proposer and a local sender: the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run.
 
 </Callout>
 
@@ -30,7 +30,7 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 ## Not on mainnet yet
 
-**What it means for you.** There is no live vault and no mainnet [`Decision`](/docs/help/glossary#decision). The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The [Builder Code](/docs/help/glossary#builder-code-erc-8021) is not registered, and no output from the real Claude API is committed. The Base App mini-app, [x402](/docs/help/glossary#x402) revenue and the live dashboard do not exist yet.
+**What it means for you.** No Maat vault is deployed, and there is no mainnet [`Decision`](/docs/help/glossary#decision). The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The [Builder Code](/docs/help/glossary#builder-code-erc-8021) is not registered, and no output from the real Claude API is committed. The mainnet ledger and dashboard, the Base App mini-app and [x402](/docs/help/glossary#x402) revenue do not exist yet.
 
 **What would fix it.** The [owner](/docs/help/glossary#owner) deploys by hand and runs the first real [rounds](/docs/help/glossary#round). The checklist is in [Next: mainnet](/docs/get-started/status#next-mainnet), and the commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault). A deployment would not make the contracts audited.
 
@@ -44,7 +44,7 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 **What it means for you.** The vault treats each answer from a [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) as the price of one whole token (`10 ** decimals()` units of its `balanceOf`) with the [B20](/docs/help/glossary#b20) [uiMultiplier](/docs/help/glossary#uimultiplier) already applied. That matched Coinbase's NAV price when it was checked during development, with the multiplier close to 1 (<Fact name="nvdaUiMultiplier" /> on NVDAc at the fork block), and it has not been observed across a real split. If the feed did not include the multiplier after a split, every price-based value the vault computes for that stock would be off by the same factor: a `SELL`'s value against the caps, the stock's value in the concentration weight and the [slippage floor](/docs/help/glossary#slippage-floor). A `BUY`'s size is counted in USDC, so its cap would not change. Check 7 compares the oracle with the pool's [TWAP](/docs/help/glossary#twap) on every `BUY` and `SELL`, and refuses a gap above the premium limit with `PREMIUM_TOO_HIGH`. No test covers a feed that leaves the multiplier out. Check 6 blocks a stock when its multiplier changes and for a cooldown after (<Fact name="mandate.multiplierCooldownSec" /> by default), which covers the time right after a split. It does not settle what the price means once the cooldown ends. [Prices and premium](/docs/concepts/prices-and-premium#assumptions) lists this with the other assumptions.
 
-**What would fix it.** Watching a real corporate action on a live feed and comparing the price with the new multiplier. Until then it is an assumption.
+**What would fix it.** Watching a real corporate action on the stock's Chainlink feed on Base mainnet and comparing the price with the new multiplier. Until then it is an assumption.
 
 ## tx.origin in the policy check
 
@@ -54,7 +54,7 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 ## Preview cannot see everything
 
-**What it means for you.** `previewIntent` returns the verdict of the checks, not the result of the action. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, or a credit call that fails after the checks pass, and it cannot see [Aave](/docs/help/glossary#aave-v4)'s own health check after a collateral withdrawal against debt. `CREDIT_FAILED` is also what the vault returns when a credit view cannot be read, and the preview does see that case. So a preview of `OK` means the checks pass, not that the action will succeed.
+**What it means for you.** `previewIntent` returns the verdict of the checks, not the result of the action. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, or a credit call that fails after the checks pass, and it cannot see the credit adapter's own [health factor](/docs/help/glossary#health-factor) check after a collateral withdrawal against debt, or [Aave](/docs/help/glossary#aave-v4)'s own rules for that withdrawal. `CREDIT_FAILED` is also what the vault returns when a credit view cannot be read, and the preview does see that case. So a preview of `OK` means the checks pass, not that the action will succeed.
 
 A verdict also holds only for the block the preview read. Before the transaction lands, the market can close, a feed can go stale or the day's cap can fill, and then `execute` reaches another [reason](/docs/help/glossary#reason). The preview also does not look at `usedIntent`, so a reused [intent](/docs/help/glossary#intent) id previews normally and `execute` then [reverts](/docs/help/glossary#revert) with `IntentAlreadyUsed` ([previewIntent](/docs/reference/mandate-vault#previewintent)).
 
@@ -64,7 +64,7 @@ When the preview said `OK` and the vault refused, the agent stops the round and 
 
 ## Caps are simple
 
-**What it means for you.** The daily cap is a counter per UTC day, not a rolling window, so spending just before and just after midnight UTC draws on two days' caps within a short time. Credit actions (`SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`) are not limited by the trade caps. A `BORROW`, and a `WITHDRAW_COLLATERAL` made while debt is open, must clear the [health factor](/docs/help/glossary#health-factor) floor. `SUPPLY` and `REPAY` have no size limit other than what the vault holds. Bill payments share the daily cap with trades, so a bill can use room that trades would have used, and a day of trading can leave no room for the bill.
+**What it means for you.** The daily cap is a counter per UTC day, not a rolling window, so spending just before and just after midnight UTC draws on two days' caps within a short time. Credit actions (`SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`) are not limited by the trade caps. A `BORROW`, and a `WITHDRAW_COLLATERAL` made while debt is open, must clear the health factor floor. `SUPPLY` and `REPAY` have no size limit other than what the vault holds. Bill payments share the daily cap with trades, so a bill can use room that trades would have used, and a day of trading can leave no room for the bill.
 
 **What would fix it.** A rolling window, and separate caps for credit actions and for bills. None is built.
 

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -127,5 +128,34 @@ describe("default parameters page", () => {
       [...(m[1] ?? "").matchAll(/"([^"]+)"/g)].map((n) => n[1]),
     );
     expect([...listed].sort()).toEqual(Object.keys(FACT_TEXT).sort());
+  });
+});
+
+describe("the reviewer scope on security/testing matches the repository", () => {
+  // A file count and two submodule commits are not default parameters, so they are not facts: the page types them, and
+  // this test reads them back from git, where a new file in contracts/src or a submodule update changes them.
+  it("gives the number of Solidity files in contracts/src and the commit each submodule in contracts/lib is pinned at", () => {
+    const git = (...args: string[]) => execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8" });
+    const testing = page("security/testing");
+    const n = git("ls-files", "contracts/src").split("\n").filter((p) => p.endsWith(".sol")).length;
+    expect(testing).toContain(`The ${n} Solidity files`);
+    // `git ls-files -s` gives a submodule as "160000 <sha> 0\t<path>".
+    const pins = new Map(
+      git("ls-files", "-s", "contracts/lib")
+        .split("\n")
+        .filter((l) => l.startsWith("160000 "))
+        .map((l) => {
+          const [meta = "", path = ""] = l.split("\t");
+          return [path, (meta.split(" ")[1] ?? "").slice(0, 7)] as const;
+        }),
+    );
+    // The page names these two, so a new submodule fails here until the page and this test name it too.
+    expect([...pins.keys()].sort()).toEqual(["contracts/lib/forge-std", "contracts/lib/v4-core"]);
+    const v4Core = pins.get("contracts/lib/v4-core");
+    const forgeStd = pins.get("contracts/lib/forge-std");
+    expect(v4Core).toMatch(/^[0-9a-f]{7}$/);
+    expect(forgeStd).toMatch(/^[0-9a-f]{7}$/);
+    expect(testing).toMatch(new RegExp(`\\*\\*Uniswap v4-core\\*\\*[^\\n]*pinned at commit \`${v4Core}\``));
+    expect(testing).toMatch(new RegExp(`\\*\\*forge-std\\*\\*[^\\n]*pinned at commit \`${forgeStd}\``));
   });
 });

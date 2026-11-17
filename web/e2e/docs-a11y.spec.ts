@@ -3,6 +3,7 @@ import { expect, test } from "@playwright/test";
 
 // The docs home and one page of each kind with the most varied markup: tables, steps, code, signatures, grouped cards.
 // Then the pages of the health-factor scale and the multiplier flow, whose colours and cards no page above has.
+// Then the reference data pages: the address table's group header rows and Basescan links, the deployments note (a table once a row has an address) and the fact tables.
 const PAGES = [
   "/docs",
   "/docs/concepts/nine-checks",
@@ -11,6 +12,8 @@ const PAGES = [
   "/docs/reference",
   "/docs/concepts/credit-and-health-factor",
   "/docs/concepts/splits-and-multiplier",
+  "/docs/reference/base-addresses",
+  "/docs/reference/default-parameters",
 ] as const;
 
 for (const theme of ["light", "dark"] as const) {
