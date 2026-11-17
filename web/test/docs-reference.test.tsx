@@ -362,9 +362,13 @@ describe("tab stops", () => {
     vi.restoreAllMocks();
   });
 
+  /** The elements the blocks ask a ResizeObserver to watch, in order. */
+  let observed: Element[] = [];
+
   /** jsdom lays nothing out: every box is 400 px wide, its content as wide as `resize` says, and a resize is observed. */
   function layout(width: number) {
     let content = width;
+    observed = [];
     vi.spyOn(Element.prototype, "clientWidth", "get").mockReturnValue(400);
     vi.spyOn(Element.prototype, "scrollWidth", "get").mockImplementation(() => content);
     const callbacks: ResizeObserverCallback[] = [];
@@ -374,7 +378,9 @@ describe("tab stops", () => {
         constructor(callback: ResizeObserverCallback) {
           callbacks.push(callback);
         }
-        observe() {}
+        observe(el: Element) {
+          observed.push(el);
+        }
         unobserve() {}
         disconnect() {}
       },
@@ -401,11 +407,28 @@ describe("tab stops", () => {
     const resize = layout(600);
     const { container } = render(<Fn contract="MandateVault" name="execute" />);
     const pre = container.querySelector("pre");
+    // It scrolls inside its own box, never the page.
+    expect(pre).toHaveClass("overflow-x-auto");
     isStop(pre, "execute signature (MandateVault)");
     resize(300);
     isPlain(pre);
     resize(600);
     isStop(pre, "execute signature (MandateVault)");
+  });
+
+  it("a table is measured again when its region or the table changes size, a signature when its own box does", () => {
+    layout(600);
+    const { container, unmount } = render(<FunctionIndex contract="MarketCalendar" />);
+    const region = container.querySelector("[data-overflow]")!;
+    expect(observed).toHaveLength(2);
+    expect(observed[0]).toBe(region);
+    expect(observed[1]).toBe(region.querySelector("table"));
+    unmount();
+    observed = [];
+    // The code inside a pre is an inline box, which a ResizeObserver never reports, so only the pre is watched.
+    const pre = render(<Fn contract="MandateVault" name="execute" />).container.querySelector("pre")!;
+    expect(observed).toHaveLength(1);
+    expect(observed[0]).toBe(pre);
   });
 
   it("so is a table, an event or error signature, a script's command and the Decision declaration", () => {
@@ -431,6 +454,8 @@ describe("tab stops", () => {
       "Decision event declaration",
     ];
     expect(blocks).toHaveLength(names.length);
+    // Each scrolls inside its own box, never the page.
+    for (const el of blocks) expect(el).toHaveClass("overflow-x-auto");
     blocks.forEach((el, i) => isStop(el, names[i]!));
     resize(300);
     for (const el of blocks) isPlain(el);

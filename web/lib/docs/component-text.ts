@@ -7,6 +7,7 @@ import { codeParts, FACT_TABLE_HEAD, type FactCode, factTable } from "./fact-tex
 import { type FlowData, ARCHITECTURE, DECISION_LOOP, MARKET_WEEK_CAPTION, MARKET_WEEK_MODES, TIMELOCK_FLOW, TREASURY_LOOP } from "./flows";
 import { STATUS_LABEL, STATUSES, type DocStatus } from "./frontmatter";
 import { docsData } from "./generated";
+import { headingId } from "./links";
 import { READER_PATHS } from "./reader-paths";
 import {
   kindLabels,
@@ -117,19 +118,27 @@ const fn: Render = (props) => {
   );
 };
 
-/** Grouped, a group's name heads its rows as a one-cell row, and a row says only what the function does to state. */
+/**
+ * Each function links its entry, as on the page (`name (Contract)` with `qualify`). Grouped, a group's name heads its
+ * rows as a one-cell row linking its section, and a row says only what the function does to state.
+ */
 const functionIndex: Render = (props) => {
   const contract = str("FunctionIndex", props, "contract");
+  const qualify = props.qualify === true;
   const groups = groupList("FunctionIndex", props, "groups");
+  const entry = (name: string) => link(code(name), `#${headingId(qualify ? `${name} (${contract})` : name)}`);
   if (groups) {
     return mdTable(
       ["Function", "Kind"],
-      functionGroups(surface, contract, groups).flatMap((g) => [[g.name], ...g.functions.map((f) => [code(f.name), stateLabel(f)])]),
+      functionGroups(surface, contract, groups).flatMap((g) => [
+        [link(g.name, `#${headingId(g.name)}`)],
+        ...g.functions.map((f) => [entry(f.name), stateLabel(f)]),
+      ]),
     );
   }
   return mdTable(
     ["Function", "Who may call", "Kind"],
-    findContract(surface, contract).functions.map((f) => [code(f.name), accessLabel(f.access), kindLabels(f).join(", ")]),
+    findContract(surface, contract).functions.map((f) => [entry(f.name), accessLabel(f.access), kindLabels(f).join(", ")]),
   );
 };
 

@@ -91,12 +91,15 @@ describe("tables", () => {
   });
 
   it.each([
-    ["AddressTable", "AddressTable", <AddressTable />],
-    ["ReasonTable", "ReasonTable", <ReasonTable />],
-  ] as const)("%s links the same targets as the rendered table, cell for cell", (_label, name, element) => {
+    ["AddressTable", "AddressTable", {}, <AddressTable />],
+    ["ReasonTable", "ReasonTable", {}, <ReasonTable />],
+    ["FunctionIndex", "FunctionIndex", { contract: "MarketCalendar" }, <FunctionIndex contract="MarketCalendar" />],
+    ["FunctionIndex of an adapter", "FunctionIndex", { contract: "ICreditAdapter", qualify: true }, <FunctionIndex contract="ICreditAdapter" qualify />],
+    ["FunctionIndex in groups", "FunctionIndex", { contract: "MandateVault", groups: GROUPS }, <FunctionIndex contract="MandateVault" groups={GROUPS} />],
+  ] as const)("%s links the same targets as the rendered table, cell for cell", (_label, name, props, element) => {
     const { container } = render(element);
     const targets = [...container.querySelectorAll("tbody td, tbody th")].map((td) => td.querySelector("a")?.getAttribute("href") ?? "");
-    const marked = md(name)
+    const marked = md(name, props)
       .split("\n")
       .slice(2)
       .flatMap((row) => row.slice(2, -2).split(/(?<!\\) \| /))

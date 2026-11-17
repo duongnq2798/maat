@@ -9,6 +9,7 @@ import { COMPONENT_TEXT, componentText, mdTable, type TextContext } from "@/lib/
 import { DATA_COMPONENTS } from "@/lib/docs/data-components";
 import { factFor } from "@/lib/docs/fact-text";
 import { docsData } from "@/lib/docs/generated";
+import { headingId } from "@/lib/docs/links";
 import { READER_PATHS } from "@/lib/docs/reader-paths";
 import { findContract } from "@/lib/docs/signatures";
 import { SITE } from "@/lib/site";
@@ -54,13 +55,14 @@ describe("reference entries", () => {
     expect(text("Fn", { contract: "MandateVault", name: getter.name })).toContain("Kind: Read only, Public state.");
   });
 
-  it("FunctionIndex in groups heads each group with a one-cell row and says only what each function does to state", () => {
+  it("FunctionIndex in groups heads each group with a one-cell row linking its section, and says only what each function does to state", () => {
     const fns = findContract(docsData.surface, "MarketCalendar").functions;
     const reads = fns.filter((f) => f.mutability === "view" || f.mutability === "pure").map((f) => f.name);
     const writes = fns.map((f) => f.name).filter((n) => !reads.includes(n));
     const out = lines(text("FunctionIndex", { contract: "MarketCalendar", qualify: true, groups: [["Writes", writes], ["Reads", reads]] }));
-    expect(out.slice(0, 4)).toEqual(["| Function | Kind |", "| --- | --- |", "| Writes |", `| \`${writes[0]}\` | Changes state |`]);
-    expect(out[3 + writes.length]).toBe("| Reads |");
+    const first = `[\`${writes[0]}\`](#${headingId(`${writes[0]} (MarketCalendar)`)})`;
+    expect(out.slice(0, 4)).toEqual(["| Function | Kind |", "| --- | --- |", "| [Writes](#writes) |", `| ${first} | Changes state |`]);
+    expect(out[3 + writes.length]).toBe("| [Reads](#reads) |");
     expect(out).toHaveLength(2 + 2 + fns.length);
     expect(() => text("FunctionIndex", { contract: "MarketCalendar", groups: [["Writes", writes]] })).toThrow(
       `<FunctionIndex contract="MarketCalendar" /> groups leave out ${reads.join(", ")}`,
@@ -74,12 +76,16 @@ describe("reference entries", () => {
     expect(() => text("Fn", { contract: "MandateVault", name: "nope" })).toThrow("MandateVault has no function named nope");
   });
 
-  it("FunctionIndex tables every function with who may call it and its kind", () => {
+  it("FunctionIndex tables every function, linking its entry, with who may call it and its kind", () => {
+    const fns = findContract(docsData.surface, "MarketCalendar").functions;
     const out = lines(text("FunctionIndex", { contract: "MarketCalendar", qualify: true }));
     expect(out[0]).toBe("| Function | Who may call | Kind |");
     expect(out[1]).toBe("| --- | --- | --- |");
-    expect(out).toHaveLength(2 + findContract(docsData.surface, "MarketCalendar").functions.length);
-    expect(out[2]).toMatch(/^\| `\w+` \| (Anyone|Owner only|Executor only) \| (Read only|Changes state)/);
+    expect(out).toHaveLength(2 + fns.length);
+    const name = fns[0]!.name;
+    const row = (anchor: string) => new RegExp(`^\\| \\[\`${name}\`\\]\\(#${anchor}\\) \\| (Anyone|Owner only|Executor only) \\| (Read only|Changes state)`);
+    expect(out[2]).toMatch(row(headingId(`${name} (MarketCalendar)`)));
+    expect(lines(text("FunctionIndex", { contract: "MarketCalendar" }))[2]).toMatch(row(headingId(name)));
   });
 
   it("EventEntry gives the signature, its topic 0 and a table of its parameters with which are indexed", () => {

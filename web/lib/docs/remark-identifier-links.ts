@@ -79,6 +79,20 @@ export function identifierTargets(surface: SolSurface): ReadonlyMap<string, stri
 
 const text = (node: Node): string => node.value ?? (node.children ?? []).map(text).join("");
 
+/** The code written anywhere inside a node. */
+const codes = (node: Node): string[] =>
+  node.type === "inlineCode" ? (node.value ? [node.value] : []) : (node.children ?? []).flatMap((c) => codes(c as Node));
+
+/**
+ * Whether a node renders as a link: a Markdown link, a reference-style one (`[x][ref]`), or a JSX tag that is `<a>` or
+ * has an `href`, such as a card. A link inside it would nest one anchor in another.
+ */
+const isLink = (node: Node) =>
+  node.type === "link" ||
+  node.type === "linkReference" ||
+  ((node.type === "mdxJsxTextElement" || node.type === "mdxJsxFlowElement") &&
+    (node.name === "a" || (node.attributes ?? []).some((a) => a.type === "mdxJsxAttribute" && a.name === "href")));
+
 export interface IdentifierLinkOptions {
   /** The docs MDX files, relative to the working directory like defineDocs' `dir`. */
   docsDir?: string;
@@ -87,9 +101,9 @@ export interface IdentifierLinkOptions {
 /**
  * Links a contract name written in code on a reference page, such as `execute` or `NotExecutor`, to its entry: in the
  * HTML page and in the Markdown copies alike. Only the first mention in each H2 section links, and never one in a
- * heading, inside a link, or in the section of the entry it names. A link to the same page is its anchor alone. The
- * targets come from identifierTargets; test/remark-identifier-links.test.ts checks that each one is a heading of its
- * page. Runs after remarkTestAnchors.
+ * heading, inside a link (isLink), or in the section of the entry it names. A link to the same page is its anchor
+ * alone. The targets come from identifierTargets; test/remark-identifier-links.test.ts checks that each one is a
+ * heading of its page. Runs after remarkTestAnchors.
  */
 export function remarkIdentifierLinks(options: IdentifierLinkOptions = {}) {
   const docsDir = resolve(options.docsDir ?? "content/docs");
@@ -113,8 +127,8 @@ export function remarkIdentifierLinks(options: IdentifierLinkOptions = {}) {
           } else if (node.depth === 3) entry = `${here}${headingId(text(node))}`;
           continue;
         }
-        if (node.type === "link") {
-          for (const c of node.children ?? []) if (c.type === "inlineCode" && c.value && targets!.has(c.value)) linked.add(targets!.get(c.value)!);
+        if (isLink(node)) {
+          for (const c of codes(node)) if (targets!.has(c)) linked.add(targets!.get(c)!);
           continue;
         }
         const target = node.type === "inlineCode" && node.value ? targets!.get(node.value) : undefined;

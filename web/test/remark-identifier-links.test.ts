@@ -13,7 +13,8 @@ const TARGETS = identifierTargets(docsData.surface);
 /** A docs page's MDX, read relative to web/ as the build reads it. */
 const page = (slug: string) => readFileSync(join("content/docs", `${slug}.mdx`), "utf8");
 
-type Inline = string | { code: string } | { code: string; link: string };
+/** Text, code, or code inside a Markdown link, a reference-style link (`[x][ref]`) or a JSX tag with an href. */
+type Inline = string | { code: string } | { code: string; link: string } | { code: string; ref: string } | { code: string; jsx: string; href: string };
 type Block = { h: 2 | 3; text: Inline[] } | { p: Inline[] };
 
 /** A page's source and its tree as remark-mdx would parse it, with the offsets each node has in the source. */
@@ -25,6 +26,19 @@ function doc(blocks: Block[]) {
     if (typeof part === "string") {
       source += part;
       return { type: "text", value: part, position: at(start, source.length) };
+    }
+    if ("jsx" in part) {
+      const open = `<${part.jsx} href="${part.href}">`;
+      source += `${open}\`${part.code}\`</${part.jsx}>`;
+      const code: MdNode = { type: "inlineCode", value: part.code, position: at(start + open.length, start + open.length + 2 + part.code.length) };
+      const attributes = [{ type: "mdxJsxAttribute", name: "href", value: part.href }];
+      return { type: "mdxJsxTextElement", name: part.jsx, attributes, children: [code], position: at(start, source.length) };
+    }
+    if ("ref" in part) {
+      source += `[\`${part.code}\`][${part.ref}]`;
+      const code: MdNode = { type: "inlineCode", value: part.code, position: at(start + 1, start + 3 + part.code.length) };
+      const reference = { identifier: part.ref, label: part.ref, referenceType: "full" };
+      return { type: "linkReference", ...reference, children: [code], position: at(start, source.length) } as MdNode;
     }
     source += "link" in part ? `[\`${part.code}\`](${part.link})` : `\`${part.code}\``;
     if (!("link" in part)) return { type: "inlineCode", value: part.code, position: at(start, source.length) };
@@ -139,6 +153,28 @@ describe("remarkIdentifierLinks", () => {
       ["execute", "/docs/reference/mandate-vault#execute"],
       ["previewIntent", "#previewintent"],
     ]);
+  });
+
+  it("never links inside a reference-style link, an <a> or a tag with an href, and counts the name there as linked", () => {
+    const { root, markdown } = run([
+      {
+        p: [
+          { code: "execute", ref: "vault" },
+          ", ",
+          { code: "Decision", jsx: "a", href: "/docs/reference/events#decision" },
+          " and ",
+          { code: "NotExecutor", jsx: "Card", href: "/docs/reference/errors#notexecutor" },
+          ".",
+        ],
+      },
+      { p: [code("execute"), ", ", code("Decision"), ", ", code("NotExecutor"), " and ", code("IntentAlreadyUsed"), "."] },
+    ]);
+    expect(links(root)).toEqual([["IntentAlreadyUsed", "/docs/reference/errors#intentalreadyused"]]);
+    expect(markdown).toBe(
+      '[`execute`][vault], <a href="/docs/reference/events#decision">`Decision`</a> and ' +
+        '<Card href="/docs/reference/errors#notexecutor">`NotExecutor`</Card>.\n\n' +
+        "`execute`, `Decision`, `NotExecutor` and [`IntentAlreadyUsed`](/docs/reference/errors#intentalreadyused).",
+    );
   });
 
   it("leaves a name with two entries, a refusal code OK and any other code as they are", () => {
