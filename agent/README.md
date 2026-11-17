@@ -63,6 +63,33 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 3. `halted` because of `mismatch` or a missing `Decision`: read the tx on Basescan before you run again. If a `pending` entry keeps halting the cycle, remove it from `data/state.json` only when you are sure that tx can no longer take effect.
 4. Emergency stop (the owner signs it): call `setPaused(true)` on the vault, or `setExecutor(owner)` to take back the executor role.
 
+## Guard Service
+
+A read-only HTTP service for the market checks GuardLib makes, for other agents and for the dashboard. It never signs. It refuses to start when `CDP_WALLET_SECRET` is in its env.
+
+```bash
+cp .env.guard.example .env.guard   # then fill in the vault, executor, RPC and the CDP API key (not the wallet secret)
+npm run guard
+```
+
+| Endpoint | Price | Returns |
+|---|---|---|
+| `GET /health` | free | `{ "ok": true }` |
+| `GET /state/:token` | free | Chainlink price and age; 30-minute Aerodrome TWAP; premium (bps); multiplier (current, last seen by the vault, `changedAt`, `effectiveAt`, pending); paused; policy ids; session; pool reserves; Coinbase NAV |
+| `POST /preview` | free | `previewIntent` from the executor: `{ reason, allowed, block }`. Body: `{ action, token, amount, minOut?, payee? }` (amounts are integer strings in raw units) |
+| `GET /check?token&side&sizeUSD` | 0.01 USDC on Base (x402) | the market verdict in GuardLib order (`reason`, `ok`), plus `sizeShareBps`, `policyRestricted`, `multiplierPending` |
+
+How the endpoints behave:
+- `token` is a basket symbol (NVDAc, GOOGLc, AAPLc, any case) or address. Any other token gets 404.
+- Each IP gets 60 requests per minute on each of `/state`, `/preview` and `/check`. State and previews are cached for 15 s, and the Coinbase list for 60 s.
+- If the RPC is down, `/state`, `/preview` and `/check` answer 503 `{"reason":"UNKNOWN"}`, and `/check` does not charge.
+- If Coinbase is down, `nav` is `null` and everything else still answers.
+- A bad `/check` query gets 400 before any payment request.
+
+x402 payments go straight to the vault (`payTo` = `MAAT_VAULT`; the S4 fallback overrides it with `GUARD_PAY_TO`). The agent records them as revenue: once at least `MAAT_REVENUE_MIN_USD` (default 0.05) of new USDC has arrived, its next round sends `notifyRevenue()` and journals `call: "notifyRevenue"`.
+
+The public deploy is the Fly app `maat-guard` (`fly.guard.toml`), built from the same image as the agent. The owner runbook is in `deployments/README.md` → "Guard Service and S4 (owner only)".
+
 ## Data
 
 - `data/state.json`: compute bills, refusal records per day, tx count per day, and `pending` txs not yet reconciled.
@@ -83,6 +110,8 @@ The fork test needs:
 - Port 8547 is free. The test runs only against a local anvil (`127.0.0.1`).
 - About 3–5 minutes on a public RPC, because the first swap on a cold fork is very slow. Set `MAAT_GAS_LOG=<file path>` to write the gas limit and `gasUsed` of each tx to a JSON file.
 - The committed log: `test/integration/fork-gas.json`; the web page reads its gas numbers from this file. Across 2 runs on 2026-11-07, `gasUsed` for SUPPLY, BORROW and the refusal log was identical, while BUY came out at 754,854 and then 758,192. If you overwrite this file, you must update `web/content/facts.ts` to match, because the parity test will fail.
+
+The integration run also includes `test/integration/guard.fork.test.ts` on port 8548. It covers guard/vault parity on the same block, and an x402 payment settled into the vault, then recorded by `notifyRevenue` and spent by `PAY_EXPENSE`. On a Base fork every anvil dev account has EIP-7702 code, so the test clears the buyer's code (fork only).
 
 ## Known issue: npm audit
 

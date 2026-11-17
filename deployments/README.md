@@ -133,3 +133,52 @@ cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"   # must prin
 ```
 
 The executor can only call `execute` within the mandate. To revoke it, call `setExecutor` again with your wallet.
+
+## Guard Service and S4 (owner only)
+
+The guard has no wallet. Every step here that moves money is signed by a CDP account the owner controls.
+
+### S4: can x402 pay straight into the vault?
+
+1. Create `agent/.env.guard` from `agent/.env.guard.example`:
+   - `BASE_RPC_URL`, `MAAT_VAULT`, `MAAT_EXECUTOR`;
+   - `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`;
+   - leave `GUARD_PAY_TO` and `GUARD_FACILITATOR_URL` empty;
+   - no `CDP_WALLET_SECRET`.
+
+   Run it: `cd agent && npm run guard`. Expect the log line `maat guard: … payTo=<vault> facilitator=cdp`.
+2. Create `agent/.env.s4`:
+   - `MAAT_VAULT`, `BASE_RPC_URL`;
+   - `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`;
+   - optionally `S4_BUYER_ACCOUNT` (default `maat-s4-buyer`).
+
+   This account is a separate buyer, never the executor.
+3. Run `npm run s4:pay -- http://localhost:8080` once. The first run creates the buyer account and stops with `fund <address> with at least 0.01 USDC`. Send it 0.01–0.05 USDC on Base, then run again. The script:
+   - signs only if the guard offers exactly 0.01 USDC on Base to the vault;
+   - prints the settlement tx and the vault's USDC before and after;
+   - ends with `S4 PASS` or `S4 FAIL`.
+4. On `S4 PASS`, the agent's next round sends `notifyRevenue()` (journal: `kind: "housekeeping", call: "notifyRevenue"`). The `RevenueReceived` event is on Basescan.
+5. On `S4 FAIL` (the facilitator refuses a contract `payTo`):
+   - Set `GUARD_PAY_TO` to an address you hold, then restart the guard.
+   - From time to time, move the collected USDC into the vault with a plain ERC-20 `transfer`. Do not use `fund()`, which does not count as revenue.
+   - Automating that forward needs its own CDP account and policy, and its own plan.
+
+### Public deploy (Fly.io)
+
+From `agent/`:
+
+`fly.guard.toml` builds `agent/Dockerfile`, the agent's container image, and runs the guard from it. Deploy from a checkout that has that file.
+
+```bash
+fly apps create maat-guard
+fly secrets set -a maat-guard BASE_RPC_URL=... MAAT_VAULT=0x... MAAT_EXECUTOR=0x... CDP_API_KEY_ID=... CDP_API_KEY_SECRET=...
+fly deploy -c fly.guard.toml
+fly scale count 1 -a maat-guard
+fly certs add guard.maatonbase.xyz -a maat-guard
+```
+
+Then:
+- Point DNS for `guard.maatonbase.xyz` as `fly certs add` instructs.
+- Check that `https://guard.maatonbase.xyz/health` returns `{"ok":true}`, and that `https://guard.maatonbase.xyz/check?token=NVDAc&side=BUY&sizeUSD=100` returns 402 with a `PAYMENT-REQUIRED` header whose `payTo` is the vault.
+- After S4 passes, optionally attach Maat's Builder Code to the settlement tx: `fly secrets set -a maat-guard GUARD_BUILDER_CODE=<code>`.
+- Never set `CDP_WALLET_SECRET` on this app: the guard refuses to start with it.
