@@ -12,6 +12,8 @@ sources:
   - agent/src/llm/proposer.ts
   - agent/src/llm/schema.ts
   - agent/src/intent.ts
+  - agent/src/chain/state.ts
+  - agent/src/units.ts
   - agent/src/config.ts
   - agent/src/chain/preview.ts
   - agent/src/refusals.ts
@@ -99,7 +101,14 @@ The agent then turns each proposal into an intent and, for every action except `
 | `BORROW` | No cap: the intent keeps the amount Claude proposed, and the vault's checks, including the projected [health factor](/docs/help/glossary#health-factor), bound it |
 | `PAY_EXPENSE`, which the agent's code adds | The vault's USDC |
 
-The clamp does not apply the mandate's caps. Claude is shown the per-trade and daily limits and what the vault has spent today, and the policy keeps its own buy and sell suggestions under the per-trade cap. Still, a buy, a sell or a bill payment above a cap reaches the preview, and if the earlier checks pass, the vault's size check refuses it with `SIZE_LIMIT`. A symbol that does not fit its action, such as USDC on a BUY (of Claude's actions, only `BORROW` and `REPAY` take USDC, and they take nothing else), or an amount that the clamp brings to zero, is skipped and only written to the journal.
+The clamp does not apply the mandate's caps. Claude is shown the per-trade and daily limits and what the vault has spent today, and the policy keeps its own buy and sell suggestions under the per-trade cap. Still, a buy, a sell or a bill payment above a cap reaches the preview, and if the earlier checks pass, the vault's size check refuses it with `SIZE_LIMIT`.
+
+A proposal the agent cannot turn into an intent is skipped and only written to the journal. It happens in these cases:
+
+- **A symbol that does not fit its action,** such as USDC on a BUY. Of Claude's actions, only `BORROW` and `REPAY` take USDC, and they take nothing else.
+- **A stock the vault does not list.**
+- **A `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL` of a stock with no usable feed price.** The stock has no feed, the feed read failed, or the answer is not positive or its timestamp is zero or later than the block's. The agent does not check the price's age: a [stale](/docs/help/glossary#staleness) price still makes an intent, and that intent goes on to the preview.
+- **An amount that comes to zero** after rounding or the clamp.
 
 Claude's schema cannot express `PAY_EXPENSE`: it is not in `LLM_ACTIONS`. When the agent owes at least <Fact name="billMinUsd" /> for its Claude usage, the agent's own code adds the `PAY_EXPENSE` intent, and pays that bill before any proposal.
 
@@ -133,7 +142,7 @@ and in English. Hard limits (an answer that breaks one is rejected whole): at mo
 at most ${MAX_RATIONALE_CHARS} characters, the summary at most ${MAX_SUMMARY_CHARS} characters, every amount positive.`;
 ```
 
-The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per UTC day, and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. When the market is closed or a feed is [stale](/docs/help/glossary#staleness), the prompt also lets Claude propose a trade the vault will refuse, if the refusal is worth recording and the rationale says so. The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
+The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per UTC day, and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. When the market is closed or a feed is stale, the prompt also lets Claude propose a trade the vault will refuse, if the refusal is worth recording and the rationale says so. The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
 
 `renderUserMessage` builds the user message each round:
 
