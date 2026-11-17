@@ -229,6 +229,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
 
     // Housekeeping: record inbound USDC (x402 payments to the vault) as revenue, so it shows without waiting for a trade.
+    let revenueRecorded = 0n;
     if (s.newRevenue >= (d.revenueMinUsd6 ?? REVENUE_MIN_USD6)) {
       if (!sender) {
         await j.append({ kind: "housekeeping", runId, call: "notifyRevenue", amount: s.newRevenue, note: "dry-run" });
@@ -242,6 +243,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         const r = await receiptOf(hash);
         if (r.status !== "success") throw new Halt(`tx ${hash} reverted`);
         const amount = revenueIn(r, d.vault);
+        revenueRecorded = amount;
         await j.append({
           kind: "housekeeping",
           runId,
@@ -259,6 +261,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       s = await reread();
       dirty = false;
     }
+    // The keeper just moved this USDC into recordedUsdc; policy (REPAY) and the prompt still treat it as this round's new revenue.
+    if (revenueRecorded > 0n) s = { ...s, newRevenue: s.newRevenue + revenueRecorded };
 
     const unpaid = d.store.unpaidUsd6();
     const policy = evaluatePolicy(

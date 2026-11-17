@@ -10,11 +10,11 @@ import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
 import { Journal } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
-import { FixedProposer, type Proposer } from "../src/llm/proposer.js";
+import { FixedProposer, type Proposer, type ProposerInput } from "../src/llm/proposer.js";
 import type { Batch } from "../src/llm/schema.js";
 import { PENDING_WINDOW_BLOCKS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
 import type { OnchainIntent } from "../src/types.js";
-import { EXECUTOR, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
+import { CREDIT, EXECUTOR, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
 import { FakeReceipts } from "./fakes/fakeReceipts.js";
 import { FakeSender } from "./fakes/fakeSender.js";
 
@@ -152,6 +152,21 @@ describe("runOnce", () => {
     const row = (await t.journal.read()).find((e) => e.kind === "housekeeping");
     expect(row).toMatchObject({ call: "notifyRevenue", amount: "30000000", txHash: `0x${"1".padStart(64, "0")}` });
     expect(t.store.txCount(DAY)).toBe(2);
+  });
+
+  it("keeps the revenue the keeper recorded visible to policy and the prompt", async () => {
+    let seen: ProposerInput | undefined;
+    const proposer: Proposer = { propose: async (i) => ((seen = i), { ok: true, summary: "hold", proposals: [], costUsd6: 0n, model: "fake" }) };
+    const scene = standardScene().set(USDC, "balanceOf", 130_000_000n).set(CREDIT, "debt", 5_000_000n);
+    const t = await setup({ scene, proposer });
+    t.receipts.revenue = 30_000_000n;
+    // Like the contract: once notifyRevenue is mined, recordedUsdc equals the balance, so a raw re-read shows no new revenue.
+    scene.set(VAULT, "recordedUsdc", () => (t.receipts.calls().some((c) => c.functionName === "notifyRevenue") ? 130_000_000n : 100_000_000n));
+    await runOnce(t.deps);
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["notifyRevenue"]);
+    expect(seen!.state.recordedUsdc).toBe(130_000_000n);
+    expect(seen!.state.newRevenue).toBe(30_000_000n);
+    expect(seen!.policy.suggestions).toContainEqual(expect.objectContaining({ action: "REPAY", symbol: "USDC", amountUsd6: 5_000_000n }));
   });
 
   it("leaves revenue below the threshold for later", async () => {
