@@ -13,6 +13,13 @@ sources:
   - agent/src/refusals.ts
   - agent/src/llm/proposer.ts
   - agent/src/ledger/store.ts
+  - agent/src/loop/runOnce.ts
+  - agent/src/intent.ts
+  - agent/src/llm/prompt.ts
+  - agent/src/chain/state.ts
+  - agent/src/addresses.ts
+  - contracts/.env.example
+  - contracts/foundry.toml
 next: [reference/agent-scripts, guides/run-the-agent]
 ---
 
@@ -22,7 +29,7 @@ The agent takes all of its settings from environment variables. This page lists 
 
 `npm run agent` loads `agent/.env` when that file exists, and `agent/.env.example` is the template to copy. Git ignores `.env` files, so the file stays on your machine: keep every secret in it and never commit it. The agent checks its own settings once, at startup, in `agent/src/config.ts`. A blank value (`KEY=`) counts as unset, so a default applies, and a required setting that is blank is reported as missing. If any check fails, the agent stops before it does anything else, with one `invalid agent config` error that names each problem. It does not check the settings that the SDKs read, which is why the Required column says No for them.
 
-`contracts/.env` is a different file. The commands you run in `contracts/` read it, and the agent does not. It repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with other rules: there the two addresses are what the deploy writes into the [vault](/docs/help/glossary#vault), and here `MAAT_EXECUTOR` must be the vault's current [executor](/docs/help/glossary#executor) and `MAAT_EXPENSE_PAYEE` an address on its [payee](/docs/help/glossary#payee) list. So check `MAAT_EXECUTOR` before you copy it across. In the deploy that [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) describes, it starts as the [owner](/docs/help/glossary#owner)'s own wallet, and it becomes the CDP account once the owner hands the role over with `setExecutor`. [The whole path](/docs/guides/deploy-your-own-vault#the-whole-path) shows which value goes in which file.
+`contracts/.env` is a different file. The commands you run in `contracts/` read it, and the agent does not. It repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with other rules. There, `BASE_RPC_URL` also serves the contract [fork tests](/docs/help/glossary#fork-test), which read [Base](/docs/help/glossary#base) at pinned past blocks and so need an archive node. The two addresses there are what the deploy writes into the [vault](/docs/help/glossary#vault). Here, [`BASE_RPC_URL`](#base_rpc_url) needs no archive node, `MAAT_EXECUTOR` must be the vault's current [executor](/docs/help/glossary#executor) and `MAAT_EXPENSE_PAYEE` an address on its [payee](/docs/help/glossary#payee) list. So check `MAAT_EXECUTOR` before you copy it across. In the deploy that [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) describes, it starts as the [owner](/docs/help/glossary#owner)'s own wallet, and it becomes the CDP account once the owner hands the role over with `setExecutor`. [The whole path](/docs/guides/deploy-your-own-vault#the-whole-path) shows which value goes in which file.
 
 ## Read by the agent
 
@@ -78,7 +85,7 @@ The model the agent asks for its proposals. The name goes to the Claude API as w
 
 The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, dry-run rounds included, the amount paid, [refusals](/docs/help/glossary#refusal) logged per day, transactions sent per day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
 
-A dry-run round adds the cost of its Claude answer to the bill like any other round, so with the same directory the first live round that owes at least <Fact name="billMinUsd" /> puts the cost of the dry runs in its `PAY_EXPENSE` too, up to the vault's USDC balance ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)). The directory belongs to one vault, and `state.json` does not record which. When you change `MAAT_VAULT`, start with a new `MAAT_DATA_DIR`. Otherwise the unpaid bill, the compute history that sets the [runway](/docs/help/glossary#runway), the refusals logged today, the day's transaction count and any pending send carry over to the new vault. A pending send that succeeded on the old vault is never seen as used on the new one, so every round then ends `pending-tx`. No test covers a change of vault: this is what the code does.
+A dry-run round adds the cost of its Claude answer to the bill like any other round, so with the same directory the first live round that owes at least <Fact name="billMinUsd" /> puts the cost of the dry runs in its `PAY_EXPENSE` too, up to the vault's USDC balance ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)). The directory belongs to one vault, and `state.json` does not record which. When you change `MAAT_VAULT`, start with a new `MAAT_DATA_DIR`. Otherwise the unpaid bill, the compute history that sets the [runway](/docs/help/glossary#runway), the refusals logged today, the day's transaction count and any pending send carry over to the new vault. A pending send whose transaction hash the agent recorded, and that succeeded on the old vault, is never seen as used on the new one, so every round then ends `pending-tx`. One with no recorded hash ends rounds `pending-tx` too, until it is dropped after at least <Fact name="pendingWindowBlocks" />. No test covers a change of vault: this is what the code does.
 
 ### MAAT_MAX_TX_PER_DAY
 
@@ -90,7 +97,7 @@ The most transactions the agent sends in one UTC day, by default <Fact name="max
 
 <EnvVar name="MAAT_DEFAULT_DAILY_COMPUTE_USD" />
 
-The daily compute cost, in US dollars, that the agent assumes until it has a history of its own. The default is <Fact name="dailyComputeUsd" />, and it must be a positive number. The policy aims to keep <Fact name="runwayDays" /> of that cost as USDC, the [runway](/docs/help/glossary#runway). A `BUY` it suggests uses only the USDC above the runway and the unpaid bill, and it suggests a `BORROW` when USDC falls below the runway plus the unpaid bill, but only if some stock is already supplied as collateral. These are suggestions. Claude is told to adopt, resize or drop them, and the agent caps a proposed `BUY` at the vault's USDC balance, not at the runway. So the runway is a target, not a limit ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)). The vault's per-trade and daily caps still bound every trade. As soon as one of the days before today, up to a week back, has a recorded cost, the agent uses the average of the recorded days instead of this setting.
+The daily compute cost, in US dollars, that the agent assumes until it has a history of its own. The default is <Fact name="dailyComputeUsd" />, and it must be a positive number. The policy aims to keep <Fact name="runwayDays" /> of that cost as USDC, the [runway](/docs/help/glossary#runway). A `BUY` it suggests uses only the USDC above the runway and the unpaid bill. When USDC falls short of the runway plus the unpaid bill by at least <Fact name="minTradeUsd" />, it suggests a `BORROW`, but only if the vault is not paused, the credit position can be read and stock from the policy's [basket](/docs/concepts/treasury-loop#the-basket) with a valid [feed](/docs/help/glossary#chainlink-equity-feed) price is supplied as collateral. These are suggestions. Claude is told to adopt, resize or drop them, and the agent caps a proposed `BUY` at the vault's USDC balance, not at the runway. So the runway is a target, not a limit ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)). The vault's per-trade and daily caps still bound every trade. As soon as one of the days before today, up to a week back, has a recorded cost, the agent uses the average of the recorded days instead of this setting.
 
 ### CDP_ACCOUNT_NAME
 
@@ -160,7 +167,7 @@ For the steps that produce these values, see [Run the agent](/docs/guides/run-th
 ## Related
 
 - [Agent scripts](/docs/reference/agent-scripts): the `--once` and `--dry-run` flags, and the scripts that read these settings.
-- [Run the agent](/docs/guides/run-the-agent): fill in these settings, run one round in dry-run mode, then go live.
+- [Run the agent](/docs/guides/run-the-agent): fill in these settings, run one round in dry-run mode, then switch to live mode.
 - [Default parameters](/docs/reference/default-parameters): the limits and cadences the agent ships with, including the two defaults above.
 - [The treasury loop](/docs/concepts/treasury-loop): how the compute bill, the runway and the daily cap fit into a round.
 - [Timelock and roles](/docs/concepts/timelock-and-roles): who the executor and the payee are, and who can change them.

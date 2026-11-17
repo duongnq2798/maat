@@ -24,16 +24,16 @@ sources:
 next: [guides/run-the-agent, guides/run-the-tests]
 ---
 
-This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and it has not run live. [Messages the agent prints](#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run) quotes what the agent prints when it stops or a round goes wrong.
+This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and it has not run live. [Messages the agent prints](#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run) quotes what the agent prints when it stops or a [round](/docs/help/glossary#round) goes wrong.
 
 | Entry | What it does | What it needs | Outside services |
 | --- | --- | --- | --- |
-| `npm run agent` | Runs one round or the loop | The settings in [Agent configuration](/docs/reference/agent-configuration) | Your Base RPC, Claude (paid) in every mode, and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) in live mode |
+| `npm run agent` | Runs one round or the loop | The settings in [Agent configuration](/docs/reference/agent-configuration) | Your Base RPC, Claude (paid) in every mode, and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) in [live mode](/docs/help/glossary#live-mode) |
 | `npm test` | Runs the unit tests | Nothing | None |
 | `npm run test:integration` | Runs the fork test | A Base archive RPC and the Base build of Anvil | Your Base RPC. No Claude call and no CDP call |
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
 | `npm run gen:abi` | Rewrites the generated ABI file | The compiled contracts | None |
-| `cdp-setup.ts` | Owner only. Creates the executor account and its policy | The three CDP credentials | Coinbase CDP |
+| `cdp-setup.ts` | [Owner](/docs/help/glossary#owner) only. Creates the [executor](/docs/help/glossary#executor) account and its policy | The three CDP credentials | Coinbase CDP |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
 
@@ -57,7 +57,7 @@ cd agent
 npm run agent -- --once --dry-run
 ```
 
-It needs a vault to read and makes a paid call to Claude, so this page shows the command and no output.
+It needs a [vault](/docs/help/glossary#vault) to read and makes a paid call to Claude, so this page shows the command and no output.
 
 At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
 
@@ -240,6 +240,6 @@ Without `--once`, the loop prints one of these lines after each round. With `--o
 ## Related
 
 - [Agent configuration](/docs/reference/agent-configuration): the settings these scripts read.
-- [Run the agent](/docs/guides/run-the-agent): the steps for a first dry run and for going live.
+- [Run the agent](/docs/guides/run-the-agent): the steps for a first dry run and for switching to live mode.
 - [Run the tests](/docs/guides/run-the-tests): the contract, agent and website tests together.
 - [The treasury loop](/docs/concepts/treasury-loop): what one round does.
