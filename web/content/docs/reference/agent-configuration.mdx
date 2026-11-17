@@ -23,7 +23,7 @@ sources:
 next: [reference/agent-scripts, guides/run-the-agent]
 ---
 
-The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
+The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has run in [live mode](/docs/help/glossary#live-mode) only on a fork. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
 
 <EnvTable />
 
@@ -39,7 +39,7 @@ These settings are read by `agent/src/config.ts`. `BASE_RPC_URL`, `MAAT_VAULT`, 
 
 <EnvVar name="BASE_RPC_URL" />
 
-The RPC endpoint for [Base](/docs/help/glossary#base) mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier [round](/docs/help/glossary#round). It does not send transactions through this endpoint: in [live mode](/docs/help/glossary#live-mode) the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
+The RPC endpoint for [Base](/docs/help/glossary#base) mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier [round](/docs/help/glossary#round). It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
 
 ### MAAT_VAULT
 
@@ -71,7 +71,7 @@ The only values are `dry-run` and `live`, and anything else stops the start. The
 
 <EnvVar name="MAAT_BUILDER_CODE" />
 
-A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the live runtime, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
 
 ### MAAT_LOOP_MODEL
 
@@ -85,7 +85,7 @@ The model the agent asks for its proposals. The name goes to the Claude API as w
 
 The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, dry-run rounds included, the amount paid, [refusals](/docs/help/glossary#refusal) logged per day, transactions sent per day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
 
-A dry-run round adds the cost of its Claude answer to the bill like any other round, so with the same directory the first live round that owes at least <Fact name="billMinUsd" /> puts the cost of the dry runs in its `PAY_EXPENSE` too, up to the vault's USDC balance ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)). The directory belongs to one vault, and `state.json` does not record which. When you change `MAAT_VAULT`, start with a new `MAAT_DATA_DIR`. Otherwise the unpaid bill, the compute history that sets the [runway](/docs/help/glossary#runway), the refusals logged today, the day's transaction count and any pending send carry over to the new vault. A pending send whose transaction hash the agent recorded, and that succeeded on the old vault, is never seen as used on the new one, so every round then ends `pending-tx`. One with no recorded hash ends rounds `pending-tx` too, until it is dropped after at least <Fact name="pendingWindowBlocks" />. No test covers a change of vault: this is what the code does.
+A dry-run round adds the cost of its Claude answer to the bill like any other round, so with the same directory the first round in live mode that owes at least <Fact name="billMinUsd" /> puts the cost of the dry runs in its `PAY_EXPENSE` too, up to the vault's USDC balance ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)). The directory belongs to one vault, and `state.json` does not record which. When you change `MAAT_VAULT`, start with a new `MAAT_DATA_DIR`. Otherwise the unpaid bill, the compute history that sets the [runway](/docs/help/glossary#runway), the refusals logged today, the day's transaction count and any pending send carry over to the new vault. A pending send whose transaction hash the agent recorded, and that succeeded on the old vault, is never seen as used on the new one, so every round then ends `pending-tx`. One with no recorded hash ends rounds `pending-tx` too, until it is dropped after at least <Fact name="pendingWindowBlocks" />. No test covers a change of vault: this is what the code does.
 
 ### MAAT_MAX_TX_PER_DAY
 
