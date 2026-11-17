@@ -127,7 +127,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "concepts/credit-and-health-factor",
         "Credit and the health factor",
-        "How the vault supplies stock to Aave V4, borrows USDC against it, and keeps the health factor above its floor before weekends.",
+        "How the vault supplies stock to Aave V4 and borrows USDC against it, and the health floor and stricter pre-weekend or pre-holiday target a borrow must clear.",
       ),
       page(
         "concepts/timelock-and-roles",
@@ -221,7 +221,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "reference/events",
         "Events",
-        "Every event the vault, the calendar and the adapters emit, with each parameter and when the event is emitted.",
+        "Every event the vault and the calendar emit, with each parameter and when the event is emitted.",
       ),
       page(
         "reference/errors",

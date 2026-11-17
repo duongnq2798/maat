@@ -1,6 +1,6 @@
 ---
 title: Events
-description: Every event the vault, the calendar and the adapters emit, with each parameter and when the event is emitted.
+description: Every event the vault and the calendar emit, with each parameter and when the event is emitted.
 type: reference
 audience: [developer, watcher]
 status: fork-tested
@@ -52,7 +52,7 @@ Emitted by `cancelChange` with the hash of the change the owner cancelled. The v
 
 <EventEntry contract="MandateVault" name="ExecutorSet" />
 
-Emitted by `setExecutor` with the new executor address. The constructor does not emit it, so the first executor is readable from `executor()` and not from this log.
+Emitted by `setExecutor` with the new executor address. The constructor does not emit it, so read the first executor from the deploy's constructor arguments, or from `executor()` while no `ExecutorSet` has followed.
 
 ### Funded
 
@@ -76,7 +76,7 @@ Emitted by `queueMandate`. `changeHash` is the key of the queued change, `eta` i
 
 <EventEntry contract="MandateVault" name="MultiplierChangeDetected" />
 
-Emitted when the vault records a new uiMultiplier for a token. It comes from `syncMultiplier`, from `execute` (which syncs the intent's token before it checks anything, so a refused intent can still emit it), and from `applyTokenConfig` when a re-applied token's live value differs from the vault's snapshot. Each emission starts the cooldown, as [Splits and the multiplier](/docs/concepts/splits-and-multiplier#how-the-vault-notices) explains. The first snapshot of a token is taken without an event.
+Emitted when the vault records a new uiMultiplier for a token. It comes from `syncMultiplier`, from `execute` (which syncs the intent's token before it checks anything, so a refused intent can still emit it), and from `applyTokenConfig` when a re-applied token's current value differs from the vault's snapshot. Each emission starts the cooldown, as [Splits and the multiplier](/docs/concepts/splits-and-multiplier#how-the-vault-notices) explains. The first snapshot of a token is taken without an event.
 
 ### PausedSet
 
@@ -124,7 +124,7 @@ Emitted by `queueTokenConfig` with the change hash, the earliest apply time, the
 
 <EventEntry contract="MandateVault" name="Withdrawn" />
 
-Emitted by `withdraw` after its transfer call to the owner returns without reverting. `amount` is in the token's own raw units. The vault does not check that `token` is a contract, so for an address without code the event is emitted although nothing moved.
+Emitted by `withdraw` after its transfer call to the owner returns without reverting. `amount` is in the token's own raw units. The vault does not check that `token` is a contract, so for a `token` that is a plain account with no code the event is emitted although nothing moved.
 
 ## MarketCalendar
 

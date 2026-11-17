@@ -1,6 +1,6 @@
 ---
 title: Credit and the health factor
-description: How the vault supplies stock to Aave V4, borrows USDC against it, and keeps the health factor above its floor before weekends.
+description: How the vault supplies stock to Aave V4 and borrows USDC against it, and the health floor and stricter pre-weekend or pre-holiday target a borrow must clear.
 type: concept
 audience: [developer, builder, evaluator]
 status: fork-tested
@@ -35,7 +35,7 @@ What the vault checks for each action:
 
 - **`SUPPLY`.** The stock is allowed, and the adapter supports it. The stock is not paused. Every leg of the move passes its transfer policy. The amount is non-zero and within the vault's balance.
 - **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. The stock is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a valid, fresh feed answer, no pause and a stable [multiplier](/docs/help/glossary#uimultiplier). The adapter then checks the health factor after the withdrawal.
-- **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a valid, fresh feed answer and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the de-risk window. The adapter checks again after the borrow.
+- **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a valid, fresh feed answer and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window). The adapter checks again after the borrow.
 - **`REPAY`.** The token is USDC, and the amount is non-zero and within the vault's USDC balance.
 
 A few more points:
@@ -105,7 +105,7 @@ On the fork, `test_borrowBelowMinimumHealthFactorReverts`, in the same adapter t
 
 ## The de-risk window
 
-The design assumes the Chainlink equity feeds stop at the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" /> on a Friday, which the repository has not measured; the vault keeps that time as a constant, `FEED_FREEZE_MINUTE`. A borrow needs an open market. The README puts the idea in one line: the health-factor floor rises in the hours before the feeds stop for a weekend or holiday. The [de-risk window](/docs/help/glossary#de-risk-window) is that stretch of time. Inside it, `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the target instead of the floor.
+The design assumes the Chainlink equity feeds stop at the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" /> on a Friday, which the repository has not measured; the vault keeps that time as a constant, `FEED_FREEZE_MINUTE`. A borrow needs an open market. The README puts the idea in one line: the health-factor floor rises in the hours before the feeds stop for a weekend or holiday. The de-risk window is that stretch of time. Inside it, `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the target instead of the floor.
 
 ```solidity title="contracts/src/MandateVault.sol#L403-L419"
     function _inDeriskWindow() internal view returns (bool) {
