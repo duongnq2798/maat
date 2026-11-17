@@ -116,7 +116,7 @@ When the code gains something public, its reference page needs an entry, or a te
 | a `.ts` file in `agent/scripts` | reference/agent-scripts | a `### <file>` heading with `<ScriptFile name="<file>" />` directly under it |
 | a folder at the top of the repository, or a file at its root | reference/repository-map | a row of its first table that links the folder to itself on GitHub, or the file's name in code (`test/docs-content.test.ts`) |
 
-A contract is documented only while `DOCUMENTED_CONTRACTS` in `lib/docs/docs-data.ts` names it. A new one also needs its page in `FUNCTION_PAGES` in `test/docs-coverage.test.ts`.
+A contract is documented only while `DOCUMENTED_CONTRACTS` in `lib/docs/docs-data.ts` names it. A new one also needs its page in `FUNCTION_PAGES` in `test/docs-coverage.test.ts` and, if it has functions, in `FUNCTION_PAGES` in `lib/docs/remark-identifier-links.ts`, with `true` when its function headings name the contract, as on reference/adapters; without that entry the build fails.
 
 ### Add a page
 

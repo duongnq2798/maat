@@ -207,7 +207,7 @@ export const FACT_TEXT = {
     "Daily compute cost assumed before any history",
     id(CONFIG, "MAAT_DEFAULT_DAILY_COMPUTE_USD"),
   ),
-  maxIntents: t(String(F.maxIntents.value), "maxIntents", "Most intents per proposal", id(SCHEMA, "MAX_INTENTS")),
+  maxIntents: t(String(F.maxIntents.value), "maxIntents", "Most intents in one Claude answer", id(SCHEMA, "MAX_INTENTS")),
   maxRationaleChars: t(
     String(F.maxRationaleChars.value),
     "maxRationaleChars",
@@ -217,7 +217,7 @@ export const FACT_TEXT = {
   maxSummaryChars: t(
     formatInt(F.maxSummaryChars.value),
     "maxSummaryChars",
-    "Most characters in a proposal's summary",
+    "Most characters in the summary of a Claude answer",
     id(SCHEMA, "MAX_SUMMARY_CHARS"),
   ),
   maxAmountUsd: t(usd(F.maxAmountUsd.value), "maxAmountUsd", "Largest amount of one proposed intent", id(SCHEMA, "MAX_AMOUNT_USD")),

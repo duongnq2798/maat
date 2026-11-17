@@ -331,8 +331,8 @@ const LAUNCH_CODE = ["lib/docs/abi.ts"] as const;
 
 /**
  * Every line of a docs page, and of LAUNCH_CODE, that still says nothing is deployed (notDeployedClaims), once a row of
- * the table in deployments/README.md has an address (docs:gen accepts only Base mainnet rows with full addresses);
- * nothing until then.
+ * the table in deployments/README.md has an address (docs:gen accepts only Base mainnet rows, each with an empty
+ * Address cell or a full address); nothing until then.
  */
 function launchList(deployments: readonly Deployment[]): string[] {
   if (!deployments.some(hasAddress)) return [];

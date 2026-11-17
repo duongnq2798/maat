@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { SITE } from "./site";
 
-/** The commit a build was made from, named on every docs page and at the top of llms-full.txt. */
+/** The commit a build was made from, named on every docs page, in its /md copy and at the top of llms-full.txt. */
 export interface BuildCommit {
   /** The short sha a reader can quote, as in "Built from commit def033c." */
   readonly short: string;
@@ -55,7 +55,7 @@ export function commitSuffix(commit: BuildCommit): string {
   return commit.dirty ? ", with uncommitted changes." : ".";
 }
 
-/** The stamp as Markdown, for llms-full.txt. */
+/** The stamp as Markdown, for llms-full.txt and the /md copies. */
 export function commitMarkdown(commit: BuildCommit): string {
   const sha = `\`${commit.short}\``;
   return `Built from commit ${commit.url ? `[${sha}](${commit.url})` : sha}${commitSuffix(commit)}`;

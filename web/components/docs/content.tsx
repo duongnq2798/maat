@@ -43,7 +43,7 @@ function headerCells(node: ReactNode): string[] {
 }
 
 /**
- * A Markdown table, in place of Fumadocs' own, whose box is always a tab stop. It scrolls inside its own region on small
+ * A Markdown table, in place of Fumadocs' own. It scrolls inside its own region on small
  * screens, never the page, and is a tab stop, named by its column headers, only once the page has measured it wider
  * than its box; until then, and without JavaScript, it is one (ScrollRegion.tsx). The classes are Fumadocs' own, and
  * prose-no-margin is how e2e/docs.spec.ts tells this region from a reference block's, so it checks a table's links.
