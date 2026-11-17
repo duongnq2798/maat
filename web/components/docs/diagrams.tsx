@@ -3,8 +3,12 @@ import {
   ARCHITECTURE,
   DECISION_LOOP,
   type FlowStep,
+  HEALTH_FACTOR_SCALE,
   MARKET_WEEK_CAPTION,
   MARKET_WEEK_MODES,
+  MULTIPLIER_FLOW,
+  type ScaleBand,
+  type ScaleData,
   TIMELOCK_FLOW,
   TREASURY_LOOP,
 } from "@/lib/docs/flows";
@@ -78,6 +82,45 @@ export function TimelockFlow() {
 
 export function TreasuryLoop() {
   return <Flow {...TREASURY_LOOP} />;
+}
+
+export function MultiplierFlow() {
+  return <Flow {...MULTIPLIER_FLOW} />;
+}
+
+// Complete literal class strings, so Tailwind's scanner sees every class. Allowed takes the blue of an open session.
+const TONE_CLASSES: Record<ScaleBand["tone"], string> = {
+  refused: "bg-fd-error",
+  conditional: "bg-fd-warning",
+  allowed: "bg-fd-primary",
+};
+
+/**
+ * Ranges of one value, highest first, each with what the vault does there: a ladder that reads the same from the top on
+ * a 360 px phone and in a wide column. Each range's coloured edge repeats its title, so no verdict is told by colour alone.
+ */
+export function Scale({ label, bands, caption }: ScaleData) {
+  return (
+    <figure className="not-prose my-8">
+      <ol aria-label={label} className="divide-y divide-fd-border overflow-hidden rounded-xl border border-fd-border bg-fd-card">
+        {bands.map((b) => (
+          <li key={b.range} className="flex">
+            <span aria-hidden="true" data-tone={b.tone} className={`w-1.5 shrink-0 ${TONE_CLASSES[b.tone]}`} />
+            <div className="min-w-0 p-4">
+              <p className="font-mono text-xs text-fd-muted-foreground">{b.range}</p>
+              <p className="mt-1 wrap-break-word font-medium text-fd-card-foreground">{b.title}</p>
+              <p className="mt-1 wrap-break-word text-sm leading-6 text-fd-muted-foreground">{b.detail}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+      <figcaption className="mt-3 text-sm text-fd-muted-foreground">{caption}</figcaption>
+    </figure>
+  );
+}
+
+export function HealthFactorScale() {
+  return <Scale {...HEALTH_FACTOR_SCALE} />;
 }
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;

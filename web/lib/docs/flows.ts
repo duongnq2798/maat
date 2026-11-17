@@ -73,6 +73,86 @@ export const TREASURY_LOOP: FlowData = {
   caption: "Earning from x402 safety checks is planned and not built.",
 };
 
+// The order of GuardLib.multiplierBlocked: the snapshot check blocks before anything is recorded, and the cooldown
+// counts from the recording (MandateVault._recordMultiplier) and from effectiveAt(). The long names, MULTIPLIER_COOLDOWN
+// and MultiplierChangeDetected, are left to the caption and the page: in a card of a four-column flow they break in two.
+export const MULTIPLIER_FLOW: FlowData = {
+  label: "How a multiplier change blocks a stock",
+  steps: [
+    {
+      title: "The token changes",
+      detail:
+        "Its uiMultiplier no longer matches the vault's snapshot, or it schedules a change with an effectiveAt() in the future. The stock is blocked at once, before anything is recorded.",
+    },
+    {
+      title: "The vault records it",
+      detail:
+        "A syncMultiplier from anyone, an execute that names the stock, or an applyTokenConfig for it stores the new value and emits an event. The cooldown counts from this recording.",
+    },
+    {
+      title: "The cooldown",
+      detail: `The stock stays blocked until the cooldown, ${f("mandate.multiplierCooldownSec")} by default, has passed since the recording and, for a scheduled change, since effectiveAt().`,
+    },
+    { title: "Allowed again", detail: "The multiplier check passes. Every other check still applies." },
+  ],
+  caption:
+    "The block covers BUY and SELL of the stock, and BORROW and WITHDRAW_COLLATERAL against debt while the stock is supplied as collateral. Those actions return MULTIPLIER_COOLDOWN once every check before the multiplier check passes.",
+};
+
+/** One range of a scale: its bounds, what the vault does there, and how the diagram colours that verdict. */
+export interface ScaleBand {
+  readonly range: string;
+  readonly title: string;
+  readonly detail: string;
+  /** Refused, refused only some of the time, or allowed. The colour repeats the title; it never stands alone. */
+  readonly tone: "refused" | "conditional" | "allowed";
+}
+
+export interface ScaleData {
+  readonly label: string;
+  /** Highest first, as the scale reads from the top. */
+  readonly bands: readonly ScaleBand[];
+  readonly caption: string;
+}
+
+const hfBound = f("healthFactorBound");
+const hfFloor = f("mandate.minHealthFactor");
+const hfTarget = f("mandate.targetHealthFactor");
+
+// MandateVault._healthReason, and _requireValidCredit for the lowest floor a mandate with a credit adapter may set.
+export const HEALTH_FACTOR_SCALE: ScaleData = {
+  label: "What the vault returns for the health factor a BORROW, or a WITHDRAW_COLLATERAL against debt, would leave",
+  bands: [
+    {
+      range: `${hfTarget} and above`,
+      title: "Allowed",
+      detail:
+        "At or above the target, targetHealthFactor: allowed, inside the de-risk window too. The action's other checks still apply.",
+      tone: "allowed",
+    },
+    {
+      range: `${hfFloor} to under ${hfTarget}`,
+      title: "DERISK_WINDOW in the window",
+      detail: "From the floor up to the target: allowed outside the de-risk window, DERISK_WINDOW inside it.",
+      tone: "conditional",
+    },
+    {
+      range: `${hfBound} to under ${hfFloor}`,
+      title: "HEALTH_FACTOR_LOW",
+      detail: "Below the floor, minHealthFactor: refused, inside the de-risk window or not.",
+      tone: "refused",
+    },
+    {
+      range: `Below ${hfBound}`,
+      title: "Never a floor",
+      detail:
+        "A mandate with a credit adapter cannot set its floor here: the vault rejects it with InvalidConfig. An action that would land here is below every floor, so it returns HEALTH_FACTOR_LOW.",
+      tone: "refused",
+    },
+  ],
+  caption: `Shown with the default floor and target. A mandate with a credit adapter can set others, as long as the floor is at least ${hfBound} and the target is at least the floor. SUPPLY and REPAY are never refused for the health factor.`,
+};
+
 /** When each session mode is open, in words, one entry per bar of the market-week diagram. */
 export const MARKET_WEEK_MODES = [
   { mode: "REGULAR", text: `Monday to Friday, ${f("nyseOpen")} to ${f("nyseClose")}.` },

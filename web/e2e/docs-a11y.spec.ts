@@ -2,12 +2,15 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 
 // The docs home and one page of each kind with the most varied markup: tables, steps, code, signatures, grouped cards.
+// Then the pages of the health-factor scale and the multiplier flow, whose colours and cards no page above has.
 const PAGES = [
   "/docs",
   "/docs/concepts/nine-checks",
   "/docs/guides/run-the-tests",
   "/docs/reference/mandate-vault",
   "/docs/reference",
+  "/docs/concepts/credit-and-health-factor",
+  "/docs/concepts/splits-and-multiplier",
 ] as const;
 
 for (const theme of ["light", "dark"] as const) {

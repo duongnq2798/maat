@@ -4,7 +4,18 @@ import { SITE } from "../site";
 import { forkLedger, GROUP_OF, decisionEventSource, mandateTable } from "./content-data";
 import { DATA_COMPONENTS, type DataComponent } from "./data-components";
 import { codeParts, FACT_TABLE_HEAD, type FactCode, factTable } from "./fact-text";
-import { type FlowData, ARCHITECTURE, DECISION_LOOP, MARKET_WEEK_CAPTION, MARKET_WEEK_MODES, TIMELOCK_FLOW, TREASURY_LOOP } from "./flows";
+import {
+  type FlowData,
+  type ScaleData,
+  ARCHITECTURE,
+  DECISION_LOOP,
+  HEALTH_FACTOR_SCALE,
+  MARKET_WEEK_CAPTION,
+  MARKET_WEEK_MODES,
+  MULTIPLIER_FLOW,
+  TIMELOCK_FLOW,
+  TREASURY_LOOP,
+} from "./flows";
 import { STATUS_LABEL, STATUSES, type DocStatus } from "./frontmatter";
 import { docsData } from "./generated";
 import { headingId } from "./links";
@@ -286,6 +297,12 @@ const flow =
   () =>
     blocks(`**${data.label}**`, data.steps.map((s, i) => `${i + 1}. **${s.title}**: ${s.detail}`).join("\n"), data.caption);
 
+/** A scale's ranges as a list, highest first, each led by its bounds; the colour of its edge is left out, as its title says it. */
+const scale =
+  (data: ScaleData): Render =>
+  () =>
+    blocks(`**${data.label}**`, data.bands.map((b) => `- **${b.range}**: ${b.title}. ${b.detail}`).join("\n"), data.caption);
+
 const marketWeek: Render = () =>
   blocks(MARKET_WEEK_MODES.map((m) => `- ${code(m.mode)} is open ${m.text}`).join("\n"), MARKET_WEEK_CAPTION);
 
@@ -313,6 +330,8 @@ export const COMPONENT_TEXT: Readonly<Record<DataComponent, Render>> = {
   Architecture: flow(ARCHITECTURE),
   TimelockFlow: flow(TIMELOCK_FLOW),
   TreasuryLoop: flow(TREASURY_LOOP),
+  MultiplierFlow: flow(MULTIPLIER_FLOW),
+  HealthFactorScale: scale(HEALTH_FACTOR_SCALE),
   MarketWeek: marketWeek,
 };
 

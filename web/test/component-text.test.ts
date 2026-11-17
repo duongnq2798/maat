@@ -335,7 +335,40 @@ describe("diagrams", () => {
     );
   });
 
-  it.each(["Architecture", "TimelockFlow", "TreasuryLoop"] as const)("%s numbers its steps from 1", (name) => {
+  it("MultiplierFlow puts the block before the recording, and counts the cooldown from the recording", () => {
+    expect(text("MultiplierFlow")).toBe(
+      [
+        "**How a multiplier change blocks a stock**",
+        "",
+        "1. **The token changes**: Its uiMultiplier no longer matches the vault's snapshot, or it schedules a change with an effectiveAt() in the future. The stock is blocked at once, before anything is recorded.",
+        "2. **The vault records it**: A syncMultiplier from anyone, an execute that names the stock, or an applyTokenConfig for it stores the new value and emits an event. The cooldown counts from this recording.",
+        `3. **The cooldown**: The stock stays blocked until the cooldown, ${factFor("mandate.multiplierCooldownSec").text} by default, has passed since the recording and, for a scheduled change, since effectiveAt().`,
+        "4. **Allowed again**: The multiplier check passes. Every other check still applies.",
+        "",
+        "The block covers BUY and SELL of the stock, and BORROW and WITHDRAW_COLLATERAL against debt while the stock is supplied as collateral. Those actions return MULTIPLIER_COOLDOWN once every check before the multiplier check passes.",
+      ].join("\n"),
+    );
+  });
+
+  it("HealthFactorScale gives each range from the highest, with its numbers from FACTS and what the vault returns there", () => {
+    const bound = factFor("healthFactorBound").text;
+    const floor = factFor("mandate.minHealthFactor").text;
+    const target = factFor("mandate.targetHealthFactor").text;
+    expect(text("HealthFactorScale")).toBe(
+      [
+        "**What the vault returns for the health factor a BORROW, or a WITHDRAW_COLLATERAL against debt, would leave**",
+        "",
+        `- **${target} and above**: Allowed. At or above the target, targetHealthFactor: allowed, inside the de-risk window too. The action's other checks still apply.`,
+        `- **${floor} to under ${target}**: DERISK_WINDOW in the window. From the floor up to the target: allowed outside the de-risk window, DERISK_WINDOW inside it.`,
+        `- **${bound} to under ${floor}**: HEALTH_FACTOR_LOW. Below the floor, minHealthFactor: refused, inside the de-risk window or not.`,
+        `- **Below ${bound}**: Never a floor. A mandate with a credit adapter cannot set its floor here: the vault rejects it with InvalidConfig. An action that would land here is below every floor, so it returns HEALTH_FACTOR_LOW.`,
+        "",
+        `Shown with the default floor and target. A mandate with a credit adapter can set others, as long as the floor is at least ${bound} and the target is at least the floor. SUPPLY and REPAY are never refused for the health factor.`,
+      ].join("\n"),
+    );
+  });
+
+  it.each(["Architecture", "TimelockFlow", "TreasuryLoop", "MultiplierFlow"] as const)("%s numbers its steps from 1", (name) => {
     const items = lines(text(name)).filter((l) => /^\d+\. /.test(l));
     expect(items.length).toBeGreaterThanOrEqual(4);
     items.forEach((l, i) => expect(l.startsWith(`${i + 1}. `)).toBe(true));

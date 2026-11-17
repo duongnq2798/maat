@@ -10,7 +10,7 @@ import { docsSlug } from "@/lib/docs/links";
 import { SITE } from "@/lib/site";
 import { Callout } from "./Callout";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "./content";
-import { Architecture, DecisionLoop, MarketWeek, TimelockFlow, TreasuryLoop } from "./diagrams";
+import { Architecture, DecisionLoop, HealthFactorScale, MarketWeek, MultiplierFlow, TimelockFlow, TreasuryLoop } from "./diagrams";
 import { GlossaryTerm } from "./GlossaryTerm";
 import {
   AddressTable,
@@ -133,6 +133,8 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     Architecture,
     TimelockFlow,
     TreasuryLoop,
+    MultiplierFlow,
+    HealthFactorScale,
     MarketWeek,
     AddressTable,
     EnvTable,

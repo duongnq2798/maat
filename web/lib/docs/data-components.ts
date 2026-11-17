@@ -28,6 +28,8 @@ export const DATA_COMPONENTS = [
   "Architecture",
   "TimelockFlow",
   "TreasuryLoop",
+  "MultiplierFlow",
+  "HealthFactorScale",
   "MarketWeek",
 ] as const;
 

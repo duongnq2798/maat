@@ -2,7 +2,16 @@ import { render, screen, within } from "@testing-library/react";
 import type { Root } from "fumadocs-core/page-tree";
 import { describe, expect, it } from "vitest";
 import { EventSignature, ForkLedger, MandateTable, READER_PATHS, ReasonTable, RouterCards } from "@/components/docs/content";
-import { Architecture, DecisionLoop, marketWeek, MarketWeek, TimelockFlow, TreasuryLoop } from "@/components/docs/diagrams";
+import {
+  Architecture,
+  DecisionLoop,
+  HealthFactorScale,
+  marketWeek,
+  MarketWeek,
+  MultiplierFlow,
+  TimelockFlow,
+  TreasuryLoop,
+} from "@/components/docs/diagrams";
 import { SectionIndex } from "@/components/docs/SectionIndex";
 import { getDecisions } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
@@ -185,9 +194,33 @@ describe("diagrams", () => {
     ["Architecture", <Architecture key="a" />, "Who does what, from Claude to the Base protocols", 5],
     ["TimelockFlow", <TimelockFlow key="t" />, "How a rule change goes through the timelock", 4],
     ["TreasuryLoop", <TreasuryLoop key="l" />, "The treasury loop the agent is built to run", 4],
+    ["MultiplierFlow", <MultiplierFlow key="m" />, "How a multiplier change blocks a stock", 4],
   ])("%s is a labelled list of steps", (_name, node, label, steps) => {
     render(node);
     expect(within(screen.getByRole("list", { name: label })).getAllByRole("listitem")).toHaveLength(steps);
+  });
+
+  it("HealthFactorScale lists the ranges from the highest, with the default floor and target and the lowest floor allowed", () => {
+    render(<HealthFactorScale />);
+    const list = screen.getByRole("list", {
+      name: "What the vault returns for the health factor a BORROW, or a WITHDRAW_COLLATERAL against debt, would leave",
+    });
+    const bands = within(list)
+      .getAllByRole("listitem")
+      .map((li) => [...li.querySelectorAll("p")].slice(0, 2).map((p) => p.textContent));
+    expect(bands).toEqual([
+      ["2.0 and above", "Allowed"],
+      ["1.5 to under 2.0", "DERISK_WINDOW in the window"],
+      ["1.0 to under 1.5", "HEALTH_FACTOR_LOW"],
+      ["Below 1.0", "Never a floor"],
+    ]);
+  });
+
+  it("HealthFactorScale draws each range's verdict as a colour that repeats its words, hidden from a screen reader", () => {
+    const { container } = render(<HealthFactorScale />);
+    const edges = [...container.querySelectorAll("li > span")];
+    expect(edges.map((e) => e.getAttribute("aria-hidden"))).toEqual(["true", "true", "true", "true"]);
+    expect(edges.map((e) => e.getAttribute("data-tone"))).toEqual(["allowed", "conditional", "refused", "refused"]);
   });
 
   it("diagram numbers come from FACTS", () => {
@@ -200,6 +233,8 @@ describe("diagrams", () => {
     expect(screen.getByText("Up to 9 checks run in the contract for a BUY or a SELL. A Decision event records the verdict.")).toBeInTheDocument();
     expect(screen.getByText("Nothing can apply it for 24 hours.")).toBeInTheDocument();
     expect(screen.getByText(/every 15 minutes in session and every 60 minutes outside/)).toBeInTheDocument();
+    render(<MultiplierFlow />);
+    expect(screen.getByText(/^The stock stays blocked until the cooldown, 24 hours by default, has passed since the recording/)).toBeInTheDocument();
   });
 
   it("marketWeek follows MarketCalendar.isOpen: weekdays for REGULAR, Sunday to Friday at the feed edge for 24/5", () => {

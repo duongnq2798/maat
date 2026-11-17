@@ -86,6 +86,10 @@ Two numbers in the mandate set how much room a credit action must leave:
 
 When a credit adapter is set, the vault accepts a floor only at or above <Fact name="healthFactorBound" />, a target at or above the floor, and a window of at most <Fact name="maxDeriskWindowHours" />. It also requires the adapter to name this vault and this USDC. Otherwise the new mandate is rejected with `InvalidConfig`.
 
+Together these rules split the health factor into four ranges. The scale shows them with the default floor and target, from the highest:
+
+<HealthFactorScale />
+
 The health factor is checked twice. The vault uses the projection for `BORROW` when it runs the checks. Then it passes the health factor the action needs to the adapter, the floor or, inside the window, the target. The adapter re-reads the real figure after the action and reverts if it is too low:
 
 ```solidity title="contracts/src/adapters/AaveV4CreditAdapter.sol#L176-L179"

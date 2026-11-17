@@ -3,18 +3,22 @@ import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
 import { FACT_TEXT } from "../lib/docs/fact-text";
+import { HEALTH_FACTOR_SCALE, MULTIPLIER_FLOW } from "../lib/docs/flows";
 import { DOCS_IA } from "../lib/docs/ia";
 import { SITE } from "../lib/site";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /**
  * Pages checked at every width: the docs home, the Reference section page (the one whose cards come in groups), then
- * the longest pages as they ship (Tasks 8, 13, 14, 15, 16, 17 and 18).
+ * the longest pages as they ship (Tasks 8, 13, 14, 15, 16, 17 and 18), and the pages of the health-factor scale and
+ * the multiplier flow.
  */
 const PAGES: string[] = [
   "/docs",
   "/docs/reference",
   "/docs/concepts/nine-checks",
+  "/docs/concepts/credit-and-health-factor",
+  "/docs/concepts/splits-and-multiplier",
   "/docs/guides/run-the-tests",
   "/docs/guides/reproduce-the-fork-run",
   "/docs/guides/deploy-your-own-vault",
@@ -61,6 +65,24 @@ for (const width of WIDTHS) {
         () => [...document.querySelectorAll("figure ol li p")].filter((p) => p.scrollWidth > p.clientWidth).length,
       );
       expect(overflowingText).toBe(0);
+      // Nor may a word in a card break inside itself: wrap-break-word keeps it in the card by splitting it over two lines.
+      const brokenWords = await page.evaluate(() =>
+        [...document.querySelectorAll("figure ol li p")].flatMap((p) =>
+          [...p.childNodes]
+            .filter((n): n is Text => n instanceof Text)
+            .flatMap((text) =>
+              [...text.data.matchAll(/[^\s-]+/g)]
+                .filter((m) => {
+                  const range = document.createRange();
+                  range.setStart(text, m.index);
+                  range.setEnd(text, m.index + m[0].length);
+                  return new Set([...range.getClientRects()].map((r) => Math.round(r.top))).size > 1;
+                })
+                .map((m) => m[0]),
+            ),
+        ),
+      );
+      expect(brokenWords).toEqual([]);
       await page.screenshot({ path: `test-results/screens/docs${path.replace(/\//g, "-")}-${width}.png`, fullPage: true });
       expect(errors).toEqual([]);
     });
@@ -757,6 +779,17 @@ test.describe("files for tools", () => {
     expect(nine).toContain(`(${SITE.repoUrl}/blob/main/contracts/src/GuardLib.sol)`);
     // llms-full.txt is every page already, so no page in it repeats the note.
     expect(await (await request.get("/llms-full.txt")).text()).not.toContain("> Index of every page:");
+  });
+
+  test("the credit and splits pages' Markdown copies carry the words of their diagrams", async ({ request }) => {
+    const credit = await (await request.get("/md/docs/concepts/credit-and-health-factor.md")).text();
+    expect(credit).toContain(`**${HEALTH_FACTOR_SCALE.label}**`);
+    for (const b of HEALTH_FACTOR_SCALE.bands) expect(credit).toContain(`\n- **${b.range}**: ${b.title}. ${b.detail}\n`);
+    expect(credit).toContain(HEALTH_FACTOR_SCALE.caption);
+    const splits = await (await request.get("/md/docs/concepts/splits-and-multiplier.md")).text();
+    expect(splits).toContain(`**${MULTIPLIER_FLOW.label}**`);
+    MULTIPLIER_FLOW.steps.forEach((s, i) => expect(splits).toContain(`\n${i + 1}. **${s.title}**: ${s.detail}\n`));
+    expect(splits).toContain(MULTIPLIER_FLOW.caption);
   });
 
   test("the MandateVault page links its ABI as JSON: the agent's own mandateVaultAbi, with where it comes from", async ({ page, request }) => {

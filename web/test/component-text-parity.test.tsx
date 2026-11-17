@@ -1,7 +1,15 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "@/components/docs/content";
-import { Architecture, DecisionLoop, MarketWeek, TimelockFlow, TreasuryLoop } from "@/components/docs/diagrams";
+import {
+  Architecture,
+  DecisionLoop,
+  HealthFactorScale,
+  MarketWeek,
+  MultiplierFlow,
+  TimelockFlow,
+  TreasuryLoop,
+} from "@/components/docs/diagrams";
 import {
   AddressTable,
   EnvTable,
@@ -233,6 +241,7 @@ describe("diagrams", () => {
     ["Architecture", <Architecture />],
     ["TimelockFlow", <TimelockFlow />],
     ["TreasuryLoop", <TreasuryLoop />],
+    ["MultiplierFlow", <MultiplierFlow />],
   ] as const)("%s has the label, the steps and the caption of the rendered figure", (name, element) => {
     const { container } = render(element);
     const steps = [...container.querySelectorAll("li")].map((li, i) => {
@@ -242,6 +251,17 @@ describe("diagrams", () => {
     const label = container.querySelector("ol")!.getAttribute("aria-label");
     const caption = container.querySelector("figcaption")!.textContent;
     expect(md(name)).toBe([`**${label}**`, steps.join("\n"), caption].join("\n\n"));
+  });
+
+  it("HealthFactorScale has the label, the ranges and the caption of the rendered figure", () => {
+    const { container } = render(<HealthFactorScale />);
+    const bands = [...container.querySelectorAll("li")].map((li) => {
+      const [range, title, detail] = [...li.querySelectorAll("p")].map((p) => p.textContent);
+      return `- **${range}**: ${title}. ${detail}`;
+    });
+    const label = container.querySelector("ol")!.getAttribute("aria-label");
+    const caption = container.querySelector("figcaption")!.textContent;
+    expect(md("HealthFactorScale")).toBe([`**${label}**`, bands.join("\n"), caption].join("\n\n"));
   });
 
   it("MarketWeek has the sentences and the caption of the rendered figure", () => {
