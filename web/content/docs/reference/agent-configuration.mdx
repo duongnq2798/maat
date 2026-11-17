@@ -39,7 +39,7 @@ These settings are read by `agent/src/config.ts`. `BASE_RPC_URL`, `MAAT_VAULT`, 
 
 <EnvVar name="BASE_RPC_URL" />
 
-The RPC endpoint for [Base](/docs/help/glossary#base) mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier [round](/docs/help/glossary#round). It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
+The RPC endpoint for Base mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier [round](/docs/help/glossary#round). It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
 
 ### MAAT_VAULT
 
@@ -103,7 +103,7 @@ The daily compute cost, in US dollars, that the agent assumes until it has a his
 
 <EnvVar name="CDP_ACCOUNT_NAME" />
 
-The name of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) account that acts as the executor. `cdp-setup.ts` creates the account under this name or finds it, and the agent looks it up by name in live mode. The agent never creates an account. Dry-run mode does not use this setting.
+The name of the CDP Server Wallet account that acts as the executor. `cdp-setup.ts` creates the account under this name or finds it, and the agent looks it up by name in live mode. The agent never creates an account. Dry-run mode does not use this setting.
 
 ## Read by the SDKs
 
