@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { existsSync, readdirSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -308,6 +309,116 @@ describe("the agent's messages on Agent scripts (quoted-message gate)", () => {
     expect(unknownConfigExamples(examples, config)).toEqual([]);
     const reworded = config.replace('"MAAT_BUILDER_CODE is required in live mode"', '"MAAT_BUILDER_CODE must be set in live mode"');
     expect(unknownConfigExamples(examples, reworded).map((f) => f.line)).toEqual([5]);
+  });
+});
+
+let trackedPaths: readonly string[] | undefined;
+/** Every path the repository tracks, as `git ls-files` lists it: a submodule is one path, its folder's. */
+const tracked = () =>
+  (trackedPaths ??= execFileSync("git", ["ls-files"], { cwd: REPO_ROOT, encoding: "utf8" })
+    .split("\n")
+    .filter((p) => p !== ""));
+
+/** A body row of a table: the repo path its first cell names, and the docs pages its last cell links. */
+interface MapRow {
+  /** Which table of the page the row is in, from 0. */
+  readonly table: number;
+  readonly line: number;
+  /** As the cell shows it, a folder with a trailing "/"; undefined when the cell is not one such path linked to itself. */
+  readonly path?: string;
+  readonly readFirst: readonly string[];
+}
+
+/**
+ * The body rows of every table on a page, outside fenced code. A first cell names its path in code, linked to that path
+ * on GitHub: [`agent/src/ledger/`](<repo>/tree/main/agent/src/ledger) for a folder, and
+ * [`agent/src/policy.ts`](<repo>/blob/main/agent/src/policy.ts) for a file.
+ */
+function mapRows(source: string, repoUrl: string): MapRow[] {
+  const cell = new RegExp(`^\\[\`([^\`]+)\`\\]\\(${repoUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}/(tree|blob)/main/([^)\\s#]+)\\)$`);
+  const out: MapRow[] = [];
+  let table = -1;
+  let row = 0;
+  source
+    .replace(FENCED, (m) => m.replace(/[^\n]/g, " "))
+    .split("\n")
+    .forEach((line, i) => {
+      if (!line.startsWith("|")) {
+        row = 0;
+        return;
+      }
+      if (row++ === 0) table++;
+      // The header row and the separator under it.
+      if (row <= 2) return;
+      const cells = line.split(/(?<!\\)\|/).slice(1, -1).map((c) => c.trim());
+      const [, shown, kind, target] = cell.exec(cells[0] ?? "") ?? [];
+      const linked = shown !== undefined && (kind === "tree" ? shown === `${target}/` : shown === target);
+      out.push({ table, line: i + 1, path: linked ? shown : undefined, readFirst: docsLinks(cells.at(-1) ?? "") });
+    });
+  return out;
+}
+
+/** The paths the repository does not track, or that name a folder as a file or a file as a folder (its trailing "/"). */
+function misnamedPaths(paths: readonly string[], files: readonly string[]): string[] {
+  return paths.filter((path) => {
+    const bare = path.replace(/\/$/, "");
+    const known = files.some((p) => p === bare || p.startsWith(`${bare}/`));
+    return !known || !existsSync(join(REPO_ROOT, bare)) || statSync(join(REPO_ROOT, bare)).isDirectory() !== path.endsWith("/");
+  });
+}
+
+describe("the repository map maps folders that exist to the pages that explain them", () => {
+  const MAP = "reference/repository-map";
+  const repo = SITE.repoUrl;
+  const rows = mapRows(bySlug.get(MAP) ?? "", repo);
+
+  it("reads each row's linked path and its Read first links, and no path from a cell that does not link it to itself", () => {
+    const page = [
+      "| Folder | What is in it | Read first |",
+      "| --- | --- | --- |",
+      `| [\`agent/\`](${repo}/tree/main/agent) | x | [Run the agent](/docs/guides/run-the-agent) |`,
+      `| [\`agent/src/policy.ts\`](${repo}/blob/main/agent/src/policy.ts) | x | [A](/docs/a), then [B](/docs/b#c) |`,
+      "| `agent/` | not linked | [Run the agent](/docs/guides/run-the-agent) |",
+      `| [\`agent/src/\`](${repo}/tree/main/agent) | linked to another folder | none |`,
+      "",
+      "| File | What is in it | Read first |",
+      "| --- | --- | --- |",
+      `| [\`web/\`](${repo}/blob/main/web) | a folder linked as a file | [A](/docs/a) |`,
+    ].join("\n");
+    expect(mapRows(page, repo)).toEqual([
+      { table: 0, line: 3, path: "agent/", readFirst: ["/docs/guides/run-the-agent"] },
+      { table: 0, line: 4, path: "agent/src/policy.ts", readFirst: ["/docs/a", "/docs/b#c"] },
+      { table: 0, line: 5, path: undefined, readFirst: ["/docs/guides/run-the-agent"] },
+      { table: 0, line: 6, path: undefined, readFirst: [] },
+      { table: 1, line: 10, path: undefined, readFirst: ["/docs/a"] },
+    ]);
+  });
+
+  it("gives every row one repo path, linked to itself, and a Read first link to a docs page", () => {
+    expect(rows.length, `content/docs/${MAP}.mdx has no table rows`).toBeGreaterThan(0);
+    expect(
+      rows.flatMap((r) => [
+        ...(r.path === undefined ? [at(MAP, { line: r.line, text: "the first cell is not one repo path linked to itself" })] : []),
+        ...(r.readFirst.length === 0 ? [at(MAP, { line: r.line, text: "the Read first cell links no docs page" })] : []),
+      ]),
+    ).toEqual([]);
+  });
+
+  it("lists in its first table each top-level folder the repository tracks, and nothing else", () => {
+    const top = [...new Set(tracked().flatMap((p) => (p.includes("/") ? [`${p.split("/")[0]}/`] : [])))].sort();
+    expect(top).toContain("contracts/");
+    expect(rows.filter((r) => r.table === 0).map((r) => r.path ?? `line ${r.line}`).sort()).toEqual(top);
+  });
+
+  it("names only folders and files the repository tracks, a folder with a trailing slash and a file without", () => {
+    const named = rows.flatMap((r) => (r.path === undefined ? [] : [r]));
+    const bad = new Set(misnamedPaths(named.map((r) => r.path ?? ""), tracked()));
+    expect(named.filter((r) => bad.has(r.path ?? "")).map((r) => at(MAP, { line: r.line, text: r.path ?? "" }))).toEqual([]);
+  });
+
+  it("fails a path the repository does not track, a file named as a folder and a folder named as a file", () => {
+    const paths = ["agent/src/", "agent/src/policy.ts", "contracts/lib/", "agent/src/nope/", "agent/src/policy.ts/", "agent/src", "contracts/out/"];
+    expect(misnamedPaths(paths, tracked())).toEqual(["agent/src/nope/", "agent/src/policy.ts/", "agent/src", "contracts/out/"]);
   });
 });
 

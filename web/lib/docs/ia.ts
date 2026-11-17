@@ -209,6 +209,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "The contracts' functions, events, errors and types, the calendar and the adapters, the agent's settings and scripts, and the addresses and defaults.",
       ),
       page(
+        "reference/repository-map",
+        "Repository map",
+        "The folders and main files of the Maat repository: what each one holds, and the docs page to read before you open it.",
+      ),
+      page(
         "reference/mandate-vault",
         "MandateVault",
         "Every external and public function of MandateVault: its signature, who may call it, what it changes, and how it reverts or refuses.",

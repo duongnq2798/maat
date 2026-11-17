@@ -1,6 +1,7 @@
 {
   "title": "Reference",
   "pages": [
+    "repository-map",
     "---Contracts---",
     "mandate-vault",
     "events",
