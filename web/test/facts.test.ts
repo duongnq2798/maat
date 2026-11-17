@@ -21,6 +21,7 @@ const deploy = readRepo("contracts/script/Deploy.s.sol");
 const forkTest = readRepo("agent/test/integration/agent.fork.test.ts");
 const anvil = readRepo("agent/test/integration/anvil.ts");
 const addresses = readRepo("contracts/script/BaseAddresses.sol");
+const forkDeploy = readRepo("agent/test/integration/deploy.ts");
 
 describe("every fact names its source", () => {
   it.each(Object.entries(FACTS))("%s", (_name, f) => {
@@ -151,5 +152,39 @@ describe("parity with the contracts and the fork run (spec §5.4)", () => {
       borrow: used("fork-1", "BORROW"),
       refusalLog: used("fork-2", "BUY"),
     }).toEqual(FACTS.gas.value);
+  });
+
+  it("market calendar: holidays, with the names in its comments, and early closes", () => {
+    const iso = (y = "", m = "", d = "") => `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    const holidays = [...calendar.matchAll(/_addHoliday\((\d+),\s*(\d+),\s*(\d+)\);\s*\/\/\s*([^\r\n]+)/g)].map((m) => ({
+      date: iso(m[1], m[2], m[3]),
+      name: (m[4] ?? "").trim(),
+    }));
+    const earlyCloses = [...calendar.matchAll(/_setEarlyClose\((\d+),\s*(\d+),\s*(\d+),\s*(\d+)\);/g)].map((m) => ({
+      date: iso(m[1], m[2], m[3]),
+      closeMin: Number(m[4]),
+    }));
+    expect(holidays.length * earlyCloses.length).toBeGreaterThan(0);
+    // Every call in the constructor must be read above: a holiday without its "// name" comment, or spaced as
+    // "_addHoliday( 2026", would otherwise be skipped by the matcher and go missing from the simulator. The calls
+    // that take variables are the owner's later additions, not the constructor's.
+    expect(calendar.match(/_addHoliday\s*\(\s*\d/g)?.length ?? 0).toBe(holidays.length);
+    expect(calendar.match(/_setEarlyClose\s*\(\s*\d/g)?.length ?? 0).toBe(earlyCloses.length);
+    expect({ holidays, earlyCloses }).toEqual(FACTS.calendar.value);
+  });
+
+  it("basket: the tokens MaatConfig.basket() lists, in order, each with a measured premium", () => {
+    const body = /function basket\(\)[^{]*\{([\s\S]*?)\n\s*\}/.exec(config)?.[1];
+    if (!body) throw new Error("basket() not found in contracts/script/MaatConfig.sol");
+    const listed = [...body.matchAll(/toks\[\d+\]\s*=\s*A\.(\w+);/g)].map((m) => m[1]);
+    expect(listed).toEqual(FACTS.basket.value.map((s) => s.toUpperCase()));
+    expect(Object.keys(FACTS.premiumsBps.value).sort()).toEqual([...FACTS.basket.value].sort());
+  });
+
+  it("the fork vault starts with $200 USDC: owner.fund() in the fork deploy", () => {
+    const funds = [...forkDeploy.matchAll(/functionName:\s*"fund",\s*args:\s*\[([\d_]+)n\]/g)].map((m) =>
+      solidityNumber(m[1] ?? ""),
+    );
+    expect(funds).toEqual([FACTS.forkVaultUsd.value * 1e6]);
   });
 });

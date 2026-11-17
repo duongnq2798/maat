@@ -29,8 +29,8 @@ export function Hero() {
             <a className="pill-dark" href={SITE.quickstartUrl}>
               Verify it in 5 minutes
             </a>
-            <a className="pill-line" href="#how">
-              How it weighs a trade
+            <a className="pill-line" href="#try">
+              Try to make it say no
             </a>
           </div>
           <dl className="m-0 mt-2 grid max-w-[560px] grid-cols-3 border-t border-line">

@@ -20,6 +20,11 @@ export const SITE = {
   tagline: "Every trade is weighed.",
 } as const;
 
+/** A file of the repo on GitHub, at main. */
+export function repoFileUrl(path: string): string {
+  return `${REPO}/blob/main/${path}`;
+}
+
 type Env = Record<string, string | undefined>;
 
 /** Absolute base for OG/Twitter URLs: NEXT_PUBLIC_SITE_URL, then the Vercel production domain, then localhost. */

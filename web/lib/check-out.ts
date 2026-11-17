@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { MOMENTS } from "../content/engine";
+import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
 import { OG_IMAGE_SIZE, ogImageUrl } from "./docs/og";
@@ -31,6 +32,19 @@ export function checkExport(html: string): string[] {
   need(
     new RegExp(`role="status"[^>]*><div[^>]*\\sdata-verdict="${verdict}"[^>]*\\sdata-reason="${sat.reason}"`).test(html),
     `the ${sat.toggleLabel} verdict (${verdict} · ${sat.reason}) is not in the exported HTML`,
+  );
+
+  // The simulator opens on the fork's allowed BUY; no-JS readers see that verdict in its own live region.
+  const sim = evaluate(replay(DEFAULT_SCENARIO.etDay, DEFAULT_SCENARIO.tape), DEFAULT_SCENARIO.intent);
+  const simVerdict = sim.allowed ? "allowed" : "refused";
+  const tryAt = html.indexOf(' id="try"');
+  need(tryAt >= 0, "the simulator section #try is missing");
+  need(
+    tryAt >= 0 &&
+      new RegExp(`role="status"[^>]*><div[^>]*\\sdata-verdict="${simVerdict}"[^>]*\\sdata-reason="${sim.reason}"`).test(
+        html.slice(tryAt),
+      ),
+    `the simulator's default verdict (${simVerdict} · ${sim.reason}) is not in the exported HTML`,
   );
 
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {

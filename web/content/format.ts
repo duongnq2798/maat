@@ -31,3 +31,16 @@ export function clockLabel(minutes: number): string {
   const mm = String(minutes % 60).padStart(2, "0");
   return `${hh}:${mm}`;
 }
+
+/** "HH:MM" (24 h) → minutes after midnight: the inverse of clockLabel. */
+export function minuteOfClock(label: string): number {
+  const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(label);
+  if (!m) throw new Error(`not a 24 h clock time (HH:MM): ${label}`);
+  return Number(m[1]) * 60 + Number(m[2]);
+}
+
+/** ["a", "b", "c"] → "a, b and c". */
+export function andList(items: readonly string[]): string {
+  if (items.length <= 1) return items[0] ?? "";
+  return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+}

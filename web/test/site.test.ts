@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { IA_SLUGS } from "@/lib/docs/ia";
-import { SITE, siteUrl } from "@/lib/site";
+import { SITE, repoFileUrl, siteUrl } from "@/lib/site";
 import { readRepo } from "./helpers/solidity";
 
 describe("siteUrl", () => {
@@ -50,5 +50,12 @@ describe("links into the README", () => {
   it("the license link points at the LICENSE file at the repo root", () => {
     expect(SITE.licenseUrl).toBe(`${SITE.repoUrl}/blob/main/LICENSE`);
     expect(readRepo("LICENSE")).toMatch(/^MIT License/);
+  });
+});
+
+describe("links into the source", () => {
+  it.each(["contracts/src/MarketCalendar.sol", "contracts/src/MandateVault.sol"])("%s exists and links at main", (path) => {
+    expect(repoFileUrl(path)).toBe(`${SITE.repoUrl}/blob/main/${path}`);
+    expect(() => readRepo(path)).not.toThrow();
   });
 });

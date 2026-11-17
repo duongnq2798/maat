@@ -581,11 +581,13 @@ Planned, roughly in this order. None of this is built.
 | [Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) | Product, architecture, the checks, threat model, open assumptions |
 | [Web design spec](docs/superpowers/specs/2026-11-07-maat-web-design.md) | Website goals, design tokens, page structure, parity tests, W2 and W3 |
 | [Docs center spec](docs/superpowers/specs/2026-11-07-maat-docs-center-design.md) | The readers of `/docs`, its honesty rules, pages, content model and quality gates |
+| [Simulator spec](docs/superpowers/specs/2026-11-08-mandate-simulator-design.md) | The landing page's "Try to make it say no" section: a browser simulation of the default mandate's BUY checks over one day, and its parity tests |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
 | [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, reconcile |
 | [Plan W1: website](docs/superpowers/plans/2026-11-07-maat-web-w1.md) | The landing page and brand assets |
 | [Plan: docs center](docs/superpowers/plans/2026-11-07-maat-docs-center.md) | `/docs` inside the website: Fumadocs, the generated reference data, the pages and their gates |
+| [Plan: simulator](docs/superpowers/plans/2026-11-08-mandate-simulator.md) | The calendar and BUY-check ports in `web/content`, the Simulator component, the Try it section and their tests |
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
