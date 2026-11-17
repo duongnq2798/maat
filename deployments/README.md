@@ -146,7 +146,7 @@ The guard has no wallet. Every step here that moves money is signed by a CDP acc
    - leave `GUARD_PAY_TO` and `GUARD_FACILITATOR_URL` empty;
    - no `CDP_WALLET_SECRET`.
 
-   Run it: `cd agent && npm run guard`. Expect the log line `maat guard: … payTo=<vault> facilitator=cdp`.
+   Run it: `cd agent && npm run guard`. Expect the log line `maat guard: … payTo=<vault> facilitator=cdp`. It stays in the foreground, so step 3 runs in a second terminal.
 2. Create `agent/.env.s4`:
    - `MAAT_VAULT`, `BASE_RPC_URL`;
    - `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`;
@@ -155,10 +155,10 @@ The guard has no wallet. Every step here that moves money is signed by a CDP acc
    This account is a separate buyer, never the executor.
 3. Run `npm run s4:pay -- http://localhost:8080` once. The first run creates the buyer account and stops with `fund <address> with at least 0.01 USDC`. Send it 0.01–0.05 USDC on Base, then run again. The script:
    - signs only if the guard offers exactly 0.01 USDC on Base to the vault;
-   - prints the settlement tx and the vault's USDC before and after;
-   - ends with `S4 PASS` or `S4 FAIL`.
-4. On `S4 PASS`, the 0.01 USDC is in the vault, but it is below the agent's default `MAAT_REVENUE_MIN_USD` (0.05), so the agent records it only once at least 0.05 USDC of new revenue has arrived. To see it recorded right away, run the agent's next round with `MAAT_REVENUE_MIN_USD=0.01`: that round sends `notifyRevenue()` (journal: `kind: "housekeeping", call: "notifyRevenue"`), and the `RevenueReceived` event is on Basescan.
-5. On `S4 FAIL` (the facilitator refuses a contract `payTo`):
+   - prints the settlement tx and, for information only, the vault's USDC before and after it;
+   - ends with `S4 PASS` or one `S4 FAIL (…)` line, and decides from the USDC transfer to the vault in the settlement tx itself, which must be exactly 0.01 USDC.
+4. On `S4 PASS`, the 0.01 USDC is in the vault, but it is below the agent's default `MAAT_REVENUE_MIN_USD` (0.05), so the agent records it only once at least 0.05 USDC of new revenue has arrived. To see it recorded right away, run the agent's next round with `MAAT_REVENUE_MIN_USD=0.01`. The round that records revenue must be live (`MAAT_MODE=live`, `npm run agent -- --once`): a dry-run round only journals it. That round sends `notifyRevenue()` (journal: `kind: "housekeeping", call: "notifyRevenue"`), and the `RevenueReceived` event is on Basescan.
+5. Take the fallback below only when the `S4 FAIL (facilitator refused): …` line says the facilitator rejects the `payTo` (the vault is a contract address). For any other `S4 FAIL` (unfunded buyer, network error, reverted tx, wrong amount), fix that cause and run the script again. The fallback:
    - Set `GUARD_PAY_TO` to an address you hold, then restart the guard.
    - From time to time, move the collected USDC into the vault with a plain ERC-20 `transfer`. Do not use `fund()`, which does not count as revenue.
    - Automating that forward needs its own CDP account and policy, and its own plan.
