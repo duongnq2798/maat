@@ -127,7 +127,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "concepts/credit-and-health-factor",
         "Credit and the health factor",
-        "How the vault supplies stock to Aave V4 and borrows USDC against it, and the health floor and stricter pre-weekend or pre-holiday target a borrow must clear.",
+        "How the vault supplies stock to Aave V4 and borrows USDC against it, and the health floor and the pre-weekend or pre-holiday target a borrow must clear.",
       ),
       page(
         "concepts/timelock-and-roles",

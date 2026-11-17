@@ -110,7 +110,7 @@ The design assumes that the Chainlink equity feeds on Base update from Sunday <F
 
 The session mode does not decide whether a price is fresh. In either mode, [check 5](/docs/concepts/nine-checks#5-fresh-oracle-price) refuses with `FEED_STALE` once the last answer is older than `maxStaleness`, <Fact name="mandate.maxStalenessSec" /> by default. So `FEED_24_5` cannot trade on a feed that has been quiet for longer than that ([Staleness](/docs/concepts/prices-and-premium#staleness)).
 
-In `REGULAR` mode the session closes at <Fact name="nyseClose" />, before the edge. The edge still matters there, because the vault's [de-risk window](/docs/help/glossary#de-risk-window) ends at it and is counted back from it. [Credit and the health factor](/docs/concepts/credit-and-health-factor) covers the window.
+In `REGULAR` mode the session closes at <Fact name="nyseClose" />, before the edge. The edge still matters there, because the vault's de-risk window ends at it and is counted back from it. [Credit and the health factor](/docs/concepts/credit-and-health-factor) covers the window.
 
 ## What happens if a holiday is missing
 

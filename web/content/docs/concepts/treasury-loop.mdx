@@ -31,7 +31,7 @@ Each step is a rule in the agent's policy, `agent/src/policy.ts`, and an action 
 | --- | --- | --- | --- |
 | Buy | Keep an equal-weight basket and rebalance when a weight drifts | `BUY`, `SELL` | [The nine checks](/docs/concepts/nine-checks) |
 | Supply | Put idle stock into [Aave](/docs/help/glossary#aave-v4) as collateral | `SUPPLY`, and `WITHDRAW_COLLATERAL` before a sale | [The credit checks](/docs/concepts/credit-and-health-factor) |
-| Borrow | Keep a runway of compute cost in USDC | `BORROW` | An open market, every supplied stock allowed and unpaused with a valid, fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and a [health factor](/docs/help/glossary#health-factor) at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window) |
+| Borrow | Keep a [runway](/docs/help/glossary#runway) of compute cost in USDC | `BORROW` | An open market, every supplied stock allowed and unpaused with a valid, fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and a [health factor](/docs/help/glossary#health-factor) at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window) |
 | Pay | Pay the unpaid compute bill | `PAY_EXPENSE` | The payee allowlist and the caps |
 
 The policy only suggests. Claude can adopt, resize or drop a suggestion, the agent previews every intent, and the vault decides on each one ([How a decision is made](/docs/get-started/how-a-decision-is-made)). The agent starts in [dry-run](/docs/help/glossary#dry-run) mode, which is the default. In dry run it reads the chain, asks Claude and previews every intent, and it sends nothing. [Live mode](/docs/help/glossary#live-mode) needs a registered Builder Code and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), and neither has been used for real. The rest of this page describes what the agent is built to do when it does send.
@@ -79,7 +79,7 @@ The vault's own limit on one stock, <Fact name="mandate.maxWeightBps" />, is a s
 
 The policy tests start from a vault that holds 100 USDC, no stock and no debt, with no unpaid bill and a daily compute cost that the test sets to the default, <Fact name="dailyComputeUsd" />. The figures below are the test's own numbers:
 
-- The [runway](/docs/help/glossary#runway) is <Fact name="runwayDays" /> at <Fact name="dailyComputeUsd" /> a day, which is $3.50, so $96.50 is spendable.
+- The runway is <Fact name="runwayDays" /> at <Fact name="dailyComputeUsd" /> a day, which is $3.50, so $96.50 is spendable.
 - Each stock's target is 2,333 [bps](/docs/help/glossary#basis-point-bps): the 7,000 bps the cash reserve leaves, split three ways and rounded down. That is 23.33% of net equity, or $23.33 here.
 - Each stock sits at 0%, more than the drift below its target, so the policy suggests a `BUY` of $23.33 for each of NVDAc, GOOGLc and AAPLc. That leaves $30.01 in USDC, close to the <Fact name="cashReservePct" /> cash reserve.
 - It suggests no `SUPPLY` and no `BORROW`: there is no stock to supply yet, nothing is supplied to borrow against, and the 100 USDC already covers the runway.

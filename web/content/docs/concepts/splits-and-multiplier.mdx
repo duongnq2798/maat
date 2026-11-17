@@ -107,7 +107,7 @@ Check 6 of [the nine checks](/docs/concepts/nine-checks#6-stable-multiplier) ret
 
 The cooldown counts from when the vault records the change, because the vault only knows when it noticed. Until someone records it, the first branch keeps blocking with no time limit. `test_multiplierChangeStartsCooldown` changes a mock token's multiplier, gets `MULTIPLIER_COOLDOWN`, and gets an allowed buy once the cooldown has passed.
 
-The same function guards more than trades. A `BUY` and a `SELL` meet it as check 6, and a `SELL` of an exit-only stock is still guarded (`test_exitOnlyTokenIsStillMultiplierGuarded`). A `BORROW`, and a `WITHDRAW_COLLATERAL` against debt, meet it through `GuardLib.collateralHealthy` for every stock supplied as collateral (`test_collateralMultiplierChangeBlocksBorrow`). `SUPPLY`, `REPAY`, `PAY_EXPENSE` and a withdrawal with no debt do not read the multiplier. [Refusal codes](/docs/concepts/refusal-codes#multiplier_cooldown) lists the actions that can return it.
+The same function guards more than trades. A `BUY` and a `SELL` meet it as check 6, and a `SELL` of an exit-only stock is still guarded (`test_exitOnlyTokenIsStillMultiplierGuarded`). A `BORROW`, and a `WITHDRAW_COLLATERAL` against debt, meet it through `GuardLib.collateralHealthy` for every stock supplied as collateral (`test_collateralMultiplierChangeBlocksBorrow`). `SUPPLY`, `REPAY`, `PAY_EXPENSE` and a withdrawal with no debt do not meet it, so no multiplier change refuses them. `execute` still records a change for the intent's token before any check, when that token has a market ([How the vault notices](#how-the-vault-notices)). [Refusal codes](/docs/concepts/refusal-codes#multiplier_cooldown) lists the actions that can return it.
 
 ## Scheduled changes
 
