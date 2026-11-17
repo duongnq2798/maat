@@ -11,8 +11,11 @@ sources:
   - agent/test/integration/fork-gas.json
   - agent/README.md
   - agent/test/integration/deploy.ts
+  - agent/src/addresses.ts
+  - contracts/script/Deploy.s.sol
   - contracts/script/MaatConfig.sol
   - contracts/script/BaseAddresses.sol
+  - contracts/.env.example
   - contracts/src/GuardLib.sol
   - agent/src/ledger/journal.ts
   - web/content/facts.ts
@@ -33,7 +36,7 @@ The fork point is Base block <Fact name="forkBlock" />, which is Thursday <Fact 
 
 | Need | Detail | Why |
 | --- | --- | --- |
-| A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here, exported in your shell | The test forks Base at an old block, so the node must serve historical state. |
+| A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here, or the public endpoint in `contracts/.env.example`, which served archive state when it was tested on 2026-11-06 (if it answers with HTTP 429, use a free key from an RPC provider instead); export it in your shell | The test forks Base at an old block, so the node must serve historical state. |
 | `base-anvil` | v1.5.1, installed with `base-foundryup --install v1.5.1` | Upstream Anvil 1.9 reverts on the [B20](/docs/help/glossary#b20) `uiMultiplier()` call, so it cannot deploy the vault. |
 | Compiled contracts | `forge build` in `contracts/` | The test deploys from the compiled artifacts in `contracts/out`, which Git ignores. |
 | Node.js and the agent's packages | Node 22.9 or newer, and `npm ci` in `agent/` | Runs the test. |
@@ -42,7 +45,7 @@ The fork point is Base block <Fact name="forkBlock" />, which is Thursday <Fact 
 
 Time: 3 to 5 minutes on a public RPC, because the first swap on a cold fork is very slow (agent/README.md).
 
-The test runs only against a local Anvil at `127.0.0.1`. It deploys the contracts onto the fork from the compiled artifacts and funds the vault with `approve` and then `fund`. The [mandate](/docs/help/glossary#mandate), the basket and the credit reserves are the deploy script's, copied by hand from `MaatConfig.sol` and `BaseAddresses.sol` into `deploy.ts`, with the deploy script's `REGULAR` session, and the [owner](/docs/help/glossary#owner), the [executor](/docs/help/glossary#executor) and the [payee](/docs/help/glossary#payee) are the local node's test accounts. Nothing compares the copy with `MaatConfig.sol` or `BaseAddresses.sol`, so after you change a value in either file, this test still runs the old one until you change `deploy.ts` too. The Solidity deploy script itself runs on a fork only in the contract test `test_deployWiresEverything`, not in this test.
+The test runs only against a local Anvil at `127.0.0.1`. It deploys the contracts onto the fork from the compiled artifacts and funds the vault with `approve` and then `fund`. The [mandate](/docs/help/glossary#mandate), the basket and the credit reserves are the deploy script's. `deploy.ts` copies them by hand from `MaatConfig.sol` and `BaseAddresses.sol`, with two exceptions. The stock and USDC addresses are copied from `BaseAddresses.sol` into `agent/src/addresses.ts` and imported from there. The mandate's `REGULAR` [session mode](/docs/help/glossary#session-mode) is the value `Deploy.s.sol` passes to `MaatConfig.defaultMandate`, and `deploy.ts` writes it as `sessionMode: 0`. The [owner](/docs/help/glossary#owner), the [executor](/docs/help/glossary#executor) and the [payee](/docs/help/glossary#payee) are the local node's test accounts. Nothing compares these copies with `Deploy.s.sol`, `MaatConfig.sol` or `BaseAddresses.sol`, so after you change a value in any of them, this test still runs the old one until you change the copies too. The Solidity deploy script itself runs on a fork only in the contract test `test_deployWiresEverything`, not in this test.
 
 ## Run the fork test
 

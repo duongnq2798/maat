@@ -130,7 +130,7 @@ Expected output, from README.md, How to evaluate Maat in 5 minutes, with the cou
 
 ### Run the website's tests and build it
 
-The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if it types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
+The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if its text outside the frontmatter, code and the attributes of component tags types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
 
 ```bash
 cd ../web
@@ -165,9 +165,11 @@ To check one claim at a time, [How it is tested](/docs/security/testing) names t
 
 If something else shows up, [Troubleshooting](/docs/help/troubleshooting) lists symptoms, causes and fixes.
 
+To find your way around the code, the [Repository map](/docs/reference/repository-map) says what each main folder holds and which docs page to read before you open it.
+
 ## Optional: the fork tests
 
-The contract [fork tests](/docs/help/glossary#fork-test) run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. No archive RPC of your own? `contracts/.env.example` lists a public Base endpoint that served archive state when it was tested on 2026-11-06. Export that URL as `BASE_RPC_URL`, and if it answers with HTTP 429, use a free key from an RPC provider instead. Nothing is broadcast: Foundry forks the chain locally. Run these commands from the repository root. Step 5 ended in `web/`, so go back with `cd ..` first.
+The contract [fork tests](/docs/help/glossary#fork-test) run the real B20 tokens, feeds, pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. No archive RPC of your own? `contracts/.env.example` lists a public Base endpoint that served archive state when it was tested on 2026-11-06. Export that URL as `BASE_RPC_URL`, and if it answers with HTTP 429, use a free key from an RPC provider instead. Nothing is broadcast: Foundry forks the chain locally. Run these commands from the repository root. Step 5 ended in `web/`, so go back with `cd ..` first.
 
 ```bash
 cd contracts
