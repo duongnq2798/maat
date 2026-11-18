@@ -1,7 +1,7 @@
 # Maat Continuous Integration. Design Spec
 
 - **Date:** 2026-11-18
-- **Status:** awaiting owner approval
+- **Status:** approved by the owner on 2026-11-18
 - **Builds on:** `main` at 8608b7d. The owner approved the ecosystem plan on 2026-11-18, with CI as its first sub-project, and
   delegated one choice: CI holds no secret. The research behind the pins and versions below is in local, uncommitted notes; every
   fact this spec relies on is restated here with its source. Section 2 lists where this spec departs from that research, and why.
