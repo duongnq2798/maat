@@ -1,5 +1,6 @@
 // The counting script of the CI workflow (docs/superpowers/specs/2026-11-18-maat-ci-design.md, section 5.1).
-// `extract` turns one runner's JSON report into one compact job output and annotates the failed tests.
+// `extract` turns one runner's JSON report into one compact job output and annotates the failed tests;
+// `render` writes the job-summary table.
 // Zero dependencies: Node 24 built-ins only.
 import { appendFileSync, readFileSync } from "node:fs";
 import path from "node:path";
@@ -167,6 +168,7 @@ const READERS = {
  * @param {ExtractEnv} env @param {string} cwd @returns {ExtractResult}
  */
 export function extractResult(kind, reportText, env, cwd) {
+  if (kind === "gitleaks") return gitleaksResult(reportText, env);
   if (!Object.hasOwn(READERS, kind)) return { code: 1, annotations: [], message: USAGE };
   if (reportText === null) {
     // Unless its step succeeded, that step has already failed the job; an unset STEP_OUTCOME counts as not success.
@@ -195,17 +197,18 @@ export function extractResult(kind, reportText, env, cwd) {
 }
 
 /** The report kinds `extract` takes. */
-const KINDS = ["forge", "vitest", "playwright"];
+const KINDS = ["forge", "vitest", "playwright", "gitleaks"];
 /** The kinds whose annotation paths are relative to GITHUB_WORKSPACE. */
 const NEEDS_WORKSPACE = ["forge", "playwright"];
 
 /**
  * Parses argv, checks GITHUB_OUTPUT (and GITHUB_WORKSPACE for forge and playwright), reads the report (ENOENT gives null;
- * any other read error exits 1), calls extractResult, writes the output line with appendFileSync, writes annotations to
- * stdout and messages to stderr.
+ * any other read error exits 1), calls extractResult or renderSummary, writes the output line with appendFileSync, writes
+ * annotations to stdout and messages to stderr.
  * @param {string[]} argv @param {NodeJS.ProcessEnv} env @param {string} cwd @returns {0 | 1}
  */
 export function main(argv, env, cwd) {
+  if (argv.length === 1 && argv[0] === "render") return renderCommand(env);
   const [command, kind, reportPath, outputName] = argv;
   if (argv.length !== 4 || command !== "extract" || !KINDS.includes(kind)) {
     process.stderr.write(`${USAGE}\n`);
@@ -233,6 +236,140 @@ export function main(argv, env, cwd) {
   if (result.message !== undefined) process.stderr.write(`${result.message}\n`);
   if (result.output !== undefined) appendFileSync(env.GITHUB_OUTPUT, `${outputName}=${JSON.stringify(result.output)}\n`);
   return result.code;
+}
+
+/** gitleaks exit codes that mean the scan ran: 0 with no findings, 3 (`--exit-code 3`) with findings. */
+const GITLEAKS_EXIT_CODES = new Set(["0", "3"]);
+
+/**
+ * Counts one gitleaks scan from its exit code and JSON report. An unset or empty SCAN_EXIT means the
+ * scan step never ran; any exit other than 0 or 3 means gitleaks itself failed, so a broken scan never
+ * shows as "0 findings".
+ * @param {string | null} reportText null when the file is absent
+ * @param {{ scanExit?: string, commits?: string }} scan
+ * @returns {ScanCounts | MissingReport | ScanError}
+ * @throws {ReportError} when a scan that ran left no usable report, or COMMITS is not a whole number
+ */
+export function readGitleaks(reportText, scan) {
+  const scanExit = scan.scanExit ?? "";
+  if (scanExit === "") return { report: "missing" };
+  if (!GITLEAKS_EXIT_CODES.has(scanExit)) return { error: "scan" };
+  const commits = scan.commits ?? "";
+  if (commits !== "" && !/^\d+$/.test(commits)) throw new ReportError("COMMITS is not a whole number");
+  if (reportText === null) throw new ReportError(`gitleaks exited ${scanExit} but wrote no report`);
+  if (reportText.trim() === "") throw new ReportError(`gitleaks exited ${scanExit} but its report is empty`);
+  let findings;
+  try {
+    findings = JSON.parse(reportText);
+  } catch {
+    throw new ReportError(`gitleaks exited ${scanExit} but its report is not JSON`);
+  }
+  if (!Array.isArray(findings)) {
+    throw new ReportError(`gitleaks exited ${scanExit} but its report is not a JSON array`);
+  }
+  return commits === "" ? { findings: findings.length } : { findings: findings.length, commits: Number(commits) };
+}
+
+/** The gitleaks branch of extractResult: no annotations, and exit 1 only for a ReportError. */
+function gitleaksResult(reportText, env) {
+  try {
+    const output = readGitleaks(reportText, { scanExit: env.SCAN_EXIT, commits: env.COMMITS });
+    return { code: 0, output, annotations: [] };
+  } catch (error) {
+    if (error instanceof ReportError) return { code: 1, annotations: [], message: error.message };
+    throw error;
+  }
+}
+
+/** The table's footer. It carries no hand-measured number, so it cannot go stale. */
+const SUMMARY_FOOTER =
+  "Offline suites only. The contracts fork suite, the agent fork integration suite and Lighthouse need an archive RPC or a browser audit and run by hand; see README.md, Development.";
+
+/** One row per suite and scan: the check's label, the needed job, its output, and how the cell reads it. */
+const SUMMARY_ROWS = [
+  ["Contracts, unit", "contracts", "forge", "counts"],
+  ["Agent, unit", "agent", "unit", "counts"],
+  ["Web, unit", "web", "unit", "counts"],
+  ["Web, end to end", "web", "e2e", "e2e"],
+  ["Secret scan, history", "hygiene", "history", "history"],
+  ["Secret scan, commit messages", "hygiene", "messages", "scan"],
+  ["Secret scan, canary", "hygiene", "canary", "outcome"],
+  ["Workflow lint", "hygiene", "actionlint", "outcome"],
+];
+
+/** `needs.<job>.result` when it is a non-empty string, else "unknown". */
+function summaryJobResult(job) {
+  return isObject(job) && typeof job.result === "string" && job.result !== "" ? job.result : "unknown";
+}
+
+/**
+ * One Report cell. An absent, null or empty output shows as "no report" (its step never ran, for
+ * example after a timeout), never as malformed.
+ * @param {unknown} output the job output as GitHub passed it
+ * @param {"counts" | "e2e" | "history" | "scan" | "outcome"} reads
+ * @returns {string}
+ */
+function summaryCell(output, reads) {
+  if (reads === "outcome") return typeof output === "string" && output !== "" ? output : "no report";
+  if (output === undefined || output === null || output === "") return "no report";
+  if (typeof output !== "string") return "unreadable output";
+  let value;
+  try {
+    value = JSON.parse(output);
+  } catch {
+    return "unreadable output";
+  }
+  if (!isObject(value)) return "unreadable output";
+  if (value.report === "missing") return "no report";
+  if (value.error === "scan") return "scan failed";
+  if (reads === "counts" || reads === "e2e") {
+    if (![value.passed, value.failed, value.skipped].every(isCount)) return "unreadable output";
+    const counts = `${value.passed} passed, ${value.failed} failed, ${value.skipped} skipped`;
+    if (reads === "counts") return counts;
+    return isCount(value.flaky) ? `${counts}, ${value.flaky} flaky` : "unreadable output";
+  }
+  if (!isCount(value.findings)) return "unreadable output";
+  if (reads === "history" && value.commits !== undefined) {
+    return isCount(value.commits) ? `${value.findings} findings over ${value.commits} commits` : "unreadable output";
+  }
+  return `${value.findings} findings`;
+}
+
+/**
+ * Renders the job-summary table from `toJSON(needs)`. It fails only when NEEDS_JSON is unset, does
+ * not parse or is not an object; gating belongs to the workflow's shell step.
+ * @param {string | undefined} needsJson
+ * @returns {{ code: 0 | 1, markdown?: string, message?: string }}
+ */
+export function renderSummary(needsJson) {
+  let needs;
+  try {
+    needs = JSON.parse(needsJson ?? "");
+  } catch {
+    needs = undefined;
+  }
+  if (!isObject(needs)) return { code: 1, message: "NEEDS_JSON does not parse" };
+  const lines = ["| Check | Job result | Report |", "| --- | --- | --- |"];
+  for (const [label, jobName, outputName, reads] of SUMMARY_ROWS) {
+    const job = Object.hasOwn(needs, jobName) ? needs[jobName] : undefined;
+    const outputs = isObject(job) && isObject(job.outputs) ? job.outputs : {};
+    const output = Object.hasOwn(outputs, outputName) ? outputs[outputName] : undefined;
+    lines.push(`| ${label} | ${summaryJobResult(job)} | ${summaryCell(output, reads)} |`);
+  }
+  lines.push("", SUMMARY_FOOTER);
+  return { code: 0, markdown: `${lines.join("\n")}\n` };
+}
+
+/** `render`: appends the table to GITHUB_STEP_SUMMARY, or writes it to stdout when that is unset or empty. */
+function renderCommand(env) {
+  const result = renderSummary(env.NEEDS_JSON);
+  if (result.code !== 0) {
+    process.stderr.write(`${result.message}\n`);
+    return 1;
+  }
+  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, result.markdown);
+  else process.stdout.write(result.markdown);
+  return 0;
 }
 
 // Runs only when invoked directly (import.meta.main exists from Node 24.2.0; local v24.12.0, CI v24.22.3):

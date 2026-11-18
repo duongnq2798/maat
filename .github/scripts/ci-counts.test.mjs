@@ -8,6 +8,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { annotation, escapeData, escapeProperty, extractResult, firstLine, readForge, readPlaywright, readVitest, ReportError, workspacePath } from "./ci-counts.mjs";
 
+import { readGitleaks, renderSummary } from "./ci-counts.mjs";
+
 const SCRIPT = fileURLToPath(new URL("./ci-counts.mjs", import.meta.url));
 const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
 const OWN_VARS = ["GITHUB_OUTPUT", "GITHUB_STEP_SUMMARY", "GITHUB_WORKSPACE", "STEP_OUTCOME", "SCAN_EXIT", "COMMITS", "NEEDS_JSON"];
@@ -601,4 +603,372 @@ describe("extract on the command line", () => {
     assert.deepEqual([run.status, run.stdout, run.stderr], [0, "", ""]);
     assert.deepEqual(outputLines(output), ['unit={"passed":2,"failed":0,"skipped":2}']);
   });
+});
+
+// extract gitleaks: one secret scan's exit code, report and commit count, as the hygiene job passes them.
+
+/**
+ * Runs `extract gitleaks` on a report written to a fresh temp directory, as the history_counts step does.
+ * @param {string | null} reportText null leaves the report file absent
+ * @param {Record<string, string>} scanEnv SCAN_EXIT and COMMITS, as the step's env: sets them
+ * @returns {{ status: number | null, stdout: string, stderr: string, lines: string[] }}
+ */
+function gitleaksExtract(reportText, scanEnv) {
+  const dir = tempDir();
+  const report = path.join(dir, "history.json");
+  if (reportText !== null) writeFileSync(report, reportText);
+  const output = path.join(dir, "github-output.txt");
+  writeFileSync(output, "");
+  const run = runCli(["extract", "gitleaks", report, "history"], {
+    env: { GITHUB_OUTPUT: output, ...scanEnv },
+    cwd: dir,
+  });
+  return { ...run, lines: outputLines(output) };
+}
+
+/** @param {string} name @returns {string} the fixture's text */
+function gitleaksFixture(name) {
+  return readFileSync(path.join(FIXTURES, name), "utf8");
+}
+
+test("extract gitleaks: exit 0 with an empty report counts 0 findings over the commits", () => {
+  const run = gitleaksExtract(gitleaksFixture("gitleaks-none.json"), { SCAN_EXIT: "0", COMMITS: "373" });
+  assert.equal(run.status, 0, run.stderr);
+  assert.deepEqual(run.lines, ['history={"findings":0,"commits":373}']);
+  assert.equal(run.stdout, "");
+});
+
+test("extract gitleaks: exit 3 counts the findings, and adds commits only when COMMITS is set", () => {
+  const found = gitleaksFixture("gitleaks-found.json");
+  for (const [scanEnv, line] of [
+    [{ SCAN_EXIT: "3" }, 'history={"findings":2}'],
+    [{ SCAN_EXIT: "3", COMMITS: "" }, 'history={"findings":2}'],
+    [{ SCAN_EXIT: "3", COMMITS: "373" }, 'history={"findings":2,"commits":373}'],
+  ]) {
+    const run = gitleaksExtract(found, scanEnv);
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(run.lines, [line], JSON.stringify(scanEnv));
+  }
+});
+
+test("extract gitleaks: an exit other than 0 or 3 is a scan error, never a count", () => {
+  for (const scanExit of ["1", "126"]) {
+    for (const reportText of [null, gitleaksFixture("gitleaks-none.json")]) {
+      const run = gitleaksExtract(reportText, { SCAN_EXIT: scanExit, COMMITS: "373" });
+      assert.equal(run.status, 0, run.stderr);
+      assert.deepEqual(run.lines, ['history={"error":"scan"}'], scanExit);
+    }
+  }
+});
+
+test("extract gitleaks: an unset or empty SCAN_EXIT means the scan step never ran", () => {
+  for (const scanEnv of [{}, { SCAN_EXIT: "" }]) {
+    const run = gitleaksExtract(null, scanEnv);
+    assert.equal(run.status, 0, run.stderr);
+    assert.deepEqual(run.lines, ['history={"report":"missing"}'], JSON.stringify(scanEnv));
+  }
+});
+
+test("extract gitleaks: exit 0 or 3 with no usable report fails and writes nothing", () => {
+  for (const scanExit of ["0", "3"]) {
+    for (const reportText of [null, "", "not json", '{"findings":[]}', "null"]) {
+      const run = gitleaksExtract(reportText, { SCAN_EXIT: scanExit });
+      assert.equal(run.status, 1, `${scanExit} ${JSON.stringify(reportText)}`);
+      assert.deepEqual(run.lines, []);
+      assert.match(run.stderr, /gitleaks exited [03] but /);
+    }
+  }
+});
+
+test("extract gitleaks: a COMMITS value that is not a whole number fails and writes nothing", () => {
+  for (const commits of ["373 ", "abc", "-1", "3.5"]) {
+    const run = gitleaksExtract(gitleaksFixture("gitleaks-none.json"), { SCAN_EXIT: "0", COMMITS: commits });
+    assert.equal(run.status, 1, JSON.stringify(commits));
+    assert.deepEqual(run.lines, []);
+    assert.match(run.stderr, /COMMITS is not a whole number/);
+  }
+});
+
+test("extract gitleaks: a report path that cannot be read fails and writes nothing", () => {
+  const dir = tempDir();
+  const output = path.join(dir, "github-output.txt");
+  writeFileSync(output, "");
+  const run = runCli(["extract", "gitleaks", dir, "history"], {
+    env: { GITHUB_OUTPUT: output, SCAN_EXIT: "3" },
+    cwd: dir,
+  });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /cannot read/);
+  assert.deepEqual(outputLines(output), []);
+});
+
+test("extract gitleaks: an unset GITHUB_OUTPUT fails before the report is read", () => {
+  const dir = tempDir();
+  const run = runCli(["extract", "gitleaks", dir, "history"], { env: { SCAN_EXIT: "3" }, cwd: dir });
+  assert.equal(run.status, 1);
+  assert.match(run.stderr, /GITHUB_OUTPUT is not set/);
+  assert.doesNotMatch(run.stderr, /cannot read/);
+});
+
+test("readGitleaks: counts a report, and throws on one that a finished scan left unusable", () => {
+  assert.deepEqual(readGitleaks("[]", { scanExit: "0", commits: "12" }), { findings: 0, commits: 12 });
+  assert.deepEqual(readGitleaks('[{"RuleID":"github-pat"}]', { scanExit: "3" }), { findings: 1 });
+  assert.deepEqual(readGitleaks(null, {}), { report: "missing" });
+  assert.deepEqual(readGitleaks(null, { scanExit: "126" }), { error: "scan" });
+  assert.throws(() => readGitleaks(null, { scanExit: "3" }), /wrote no report/);
+  assert.throws(() => readGitleaks("{}", { scanExit: "0" }), /not a JSON array/);
+  assert.throws(() => readGitleaks("[]", { scanExit: "0", commits: "12a" }), /COMMITS is not a whole number/);
+});
+
+// render: the summary job's table from toJSON(needs), and the drift guard on the web job's steps.
+
+const FOOTER_LINE =
+  "Offline suites only. The contracts fork suite, the agent fork integration suite and Lighthouse need an archive RPC or a browser audit and run by hand; see README.md, Development.";
+
+const TABLE_HEAD = ["| Check | Job result | Report |", "| --- | --- | --- |"];
+
+const VERIFY = "npm run typecheck && npm test && npm run build && npm run check:out";
+
+/** `toJSON(needs)` of a run in which every job passed. The counts are test inputs, not measurements. */
+function greenNeeds() {
+  return {
+    contracts: { result: "success", outputs: { forge: '{"passed":3,"failed":0,"skipped":0}' } },
+    agent: { result: "success", outputs: { unit: '{"passed":4,"failed":0,"skipped":0}' } },
+    web: {
+      result: "success",
+      outputs: { unit: '{"passed":5,"failed":0,"skipped":0}', e2e: '{"passed":6,"failed":0,"skipped":0,"flaky":0}' },
+    },
+    hygiene: {
+      result: "success",
+      outputs: {
+        history: '{"findings":0,"commits":373}',
+        messages: '{"findings":0}',
+        canary: "success",
+        actionlint: "success",
+      },
+    },
+  };
+}
+
+/** @param {string[]} rows the eight table rows @returns {string} the whole text render must write */
+function summaryText(rows) {
+  return [...TABLE_HEAD, ...rows, "", FOOTER_LINE, ""].join("\n");
+}
+
+test("render: every job green gives one row per suite and scan, then the footer", () => {
+  assert.deepEqual(renderSummary(JSON.stringify(greenNeeds())), {
+    code: 0,
+    markdown: summaryText([
+      "| Contracts, unit | success | 3 passed, 0 failed, 0 skipped |",
+      "| Agent, unit | success | 4 passed, 0 failed, 0 skipped |",
+      "| Web, unit | success | 5 passed, 0 failed, 0 skipped |",
+      "| Web, end to end | success | 6 passed, 0 failed, 0 skipped, 0 flaky |",
+      "| Secret scan, history | success | 0 findings over 373 commits |",
+      "| Secret scan, commit messages | success | 0 findings |",
+      "| Secret scan, canary | success | success |",
+      "| Workflow lint | success | success |",
+    ]),
+  });
+});
+
+test("render: failed jobs show their result and the failed counts", () => {
+  const needs = greenNeeds();
+  needs.contracts = { result: "failure", outputs: { forge: '{"passed":2,"failed":1,"skipped":0}' } };
+  needs.web = {
+    result: "failure",
+    outputs: { unit: '{"passed":4,"failed":1,"skipped":0}', e2e: '{"passed":5,"failed":1,"skipped":0,"flaky":0}' },
+  };
+  needs.hygiene = {
+    result: "failure",
+    outputs: {
+      history: '{"findings":2,"commits":373}',
+      messages: '{"findings":1}',
+      canary: "failure",
+      actionlint: "success",
+    },
+  };
+  assert.equal(
+    renderSummary(JSON.stringify(needs)).markdown,
+    summaryText([
+      "| Contracts, unit | failure | 2 passed, 1 failed, 0 skipped |",
+      "| Agent, unit | success | 4 passed, 0 failed, 0 skipped |",
+      "| Web, unit | failure | 4 passed, 1 failed, 0 skipped |",
+      "| Web, end to end | failure | 5 passed, 1 failed, 0 skipped, 0 flaky |",
+      "| Secret scan, history | failure | 2 findings over 373 commits |",
+      "| Secret scan, commit messages | failure | 1 findings |",
+      "| Secret scan, canary | failure | failure |",
+      "| Workflow lint | failure | success |",
+    ]),
+  );
+});
+
+test("render: skipped tests, flaky tests and a skipped job are printed as given", () => {
+  const needs = greenNeeds();
+  needs.contracts.outputs.forge = '{"passed":2,"failed":0,"skipped":1}';
+  needs.agent = { result: "skipped", outputs: {} };
+  needs.web.outputs.e2e = '{"passed":4,"failed":0,"skipped":1,"flaky":1}';
+  assert.equal(
+    renderSummary(JSON.stringify(needs)).markdown,
+    summaryText([
+      "| Contracts, unit | success | 2 passed, 0 failed, 1 skipped |",
+      "| Agent, unit | skipped | no report |",
+      "| Web, unit | success | 5 passed, 0 failed, 0 skipped |",
+      "| Web, end to end | success | 4 passed, 0 failed, 1 skipped, 1 flaky |",
+      "| Secret scan, history | success | 0 findings over 373 commits |",
+      "| Secret scan, commit messages | success | 0 findings |",
+      "| Secret scan, canary | success | success |",
+      "| Workflow lint | success | success |",
+    ]),
+  );
+});
+
+test("render: a missing report, a job with no outputs and an absent job show no report", () => {
+  const needs = greenNeeds();
+  needs.contracts = { result: "failure", outputs: { forge: '{"report":"missing"}' } };
+  needs.agent = { result: "failure" };
+  delete needs.web;
+  needs.hygiene.result = "";
+  assert.equal(
+    renderSummary(JSON.stringify(needs)).markdown,
+    summaryText([
+      "| Contracts, unit | failure | no report |",
+      "| Agent, unit | failure | no report |",
+      "| Web, unit | unknown | no report |",
+      "| Web, end to end | unknown | no report |",
+      "| Secret scan, history | unknown | 0 findings over 373 commits |",
+      "| Secret scan, commit messages | unknown | 0 findings |",
+      "| Secret scan, canary | unknown | success |",
+      "| Workflow lint | unknown | success |",
+    ]),
+  );
+});
+
+test("render: a cancelled or timed-out run's empty outputs show no report and the exit stays 0", () => {
+  const needs = {
+    contracts: { result: "cancelled", outputs: {} },
+    agent: { result: "cancelled", outputs: { unit: "" } },
+    web: { result: "failure", outputs: { unit: '{"passed":5,"failed":0,"skipped":0}', e2e: "" } },
+    hygiene: { result: "cancelled", outputs: { history: "", messages: null, canary: "", actionlint: "" } },
+  };
+  const result = renderSummary(JSON.stringify(needs));
+  assert.equal(result.code, 0);
+  assert.equal(
+    result.markdown,
+    summaryText([
+      "| Contracts, unit | cancelled | no report |",
+      "| Agent, unit | cancelled | no report |",
+      "| Web, unit | failure | 5 passed, 0 failed, 0 skipped |",
+      "| Web, end to end | failure | no report |",
+      "| Secret scan, history | cancelled | no report |",
+      "| Secret scan, commit messages | cancelled | no report |",
+      "| Secret scan, canary | cancelled | no report |",
+      "| Workflow lint | cancelled | no report |",
+    ]),
+  );
+});
+
+test("render: a scan error shows as scan failed, never as 0 findings", () => {
+  const needs = greenNeeds();
+  needs.hygiene = {
+    result: "failure",
+    outputs: { history: '{"error":"scan"}', messages: '{"error":"scan"}', canary: "success", actionlint: "failure" },
+  };
+  assert.equal(
+    renderSummary(JSON.stringify(needs)).markdown,
+    summaryText([
+      "| Contracts, unit | success | 3 passed, 0 failed, 0 skipped |",
+      "| Agent, unit | success | 4 passed, 0 failed, 0 skipped |",
+      "| Web, unit | success | 5 passed, 0 failed, 0 skipped |",
+      "| Web, end to end | success | 6 passed, 0 failed, 0 skipped, 0 flaky |",
+      "| Secret scan, history | failure | scan failed |",
+      "| Secret scan, commit messages | failure | scan failed |",
+      "| Secret scan, canary | failure | success |",
+      "| Workflow lint | failure | failure |",
+    ]),
+  );
+});
+
+test("render: an output that does not parse or has the wrong shape shows as unreadable output", () => {
+  const needs = greenNeeds();
+  needs.contracts.outputs.forge = "not json";
+  needs.agent.outputs.unit = "[]";
+  needs.web.outputs = { unit: '{"passed":-1,"failed":0,"skipped":0}', e2e: '{"passed":6,"failed":0,"skipped":0}' };
+  needs.hygiene.outputs.history = '{"findings":0,"commits":"373"}';
+  needs.hygiene.outputs.messages = '{"findings":1.5}';
+  assert.equal(
+    renderSummary(JSON.stringify(needs)).markdown,
+    summaryText([
+      "| Contracts, unit | success | unreadable output |",
+      "| Agent, unit | success | unreadable output |",
+      "| Web, unit | success | unreadable output |",
+      "| Web, end to end | success | unreadable output |",
+      "| Secret scan, history | success | unreadable output |",
+      "| Secret scan, commit messages | success | unreadable output |",
+      "| Secret scan, canary | success | success |",
+      "| Workflow lint | success | success |",
+    ]),
+  );
+});
+
+test("renderSummary: a NEEDS_JSON that is unset, does not parse or is not an object fails", () => {
+  for (const needsJson of [undefined, "", "not json", "[]", "null", '"needs"', "42"]) {
+    assert.deepEqual(renderSummary(needsJson), { code: 1, message: "NEEDS_JSON does not parse" }, String(needsJson));
+  }
+});
+
+test("render: appends the table to GITHUB_STEP_SUMMARY and exits 0", () => {
+  const dir = tempDir();
+  const summary = path.join(dir, "step-summary.md");
+  writeFileSync(summary, "earlier step\n");
+  const needsJson = JSON.stringify(greenNeeds());
+  const run = runCli(["render"], { env: { GITHUB_STEP_SUMMARY: summary, NEEDS_JSON: needsJson }, cwd: dir });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.stdout, "");
+  assert.equal(readFileSync(summary, "utf8"), `earlier step\n${renderSummary(needsJson).markdown}`);
+});
+
+test("render: with no GITHUB_STEP_SUMMARY the table goes to stdout and the exit stays 0", () => {
+  const needsJson = JSON.stringify(greenNeeds());
+  const run = runCli(["render"], { env: { NEEDS_JSON: needsJson }, cwd: tempDir() });
+  assert.equal(run.status, 0, run.stderr);
+  assert.equal(run.stdout, renderSummary(needsJson).markdown);
+});
+
+test("render: a NEEDS_JSON that is unset or does not parse exits 1 and writes nothing", () => {
+  const dir = tempDir();
+  const summary = path.join(dir, "step-summary.md");
+  writeFileSync(summary, "");
+  for (const env of [{ GITHUB_STEP_SUMMARY: summary, NEEDS_JSON: "{" }, { GITHUB_STEP_SUMMARY: summary }]) {
+    const run = runCli(["render"], { env, cwd: dir });
+    assert.equal(run.status, 1, JSON.stringify(env));
+    assert.match(run.stderr, /NEEDS_JSON does not parse/);
+    assert.equal(run.stdout, "");
+  }
+  assert.equal(readFileSync(summary, "utf8"), "");
+});
+
+test("render and extract gitleaks with the wrong argument count take the usage path", () => {
+  const dir = tempDir();
+  const output = path.join(dir, "github-output.txt");
+  writeFileSync(output, "");
+  for (const args of [["render", "now"], ["extract", "gitleaks", "history.json"]]) {
+    const run = runCli(args, {
+      env: { GITHUB_OUTPUT: output, SCAN_EXIT: "0", NEEDS_JSON: JSON.stringify(greenNeeds()) },
+      cwd: dir,
+    });
+    assert.equal(run.status, 1, args.join(" "));
+    assert.ok(
+      run.stderr.startsWith(
+        "usage: ci-counts.mjs extract <forge|vitest|playwright|gitleaks> <report.json> <output-name> | render",
+      ),
+      run.stderr,
+    );
+    assert.equal(run.stdout, "");
+  }
+  assert.deepEqual(outputLines(output), []);
+});
+
+test("drift guard: web/package.json verify is exactly the four parts the web job runs one by one", () => {
+  const webPackage = JSON.parse(readFileSync(fileURLToPath(new URL("../../web/package.json", import.meta.url)), "utf8"));
+  assert.equal(webPackage.scripts.verify, VERIFY);
 });
