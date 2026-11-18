@@ -241,6 +241,10 @@ jobs:
       - id: scan
         if: ${{ !cancelled() }}
         run: |
+          # .git/info/attributes outranks every .gitattributes in the tree, so a binary or -diff line there cannot
+          # hide the history of its paths from the scan; "!diff" leaves binary detection to each blob's content.
+          mkdir -p "$GITHUB_WORKSPACE/.git/info"
+          printf '%s\n' '* !diff' > "$GITHUB_WORKSPACE/.git/info/attributes"
           commits="$(git rev-list --all --count)"
           code=0
           docker run --rm \
@@ -358,6 +362,10 @@ jobs:
       - id: scan
         if: ${{ !cancelled() }}
         run: |
+          # .git/info/attributes outranks every .gitattributes in the tree, so a binary or -diff line there cannot
+          # hide the history of its paths from the scan; "!diff" leaves binary detection to each blob's content.
+          mkdir -p "$GITHUB_WORKSPACE/.git/info"
+          printf '%s\n' '* !diff' > "$GITHUB_WORKSPACE/.git/info/attributes"
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/repo:ro" \
             -v "$RUNNER_TEMP/gitleaks:/out" \
