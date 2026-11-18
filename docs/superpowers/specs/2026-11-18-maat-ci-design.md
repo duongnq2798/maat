@@ -249,7 +249,8 @@ test that writes a tracked file, or an untracked file that `.gitignore` does not
      default `generic-api-key` rule may also flag the `PRIVATE_KEY` line. This proves, on every run, that the image and the committed
      config load, that the default rules are on, that `gitleaks:allow` is ignored, and that the allowlist exempts only its listed
      values.
-  2. **History scan** (id `scan`), on `!cancelled()`, so a failed canary does not hide the real scan.
+  2. **History scan** (id `scan`), on `!cancelled()`, so a failed canary does not hide the real scan. The step first writes `* !diff`
+     to `$GITHUB_WORKSPACE/.git/info/attributes` (6.2), then runs
      `git --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=tuxdb" /repo`, reading `/repo/.gitleaks.toml`.
      The step appends `exit=<gitleaks' exit code>` and `commits=<git rev-list --all --count>` to `$GITHUB_OUTPUT`, then exits with
      that exit code.
@@ -429,9 +430,14 @@ keywords = ["mnemonic", "seed", "recovery"]
   and `git show --remerge-diff` finds lines that neither parent had in four of them.
 - Commit messages are scanned as text, since the history scan reads only the lines each diff adds.
 - `--redact` is always on, because the logs become public with the repository.
-- A pull request controls three inputs of its own scan: its `.gitleaks.toml`, its workflow, and any `.gitleaksignore` it adds. A
-  change to the first two is reviewed like any other change, and the canary fails a config that stops catching the four planted
-  keys. The third is refused outright: the `ignorefile` step (4.4) fails the job while the file exists.
+- A pull request controls four inputs of its own scan: its `.gitleaks.toml`, its workflow, any `.gitleaksignore` it adds, and its
+  `.gitattributes` files. A change to the first two is reviewed like any other change, and the canary fails a config that stops
+  catching the four planted keys. The third is refused outright: the `ignorefile` step (4.4) fails the job while the file exists.
+  The fourth is overridden. git takes the `diff` attribute from the checked-out tree, and one `binary` or `-diff` line would turn
+  every historic patch of its paths into `Binary files … differ`, which holds no added line for gitleaks to scan. So each history
+  scan step (4.4, 4.6) first writes `* !diff` to `.git/info/attributes`, which outranks every `.gitattributes` file, and git
+  decides from each blob's content alone whether its diff is binary (a NUL byte in its first 8000 bytes, as for a real image).
+  The canary scans its own repository, so it does not cover this input.
 
 ### 6.3 Expected results
 
