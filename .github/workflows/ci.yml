@@ -249,6 +249,7 @@ jobs:
           mkdir -p "$GITHUB_WORKSPACE/.git/info"
           printf '%s\n' '* !diff' > "$GITHUB_WORKSPACE/.git/info/attributes"
           commits="$(git rev-list --all --count)"
+          log="$RUNNER_TEMP/gitleaks/history.log"
           code=0
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/repo:ro" \
@@ -257,7 +258,14 @@ jobs:
             git --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
             --exit-code 3 --report-format json --report-path /out/history.json \
             --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=tuxdb" \
-            /repo || code=$?
+            /repo 2>&1 | tee "$log" || code=$?
+          # gitleaks also exits 0 when git writes an error during the walk or when no commit is scanned.
+          scanned="$(grep -oE '[0-9]+ commits scanned\.' "$log" | tail -n 1 | cut -d ' ' -f 1 || true)"
+          echo "gitleaks scanned ${scanned:-no} commits; git rev-list --all --count gives $commits"
+          if grep -qE '\[git\] |stderr is not empty' "$log" || [ "${scanned:-0}" -eq 0 ]; then
+            echo "::error::the history scan stopped early: git reported an error, or gitleaks scanned no commit"
+            if [ "$code" -eq 0 ]; then code=1; fi
+          fi
           {
             echo "exit=$code"
             echo "commits=$commits"
@@ -369,6 +377,9 @@ jobs:
           # hide the history of its paths from the scan; "!diff" leaves binary detection to each blob's content.
           mkdir -p "$GITHUB_WORKSPACE/.git/info"
           printf '%s\n' '* !diff' > "$GITHUB_WORKSPACE/.git/info/attributes"
+          commits="$(git rev-list --all --count)"
+          log="$RUNNER_TEMP/gitleaks/preflip-history.log"
+          code=0
           docker run --rm \
             -v "$GITHUB_WORKSPACE:/repo:ro" \
             -v "$RUNNER_TEMP/gitleaks:/out" \
@@ -376,7 +387,15 @@ jobs:
             git --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
             --exit-code 3 --report-format json --report-path /out/history.json \
             --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=tuxdb" \
-            /repo
+            /repo 2>&1 | tee "$log" || code=$?
+          # gitleaks also exits 0 when git writes an error during the walk or when no commit is scanned.
+          scanned="$(grep -oE '[0-9]+ commits scanned\.' "$log" | tail -n 1 | cut -d ' ' -f 1 || true)"
+          echo "gitleaks scanned ${scanned:-no} commits; git rev-list --all --count gives $commits"
+          if grep -qE '\[git\] |stderr is not empty' "$log" || [ "${scanned:-0}" -eq 0 ]; then
+            echo "::error::the history scan stopped early: git reported an error, or gitleaks scanned no commit"
+            if [ "$code" -eq 0 ]; then code=1; fi
+          fi
+          exit "$code"
       - id: messages
         if: ${{ !cancelled() }}
         run: |
