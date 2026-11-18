@@ -231,7 +231,9 @@ test that writes a tracked file, or an untracked file that `.gitignore` does not
   Exit 3 means findings; 1 means gitleaks failed (126 for an unknown flag).
 - Steps:
   0. **No ignore file** (id `ignorefile`). The step fails when `.gitleaksignore` exists at the repository root. gitleaks reads that
-     file from the tree it scans, so a pull request could otherwise silence a finding by its fingerprint.
+     file from the tree it scans, so a pull request could otherwise silence a finding by its fingerprint. A symlink named
+     `.gitleaksignore` counts as the file, even when its target does not exist on the runner, because the scan containers see the
+     workspace at `/repo`.
   1. **Canary** (id `canary`). Build a throwaway repository at `$RUNNER_TEMP/gitleaks/canary` and commit four planted keys. Each value is
      derived on the runner from a fixed seed string with `sha256sum`, so no key-shaped literal ever enters this repository's git
      (the history scan would flag it) and the canary gives the same result on every run:
