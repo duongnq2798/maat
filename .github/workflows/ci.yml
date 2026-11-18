@@ -304,6 +304,16 @@ jobs:
             -v "$GITHUB_WORKSPACE:/repo:ro" \
             -w /repo \
             rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+      - id: where
+        if: ${{ failure() }}
+        run: |
+          for scan in history messages text; do
+            report="$RUNNER_TEMP/gitleaks/$scan.json"
+            if [ -s "$report" ]; then
+              echo "$scan:"
+              jq -r '.[] | "  \(.RuleID) in \(.File | @json) line \(.StartLine) commit \(.Commit)"' "$report"
+            fi
+          done
 
   summary:
     needs: [contracts, agent, web, hygiene]
@@ -439,3 +449,13 @@ jobs:
             dir --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
             --exit-code 3 --report-format json --report-path /out/text.json \
             /out/text
+      - id: where
+        if: ${{ failure() }}
+        run: |
+          for scan in history messages text; do
+            report="$RUNNER_TEMP/gitleaks/$scan.json"
+            if [ -s "$report" ]; then
+              echo "$scan:"
+              jq -r '.[] | "  \(.RuleID) in \(.File | @json) line \(.StartLine) commit \(.Commit)"' "$report"
+            fi
+          done
