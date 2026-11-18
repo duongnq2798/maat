@@ -2,6 +2,7 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
+  - Amended after review on 2026-11-19 (4.2, 4.4, 4.6, 5.1, 6.1, 6.2, 6.4 and 10); the owner has not yet confirmed the amendments.
 - **Builds on:** `main` at 8608b7d. The owner approved the ecosystem plan on 2026-11-18, with CI as its first sub-project, and
   delegated one choice: CI holds no secret. The research behind the pins and versions below is in local, uncommitted notes; every
   fact this spec relies on is restated here with its source. Section 2 lists where this spec departs from that research, and why.
@@ -174,8 +175,8 @@ same version it is tested on. Reports go to `$RUNNER_TEMP`, outside the tree. Th
 
 ### 4.2 `agent`
 
-- Full checkout, no submodules. setup-node 24 with `cache: npm` and `cache-dependency-path: agent/package-lock.json` (the repo has
-  no `packageManager` field).
+- Checkout with the default depth, no submodules. setup-node 24 with `cache: npm` and
+  `cache-dependency-path: agent/package-lock.json` (the repo has no `packageManager` field).
 - Working directory `agent`. Steps: `npm ci`, `npm run typecheck`, then (step id `test`)
   `npm test -- --reporter=default --reporter=github-actions --reporter=json --outputFile.json="$RUNNER_TEMP/agent-unit.json"`, then
   `extract vitest` into the output `unit` (on `!cancelled()`, with the step's outcome), then the clean-tree check. Passing the
@@ -223,12 +224,15 @@ test that writes a tracked file, or an untracked file that `.gitignore` does not
 - Checkout with `fetch-depth: 0` (every branch and tag, plus the triggering PR's merge ref) and `persist-credentials: false`. No
   submodules. setup-node 24 with no cache.
 - The gitleaks image has no `USER` line, so it runs as root, and it presets git's `safe.directory '*'`. A first step creates one host
-  directory, `$RUNNER_TEMP/gitleaks`, with `mkdir -p`. Every `docker run` mounts exactly two paths: the workspace read-only
-  (`-v "$GITHUB_WORKSPACE:/repo:ro"`) and that directory read-write (`-v "$RUNNER_TEMP/gitleaks:/out"`). `$RUNNER_TEMP` itself is
-  never mounted, so the container sees no other file of the job. Inside it, the canary repository is `/out/canary`, the text to scan
-  sits under `/out/text`, and each report is `/out/<scan>.json` (`$RUNNER_TEMP/gitleaks/<scan>.json` on the host). Every gitleaks
-  call passes `--redact`, `--no-banner`, `--ignore-gitleaks-allow`, `--exit-code 3`, `--report-format json` and its report path.
-  Exit 3 means findings; 1 means gitleaks failed (126 for an unknown flag).
+  directory, `$RUNNER_TEMP/gitleaks`, with `mkdir -p`. Every gitleaks `docker run` mounts exactly two paths: the workspace
+  read-only (`-v "$GITHUB_WORKSPACE:/repo:ro"`) and that directory read-write (`-v "$RUNNER_TEMP/gitleaks:/out"`). `$RUNNER_TEMP`
+  itself is never mounted, so the container sees no other file of the job. Inside it, the canary repository is `/out/canary`, the
+  text to scan sits under `/out/text`, and each report is `/out/<scan>.json` (`$RUNNER_TEMP/gitleaks/<scan>.json` on the host).
+  Every gitleaks call passes `--redact`, `--no-banner`, `--ignore-gitleaks-allow`, `--exit-code 3`, `--report-format json` and its
+  report path. Exit 3 means findings; 1 means gitleaks failed (126 for an unknown flag). gitleaks also exits 0 when git writes an
+  error during the walk (it logs `[git] …` and `stderr is not empty` and stops reading) or when it scans no commit, so each history
+  scan step copies the log, prints gitleaks' `<n> commits scanned.` next to `git rev-list --all --count`, and fails when the log
+  holds either error line or no count above 0.
 - Steps:
   0. **No ignore file** (id `ignorefile`). The step fails when `.gitleaksignore` exists at the repository root. gitleaks reads that
      file from the tree it scans, so a pull request could otherwise silence a finding by its fingerprint. A symlink named
@@ -253,17 +257,23 @@ test that writes a tracked file, or an untracked file that `.gitignore` does not
      values.
   2. **History scan** (id `scan`), on `!cancelled()`, so a failed canary does not hide the real scan. The step first writes `* !diff`
      to `$GITHUB_WORKSPACE/.git/info/attributes` (6.2), then runs
-     `git --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=tuxdb" /repo`, reading `/repo/.gitleaks.toml`.
-     The step appends `exit=<gitleaks' exit code>` and `commits=<git rev-list --all --count>` to `$GITHUB_OUTPUT`, then exits with
-     that exit code.
+     `git --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=uxdb" /repo`, reading `/repo/.gitleaks.toml`.
+     The filter leaves out unmerged, unknown, deleted and broken pairs but keeps type changes, which git prints as a deletion and a
+     creation, so a file that replaced a symlink or a gitlink is scanned. gitleaks' log goes through `tee` to
+     `$RUNNER_TEMP/gitleaks/history.log`. The step prints gitleaks' count next to `git rev-list --all --count`, and when the log
+     holds a `[git] ` or `stderr is not empty` line, or no count above 0, it prints an error and turns an exit code of 0 into 1. It
+     does not require the two counts to be equal: gitleaks counts only the commits that add a line. The step appends
+     `exit=<that exit code>` and `commits=<git rev-list --all --count>` to `$GITHUB_OUTPUT`, then exits with that exit code.
   3. **Commit-message scan** (id `messages`), on `!cancelled()`. `git log --all --format='%H%n%B'` into
      `$RUNNER_TEMP/gitleaks/text/commit-messages.txt`, then `dir /out/text` with the same config and flags. The step appends
      `exit=<exit code>` to `$GITHUB_OUTPUT`, then exits with it.
   4. `extract gitleaks` for each scan into the outputs `history` and `messages`, on `!cancelled()`. Its `env:` carries
      `SCAN_EXIT: ${{ steps.scan.outputs.exit }}` and `COMMITS: ${{ steps.scan.outputs.commits }}` for `history`, and
      `SCAN_EXIT: ${{ steps.messages.outputs.exit }}` for `messages`.
-  5. **actionlint** (id `actionlint`) on `.github/workflows/`, through the pinned image (it bundles shellcheck), on `!cancelled()`, so
-     it reports even when a scan has failed.
+  5. **actionlint** (id `actionlint`) on `.github/workflows/`, through the pinned image (it bundles shellcheck), mounting only the
+     workspace read-only with `-w /repo`, on `!cancelled()`, so it reports even when a scan has failed.
+  6. **Where** (id `where`), on `failure()`: for each scan report that exists, print each finding's `RuleID`, `File` (JSON-quoted),
+     `StartLine` and `Commit`, never `Secret`, `Match`, `Line` or `Message`.
 - Job outputs: `history`, `messages`, `canary` (the canary step's `outcome`) and `actionlint` (that step's `outcome`).
 
 ### 4.5 `summary`
@@ -290,10 +300,12 @@ test that writes a tracked file, or an untracked file that `.gitignore` does not
      `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" git fetch --no-tags origin '+refs/pull/*:refs/remotes/pull/*'`.
      GitHub masks the token in the log.
   2. The no-ignore-file check, the history scan and the commit-message scan of 4.4, with the same mounts and paths, now over every
-     pull-request ref as well.
+     pull-request ref as well. The history scan keeps the log check of 4.4, with its log at
+     `$RUNNER_TEMP/gitleaks/preflip-history.log`, and writes no step output.
   3. Write every pull request's and issue's title and body, every issue comment, every review body (`/pulls/{n}/reviews`), every
      review comment, and every commit comment (`/repos/{owner}/{repo}/comments`) to files under `$RUNNER_TEMP/gitleaks/text/`, with
      `gh api --paginate` and `GH_TOKEN` from `env:`, and scan `/out/text` with `dir`.
+  4. The `where` step of 4.4, last.
 - It fails on any finding. It is a gate for the flip (section 8), not for merges.
 
 ## 5. Counting and the job summary
@@ -316,7 +328,8 @@ A zero-dependency ES module (Node built-ins only), run on Node 24. Two commands:
     - Report missing and `STEP_OUTCOME` is `success`: exits 1. A runner that passed but wrote its report somewhere else must not leave
       CI green with no counts.
     - Report present but not valid in its format: exits 1.
-    - Valid report with zero tests: exits 1, because a filter or path went wrong.
+    - Valid report in which no test ran (passed, failed and flaky add up to 0; skipped and todo tests do not count): exits 1,
+      because a filter or path went wrong.
   - Annotations, for forge and Playwright failures only (Vitest's own reporter annotates its failures). One line per failed test:
     `::error file=<path>::<suite or file> › <test>: <first line of the reason>`. The `file` value is escaped with the property rules
     (`%`, `\r`, `\n`, `:` and `,`), the message with the data rules (`%`, `\r`, `\n`). `<path>` is relative to `GITHUB_WORKSPACE`, so
@@ -422,11 +435,27 @@ keywords = ["mnemonic", "seed", "recovery"]
   - `.gitleaksignore` fingerprints, which embed the commit SHA, so a rebase breaks them;
   - `gitleaks:allow` comments, which `--ignore-gitleaks-allow` turns off.
 
+*Note (2026-11-19, final review):* `useDefault = true` also inherits the default config's global allowlist regex
+`(?i)^true|false|null$`, which drops any secret that starts with `true` or contains `false`. Both are BIP-39 words, so
+`maat-mnemonic` misses about 0.6% of 12-word and 1.2% of 24-word phrases. It also misses the command-line form
+`--mnemonic "<words>"`, and `maat-rpc-url-with-key` misses `wss://` URLs and an explicit `:443` port (neither form appears in the
+repository). The rules stay as written: each fix changes what the rule reports as its secret, which only a CI run can prove.
+
 ### 6.2 Scope
 
 - Every run scans the full history of every fetched ref. On a pull request, actions/checkout with `fetch-depth: 0` fetches every
   branch and tag and the triggering PR's merge ref. A leak on any pushed branch therefore fails every run, which is the point before
   the repository goes public.
+- Known exemptions. `useDefault = true` also inherits the default config's global path allowlist, so no scan reads a file whose
+  path contains `gitleaks.toml` or matches one of its other v8.30.1 patterns: lockfiles (`package-lock.json`,
+  `npm-shrinkwrap.json`, `yarn.lock`, `pnpm-lock.yaml`, `deno.lock`, `Pipfile.lock`, `poetry.lock`, `gradle.lockfile`, and Go's
+  `go.mod`, `go.sum` and `go.work` files), anything under `node_modules/` or `bower_components/`, Go and Ruby `vendor/` trees,
+  images (`.bmp`, `.gif`, `.jpg`, `.jpeg`, `.png`, `.svg`, `.tif`, `.tiff`), fonts (`.eot`, `.otf`, `.ttf`, `.woff`, `.woff2`),
+  Word and Excel documents and PDFs, some binary formats (`.bin`, `.dll`, `.exe`, `.pdb`, `.gltf` and a few more), minified copies
+  of a few JavaScript libraries, Python virtual environments and `.dist-info` folders, and a few build-tool files (the Gradle and
+  Maven wrappers, `verification-metadata.xml`, `Database.refactorlog`). A blob that git treats as binary by its content (a NUL
+  byte in its first 8000 bytes) gives a patch with no added line, which gitleaks does not read either. "Full history", here and in
+  the README and `SECURITY.md`, means every added line outside those paths and binary blobs.
 - `--diff-merges=first-parent` adds each merge commit's diff against its first parent, so a line that exists only in a merge result
   (a conflict resolution) is scanned too. 13 merge commits exist across `main`, `feat/docs-center` and `feat/llm-providers` today,
   and `git show --remerge-diff` finds lines that neither parent had in four of them.
@@ -459,12 +488,15 @@ The figures come from an emulation of v8.30.1's rules, not yet a real run, re-ch
 
 ### 6.4 Before the flip to public
 
-CI checkouts fetch only the triggering pull request's merge ref, and a pull-request ref keeps a commit reachable after its branch is
-deleted. The flip also publishes pull-request and issue text. Once the workflow is on `main`, the owner starts it from the Actions
-tab with `pre_flip: true`, and the `preflip` job (4.6) scans every pull-request ref, every commit message, and every pull-request and
-issue text. The flip waits until that job is clean. GitHub's own secret scanning starts on the whole history the moment the repository
-is public, but it raises an alert only after the text is exposed. Commits that an old history rewrite left unreachable from any ref
-may still be served by SHA. Whether either scan reaches them is UNVERIFIED; it is recorded here, not solved.
+Of the pull-request refs, CI checkouts fetch only the triggering one's merge ref, and a pull-request ref keeps a commit reachable
+after its branch is deleted. The flip also publishes pull-request and issue text. Once the workflow is on `main`, the owner starts it
+from the Actions tab with `pre_flip: true`, and the `preflip` job (4.6) scans every pull-request ref, every commit message, and every
+pull-request and issue text. The flip waits until that job is clean. GitHub's own secret scanning starts on the whole history the
+moment the repository is public, but it raises an alert only after the text is exposed. Commits that an old history rewrite left
+unreachable from any ref may still be served by SHA. Whether either scan reaches them is UNVERIFIED; it is recorded here, not solved.
+
+The text scan reads each body as it is now. GitHub also publishes earlier versions of an edited body or comment, which no step
+reads, so before the flip the owner opens the edit history of every edited pull-request or issue body and comment.
 
 ## 7. Repository files and docs
 
@@ -585,7 +617,7 @@ free on 4-CPU runners.
 | --- | --- |
 | Job durations, billed minutes and dollars are estimates; no CI run exists yet | Measured on the first runs and recorded in the PR |
 | Real gitleaks results (the 0 and 7 findings come from an emulation) | The first run on the PR, and the first run after `feat/llm-providers` is pushed (step 8) |
-| That `--log-opts` with `--diff-merges=first-parent` keeps the full walk | The first run: gitleaks' scanned-commit count must equal `git rev-list --all --count` |
+| That `--log-opts` with `--diff-merges=first-parent` keeps the full walk | Every run: the scan step prints gitleaks' count beside `git rev-list --all --count` and fails on a git error or no count. The first run also checks by eye that the two are equal (a commit with no added line is not counted) |
 | `next typegen` must create `web/.source/` on a clean clone before `tsc` (after PR #3) | The run after merging `main`; fallback is `next build` before `tsc` |
 | Docs e2e width checks may flake on Linux font fallback | Traces uploaded on failure; `summary` is not required until it has passed twice in a row |
 | Clipboard e2e tests may fail in the headless shell | Fall back to the full `chromium` install |
@@ -593,3 +625,7 @@ free on 4-CPU runners.
 | Downloads on a cold runner (Foundry, solc, npm, Playwright, apt, Docker Hub, submodules) | Timeouts and a manual re-run; none needs a secret |
 | The workflow badge may not render while the repository is private | It renders after the flip, which happens before submission |
 | Commits that an old history rewrite left unreachable | UNVERIFIED whether any scan reaches them; recorded in 6.4 |
+| `maat-mnemonic` and `maat-rpc-url-with-key` miss the forms listed under 6.1 | Accepted (6.1 note); the default rules and review are the other nets |
+| actionlint reads `.github/actionlint.yaml` or `.yml` from the scanned tree, so a pull request can silence the lint | Reviewed like the workflow itself, which a pull request also controls (6.2); no step refuses the file |
+| Earlier versions of an edited pull-request or issue body or comment, which GitHub publishes with the repository | No step reads them; before the flip the owner opens the edit history of every edited body and comment (6.4) |
+| The scans never read the paths of the default config's global allowlist (lockfiles, `node_modules/`, images including SVG, fonts, PDFs and the others 6.2 lists) or blobs git treats as binary by content, while the README and `SECURITY.md` say "full history" | Known exemptions, named in 6.2; review is the net for a key added to one of those files |
