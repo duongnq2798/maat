@@ -1,0 +1,84 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/maat/maat/web/playwright.config.ts",
+    "rootDir": "/home/runner/work/maat/maat/web/e2e",
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalTimeout": 0,
+    "maxFailures": 0,
+    "metadata": { "actualWorkers": 1 },
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/maat/maat/web/test-results/e2e",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": { "actualWorkers": 1 },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/maat/maat/web/e2e",
+        "testIgnore": [],
+        "testMatch": ["**/*.@(spec|test).?(c|m)[jt]s?(x)"],
+        "timeout": 30000
+      }
+    ],
+    "reporter": [["list"], ["json"]],
+    "version": "1.65.0",
+    "workers": 1
+  },
+  "suites": [
+    {
+      "title": "smoke.spec.ts",
+      "file": "smoke.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "the moment toggle works by mouse and keyboard",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                { "workerIndex": 0, "parallelIndex": 0, "status": "passed", "duration": 1840, "errors": [], "stdout": [], "stderr": [], "retry": 0, "startTime": "2026-11-18T09:00:01.000Z", "annotations": [], "attachments": [] }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "smoke-moment-toggle",
+          "file": "smoke.spec.ts",
+          "line": 46,
+          "column": 1
+        },
+        {
+          "title": "the ledger filters",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                { "workerIndex": 0, "parallelIndex": 0, "status": "passed", "duration": 960, "errors": [], "stdout": [], "stderr": [], "retry": 0, "startTime": "2026-11-18T09:00:03.000Z", "annotations": [], "attachments": [] }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "smoke-ledger-filters",
+          "file": "smoke.spec.ts",
+          "line": 65,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": { "startTime": "2026-11-18T09:00:00.000Z", "duration": 4210.5, "expected": 2, "skipped": 0, "unexpected": 0, "flaky": 0 }
+}

@@ -1,0 +1,10 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/maat/maat/web/playwright.config.ts",
+    "rootDir": "/home/runner/work/maat/maat/web/e2e",
+    "version": "1.65.0",
+    "workers": 1
+  },
+  "suites": [],
+  "errors": []
+}
