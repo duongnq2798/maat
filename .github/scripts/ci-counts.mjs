@@ -189,9 +189,9 @@ export function extractResult(kind, reportText, env, cwd) {
     return { code: 1, annotations: [], message: `the ${kind} report is not a ${kind} report: ${error.message}` };
   }
   const { counts, failures } = read;
-  if (counts.passed + counts.failed + counts.skipped + (counts.flaky ?? 0) === 0) {
+  if (counts.passed + counts.failed + (counts.flaky ?? 0) === 0) {
     // A test filter or a report path went wrong.
-    return { code: 1, annotations: [], message: `the ${kind} report holds zero tests` };
+    return { code: 1, annotations: [], message: `the ${kind} report ran no test` };
   }
   return { code: 0, output: counts, annotations: failures.map(annotation) };
 }

@@ -343,10 +343,23 @@ describe("extractResult", () => {
         assert.deepEqual(extractResult(kind, fixtureText(`${kind}-zero.json`), { GITHUB_WORKSPACE: workspace, STEP_OUTCOME: outcome }, cwd), {
           code: 1,
           annotations: [],
-          message: `the ${kind} report holds zero tests`,
+          message: `the ${kind} report ran no test`,
         });
       }
     }
+    // Skipped and todo tests did not run; a flaky test did.
+    const env = { GITHUB_WORKSPACE: workspace, STEP_OUTCOME: "success" };
+    const pending = { ...JSON.parse(fixtureText("vitest-zero.json")), numPendingTests: 2, numTodoTests: 1 };
+    assert.deepEqual(extractResult("vitest", JSON.stringify(pending), env, cwd), { code: 1, annotations: [], message: "the vitest report ran no test" });
+    const e2e = JSON.parse(fixtureText("playwright-zero.json"));
+    const skipped = { ...e2e, stats: { ...e2e.stats, skipped: 2 } };
+    assert.deepEqual(extractResult("playwright", JSON.stringify(skipped), env, cwd), { code: 1, annotations: [], message: "the playwright report ran no test" });
+    const flaky = { ...e2e, stats: { ...e2e.stats, flaky: 1 } };
+    assert.deepEqual(extractResult("playwright", JSON.stringify(flaky), env, cwd), {
+      code: 0,
+      output: { passed: 0, failed: 0, skipped: 0, flaky: 1 },
+      annotations: [],
+    });
   });
 
   test("a valid report gives its counts, with one annotation per forge or playwright failure", () => {
@@ -496,7 +509,7 @@ describe("extract on the command line", () => {
         env: { GITHUB_OUTPUT: output, GITHUB_WORKSPACE: dir, STEP_OUTCOME: "success" },
         cwd: dir,
       });
-      assert.deepEqual([run.status, run.stdout, run.stderr], [1, "", `the ${kind} report holds zero tests\n`]);
+      assert.deepEqual([run.status, run.stdout, run.stderr], [1, "", `the ${kind} report ran no test\n`]);
       assert.equal(existsSync(output), false);
     }
   });
