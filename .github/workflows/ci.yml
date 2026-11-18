@@ -1,0 +1,172 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      pre_flip:
+        description: Also run the pre-flip scan of every pull-request ref and every pull-request and issue text
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  contracts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: contracts
+    outputs:
+      forge: ${{ steps.counts.outputs.forge }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.9.0
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: version
+        run: |
+          version="$(forge --version)"
+          printf '%s\n' "$version"
+          if ! grep -q 6056c58 <<< "$version"; then
+            echo "::error::forge is not v1.9.0 (commit 6056c58)"
+            exit 1
+          fi
+      - id: build
+        run: forge build --sizes
+      - id: test
+        run: forge test --no-match-path "test/fork/*" --json-file "$RUNNER_TEMP/forge.json"
+      - id: counts
+        if: ${{ !cancelled() }}
+        env:
+          STEP_OUTCOME: ${{ steps.test.outcome }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract forge "$RUNNER_TEMP/forge.json" forge
+      - id: clean
+        run: |
+          changes="$(git status --porcelain)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo "::error::the job wrote a tracked file or an untracked file that .gitignore does not cover"
+            exit 1
+          fi
+
+  agent:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: agent
+    outputs:
+      unit: ${{ steps.counts.outputs.unit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: agent/package-lock.json
+      - id: install
+        run: npm ci
+      - id: typecheck
+        run: npm run typecheck
+      - id: test
+        run: npm test -- --reporter=default --reporter=github-actions --reporter=json --outputFile.json="$RUNNER_TEMP/agent-unit.json"
+      - id: counts
+        if: ${{ !cancelled() }}
+        env:
+          STEP_OUTCOME: ${{ steps.test.outcome }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract vitest "$RUNNER_TEMP/agent-unit.json" unit
+      - id: clean
+        run: |
+          changes="$(git status --porcelain)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo "::error::the job wrote a tracked file or an untracked file that .gitignore does not cover"
+            exit 1
+          fi
+
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SITE_URL: https://maatonbase.xyz
+      NEXT_TELEMETRY_DISABLED: "1"
+      NO_UPDATE_CHECK: "1"
+    defaults:
+      run:
+        working-directory: web
+    outputs:
+      unit: ${{ steps.unit_counts.outputs.unit }}
+      e2e: ${{ steps.e2e_counts.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - id: install
+        run: npm ci
+      - id: typecheck
+        run: npm run typecheck
+      - id: unit
+        run: npm test -- --reporter=default --reporter=github-actions --reporter=json --outputFile.json="$RUNNER_TEMP/web-unit.json"
+      - id: build
+        run: npm run build
+      - id: check_out
+        run: npm run check:out
+      - id: browsers
+        run: npx --no-install playwright install --with-deps --only-shell chromium
+      - id: e2e
+        env:
+          PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e.json
+        run: npx --no-install playwright test --workers=1 --forbid-only --reporter=list,json
+      - id: unit_counts
+        if: ${{ !cancelled() }}
+        env:
+          STEP_OUTCOME: ${{ steps.unit.outcome }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract vitest "$RUNNER_TEMP/web-unit.json" unit
+      - id: e2e_counts
+        if: ${{ !cancelled() }}
+        env:
+          STEP_OUTCOME: ${{ steps.e2e.outcome }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract playwright "$RUNNER_TEMP/e2e.json" e2e
+      - id: traces
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-traces
+          path: web/test-results/
+          retention-days: 7
+      - id: clean
+        run: |
+          changes="$(git status --porcelain)"
+          if [ -n "$changes" ]; then
+            printf '%s\n' "$changes"
+            echo "::error::the job wrote a tracked file or an untracked file that .gitignore does not cover"
+            exit 1
+          fi
