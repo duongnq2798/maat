@@ -1,0 +1,12 @@
+# Updates the actions that .github/workflows/ci.yml pins by commit SHA, once a month, all in one pull request.
+# Why monthly, and why npm waits: docs/superpowers/specs/2026-11-18-maat-ci-design.md, section 7.2.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns:
+          - "*"
