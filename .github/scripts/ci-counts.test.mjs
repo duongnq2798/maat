@@ -1,14 +1,12 @@
 // Tests for ci-counts.mjs. Run with `node --test`, locally and in the CI summary job.
-import { describe, test } from "node:test";
+import { after, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { annotation, escapeData, escapeProperty, extractResult, firstLine, readForge, readPlaywright, readVitest, ReportError, workspacePath } from "./ci-counts.mjs";
-
-import { readGitleaks, renderSummary } from "./ci-counts.mjs";
+import { annotation, escapeData, escapeProperty, extractResult, firstLine, readForge, readGitleaks, readPlaywright, readVitest, renderSummary, ReportError, workspacePath } from "./ci-counts.mjs";
 
 const SCRIPT = fileURLToPath(new URL("./ci-counts.mjs", import.meta.url));
 const FIXTURES = fileURLToPath(new URL("./fixtures/", import.meta.url));
@@ -36,10 +34,19 @@ function runCli(args, options = {}) {
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
 
+/** Every directory tempDir() made; the after() hook below removes them once the file's tests are done. */
+const TEMP_DIRS = [];
+
 /** @returns {string} a new empty directory under the OS temp directory */
 function tempDir() {
-  return mkdtempSync(path.join(os.tmpdir(), "ci-counts-"));
+  const dir = mkdtempSync(path.join(os.tmpdir(), "ci-counts-"));
+  TEMP_DIRS.push(dir);
+  return dir;
 }
+
+after(() => {
+  for (const dir of TEMP_DIRS) rmSync(dir, { recursive: true, force: true });
+});
 
 /** @param {string} file @returns {string[]} the file's non-empty lines, split on /\r?\n/ */
 function outputLines(file) {
@@ -333,6 +340,7 @@ describe("extractResult", () => {
         const result = extractResult(kind, reportText, { GITHUB_WORKSPACE: workspace, STEP_OUTCOME: outcome }, cwd);
         assert.equal(result.code, 1, `${kind} ${outcome} ${JSON.stringify(reportText.slice(0, 12))}`);
         assert.equal(result.output, undefined);
+        assert.match(result.message, new RegExp(`^the ${kind} report is not `));
       }
     }
   });
@@ -808,7 +816,7 @@ test("render: failed jobs show their result and the failed counts", () => {
       "| Web, unit | failure | 4 passed, 1 failed, 0 skipped |",
       "| Web, end to end | failure | 5 passed, 1 failed, 0 skipped, 0 flaky |",
       "| Secret scan, history | failure | 2 findings over 373 commits |",
-      "| Secret scan, commit messages | failure | 1 findings |",
+      "| Secret scan, commit messages | failure | 1 finding |",
       "| Secret scan, canary | failure | failure |",
       "| Workflow lint | failure | success |",
     ]),

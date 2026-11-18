@@ -1,5 +1,5 @@
 // The counting script of the CI workflow (docs/superpowers/specs/2026-11-18-maat-ci-design.md, section 5.1).
-// `extract` turns one runner's JSON report into one compact job output and annotates the failed tests;
+// `extract` turns one runner's JSON report into one compact job output and annotates failed forge and Playwright tests;
 // `render` writes the job-summary table.
 // Zero dependencies: Node 24 built-ins only.
 import { appendFileSync, readFileSync } from "node:fs";
@@ -202,9 +202,10 @@ const KINDS = ["forge", "vitest", "playwright", "gitleaks"];
 const NEEDS_WORKSPACE = ["forge", "playwright"];
 
 /**
- * Parses argv, checks GITHUB_OUTPUT (and GITHUB_WORKSPACE for forge and playwright), reads the report (ENOENT gives null;
- * any other read error exits 1), calls extractResult or renderSummary, writes the output line with appendFileSync, writes
- * annotations to stdout and messages to stderr.
+ * Parses argv. `render` returns through renderCommand before any of the steps below, which only `extract` takes: it
+ * checks GITHUB_OUTPUT (and GITHUB_WORKSPACE for forge and playwright), reads the report (ENOENT gives null; any other
+ * read error exits 1), calls extractResult, appends the output line with appendFileSync, and writes annotations to
+ * stdout and messages to stderr.
  * @param {string[]} argv @param {NodeJS.ProcessEnv} env @param {string} cwd @returns {0 | 1}
  */
 export function main(argv, env, cwd) {
@@ -329,10 +330,11 @@ function summaryCell(output, reads) {
     return isCount(value.flaky) ? `${counts}, ${value.flaky} flaky` : "unreadable output";
   }
   if (!isCount(value.findings)) return "unreadable output";
+  const findings = `${value.findings} finding${value.findings === 1 ? "" : "s"}`;
   if (reads === "history" && value.commits !== undefined) {
-    return isCount(value.commits) ? `${value.findings} findings over ${value.commits} commits` : "unreadable output";
+    return isCount(value.commits) ? `${findings} over ${value.commits} commit${value.commits === 1 ? "" : "s"}` : "unreadable output";
   }
-  return `${value.findings} findings`;
+  return findings;
 }
 
 /**
@@ -372,5 +374,5 @@ function renderCommand(env) {
   return 0;
 }
 
-// Runs only when invoked directly (import.meta.main exists from Node 24.2.0; local v24.12.0, CI v24.22.3):
+// Runs only when invoked directly. import.meta.main exists from Node 24.2.0; local v24.12.0; CI: Node 24 (v24.22.3 on 2026-11-18).
 if (import.meta.main) process.exitCode = main(process.argv.slice(2), process.env, process.cwd());
