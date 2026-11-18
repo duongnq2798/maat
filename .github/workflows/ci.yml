@@ -191,8 +191,8 @@ jobs:
         run: mkdir -p "$RUNNER_TEMP/gitleaks"
       - id: ignorefile
         run: |
-          if [ -e .gitleaksignore ]; then
-            echo "::error file=.gitleaksignore::.gitleaksignore must not exist: gitleaks reads it from the scanned tree, so it could silence a finding"
+          if [ -e .gitleaksignore ] || [ -L .gitleaksignore ]; then
+            echo "::error file=.gitleaksignore::.gitleaksignore must not exist, not even as a symlink: gitleaks reads it from the scanned tree, so it could silence a finding"
             exit 1
           fi
       - id: canary
@@ -355,8 +355,8 @@ jobs:
           GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" git fetch --no-tags origin '+refs/pull/*:refs/remotes/pull/*'
       - id: ignorefile
         run: |
-          if [ -e .gitleaksignore ]; then
-            echo "::error file=.gitleaksignore::.gitleaksignore must not exist: gitleaks reads it from the scanned tree, so it could silence a finding"
+          if [ -e .gitleaksignore ] || [ -L .gitleaksignore ]; then
+            echo "::error file=.gitleaksignore::.gitleaksignore must not exist, not even as a symlink: gitleaks reads it from the scanned tree, so it could silence a finding"
             exit 1
           fi
       - id: scan
