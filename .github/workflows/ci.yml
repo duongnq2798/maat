@@ -170,3 +170,242 @@ jobs:
             echo "::error::the job wrote a tracked file or an untracked file that .gitignore does not cover"
             exit 1
           fi
+
+  hygiene:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      history: ${{ steps.history_counts.outputs.history }}
+      messages: ${{ steps.messages_counts.outputs.messages }}
+      canary: ${{ steps.canary.outcome }}
+      actionlint: ${{ steps.actionlint.outcome }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: outdir
+        run: mkdir -p "$RUNNER_TEMP/gitleaks"
+      - id: ignorefile
+        run: |
+          if [ -e .gitleaksignore ]; then
+            echo "::error file=.gitleaksignore::.gitleaksignore must not exist: gitleaks reads it from the scanned tree, so it could silence a finding"
+            exit 1
+          fi
+      - id: canary
+        run: |
+          h() { printf '%s' "$1" | sha256sum | cut -c1-64; }
+          evm="$(h maat-ci-canary-evm-private-key)"
+          pat="$(h maat-ci-canary-github-pat | cut -c1-36)"
+          allow="$(h maat-ci-canary-github-pat-allow | cut -c1-36)"
+          fixture="$(h maat-ci-canary-agent-fixture | cut -c1-40)"
+          canary="$RUNNER_TEMP/gitleaks/canary"
+          mkdir -p "$canary/agent/test"
+          {
+            printf 'PRIVATE_KEY=0x%s\n' "$evm"
+            printf 'ghp_%s\n' "$pat"
+            printf 'ghp_%s # gitleaks:allow\n' "$allow"
+          } > "$canary/canary.txt"
+          printf 'const KEY = "%s";\n' "$fixture" > "$canary/agent/test/x.test.ts"
+          git -C "$canary" init -q
+          git -C "$canary" add canary.txt agent/test/x.test.ts
+          git -C "$canary" -c user.name=canary -c user.email=canary@invalid commit -q -m canary
+          code=0
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks:/out" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
+            --exit-code 3 --report-format json --report-path /out/canary.json \
+            /out/canary || code=$?
+          if [ "$code" -ne 3 ]; then
+            echo "::error::canary: gitleaks exited $code, expected 3"
+            exit 1
+          fi
+          node -e '
+            const findings = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            if (!Array.isArray(findings)) throw new Error("the canary report is not a JSON array");
+            const count = (rule, file) => findings.filter((f) => f.RuleID === rule && (file === undefined || f.File === file)).length;
+            const evm = count("maat-evm-private-key");
+            const pat = count("github-pat");
+            const fixture = count("generic-api-key", "agent/test/x.test.ts");
+            console.log("canary findings " + findings.length + ": maat-evm-private-key " + evm + ", github-pat " + pat + ", generic-api-key in agent/test/x.test.ts " + fixture);
+            if (evm < 1 || pat !== 2 || fixture < 1) {
+              console.log("::error::canary: expected at least 1 maat-evm-private-key, exactly 2 github-pat and at least 1 generic-api-key in agent/test/x.test.ts");
+              process.exit(1);
+            }
+          ' "$RUNNER_TEMP/gitleaks/canary.json"
+      - id: scan
+        if: ${{ !cancelled() }}
+        run: |
+          commits="$(git rev-list --all --count)"
+          code=0
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks:/out" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
+            --exit-code 3 --report-format json --report-path /out/history.json \
+            --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=tuxdb" \
+            /repo || code=$?
+          {
+            echo "exit=$code"
+            echo "commits=$commits"
+          } >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - id: messages
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/gitleaks/text"
+          git log --all --format='%H%n%B' > "$RUNNER_TEMP/gitleaks/text/commit-messages.txt"
+          code=0
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks:/out" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            dir --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
+            --exit-code 3 --report-format json --report-path /out/messages.json \
+            /out/text || code=$?
+          echo "exit=$code" >> "$GITHUB_OUTPUT"
+          exit "$code"
+      - id: history_counts
+        if: ${{ !cancelled() }}
+        env:
+          SCAN_EXIT: ${{ steps.scan.outputs.exit }}
+          COMMITS: ${{ steps.scan.outputs.commits }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract gitleaks "$RUNNER_TEMP/gitleaks/history.json" history
+      - id: messages_counts
+        if: ${{ !cancelled() }}
+        env:
+          SCAN_EXIT: ${{ steps.messages.outputs.exit }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract gitleaks "$RUNNER_TEMP/gitleaks/messages.json" messages
+      - id: actionlint
+        if: ${{ !cancelled() }}
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -w /repo \
+            rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667
+
+  summary:
+    needs: [contracts, agent, web, hygiene]
+    if: ${{ always() }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /.github/
+            /web/package.json
+      - id: tests
+        if: ${{ always() }}
+        run: node --test ".github/scripts/*.test.mjs"
+      - id: render
+        if: ${{ always() }}
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" render
+      - id: gate
+        if: ${{ always() }}
+        env:
+          CONTRACTS_RESULT: ${{ needs.contracts.result }}
+          AGENT_RESULT: ${{ needs.agent.result }}
+          WEB_RESULT: ${{ needs.web.result }}
+          HYGIENE_RESULT: ${{ needs.hygiene.result }}
+        run: |
+          failed=0
+          for pair in "contracts=$CONTRACTS_RESULT" "agent=$AGENT_RESULT" "web=$WEB_RESULT" "hygiene=$HYGIENE_RESULT"; do
+            echo "$pair"
+            if [ "${pair#*=}" != success ]; then
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+  preflip:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.pre_flip }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: outdir
+        run: mkdir -p "$RUNNER_TEMP/gitleaks"
+      - id: pulls
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" git fetch --no-tags origin '+refs/pull/*:refs/remotes/pull/*'
+      - id: ignorefile
+        run: |
+          if [ -e .gitleaksignore ]; then
+            echo "::error file=.gitleaksignore::.gitleaksignore must not exist: gitleaks reads it from the scanned tree, so it could silence a finding"
+            exit 1
+          fi
+      - id: scan
+        if: ${{ !cancelled() }}
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks:/out" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
+            --exit-code 3 --report-format json --report-path /out/history.json \
+            --log-opts="--all --full-history --diff-merges=first-parent --diff-filter=tuxdb" \
+            /repo
+      - id: messages
+        if: ${{ !cancelled() }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/gitleaks/text"
+          git log --all --format='%H%n%B' > "$RUNNER_TEMP/gitleaks/text/commit-messages.txt"
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks:/out" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            dir --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
+            --exit-code 3 --report-format json --report-path /out/messages.json \
+            /out/text
+      - id: text
+        if: ${{ !cancelled() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          text="$RUNNER_TEMP/gitleaks/text"
+          mkdir -p "$text"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues?state=all&per_page=100" \
+            --jq '.[] | .html_url, .title, (.body // "")' > "$text/issues-and-pulls.txt"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/issues/comments?per_page=100" \
+            --jq '.[] | .html_url, (.body // "")' > "$text/issue-comments.txt"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/comments?per_page=100" \
+            --jq '.[] | .html_url, (.body // "")' > "$text/review-comments.txt"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/comments?per_page=100" \
+            --jq '.[] | .html_url, (.body // "")' > "$text/commit-comments.txt"
+          gh api --paginate "repos/$GITHUB_REPOSITORY/pulls?state=all&per_page=100" --jq '.[].number' |
+            while read -r number; do
+              gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$number/reviews?per_page=100" \
+                --jq '.[] | .html_url, (.body // "")' < /dev/null
+            done > "$text/review-bodies.txt"
+          wc -l "$text"/*.txt
+      - id: text_scan
+        if: ${{ !cancelled() }}
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/repo:ro" \
+            -v "$RUNNER_TEMP/gitleaks:/out" \
+            zricethezav/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            dir --config /repo/.gitleaks.toml --redact --no-banner --ignore-gitleaks-allow \
+            --exit-code 3 --report-format json --report-path /out/text.json \
+            /out/text
