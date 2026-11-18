@@ -9,7 +9,7 @@
 [![Status: unaudited, pre-mainnet](https://img.shields.io/badge/status-unaudited%2C%20pre--mainnet-b45309?style=flat-square)](#status)
 [![Tested on a Base mainnet fork](https://img.shields.io/badge/Base-mainnet%20fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
 [![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#built-for-stocks-maxxing-season)
-[![Tests: 535, 511 offline](https://img.shields.io/badge/tests-535%20(511%20offline)-15803d?style=flat-square)](#development)
+[![CI](https://github.com/duongnq2798/maat/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/duongnq2798/maat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
 **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
@@ -520,7 +520,11 @@ build and output checks), and `npm run gen:abi` in `agent/` after a contract cha
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
 
-There is no CI in this repository yet; the counts above were measured locally at this commit.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the four offline suites above (contracts
+unit, agent unit, web unit and web end to end), a secret scan of the full history and of every commit
+message, and a lint of the workflow itself, on every pull request and every push to `main`. Each run's
+summary shows the counts each runner reported. The contracts fork suite and the agent fork integration suite
+need an archive RPC and run by hand.
 
 ## Deploying (owner only)
 
