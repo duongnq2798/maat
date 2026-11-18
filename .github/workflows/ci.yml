@@ -28,6 +28,7 @@ jobs:
     timeout-minutes: 15
     defaults:
       run:
+        shell: bash
         working-directory: contracts
     outputs:
       forge: ${{ steps.counts.outputs.forge }}
@@ -74,6 +75,7 @@ jobs:
     timeout-minutes: 10
     defaults:
       run:
+        shell: bash
         working-directory: agent
     outputs:
       unit: ${{ steps.counts.outputs.unit }}
@@ -115,6 +117,7 @@ jobs:
       NO_UPDATE_CHECK: "1"
     defaults:
       run:
+        shell: bash
         working-directory: web
     outputs:
       unit: ${{ steps.unit_counts.outputs.unit }}
