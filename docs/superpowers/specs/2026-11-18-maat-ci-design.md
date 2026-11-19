@@ -590,18 +590,21 @@ The docs changelog cites only commits on `main`, so its CI entry comes after the
 10. **After the flip.** The owner adds a ruleset on `main` that requires `summary` and blocks force pushes and deletions, with the
     owner as the only bypass, and enables private vulnerability reporting (with the `SECURITY.md` and docs change from 7.1).
 
-*Note (2026-11-19, after the first CI runs):* the owner made the repository public on 2026-11-19, before step 9's scan could run:
-`preflip` needs `ci.yml` on `main`, so the pull-request refs and the pull-request and issue text had not been scanned at the flip.
-The three CI runs on this pull request before this note (on `96d8be9`, `e6f1a0b` and `af96622`) scanned the history and the commit
-messages of every pushed branch and found nothing. Actions minutes on the standard runners now cost nothing, so the billing item and
+*Note (2026-11-19, after the first CI runs):* the owner made the repository public on 2026-11-19, before `chore/ci` was pushed, so
+before any CI scan had run; only the local emulation of 6.3 had. The three CI runs on this pull request before this note (on
+`96d8be9`, `e6f1a0b` and `af96622`), all after the flip, scanned the history and the commit messages of every pushed branch and found
+nothing. The pull-request refs and the pull-request and issue text stay unscanned until `preflip` runs, and `preflip` needs `ci.yml`
+on `main`. Actions minutes on the standard runners now cost nothing, so the billing item and
 the cost paragraph below no longer apply. Step 7 moves ahead of the deploy: `chore/ci` merges once the run on its last commit is
 green, and `preflip` then runs on `main` as the post-flip scan. The owner's check of 6.4, the edit history of every edited body and
 comment, moves with it to after the flip. Step 10's ruleset and private vulnerability reporting are no longer blocked. The Actions
 settings of the owner-only list were set on 2026-11-19, and the owner delegated the merges that day.
 
-The runs also settle two open points. 6.3's 0 findings on pushed refs is now a real result, not only an emulation, and section 10's
-first row is measured: the pull request records each job's duration and minutes. The first run after `feat/llm-providers` is pushed
-(step 8) is still to come.
+The runs also settle these open points. 6.3's 0 findings on pushed refs is now a real result, not only an emulation. In section 10,
+the first row is measured (the pull request records each job's duration and minutes); on the first run gitleaks' count equalled
+`git rev-list --all --count` (397 and 397); the run after merging `main` passed with `next typegen` before `tsc`, so no fallback was
+needed; and the docs end-to-end tests, the width and clipboard checks among them, passed in the headless shell on both runs since
+`main` was merged in. The first run after `feat/llm-providers` is pushed (step 8) is still to come.
 
 **Owner-only actions.**
 
