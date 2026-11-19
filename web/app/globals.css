@@ -1,4 +1,13 @@
-@import "tailwindcss";
+@import "tailwindcss" source(none);
+
+/* Only the landing page's own files feed this stylesheet. The docs have app/(docs)/docs.css, and tests,
+   scripts and Markdown stay out too, so a plain word in their prose never becomes a landing utility.
+   A new landing folder under components/ must be added here. */
+@source "./(site)";
+@source "../components/*.tsx";
+@source "../components/{charts,sections,ui}";
+@source "../content/*.ts";
+@source "../lib/site.ts";
 
 @theme {
   --color-bg: #FFFFFF;

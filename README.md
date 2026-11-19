@@ -581,26 +581,37 @@ Planned, roughly in this order. None of this is built.
 
 | Document | What it covers |
 | --- | --- |
+| [Docs center](web/content/docs) | The website's `/docs` pages: get started, concepts, guides, the reference, security and help. Tests tie their reference entries, code excerpts and cited tests to the code, and check most of their facts against the contracts, the agent, the fork run or the document each one cites |
 | [Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) | Product, architecture, the checks, threat model, open assumptions |
 | [Web design spec](docs/superpowers/specs/2026-11-07-maat-web-design.md) | Website goals, design tokens, page structure, parity tests, W2 and W3 |
+| [Docs center spec](docs/superpowers/specs/2026-11-07-maat-docs-center-design.md) | The readers of `/docs`, its honesty rules, pages, content model and quality gates |
+| [Simulator spec](docs/superpowers/specs/2026-11-08-mandate-simulator-design.md) | The landing page's "Try to make it say no" section: a browser simulation of the default mandate's BUY checks over one day, and its parity tests |
+| [CI spec](docs/superpowers/specs/2026-11-18-maat-ci-design.md) | The one CI workflow: its jobs and hardening, the secret scan, the counts in each run's summary, `SECURITY.md`, Dependabot and the pre-flip scan |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
 | [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, reconcile |
 | [Plan W1: website](docs/superpowers/plans/2026-11-07-maat-web-w1.md) | The landing page and brand assets |
+| [Plan: docs center](docs/superpowers/plans/2026-11-07-maat-docs-center.md) | `/docs` inside the website: Fumadocs, the generated reference data, the pages and their gates |
+| [Plan: simulator](docs/superpowers/plans/2026-11-08-mandate-simulator.md) | The calendar and BUY-check ports in `web/content`, the Simulator component, the Try it section and their tests |
+| [Plan: CI](docs/superpowers/plans/2026-11-18-maat-ci.md) | The counting script and its tests, the gitleaks config, the workflow, `SECURITY.md`, Dependabot, and the README and docs text that says what CI runs |
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
-| [`web/README.md`](web/README.md) | Website commands, numbers, deploy |
+| [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
 
 The specs record the design as approved and the plans record how the code was built; neither is updated
 afterwards, and some details changed during implementation (for example the default `maxPremiumBps` rose
 from 50 to 100, the de-risk window from 4 to 8 hours, and the spec's CDP spend cap became the vault's own caps
 plus `MAAT_MAX_TX_PER_DAY`). Where a spec or plan differs from the code, the code is correct.
 
+The docs center, by contrast, follows the code: every change to the contracts, the agent or the website
+updates the docs pages it affects, in the same change. Tests catch part of the drift, but not a sentence
+that has stopped being true. The rules and the commands are in [`web/README.md`](web/README.md#docs-content).
+
 ## Built for Stocks Maxxing Season
 
 Maat is an entry in Base's "Stocks Maxxing Season" Builder Quest (5 November to 5 December 2026), track
 Agentic Stock Finance. All code in this repository was written during the Quest: the first commit is
-`ce1bbb4` on 2026-11-06.
+`009577d` on 2026-11-06.
 
 How it was built: each part started as a design spec, then a written plan, then implementation task by task
 with Claude Code, with a review after each task and a review of the whole branch at the end. The specs and

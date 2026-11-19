@@ -1,0 +1,142 @@
+[
+  {
+    "name": "USDC",
+    "type": "address",
+    "value": "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "POLICY_REGISTRY",
+    "type": "address",
+    "value": "0x8453000000000000000000000000000000000002",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "NVDAC",
+    "type": "address",
+    "value": "0xb20000000000000000000078ee7ce2fE4908108C",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "GOOGLC",
+    "type": "address",
+    "value": "0xb2000000000000000000002D0BA3164cc74f58B7",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "AAPLC",
+    "type": "address",
+    "value": "0xb200000000000000000000C2e324d24d7eEcd1fb",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "NVDA_FEED",
+    "type": "address",
+    "value": "0x04689a41629776563E6822F76f2e57D148d28513",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "GOOGL_FEED",
+    "type": "address",
+    "value": "0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "AAPL_FEED",
+    "type": "address",
+    "value": "0x787f13dEa48Db0897CbCDD985de77809D837F988",
+    "note": "",
+    "group": ""
+  },
+  {
+    "name": "NVDAC_USDC_POOL",
+    "type": "address",
+    "value": "0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC",
+    "note": "",
+    "group": "Aerodrome Slipstream pools, token0 = USDC for all three."
+  },
+  {
+    "name": "GOOGLC_USDC_POOL",
+    "type": "address",
+    "value": "0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3",
+    "note": "",
+    "group": "Aerodrome Slipstream pools, token0 = USDC for all three."
+  },
+  {
+    "name": "AAPLC_USDC_POOL",
+    "type": "address",
+    "value": "0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6",
+    "note": "",
+    "group": "Aerodrome Slipstream pools, token0 = USDC for all three."
+  },
+  {
+    "name": "AAVE_MAG7_SPOKE",
+    "type": "address",
+    "value": "0x17905Db0e4A3514467539956c084180616AE7B8D",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "AAVE_EQUITIES_HUB",
+    "type": "address",
+    "value": "0xa4d5947Eb727A052bae69C593FfC84247EC9864E",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "AAVE_MAG7_ORACLE",
+    "type": "address",
+    "value": "0xaBaf048fD7675Ea34a84332371ffd5D55E322A47",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "AAVE_RESERVE_AAPLC",
+    "type": "uint256",
+    "value": "0",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "AAVE_RESERVE_GOOGLC",
+    "type": "uint256",
+    "value": "2",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "AAVE_RESERVE_NVDAC",
+    "type": "uint256",
+    "value": "5",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "AAVE_RESERVE_USDC",
+    "type": "uint256",
+    "value": "7",
+    "note": "",
+    "group": "Aave V4 Equities Hub on Base (verified on Base, 2026-11-06). On the MAG7 spoke reserveId == hub assetId."
+  },
+  {
+    "name": "BLOCK_SESSION",
+    "type": "uint256",
+    "value": "53_551_627",
+    "note": "Thu 2026-11-05 15:30 UTC (10:30 ET). NVDA feed = 186.67486580, age 14 s.",
+    "group": ""
+  },
+  {
+    "name": "BLOCK_WEEKEND",
+    "type": "uint256",
+    "value": "53_340_127",
+    "note": "Sat 2026-10-31 18:00 UTC. NVDA feed last updated Fri 2026-10-30 ~19:51 UTC.",
+    "group": ""
+  }
+]

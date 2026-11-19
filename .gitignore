@@ -17,3 +17,4 @@ web/*.tsbuildinfo
 web/.env*.local
 web/test-results/
 web/playwright-report/
+web/.source/

@@ -1,0 +1,13 @@
+{
+  "title": "Guides",
+  "pages": [
+    "run-the-tests",
+    "reproduce-the-fork-run",
+    "deploy-your-own-vault",
+    "configure-a-mandate",
+    "run-the-agent",
+    "change-a-rule",
+    "pause-withdraw-recover",
+    "watch-decisions-onchain"
+  ]
+}

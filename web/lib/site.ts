@@ -9,8 +9,10 @@ export const SITE = {
   xHandle: "@maatonbase",
   xUrl: "https://x.com/maatonbase",
   repoUrl: REPO,
-  /** README anchors: the offline five-minute check, and the fork run behind the ledger rows. */
-  evaluateUrl: `${REPO}#how-to-evaluate-maat-in-5-minutes`,
+  /** The docs center, and its offline five-minute check. Plain links: /docs has its own root layout. */
+  docsUrl: "/docs",
+  quickstartUrl: "/docs/get-started/quickstart",
+  /** README anchor: the fork run behind the ledger rows. */
   forkEvidenceUrl: `${REPO}#base-mainnet-fork-evidence`,
   licenseUrl: `${REPO}/blob/main/LICENSE`,
   disclaimer:

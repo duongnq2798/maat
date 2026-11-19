@@ -1,0 +1,20 @@
+{
+  "title": "Reference",
+  "pages": [
+    "repository-map",
+    "---Contracts---",
+    "mandate-vault",
+    "events",
+    "errors",
+    "types",
+    "[Refusal codes](/docs/concepts/refusal-codes)",
+    "market-calendar",
+    "adapters",
+    "---Agent---",
+    "agent-configuration",
+    "agent-scripts",
+    "---Data---",
+    "base-addresses",
+    "default-parameters"
+  ]
+}

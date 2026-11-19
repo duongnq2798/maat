@@ -1,0 +1,34 @@
+---
+title: Maat docs
+description: Understand Maat, verify every claim against the code, run it, and run your own vault. Pick the path that fits why you came.
+type: overview
+audience: [newcomer, watcher, developer, builder, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-18
+sources:
+  - README.md
+  - contracts/src/MandateVault.sol
+next: [get-started/what-is-maat, get-started/quickstart]
+---
+
+Maat is an AI agent built to trade [tokenized stocks](/docs/help/glossary#tokenized-stock) on [Base](/docs/help/glossary#base) from its own treasury. Claude proposes every trade and an onchain [mandate](/docs/help/glossary#mandate) decides: a BUY or a SELL moves funds only after it passes up to <Fact name="checksPerTrade" /> checks (concentration, check 9, applies to a BUY only), and every `execute` call that does not [revert](/docs/help/glossary#revert) records its verdict in a public [`Decision`](/docs/help/glossary#decision) event, allowed or refused.
+
+Today Maat is built and [fork-tested](/docs/help/glossary#fork-test): nothing is deployed to Base mainnet, the contracts are unaudited, and the real Claude API and [CDP wallet](/docs/help/glossary#cdp-server-wallet) have not run in any Maat test. [Status and roadmap](/docs/get-started/status) has the details.
+
+<RouterCards />
+
+<DecisionLoop />
+
+## Explore by section
+
+<SectionIndex />
+
+## Where to find things
+
+- **Search:** press Ctrl K (Cmd K on a Mac) on any docs page, or tap the search icon at the top of the page on a phone.
+- **Code:** [GitHub](https://github.com/duongnq2798/maat) holds the contracts, the agent, the tests and the specs behind every page.
+- **X:** [@maatonbase](https://x.com/maatonbase) is the project's account.
+- **For AI tools:** <a href="/llms.txt">llms.txt</a> lists every page's Markdown copy with its description, and links a JSON file for each contract ABI the docs publish. <a href="/llms-full.txt">llms-full.txt</a> is the whole docs as one Markdown file. At the foot of each page, the View as Markdown link opens that page's Markdown copy, and the Copy page as Markdown button beside it copies it.
+- **Building on Maat:** there is no API or SDK. Each `execute` call that does not revert records the [vault](/docs/help/glossary#vault)'s verdict in a public `Decision` event: [Watch decisions onchain](/docs/guides/watch-decisions-onchain) shows how to read and decode them, and [Events](/docs/reference/events#decision) lists their fields. No Maat vault is deployed yet, so there are none to read.
+- **Security problems:** [Report a vulnerability](/docs/security/report-a-vulnerability) privately, never in a public issue.
+- **License:** the code is under the [MIT License](https://github.com/duongnq2798/maat/blob/main/LICENSE), and the contracts are unaudited.
