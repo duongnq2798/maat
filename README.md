@@ -9,7 +9,7 @@
 [![Status: unaudited, pre-mainnet](https://img.shields.io/badge/status-unaudited%2C%20pre--mainnet-b45309?style=flat-square)](#status)
 [![Tested on a Base mainnet fork](https://img.shields.io/badge/Base-mainnet%20fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
 [![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#built-for-stocks-maxxing-season)
-[![Tests: 535, 511 offline](https://img.shields.io/badge/tests-535%20(511%20offline)-15803d?style=flat-square)](#development)
+[![CI](https://github.com/duongnq2798/maat/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/duongnq2798/maat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
 **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
@@ -504,23 +504,32 @@ docs/superpowers/          design specs and implementation plans
 | Suite | Command (in its folder) | Tests | Needs |
 | --- | --- | --- | --- |
 | Contracts, unit | `forge test --no-match-path "test/fork/*"` | 220 | nothing |
-| Contracts, fork | `forge test --match-path "test/fork/*"` | 14 | `BASE_RPC_URL` (archive) |
+| Contracts, fork | `forge test --match-path "test/fork/*"` | 14 (by hand) | `BASE_RPC_URL` (archive) |
 | Agent, unit | `npm test` | 167 | nothing |
-| Agent, fork integration | `npm run test:integration` | 3 | archive RPC, `base-anvil` v1.5.1 |
-| Web, unit, component and parity | `npm test` | 124 | nothing |
-| Web, end to end | `npm run e2e` (after `npm run build`) | 7 | `npx playwright install chromium` |
+| Agent, fork integration | `npm run test:integration` | 3 (by hand) | archive RPC, `base-anvil` v1.5.1 |
+| Web, unit, component and parity | `npm test` | 1,494 | nothing |
+| Web, end to end | `npm run e2e` (after `npm run build`) | 259 | `npx playwright install chromium` |
 
-Contract unit tests by suite: MandateVault 64, MandateVaultCredit 54, GuardLib 44, MandateVaultAdmin 23,
-AaveV4CreditAdapter 15, MarketCalendar 9, PriceLib 7, AerodromeSwapAdapter 4.
+The counts are from the first green CI run on `e6f1a0b`, 2026-11-19, except the two marked by hand, which
+were measured at `4492eed`, 2026-11-07.
+
+Contract unit tests by suite, measured by hand at `e6f1a0b`, 2026-11-19: MandateVault 64,
+MandateVaultCredit 54, GuardLib 44, MandateVaultAdmin 23, AaveV4CreditAdapter 15, MarketCalendar 9,
+PriceLib 7, AerodromeSwapAdapter 4.
 
 Other useful commands: `forge build --sizes` (MandateVault is 22,755 bytes of runtime code, 1,821 under the
-24,576-byte limit), `npm run typecheck` in `agent/` and `web/`, `npm run verify` in `web/` (typecheck, tests,
-build and output checks), and `npm run gen:abi` in `agent/` after a contract change.
+24,576-byte limit, measured by hand at `e6f1a0b`, 2026-11-19), `npm run typecheck` in `agent/` and `web/`,
+`npm run verify` in `web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/`
+after a contract change.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
 
-There is no CI in this repository yet; the counts above were measured locally at this commit.
+CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the four offline suites above (contracts
+unit, agent unit, web unit and web end to end), a secret scan of the full history and of every commit
+message, and a lint of the workflow itself, on every pull request and every push to `main`. Each run's
+summary shows the counts each runner reported. The contracts fork suite and the agent fork integration suite
+need an archive RPC and run by hand.
 
 ## Deploying (owner only)
 
@@ -582,12 +591,14 @@ Planned, roughly in this order. None of this is built.
 | [Web design spec](docs/superpowers/specs/2026-11-07-maat-web-design.md) | Website goals, design tokens, page structure, parity tests, W2 and W3 |
 | [Docs center spec](docs/superpowers/specs/2026-11-07-maat-docs-center-design.md) | The readers of `/docs`, its honesty rules, pages, content model and quality gates |
 | [Simulator spec](docs/superpowers/specs/2026-11-08-mandate-simulator-design.md) | The landing page's "Try to make it say no" section: a browser simulation of the default mandate's BUY checks over one day, and its parity tests |
+| [CI spec](docs/superpowers/specs/2026-11-18-maat-ci-design.md) | The one CI workflow: its jobs and hardening, the secret scan, the counts in each run's summary, `SECURITY.md`, Dependabot and the pre-flip scan |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
 | [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, reconcile |
 | [Plan W1: website](docs/superpowers/plans/2026-11-07-maat-web-w1.md) | The landing page and brand assets |
 | [Plan: docs center](docs/superpowers/plans/2026-11-07-maat-docs-center.md) | `/docs` inside the website: Fumadocs, the generated reference data, the pages and their gates |
 | [Plan: simulator](docs/superpowers/plans/2026-11-08-mandate-simulator.md) | The calendar and BUY-check ports in `web/content`, the Simulator component, the Try it section and their tests |
+| [Plan: CI](docs/superpowers/plans/2026-11-18-maat-ci.md) | The counting script and its tests, the gitleaks config, the workflow, `SECURITY.md`, Dependabot, and the README and docs text that says what CI runs |
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |

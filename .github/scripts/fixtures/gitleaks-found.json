@@ -1,0 +1,16 @@
+[
+  {
+    "RuleID": "maat-evm-private-key",
+    "File": "canary.txt",
+    "Secret": "REDACTED",
+    "Match": "REDACTED",
+    "Line": "REDACTED"
+  },
+  {
+    "RuleID": "generic-api-key",
+    "File": "agent/test/x.test.ts",
+    "Secret": "REDACTED",
+    "Match": "REDACTED",
+    "Line": "REDACTED"
+  }
+]
