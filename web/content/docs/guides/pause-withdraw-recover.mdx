@@ -4,7 +4,7 @@ description: "The emergency playbook: pause the vault, rotate the executor, with
 type: guide
 audience: [builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - contracts/src/MandateVault.sol
   - deployments/README.md
@@ -152,7 +152,7 @@ cast send "$VAULT" "setExecutor(address)" "$EXECUTOR" --rpc-url "$BASE_RPC_URL" 
 cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"
 ```
 
-To give the agent a new key, create a new CDP account first. `cdp-setup.ts` finds the account named by `CDP_ACCOUNT_NAME` if it exists and creates one only when it does not, so a new key needs a new name in `.env`. Then run the script again as [Run the agent](/docs/guides/run-the-agent#create-the-executor-and-attach-the-policy) shows, send the new account <Fact name="executorGasEth" /> for gas, and point the vault at it with the commands above. That estimate comes from the README, and no transaction has been sent on Base mainnet to check it.
+To give the agent a new key, create a new CDP account first. `cdp-setup.ts` finds the account named by `CDP_ACCOUNT_NAME` if it exists and creates one only when it does not, so a new key needs a new name in `.env`. Then run the script again as [Run the agent](/docs/guides/run-the-agent#create-the-executor-and-attach-the-policy) shows, send the new account <Fact name="executorGasEth" /> for gas, and point the vault at it with the commands above. That estimate comes from [`agent/README.md`](https://github.com/duongnq2798/maat/blob/main/agent/README.md#live-run-owner-only), and no transaction has been sent on Base mainnet to check it.
 
 </Callout>
 
@@ -244,7 +244,7 @@ Call `withdraw` for each stock and for the USDC, as in [Withdraw](#withdraw). If
 
 deployments/README.md prints no output for these commands, so none is shown. An `execute` call is a transaction that succeeds even when the vault refuses the intent, so read the `Decision` in each receipt: `allowed` must be true. [Watch decisions onchain](/docs/guides/watch-decisions-onchain) shows how to read it.
 
-If the Aave spoke's views start to revert, the README says what to expect. The adapter cannot be removed, because `applyMandate` stops at `CreditPositionOpen` when a position read fails. Every `BUY` returns `CONCENTRATION`, because the vault [fails closed](/docs/help/glossary#fail-closed) when it cannot read collateral or debt. Funds that sit in the vault can still be withdrawn with `withdraw`.
+If the Aave spoke's views start to revert, [`deployments/README.md`](https://github.com/duongnq2798/maat/blob/main/deployments/README.md#unwinding-the-credit-position-owner-only) says what to expect. The adapter cannot be removed, because `applyMandate` stops at `CreditPositionOpen` when a position read fails. Every `BUY` returns `CONCENTRATION`, because the vault [fails closed](/docs/help/glossary#fail-closed) when it cannot read collateral or debt. Funds that sit in the vault can still be withdrawn with `withdraw`.
 
 </Step>
 

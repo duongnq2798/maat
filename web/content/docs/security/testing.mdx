@@ -110,7 +110,7 @@ The contract fork tests run the real B20 tokens, [Chainlink feeds](/docs/help/gl
 | Test file | What it shows |
 | --- | --- |
 | [`MandateVaultFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Buys and sells NVDAc in session, buys the basket, refuses a real-weekend buy in both session modes, and bounds a compromised executor |
-| [`MandateVaultCreditFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultCreditFork.t.sol) | The credit loop in session; then, with the clock moved to Saturday, borrowing is refused while repay and withdraw still work |
+| [`MandateVaultCreditFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultCreditFork.t.sol) | The credit loop in session; then, with the clock moved to Saturday, a borrow and a collateral withdrawal against open debt are refused with `MARKET_CLOSED`, repay works, and once the debt is repaid the withdrawal works |
 | [`AaveV4CreditAdapterFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/AaveV4CreditAdapterFork.t.sol) | Full supply, borrow, repay and withdraw on the Aave V4 MAG7 Spoke; reserve ids match the chain; a borrow below the minimum [health factor](/docs/help/glossary#health-factor) reverts |
 | [`AerodromeSwapAdapterFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/AerodromeSwapAdapterFork.t.sol) | Buys and sells NVDAc directly against the Slipstream pool |
 | [`PriceLibFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) | The basket trades near the oracle price at `BLOCK_SESSION` |

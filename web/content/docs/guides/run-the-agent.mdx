@@ -4,7 +4,7 @@ description: "Configure and start the agent loop: dry-run and live modes, its se
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - agent/README.md
   - agent/src/main.ts
@@ -247,7 +247,7 @@ From that transaction on, the owner's own `execute` calls [revert](/docs/help/gl
 
 ### Fund the executor for gas
 
-Send <Fact name="executorGasEth" /> on Base to the executor address. The README's figure is an estimate and no transaction has been sent on Base mainnet to check it. A paymaster cannot be used, because it only supports smart accounts.
+Send <Fact name="executorGasEth" /> on Base to the executor address. The figure in [`agent/README.md`](https://github.com/duongnq2798/maat/blob/main/agent/README.md#live-run-owner-only) is an estimate and no transaction has been sent on Base mainnet to check it. A paymaster cannot be used, because it only supports smart accounts.
 
 </Step>
 

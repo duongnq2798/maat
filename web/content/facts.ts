@@ -111,7 +111,7 @@ export const FACTS = {
   ),
   feedEdgeMin: fact(
     1200,
-    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET",
+    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: assumes Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET (not measured in the repository)",
   ),
   calendar: fact<{ holidays: readonly Holiday[]; earlyCloses: readonly EarlyClose[] }>(
     {
