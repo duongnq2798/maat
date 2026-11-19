@@ -1,0 +1,91 @@
+---
+title: What is Maat
+description: The problem with agents that trade tokenized stocks around the clock, and how a mandate onchain decides every trade they propose.
+type: overview
+audience: [newcomer, watcher, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-18
+sources:
+  - README.md
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - contracts/src/MarketCalendar.sol
+  - agent/src/policy.ts
+  - agent/src/loop/runOnce.ts
+  - docs/superpowers/specs/2026-11-06-mandate-treasury-design.md
+next: [get-started/how-a-decision-is-made, get-started/quickstart, concepts/nine-checks]
+---
+
+Maat is an experiment in letting an AI agent trade without letting it decide what is safe. This page explains the problem it solves, the one idea behind the answer, and what is built so far, so you can judge the rest of the docs against it.
+
+## The problem
+
+[Tokenized stocks](/docs/help/glossary#tokenized-stock) on [Base](/docs/help/glossary#base) trade around the clock, every day of the week. The stocks they track do not. The design assumes that the [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) stops updating for the weekend and on market holidays, and in those hours the DEX price has nothing to anchor it. When a company splits its shares or pays a dividend, the [B20](/docs/help/glossary#b20) token's multiplier changes and every valuation shifts. An AI agent that trades by itself will happily buy at a Saturday price nobody can check.
+
+Each hazard below is something the [vault](/docs/help/glossary#vault) checks for, with the [reason](/docs/help/glossary#reason) code it returns.
+
+| Hazard | What goes wrong for an agent that trades around the clock | Reason code |
+| --- | --- | --- |
+| The market is closed | [NYSE](/docs/help/glossary#nyse-session) trades <Fact name="nyseOpen" /> to <Fact name="nyseClose" /> on weekdays. The Chainlink equity feeds on Base are assumed to update only from Sunday <Fact name="feedEdge" /> to Friday <Fact name="feedEdge" />. On a Saturday or a holiday the DEX price has nothing to anchor it | [`MARKET_CLOSED`](/docs/concepts/refusal-codes#market_closed) |
+| The oracle is stale or broken | A feed that stopped updating, or returns zero or a negative answer, cannot value anything | [`FEED_STALE`](/docs/concepts/refusal-codes#feed_stale), [`BAD_PRICE`](/docs/concepts/refusal-codes#bad_price) |
+| The pool has drifted from the oracle | A thin concentrated-liquidity pool can trade far from the feed. The vault compares the pool's time-weighted average price ([TWAP](/docs/help/glossary#twap)) with the oracle. In session on <Fact name="forkDay" /> the gap measured <Fact name="premiumsBps.AAPLc" /> to <Fact name="premiumsBps.NVDAc" /> for the three basket stocks | [`PREMIUM_TOO_HIGH`](/docs/concepts/refusal-codes#premium_too_high) |
+| A corporate action is under way | A split or dividend changes the B20 [uiMultiplier](/docs/help/glossary#uimultiplier). Values computed across the change are wrong, so the vault waits out a cooldown after any change, and refuses while a change is scheduled | [`MULTIPLIER_COOLDOWN`](/docs/concepts/refusal-codes#multiplier_cooldown) |
+| The issuer paused the token, or its transfer policy blocks the path | B20 tokens can pause transfers and enforce sender, receiver and [executor](/docs/help/glossary#executor) policies. A swap that would fail midway should be refused up front | [`TOKEN_PAUSED`](/docs/concepts/refusal-codes#token_paused), [`POLICY_BLOCKED`](/docs/concepts/refusal-codes#policy_blocked) |
+| The agent is simply wrong | It proposes too much in one trade or in one UTC day, or too much of one stock | [`SIZE_LIMIT`](/docs/concepts/refusal-codes#size_limit), [`CONCENTRATION`](/docs/concepts/refusal-codes#concentration) |
+
+Spending caps on an agent wallet stop the last row. They do not know whether NYSE is open, whether the feed is alive or whether a split is pending. Maat's vault is built to check all of these, onchain, on every BUY and SELL (concentration on a BUY only).
+
+## The answer: the agent proposes, the mandate decides
+
+> The agent proposes. The mandate decides.
+
+In Maat's design, the [owner](/docs/help/glossary#owner) deploys a vault with a [mandate](/docs/help/glossary#mandate): which stocks it may trade, how much per trade and per day, the largest gap between the pool and the oracle, the trading session, and the [health factor](/docs/help/glossary#health-factor) for borrowing. Claude reads the vault's state and proposes trades. The agent can send them only through `execute`. For a BUY, `execute` runs <Fact name="checksPerTrade" /> market and mandate checks in a fixed order, after a pause switch and with a balance check between the market checks and the size limits. For a SELL it runs the same checks except concentration, and its first check asks less: a BUY needs a stock that is [allowed](/docs/concepts/mandate#allowed), while a SELL needs only one that still has its feed or pool set, so an [exit-only](/docs/help/glossary#exit-only) stock can still be sold. The other [actions](/docs/help/glossary#action) have their own checks.
+
+By design, a failed check does not [revert](/docs/help/glossary#revert) ([some failures escape](/docs/security/model#fail-closed)). The vault emits a [`Decision`](/docs/help/glossary#decision) event with `allowed=false` and the reason, and moves no money, so every refused `execute` call leaves a public, typed record. If the executor key leaks, the attacker faces exactly the same checks.
+
+[How a decision is made](/docs/get-started/how-a-decision-is-made) follows one trade through that path. [The nine checks](/docs/concepts/nine-checks) lists the checks in order.
+
+## What the agent does with its treasury
+
+The agent is built to run a loop on its own treasury. Its rule-based policy aims for an equal-weight basket of its stocks with <Fact name="cashReservePct" /> held in USDC, suggests supplying idle stock to [Aave V4](/docs/help/glossary#aave-v4) as collateral, and suggests borrowing USDC against that collateral when the vault's USDC falls below the agent's [runway](/docs/help/glossary#runway), <Fact name="runwayDays" /> of compute cost, plus any unpaid [compute bill](/docs/help/glossary#compute-bill). The suggestions are not orders: Claude decides what to propose. The vault allows a borrow only in session, and only when the projected health factor stays at or above the mandate's floor, <Fact name="mandate.minHealthFactor" /> by default (<Fact name="mandate.targetHealthFactor" /> in the [de-risk window](/docs/help/glossary#de-risk-window)). The agent's own code, not Claude, adds the `PAY_EXPENSE` that pays its Claude bill in USDC to an allowlisted [payee](/docs/help/glossary#payee), at any hour. The vault's `notifyRevenue` already records USDC that arrives as revenue, but the planned source of that revenue is not built. [The treasury loop](/docs/concepts/treasury-loop) explains each step.
+
+## What exists today
+
+Maat is an entry in Base's Stocks Maxxing Season Builder Quest (5 November to 5 December 2026), track Agentic Stock Finance. The design is one agent with one vault, "Agent #1", owned by the team. It is built to trade only its own treasury, which the design spec sizes at <Fact name="treasuryUsd" />.
+
+<Callout type="fork" title="Fork-tested, not live">
+
+The contracts and the agent's send path have run on a [fork](/docs/help/glossary#fork-test) of Base mainnet: a local copy of the chain at a pinned block, with the real stock tokens, price feeds, pools and Aave V4. Nothing was broadcast to Base mainnet. The real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) have not run in any Maat test: the fork run uses a scripted proposer and a local sender, the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. No Maat contract is deployed to Base mainnet, and the contracts are unaudited. The owner signs the deploy by hand.
+
+</Callout>
+
+| Stage | What it covers | More |
+| --- | --- | --- |
+| Exists today | The vault and its checks, the market calendar, the swap and credit adapters, the deploy script, the agent runtime and the website are built and tested. The contracts and the agent's send path have also run on a Base mainnet fork. | [Built and fork-tested](/docs/get-started/status#built-and-fork-tested) |
+| Next | The owner deploys the vault to Base mainnet, funds it and runs a smoke test, then hands the executor role to a Coinbase CDP Server Wallet, and the agent's first real `Decision` is recorded. | [Next: mainnet](/docs/get-started/status#next-mainnet) |
+| Planned | Revenue from other agents and more. None of it is built. | [Planned, not built](/docs/get-started/status#planned-not-built) |
+
+## Who it is for
+
+Each reader has a first page.
+
+- **New to Maat:** keep reading, then [How a decision is made](/docs/get-started/how-a-decision-is-made).
+- **Watching the agent:** [Read a decision](/docs/get-started/read-a-decision) explains each field of a `Decision` event, using the fork-run rows on the site.
+- **Developer or judge:** the [Quickstart](/docs/get-started/quickstart) runs the test suites on your machine in about five minutes, with no wallet, RPC or API key.
+- **Builder:** [Deploy your own vault](/docs/guides/deploy-your-own-vault) shows how to deploy the same contracts with your own mandate.
+- **Evaluator or partner:** the [Security model](/docs/security/model) says what the vault guarantees and what it does not.
+
+## What you can do today
+
+- **Watch the fork run.** The [decision engine](/) at the top of the site's home page replays a weekday BUY and a weekend BUY from the fork run, check by check, and the [fork ledger](/#ledger) lists the decisions of that run. A scripted proposer stood in for Claude in it.
+- **Read [Status and roadmap](/docs/get-started/status)** for what is built, what comes next and what is planned.
+- **Follow [@maatonbase](https://x.com/maatonbase)** on X, the project's account.
+- **With code:** start with the [Quickstart](/docs/get-started/quickstart), then [Deploy your own vault](/docs/guides/deploy-your-own-vault).
+
+## What it is not
+
+- **Not investment advice.** Maat gives no investment advice.
+- **No shareholder rights.** Maat confers none.
+- **Not offered to US persons.**
+- **Its own money only.** Maat is built to hold only its own treasury.
+- **No API or SDK to integrate today.** What exists is the code in the repository, which you can read, run and deploy yourself.

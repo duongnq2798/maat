@@ -1,0 +1,141 @@
+---
+title: What Maat does not claim
+description: "No audit, no mainnet deployment yet, and the known limitations: what can still go wrong and what is out of scope."
+type: concept
+audience: [evaluator, newcomer]
+status: fork-tested
+lastReviewed: 2026-11-18
+sources:
+  - README.md
+  - contracts/src/MandateVault.sol
+  - contracts/src/lib/TokenTransfer.sol
+  - contracts/src/GuardLib.sol
+  - agent/README.md
+next: [security/testing, security/report-a-vulnerability]
+---
+
+<Callout type="warning" title="Unaudited and not on mainnet">
+
+No third party has reviewed the contracts. No Maat contract is deployed to [Base](/docs/help/glossary#base) mainnet, so there is no [vault](/docs/help/glossary#vault) address and no mainnet transaction. All execution evidence is from a local fork of Base mainnet, and the fork run used a scripted proposer and a local sender: the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run.
+
+</Callout>
+
+This page lists what Maat does not claim, so that you can weigh the rest of these docs against it. Each section below is a known limitation from the README, in the README's order, with what it means for you and what would fix it. The last section is one more limitation that was found while writing these docs. For what is built, see [Status and roadmap](/docs/get-started/status).
+
+## Unaudited
+
+**What it means for you.** Nobody independent has read the contracts or the agent. The tests were written by the same team that wrote the code, with Claude Code, and a test only shows what its author thought to check. Treat the contracts as unaudited. If you deploy your own vault, fund it only with what you can afford to lose. Maat takes no deposits: only the [owner](/docs/help/glossary#owner) can call `fund` or `withdraw`. A token that anyone else sends to the vault becomes part of its treasury: only the owner can withdraw it, and the sender cannot take it back. USDC sent that way is counted as revenue the next time `notifyRevenue` runs. The design spec sizes the treasury at <Fact name="treasuryUsd" />.
+
+**What would fix it.** A review by an independent security reviewer, and fixes for what it finds. None has been done.
+
+## Not on mainnet yet
+
+**What it means for you.** No Maat vault is deployed, and there is no mainnet [`Decision`](/docs/help/glossary#decision). The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The [Builder Code](/docs/help/glossary#builder-code-erc-8021) is not registered, and no output from the real Claude API is committed. The mainnet ledger and dashboard, the Base App mini-app and [x402](/docs/help/glossary#x402) revenue do not exist yet.
+
+**What would fix it.** The owner deploys by hand and runs the first real [rounds](/docs/help/glossary#round). The checklist is in [Next: mainnet](/docs/get-started/status#next-mainnet), and the commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault). A deployment would not make the contracts audited.
+
+## The calendar must be maintained
+
+**What it means for you.** The [market calendar](/docs/concepts/market-hours#holidays-and-early-closes) ships with <Fact name="calendarPreload.holidays" /> holidays (Thanksgiving 2026, Christmas 2026 and New Year 2027) and <Fact name="calendarPreload.earlyCloses" /> early closes (2026-11-27 and 2026-12-24), and nothing after 2027-01-01. Later holidays need `addHoliday` from the calendar owner, and [Keep the calendar current](/docs/guides/change-a-rule#keep-the-calendar-current) has the commands. If one is missed, the session check treats that day as a normal session, so check 4 passes, and only the price checks are left to stop a trade: the feed-[staleness](/docs/help/glossary#staleness) check once the last answer is older than `maxStaleness` (<Fact name="mandate.maxStalenessSec" /> by default), and the [premium](/docs/help/glossary#premium) check if the pool drifts from that answer. `FEED_24_5` mode ignores early closes. [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing) covers the detail.
+
+**What would fix it.** The calendar's owner adds each holiday before the day, because nothing in the contracts adds one by itself. Preloading more years would reduce that work, and it has not been done.
+
+## The feed is assumed to include the multiplier
+
+**What it means for you.** The vault treats each answer from a [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed) as the price of one whole token (`10 ** decimals()` units of its `balanceOf`) with the [B20](/docs/help/glossary#b20) [uiMultiplier](/docs/help/glossary#uimultiplier) already applied. That matched Coinbase's NAV price when it was checked during development, with the multiplier close to 1 (<Fact name="nvdaUiMultiplier" /> on NVDAc at the fork block), and it has not been observed across a real split. If the feed did not include the multiplier after a split, every price-based value the vault computes for that stock would be off by the same factor: a `SELL`'s value against the caps, the stock's value in the concentration weight and the [slippage floor](/docs/help/glossary#slippage-floor). A `BUY`'s size is counted in USDC, so its cap would not change. Check 7 compares the oracle with the pool's [TWAP](/docs/help/glossary#twap) on every `BUY` and `SELL`, and refuses a gap above the premium limit with `PREMIUM_TOO_HIGH`. No test covers a feed that leaves the multiplier out. Check 6 blocks a stock when its multiplier changes and for a cooldown after (<Fact name="mandate.multiplierCooldownSec" /> by default), which covers the time right after a split. It does not settle what the price means once the cooldown ends. [Prices and premium](/docs/concepts/prices-and-premium#assumptions) lists this with the other assumptions.
+
+**What would fix it.** Watching a real corporate action on the stock's Chainlink feed on Base mainnet and comparing the price with the new multiplier. Until then it is an assumption.
+
+## tx.origin in the policy check
+
+**What it means for you.** The B20 [executor](/docs/help/glossary#executor) policy is checked against `tx.origin`, as a read-only policy lookup and never for authentication. `tx.origin` is the account that signed the outer transaction, not the executor address that `execute` checks. For an executor that is a plain account with no code, such as the agent's CDP account, the two are the same: the executor must be an account that each stock's policy allows, and `previewIntent` must be called with `from` set to it, because a [preview](/docs/help/glossary#preview) from another address can give another answer. If the executor has code, for example a multisig owner made executor for an unwind, the address checked is the EOA that submits the transaction. That EOA must pass each stock's executor policy, and you preview with `from` set to it. Behind a bundler it is the bundler's address, which you do not choose. The same check applies to the collateral actions when the owner makes itself the executor in an emergency unwind: `SUPPLY` and `WITHDRAW_COLLATERAL` sent by the owner return `POLICY_BLOCKED` unless the stock's policy lets the sending address through. At the fork blocks the real policies let a fresh test address through, because the [fork tests](/docs/help/glossary#fork-test) rely on it. That says nothing about the policy later.
+
+**What would fix it.** Not a change in Maat: the lookup is how the B20 executor policy is defined. The remedy is operational. Send from an account that each stock's policy allows (the executor itself when it is a plain account with no code), and preview from that account.
+
+## Preview cannot see everything
+
+**What it means for you.** `previewIntent` returns the verdict of the checks, not the result of the action. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, or a credit call that fails after the checks pass, and it cannot see the credit adapter's own [health factor](/docs/help/glossary#health-factor) check after a collateral withdrawal against debt, or [Aave](/docs/help/glossary#aave-v4)'s own rules for that withdrawal. `CREDIT_FAILED` is also what the vault returns when a credit view cannot be read, and the preview does see that case. So a preview of `OK` means the checks pass, not that the action will succeed.
+
+A verdict also holds only for the block the preview read. Before the transaction lands, the market can close, a feed can go stale or the day's cap can fill, and then `execute` reaches another [reason](/docs/help/glossary#reason). The preview also does not look at `usedIntent`, so a reused [intent](/docs/help/glossary#intent) id previews normally and `execute` then [reverts](/docs/help/glossary#revert) with `IntentAlreadyUsed` ([previewIntent](/docs/reference/mandate-vault#previewintent)).
+
+When the preview said `OK` and the vault refused, the agent stops the round and records a mismatch, and the failed call still costs gas and spends its intent id.
+
+**What would fix it.** Nothing in the preview, because it is a view over the checks. A fix would be a simulation of the whole call, swap and Aave calls included, and this repository has none.
+
+## Caps are simple
+
+**What it means for you.** The daily cap is a counter per UTC day, not a rolling window, so spending just before and just after midnight UTC draws on two days' caps within a short time. Credit actions (`SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY`) are not limited by the trade caps. A `BORROW`, and a `WITHDRAW_COLLATERAL` made while debt is open, must clear the health factor floor. `SUPPLY` and `REPAY` have no size limit other than what the vault holds. Bill payments share the daily cap with trades, so a bill can use room that trades would have used, and a day of trading can leave no room for the bill.
+
+**What would fix it.** A rolling window, and separate caps for credit actions and for bills. None is built.
+
+## Gas estimation
+
+**What it means for you.** The vault catches inner failures instead of reverting, so `eth_estimateGas` can return a limit too low for the swap. A transaction sent with such a limit can record `SWAP_FAILED` where a higher limit would have succeeded, so a `SWAP_FAILED` is not always a market failure. The agent therefore never sends a plain estimate. It uses fixed floors (<Fact name="executeGasFloor" /> for `execute`) and a cap of <Fact name="maxGas" />. In the fork run the buy used <Fact name="gas.buy" /> gas and the [refusal](/docs/help/glossary#refusal) log <Fact name="gas.refusalLog" />, both far under the floor.
+
+**What would fix it.** A guard in the vault that refuses to start an inner call without enough gas left, so that a low limit reverts and does not record a false failure. It is not built.
+
+## Operational costs
+
+**What it means for you.** The executor needs a little ETH on Base for gas (<Fact name="executorGasEth" /> by the agent README's estimate). The CDP paymaster serves smart accounts only, and the executor is not one. With no gas, the send fails and the round halts. [Dry-run mode](/docs/help/glossary#dry-run) still calls Claude, at roughly one cent per round by the README's estimate. No output from the real Claude API is committed, so that figure is an estimate.
+
+**What would fix it.** Topping up the executor's gas, which is manual. A smart-account executor whose gas a paymaster could pay is not built.
+
+## The owner is a single key
+
+**What it means for you.** The owner address is immutable and has no transfer function. A leaked owner key loses what the vault holds, and a lost owner key leaves a vault that nobody can pause, withdraw from or change, while the executor keeps working inside the [mandate](/docs/help/glossary#mandate). A multisig owner is compatible with the contract and is not set up. [The threat model](/docs/security/threat-model#the-owner-key) goes through the leaked-key case.
+
+**What would fix it.** Deploying with a multisig address as the owner. The owner is fixed at deployment, so for a vault that already exists this means a new vault.
+
+## Dependency advisories
+
+**What it means for you.** `npm audit` reports high-severity advisories in the agent, in zod 3 and abitype nested inside `@coinbase/cdp-sdk`. There is no safe override yet. The agent's README describes them as denial-of-service issues that touch only internal data. In the website, `npm audit` reports moderate and high advisories in its dev-only tools: `fflate` under `satori`, which renders the brand images and each docs page's link preview at build time, and `compression` under `serve`, which the end-to-end tests use. None of the website's flagged packages ships in the static site. The counts change, so none is given here: run `npm audit` in `agent/` and in `web/` for today's list.
+
+**What would fix it.** For the agent, a release of `@coinbase/cdp-sdk` that uses zod 4. The agent's README warns that `npm audit fix --force` would downgrade the SDK to an old version, which is not a fix. For the website, updating or replacing the two dev tools.
+
+## Found while writing these docs: withdrawing a token that has no code
+
+This one is not in the README's list. It was found while writing these docs, by reading `withdraw` and the library it calls. The behavior follows from the code as cited below.
+
+`MandateVault.withdraw(token, amount)` sends tokens to the owner with `TokenTransfer.safeTransfer`:
+
+```solidity title="contracts/src/MandateVault.sol#L150-L155"
+    function withdraw(address token, uint256 amount) external onlyOwner {
+        if (token == usdc) notifyRevenue();
+        token.safeTransfer(owner, amount);
+        if (token == usdc) recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this));
+        emit Withdrawn(token, amount);
+    }
+```
+
+`safeTransfer` goes through the private `_call`, which makes a low-level call and checks the return data only when there is some. A call to an address with no code succeeds and returns no data, so `_call` returns without reverting. `_tryCall`, the variant that `execute` uses, handles this case and `_call` does not:
+
+```solidity title="contracts/src/lib/TokenTransfer.sol#L34-L49"
+    function _tryCall(address token, bytes memory data) private returns (bool) {
+        (bool ok, bytes memory ret) = token.call(data);
+        if (!ok) return false;
+        if (ret.length == 0) return token.code.length != 0;
+        return ret.length >= 32 && abi.decode(ret, (uint256)) == 1;
+    }
+
+    function _call(address token, bytes memory data) private {
+        (bool ok, bytes memory ret) = token.call(data);
+        if (!ok) {
+            assembly ("memory-safe") {
+                revert(add(ret, 0x20), mload(ret))
+            }
+        }
+        if (ret.length != 0 && !abi.decode(ret, (bool))) revert TransferFailed(token);
+    }
+```
+
+**What it means for you.** A `withdraw` of a token address that has no code emits `Withdrawn(token, amount)` while nothing moves. Only the owner can call `withdraw`, and nothing leaves the vault, so no funds are lost. The risk is a log line that looks like a success: an owner who mistypes the token address in a hurry could believe the funds are out. In `MandateVault`, `withdraw` is the only call to `safeTransfer` whose token address the caller picks. Elsewhere the vault passes USDC or a configured token, and both have code. No test covers this case: the tests that call `withdraw` use USDC.
+
+<Callout type="warning" title="Owner only">
+
+Before an owner calls `withdraw`, check that the token address has code. Afterwards, read the owner's balance of the real token, because the `Withdrawn` event alone does not prove that anything moved. [Pause, withdraw, recover](/docs/guides/pause-withdraw-recover#common-mistakes) says the same.
+
+</Callout>
+
+**What would fix it.** A code-length check in `_call`, like the one `_tryCall` already has, so that a call to an address with no code reverts. It has not been made. The [MandateVault reference](/docs/reference/mandate-vault#withdraw) notes the behavior.
+
+If you find another limitation, or a way to get past the vault's checks, [Report a vulnerability](/docs/security/report-a-vulnerability) says how to tell the team privately.

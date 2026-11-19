@@ -1,0 +1,150 @@
+---
+title: Prices and premium
+description: How the vault reads Chainlink equity feeds and the Aerodrome pool TWAP, measures the premium between them and rejects stale prices.
+type: concept
+audience: [developer, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-18
+sources:
+  - contracts/src/lib/PriceLib.sol
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - contracts/script/MaatConfig.sol
+  - contracts/script/BaseAddresses.sol
+  - contracts/test/PriceLib.t.sol
+  - contracts/test/GuardLib.t.sol
+  - contracts/test/fork/PriceLibFork.t.sol
+next: [concepts/splits-and-multiplier, reference/base-addresses]
+---
+
+The [vault](/docs/help/glossary#vault) looks at two prices before it trades a stock: the oracle's and the pool's. This page shows how each one is read, how a stale or broken answer is caught, how the gap between the two prices is measured, what that gap measured on the fork, and how the vault sets a [slippage floor](/docs/help/glossary#slippage-floor) on what a swap must return. It ends with the assumptions all of this rests on.
+
+## Two prices
+
+| Price | Where it comes from | What the vault uses it for |
+| --- | --- | --- |
+| Oracle price | The stock's [Chainlink equity feed](/docs/help/glossary#chainlink-equity-feed), read with `latestRoundData` | The reference. It values holdings and sales for the caps and the weight limit, sets the slippage floor, and is the price the pool is compared with |
+| Pool price | The [TWAP](/docs/help/glossary#twap) of the stock's [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool against USDC | The check that the pool is close to the oracle (check 7). It is not used to value anything |
+
+Both prices are in USD per whole token with <Fact name="priceDecimals" />. The vault requires a feed with that many decimals when a token is configured.
+
+## Staleness
+
+An oracle answer is only as good as its age, and an answer that is too old is [stale](/docs/help/glossary#staleness). `PriceLib.readFeed` returns whether the answer is usable, the price, and its age in seconds.
+
+```solidity title="contracts/src/lib/PriceLib.sol#L13-L20"
+    function readFeed(address feed) internal view returns (bool ok, uint256 price, uint256 age) {
+        try IAggregatorV3(feed).latestRoundData() returns (uint80, int256 answer, uint256, uint256 updatedAt, uint80) {
+            if (answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp) return (false, 0, 0);
+            return (true, uint256(answer), block.timestamp - updatedAt);
+        } catch {
+            return (false, 0, 0);
+        }
+    }
+```
+
+- An answer that is zero or negative, has no timestamp, is dated after the current block, or whose call [reverts](/docs/help/glossary#revert) is not usable. The vault returns `BAD_PRICE`.
+- A usable answer is stale when its age is greater than `maxStaleness`, which is <Fact name="mandate.maxStalenessSec" /> by default. The vault returns `FEED_STALE`. `GuardLib.checkMarket` compares the age with a strict `>`, so an answer exactly at the limit is still accepted.
+
+At the fork block, the NVDAc answer was <Fact name="feedAgeSec" /> old, far inside the limit. `test_readFeed` and `test_readFeedRejectsBadAnswers` in [PriceLib.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/PriceLib.t.sol) cover an answer that is zero, negative, undated or dated after the current block, and the age that `readFeed` reports. No contract test makes `latestRoundData` revert inside `readFeed`, so its `catch` is not exercised. `readFeed` does not compare the age with the limit. `test_feedStaleAndBad` in [GuardLib.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) does, with an answer one second older than the limit, and gets `FEED_STALE`.
+
+The same read guards the collateral checks of `BORROW` and of `WITHDRAW_COLLATERAL` against debt. When the vault measures concentration, it values the other holdings with their own feeds. A stale or unreadable feed there counts that holding as worth zero, which can only make the bought stock's weight look larger.
+
+## The TWAP
+
+A spot price can be pushed for a moment. A [time-weighted average price](/docs/help/glossary#twap) is averaged over a window, so a single trade moves it only by its share of that window. The window is `twapWindow`, which is <Fact name="mandate.twapWindowSec" /> by default.
+
+```solidity title="contracts/src/lib/PriceLib.sol#L22-L40"
+    /// @notice Time-weighted price of `stock` from a stock/USDC concentrated-liquidity pool.
+    function twapPrice(address pool, address stock, uint32 window) internal view returns (bool ok, uint256 price) {
+        if (window == 0) return (false, 0);
+        uint32[] memory ago = new uint32[](2);
+        ago[0] = window;
+        try ICLPool(pool).observe(ago) returns (int56[] memory cum, uint160[] memory) {
+            int56 delta = cum[1] - cum[0];
+            int56 w = int56(uint56(window));
+            int24 tick = int24(delta / w);
+            if (delta < 0 && delta % w != 0) tick--;
+            bool stockIsToken0 = ICLPool(pool).token0() == stock;
+            price = priceFromSqrt(
+                TickMath.getSqrtPriceAtTick(tick), stockIsToken0, IERC20Minimal(stock).decimals(), USDC_DECIMALS
+            );
+            return (price != 0, price);
+        } catch {
+            return (false, 0);
+        }
+    }
+```
+
+In plain steps:
+
+1. A window of zero is not readable. The vault returns `BAD_PRICE`.
+2. The vault asks the pool for its tick accumulators from `window` seconds ago and from now. The pool is a concentrated-liquidity pool whose interface follows Uniswap v3.
+3. The difference divided by the window is the average tick. When it is not exact, it is rounded toward the lower tick. Solidity's division truncates toward zero, which is the lower tick for a positive value; for a negative one the code then subtracts one (`test_twapRoundsNegativeTicksDown`). In all three basket pools USDC is token0 and the stock is token1 (a comment in `BaseAddresses.sol` records it), so the lower tick is a slightly higher stock price. With the stock as token0 it would be a slightly lower one. The rounding moves the tick by less than one, and one tick is about one [basis point](/docs/help/glossary#basis-point-bps) (1 bp) of price.
+4. `priceFromSqrt` turns that tick into the price of the stock in USDC, scaled to <Fact name="priceDecimals" />. It handles a pool where the stock is the first token and one where it is the second.
+5. If the pool call reverts, or the price comes out as zero, the answer is not usable and the vault returns `BAD_PRICE`.
+
+`test_twapPrice`, `test_twapRoundsNegativeTicksDown` and the two `test_priceFromSqrt` tests cover the pieces.
+
+## Premium in basis points
+
+The [premium](/docs/help/glossary#premium) is the gap between the pool's TWAP and the oracle price, as a share of the oracle price, in [basis points](/docs/help/glossary#basis-point-bps). `PriceLib.premiumBps` computes it.
+
+```solidity title="contracts/src/lib/PriceLib.sol#L59-L62"
+    function premiumBps(uint256 dexPrice, uint256 oraclePrice) internal pure returns (uint256) {
+        uint256 diff = dexPrice > oraclePrice ? dexPrice - oraclePrice : oraclePrice - dexPrice;
+        return diff * 10_000 / oraclePrice;
+    }
+```
+
+- **Absolute.** The difference is taken without a sign, so a pool below the oracle is a premium of the same size as one above it. `test_premiumBps` checks a price above and a price below the oracle by the same margin, and equal prices.
+- **Rounded down.** The division is an integer division.
+- **Scaled to basis points.** The gap divided by the oracle price is multiplied by the constant in the excerpt, so one unit of the result is one hundredth of a percent.
+- **The limit itself passes.** The vault refuses with `PREMIUM_TOO_HIGH` only when the premium is greater than `maxPremiumBps`, a strict `>` in `GuardLib.checkMarket`. The default is <Fact name="mandate.maxPremiumBps" />.
+
+The check does not say which price is right. A premium over the limit refuses the trade whether the pool or the oracle moved.
+
+## Measured premiums
+
+The default limit comes from measurement. On the fork, in session, at block <Fact name="forkBlock" /> (Thursday <Fact name="forkDay" />, <Fact name="forkTimeEt" />), the premium of the pool's TWAP over <Fact name="mandate.twapWindowSec" /> against the Chainlink answer was:
+
+| Stock | Premium at the fork block |
+| --- | --- |
+| NVDAc | <Fact name="premiumsBps.NVDAc" /> |
+| GOOGLc | <Fact name="premiumsBps.GOOGLc" /> |
+| AAPLc | <Fact name="premiumsBps.AAPLc" /> |
+
+A comment in `MaatConfig.sol` records these readings. The design spec started with a limit half the size of the default, and at the fork block that first limit would have refused NVDAc. That is why `maxPremiumBps` is <Fact name="mandate.maxPremiumBps" />. The [fork test](/docs/help/glossary#fork-test) `test_liveBasketTradesNearNav` in [PriceLibFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) reads all three pools and feeds at that block and asserts that each premium is below the default limit.
+
+<Callout type="fork" title="Fork only">
+
+These are one reading per stock, taken in session at one block of a fork. They are not an average over time, and they do not say what the premium is at another hour.
+
+</Callout>
+
+## Slippage floor
+
+The premium check looks at the pool's average. The slippage floor looks at what the swap actually returns. After the checks pass, the vault works out the output it expects from the oracle price, takes the share of it that `maxSlippageBps` allows to be lost, and passes the rest to the swap adapter as the minimum output.
+
+```solidity title="contracts/src/MandateVault.sol#L567-L572"
+            uint256 expectedOut = isBuy
+                ? intent.amount * 10 ** (uint256(IB20Asset(intent.token).decimals()) + 2) / price
+                : _valueUsd(intent.token, intent.amount, price);
+            if (!isBuy) notional = expectedOut;
+            uint256 floorOut = expectedOut * (BPS - _mandate.maxSlippageBps) / BPS;
+            uint256 minOut = intent.minOut > floorOut ? intent.minOut : floorOut;
+```
+
+`price` here is the oracle price that `checkMarket` returned. For a `BUY` the expected output is an amount of the stock, and for a `SELL` it is an amount of USDC. The default `maxSlippageBps` is <Fact name="mandate.maxSlippageBps" />. The last line takes the larger of the floor and the `minOut` the agent sent, so the agent can ask for more protection and never for less.
+
+If the pool returns less than the floor, the swap fails, the vault records `SWAP_FAILED`, the allowance is reset and the funds stay. `test_slippageFloorIsEnforcedEvenIfAgentSendsZero` in [MandateVault.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) sends a `minOut` of zero to a mock adapter that returns slightly less than the floor, and the swap is refused. The floor is set from the oracle, so a pool that sits inside the premium limit still has to deliver the oracle price less the allowed slippage.
+
+## Assumptions
+
+- **The feed already includes the multiplier.** The vault treats each Chainlink equity answer as the price of one whole token, `10 ** decimals()` [raw units](/docs/help/glossary#raw-amount) of `balanceOf`, with the B20 [uiMultiplier](/docs/help/glossary#uimultiplier) already applied, and values a holding as its raw balance, counted in whole tokens, times that price. That matched Coinbase's NAV price when it was checked during development, with the multiplier close to 1 (it reads <Fact name="nvdaUiMultiplier" /> on NVDAc at the fork block). It has not been observed across a real split. Check 6 pauses trading in a stock when its multiplier changes. [Splits and the multiplier](/docs/concepts/splits-and-multiplier) covers that check.
+- **The feed has <Fact name="priceDecimals" />.** A feed with another number of decimals is rejected when the token is configured (`test_rejectsFeedWithNon8Decimals`).
+- **The pool holds the stock and USDC.** A pool whose two tokens are anything else is rejected when the token is configured (`test_constructorRejectsPoolWithMismatchedTokens`).
+- **The pool keeps enough history for the window.** If the pool cannot answer for the window, the vault returns `BAD_PRICE` and does not trade. At the fork block all three pools could be read.
+- **The chain's clock is the reference.** Age is measured against `block.timestamp`.
+
+The README lists the multiplier assumption under its known limitations. [Base addresses](/docs/reference/base-addresses) lists the feeds and pools.

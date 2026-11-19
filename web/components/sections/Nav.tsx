@@ -22,6 +22,9 @@ export function Nav() {
             {l.label}
           </a>
         ))}
+        <a href={SITE.docsUrl} className="navlink">
+          Docs
+        </a>
         <a href={SITE.repoUrl} className="pill-dark ml-2 px-[18px] py-[11px]">
           View on GitHub
           <span aria-hidden="true"> ↗</span>

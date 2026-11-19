@@ -1,0 +1,30 @@
+[
+  {
+    "network": "Base mainnet",
+    "contract": "MarketCalendar",
+    "address": "",
+    "tx": "",
+    "date": ""
+  },
+  {
+    "network": "Base mainnet",
+    "contract": "AerodromeSwapAdapter",
+    "address": "",
+    "tx": "",
+    "date": ""
+  },
+  {
+    "network": "Base mainnet",
+    "contract": "AaveV4CreditAdapter",
+    "address": "",
+    "tx": "",
+    "date": ""
+  },
+  {
+    "network": "Base mainnet",
+    "contract": "MandateVault",
+    "address": "",
+    "tx": "",
+    "date": ""
+  }
+]

@@ -1,0 +1,296 @@
+---
+title: Adapters
+description: The swap and credit adapter interfaces, and the Aerodrome Slipstream and Aave V4 adapters that implement them for Base.
+type: reference
+audience: [developer, builder]
+status: fork-tested
+lastReviewed: 2026-11-18
+sources:
+  - contracts/src/adapters/ISwapAdapter.sol
+  - contracts/src/adapters/AerodromeSwapAdapter.sol
+  - contracts/src/adapters/ICreditAdapter.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - contracts/src/lib/PriceLib.sol
+next: [reference/base-addresses, reference/agent-configuration]
+---
+
+The [vault](/docs/help/glossary#vault) never talks to Aerodrome or Aave directly. It calls two adapters through small interfaces, and the [mandate](/docs/help/glossary#mandate) holds their addresses. This page documents each interface and the [Base](/docs/help/glossary#base) implementation of it, and ends with [what the vault expects from an adapter](#what-the-vault-expects-from-an-adapter). Each function entry also gives its selector, the first four bytes of the keccak-256 hash of its canonical ABI signature (the name and the parameter types): the calldata of a call to the function starts with it. The adapters are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+
+| Interface | Implementation for Base | The vault uses it for |
+| --- | --- | --- |
+| `ISwapAdapter` | `AerodromeSwapAdapter`, which swaps against an [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pool | `BUY` and `SELL` |
+| `ICreditAdapter` | `AaveV4CreditAdapter`, which holds one [Aave V4](/docs/help/glossary#aave-v4) position | `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` |
+
+On this page most function names appear twice, once on an interface and once on its implementation, so every heading names its contract: `swapExactIn (ISwapAdapter)` and `swapExactIn (AerodromeSwapAdapter)`. Where an implementation function is the interface function, the interface entry carries the description and the implementation entry says only what it adds.
+
+## ISwapAdapter
+
+The interface that the mandate's `swapAdapter` must implement.
+
+<FunctionIndex contract="ISwapAdapter" qualify />
+
+### swapExactIn (ISwapAdapter)
+
+<Fn contract="ISwapAdapter" name="swapExactIn" />
+
+The one function a swap adapter needs. The vault calls it for a `BUY` or a `SELL` after the checks pass, having approved the adapter for exactly `amountIn` of `tokenIn`. It passes the stock's pool from the token config, its own address as `recipient`, and a `minOut` that is the larger of the agent's `minOut` and the vault's own [slippage floor](/docs/help/glossary#slippage-floor). A [revert](/docs/help/glossary#revert), including one for an output below `minOut`, is caught by the vault and recorded as `SWAP_FAILED`. The vault does not check the output itself: it ignores the returned amount and does not compare balances after the swap. So the revert below `minOut` is what enforces the slippage floor, and any swap adapter that a mandate change installs must keep it. The returned amount is ignored but still decoded, because the call is typed: return data that does not decode as one `uint256` reverts `execute` instead of recording `SWAP_FAILED` ([Refuse, do not revert](/docs/security/model#refuse-do-not-revert)). The interface does not restrict the caller.
+
+## AerodromeSwapAdapter
+
+Exact-input swaps directly against an Aerodrome Slipstream pool, with no router. It implements `ISwapAdapter` and the pool's swap callback. It has no owner and keeps no state between calls: the pool it is swapping in lives in transient storage for the length of one swap.
+
+<FunctionIndex contract="AerodromeSwapAdapter" qualify />
+
+### swapExactIn (AerodromeSwapAdapter)
+
+<Fn contract="AerodromeSwapAdapter" name="swapExactIn" />
+
+Anyone may call it, because it pulls the input from `msg.sender`: a caller can only swap tokens it has approved the adapter to take. It reverts with `TokenNotInPool` when `tokenIn` is neither of the pool's two tokens, before any token moves, and otherwise swaps exact-input with the widest price limit the pool allows, so the swap is bounded by the pool's liquidity and by `minOut`. It reverts with `InsufficientOutput(amountOut, minOut)` when the output is too small, and any input the pool did not use is sent to `recipient`. A token that returns false makes it revert with `TransferFailed`, and a token that reverts passes its own revert up. The pool is whatever the caller passes; the vault passes the one in the stock's validated token config.
+
+### uniswapV3SwapCallback (AerodromeSwapAdapter)
+
+<Fn contract="AerodromeSwapAdapter" name="uniswapV3SwapCallback" />
+
+The pool calls this function during a swap to collect the input, and nobody else can use it. It reverts with `BadCallback` unless the caller is the pool that the current `swapExactIn` is swapping in, which the adapter holds in transient storage until the swap ends, and the zero address is refused as well. Outside a swap every caller is refused. Otherwise it sends the pool the amount owed, which is the positive one of the two deltas, in the token that `swapExactIn` encoded into `data`. The function has the name Uniswap V3 gave it, and Slipstream pools call it by that name.
+
+## ICreditAdapter
+
+One lending position owned by one vault. Stock amounts are raw units, USDC amounts have <Fact name="usdcDecimals" />, and [health factors](/docs/help/glossary#health-factor) are [WAD](/docs/help/glossary#wad), with the largest `uint256` meaning no debt. The vault accepts a credit adapter only if it reports this vault from `vault()` and this vault's USDC from `usdc()`, and rejects the mandate with `InvalidConfig` otherwise. It trusts the return data of the view functions. The four functions that change the position are low-level calls whose return data it ignores, so neither a revert nor malformed return data can revert `execute`.
+
+To call a credit adapter from code without building the repo, use the interface's <a href="/data/abi/ICreditAdapter.json">ABI (JSON)</a>: `creditAdapterAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts. That file holds no ABI for `ISwapAdapter`, `AerodromeSwapAdapter` or `AaveV4CreditAdapter`, so the JSON has only the interface: it lacks the Aave adapter's `collaterals`, `spoke`, `hub` and `usdcReserveId`, and the errors its constructor raises.
+
+<FunctionIndex contract="ICreditAdapter" qualify />
+
+### vault (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="vault" />
+
+The one `MandateVault` that owns the position. An adapter is bound to it when it is created, and the vault refuses a mandate whose credit adapter reports any other address here.
+
+### usdc (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="usdc" />
+
+The USDC token the adapter borrows and repays. The vault requires it to equal its own `usdc`, or it rejects the mandate with `InvalidConfig`.
+
+### supply (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="supply" />
+
+The vault calls it for a `SUPPLY` after its checks pass. It approves the adapter for exactly `amount` first and sets the approval back to zero afterwards. The interface does not restrict the caller, but an implementation has to: `AaveV4CreditAdapter` accepts only the vault. A revert is recorded as `CREDIT_FAILED`.
+
+### withdraw (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="withdraw" />
+
+The vault calls it for a `WITHDRAW_COLLATERAL` and passes the minimum it requires: the mandate's health factor floor, or the target inside the [de-risk window](/docs/help/glossary#de-risk-window). It returns the amount withdrawn. The vault turns a well-formed `HealthFactorTooLow` revert into `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`, and any other revert into `CREDIT_FAILED`.
+
+### borrow (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="borrow" />
+
+The vault calls it for a `BORROW`, after its own checks have projected the health factor with `projectedHealthFactorAfterBorrow`. The `minHealthFactor` it passes is the vault's floor, or its target inside the de-risk window. The revert is a second line of defence behind the projection, and the vault records it as `HEALTH_FACTOR_LOW`, `DERISK_WINDOW` or `CREDIT_FAILED`.
+
+### repay (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="repay" />
+
+The vault calls it for a `REPAY`, having approved the adapter for `amount` USDC. The amount repaid it returns can be less than `amount`. A revert is recorded as `CREDIT_FAILED`. A `REPAY` still works while the vault is paused or the market is closed, because it only lowers risk.
+
+### supportsToken (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="supportsToken" />
+
+True when the adapter can hold `token` as collateral. The vault asks it before a `SUPPLY` or a `WITHDRAW_COLLATERAL`, and refuses with `TOKEN_NOT_ALLOWED` when it returns false, or with `CREDIT_FAILED` when the call reverts.
+
+### suppliedOf (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="suppliedOf" />
+
+Returns how much of `token` the adapter has supplied, in raw token units. The vault reads it for every listed token, when it measures a stock's weight and when it checks collateral, which is why it must not revert for a token the adapter does not support. A value the vault cannot read [fails closed](/docs/help/glossary#fail-closed): the weight counts as above any cap, and a `BORROW` or a `WITHDRAW_COLLATERAL` returns `CREDIT_FAILED`.
+
+### debt (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="debt" />
+
+Returns the USDC the position owes, in USDC units. The vault subtracts it from its assets when it measures a stock's weight, and it uses it to tell whether a collateral withdrawal is against debt. A call that reverts counts as the unsafe answer.
+
+### healthFactor (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="healthFactor" />
+
+Returns the position's current health factor as a [WAD](/docs/help/glossary#wad). The vault's own checks do not call it: they use `projectedHealthFactorAfterBorrow` before a borrow, and the adapter reads the health factor again itself after a `borrow` or a `withdraw`. [Credit and the health factor](/docs/concepts/credit-and-health-factor#health-factor) explains the number.
+
+### projectedHealthFactorAfterBorrow (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="projectedHealthFactorAfterBorrow" />
+
+Returns the health factor the position would have after borrowing `amount` more. The vault calls it in the checks for a `BORROW` and compares the result with its floor, or with its target inside the de-risk window. A result below the floor is `HEALTH_FACTOR_LOW`, a result below the target inside the window is `DERISK_WINDOW`, and a call that reverts is `CREDIT_FAILED`.
+
+### hasPosition (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="hasPosition" />
+
+`applyMandate` reads it on the adapter the mandate has now. While it returns true, a new mandate that switches to another adapter or turns credit off reverts with `CreditPositionOpen`, because only the vault can move the position. A call that reverts counts as an open position.
+
+### collateralCustodian (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="collateralCustodian" />
+
+Returns the address that holds supplied `token` and sends it out on a withdrawal. The vault includes it when it asks the [B20](/docs/help/glossary#b20) policy registry whether a collateral move is allowed: for a `SUPPLY` it is checked as a receiver, and for a `WITHDRAW_COLLATERAL` as a sender and an executor. A path that is not authorised is refused with `POLICY_BLOCKED`, and a call that reverts is `CREDIT_FAILED`.
+
+### collateralOperator (ICreditAdapter)
+
+<Fn contract="ICreditAdapter" name="collateralOperator" />
+
+Returns the address that pulls supplied tokens out of the adapter. For a `SUPPLY` the vault checks it as an executor leg, next to the adapter. A `WITHDRAW_COLLATERAL` does not check it as a leg, but the vault still reads it, so a call that reverts refuses either action with `CREDIT_FAILED`.
+
+## AaveV4CreditAdapter
+
+One Aave V4 spoke position owned by one `MandateVault`. The adapter is the Aave user: it holds the collateral and the debt, and only its vault can move them. Everything it withdraws or borrows goes straight to the vault. The constructor takes the vault, USDC, the spoke, the USDC reserve id, and the collateral tokens with their reserve ids. It checks them against the spoke, and raises `ZeroAddress`, `LengthMismatch` or `ReserveMismatch` if they do not fit. The collateral list is fixed after that. [Base addresses](/docs/reference/base-addresses) gives the spoke and reserves that Maat uses.
+
+<FunctionIndex contract="AaveV4CreditAdapter" qualify />
+
+### supply (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="supply" />
+
+Only the vault may call it, and `NotVault` follows for any other caller. `UnsupportedToken` follows for a token the adapter was not built with. The adapter pulls `amount` from the vault with `transferFrom`, approves the spoke for exactly that amount, supplies it for itself and sets the approval back to zero. Aave V4 does not enable collateral on supply, so the adapter enables the reserve as collateral if it is not enabled yet.
+
+### withdraw (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="withdraw" />
+
+Only the vault, with `UnsupportedToken` for a token it was not built with. It withdraws from the spoke to itself, reads the health factor again and reverts with `HealthFactorTooLow` if it is below `minHealthFactor`. It then sends the vault the amount that actually arrived and returns that amount.
+
+### borrow (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="borrow" />
+
+Only the vault. It borrows from the USDC reserve to itself, reads the health factor again and reverts with `HealthFactorTooLow` below `minHealthFactor`, then sends the USDC to the vault. Because it re-reads the health factor after the action, the minimum holds even if the vault's projection was off.
+
+### repay (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="repay" />
+
+Only the vault. It repays the smaller of `amount` and the debt at the time of the call, pulling that USDC from the vault and approving the spoke for it. With no debt it moves nothing and returns zero. Any USDC the spoke did not take is sent back to the vault, so no USDC rests on the adapter.
+
+### supportsToken (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="supportsToken" />
+
+True for the collateral tokens given to the constructor and false for any other token, including USDC. It reads stored data and never reverts.
+
+### collaterals (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="collaterals" />
+
+Not part of the interface. It returns the collateral tokens the constructor accepted, in the order given. The list never changes, because the adapter has no function to add or remove a token.
+
+### suppliedOf (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="suppliedOf" />
+
+Reads the spoke for the adapter's supplied assets in the token's reserve. For a token the adapter does not support it returns zero without calling the spoke, which is what the interface requires.
+
+### debt (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="debt" />
+
+Reads the spoke for the adapter's total debt in the USDC reserve, as the spoke reports it. The adapter's `repay` and `hasPosition` use it too.
+
+### healthFactor (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="healthFactor" />
+
+Reads the health factor from the spoke's account data for the adapter. `borrow` and `withdraw` call it after they act.
+
+### hasPosition (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="hasPosition" />
+
+True when `debt()` is not zero, or when `suppliedOf` is not zero for any collateral token. It checks the debt first.
+
+### projectedHealthFactorAfterBorrow (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="projectedHealthFactorAfterBorrow" />
+
+Works out the health factor from the spoke's account data and the spoke oracle's USDC price, and the source comment under the signature gives the formula. It returns the largest `uint256` when the resulting debt value is zero, for example for a borrow of zero when there is no debt.
+
+### collateralCustodian (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="collateralCustodian" />
+
+Returns the hub for every token. The hub holds the supplied collateral and sends withdrawals out. The function ignores its argument.
+
+### collateralOperator (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="collateralOperator" />
+
+Returns the spoke, which pulls the adapter's tokens into the hub when it supplies them. The vault checks it as an executor leg of a `SUPPLY`.
+
+### vault (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="vault" />
+
+The vault the adapter is bound to. It is set in the constructor and cannot change, and it is the only address that passes the `onlyVault` check on `supply`, `withdraw`, `borrow` and `repay`.
+
+### usdc (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="usdc" />
+
+The USDC token the adapter borrows and repays, set in the constructor. The constructor reverts with `ReserveMismatch` unless the USDC reserve on the spoke lists this token as its underlying asset.
+
+### spoke (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="spoke" />
+
+The Aave V4 spoke that the adapter supplies to and borrows from. It is set in the constructor and cannot change.
+
+### hub (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="hub" />
+
+The hub of the USDC reserve, read from the spoke in the constructor. Every collateral reserve must sit on this same hub, or the constructor reverts with `ReserveMismatch`.
+
+### usdcReserveId (AaveV4CreditAdapter)
+
+<Fn contract="AaveV4CreditAdapter" name="usdcReserveId" />
+
+The id of the USDC reserve on the spoke. The adapter uses it to borrow, repay and read the debt. It is set in the constructor and cannot change.
+
+## What the vault expects from an adapter
+
+The interfaces list the functions an adapter must have. The vault relies on more than that, and it checks only part of it when a mandate is applied. These lists give what it relies on, each with the code that relies on it, for anyone who writes an adapter for another venue.
+
+### Swap adapter
+
+- **Have code at its address.** It is the only thing the vault checks about the swap adapter when a mandate is applied ([MandateVault.sol#L658](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L658)).
+- **Revert when the output is below `minOut`.** The vault passes the larger of the agent's `minOut` and its own [slippage floor](/docs/help/glossary#slippage-floor), then ignores the amount returned and compares no balances ([MandateVault.sol#L567-L588](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L567-L588)). This revert is the only thing that enforces the floor. `AerodromeSwapAdapter` raises `InsufficientOutput` ([AerodromeSwapAdapter.sol#L41](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol#L41)), as [`test_revertsBelowMinOut`](https://github.com/duongnq2798/maat/blob/main/contracts/test/AerodromeSwapAdapter.t.sol) shows.
+- **Return the output as one `uint256`.** The vault calls `swapExactIn` as a typed call inside `try ... returns (uint256)` and ignores the value ([MandateVault.sol#L581-L583](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L581-L583)). Solidity's `try` does not catch return data that fails to decode, so empty or short return data reverts `execute` instead of recording `SWAP_FAILED` ([Refuse, do not revert](/docs/security/model#refuse-do-not-revert)). The vault's comment on its credit calls says the same of typed calls ([MandateVault.sol#L606-L610](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L606-L610)).
+- **Pull `amountIn` from the caller, and send the output and any unused input to `recipient`.** The vault approves the adapter for exactly the amount of the [intent](/docs/help/glossary#intent), passes its own address as `recipient`, and sets the approval back to zero after the call, whether it worked or not ([MandateVault.sol#L574-L588](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L574-L588)). The interface comment states the same ([ISwapAdapter.sol#L5-L9](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/ISwapAdapter.sol#L5-L9)). The vault does not check where the output went.
+- **Swap in the pool the vault passes.** That is the stock's pool from its token config ([MandateVault.sol#L581-L583](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L581-L583)). The vault refuses a token config whose pool does not answer `token0()` and `token1()` with this stock and USDC ([MandateVault.sol#L714-L729](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L714-L729)), and check 7 reads the pool's [TWAP](/docs/help/glossary#twap) through its `observe` ([PriceLib.sol#L23-L40](https://github.com/duongnq2798/maat/blob/main/contracts/src/lib/PriceLib.sol#L23-L40)). So the venue needs a stock/USDC pool of that shape.
+- **Pass each stock's transfer policy on a `SELL`.** The adapter is a sender, a receiver and an executor leg of a `SELL`, so a policy that does not let it through refuses the sell with `POLICY_BLOCKED` ([GuardLib.sol#L153-L155](https://github.com/duongnq2798/maat/blob/main/contracts/src/GuardLib.sol#L153-L155)). A `BUY` checks the pool instead of the adapter ([GuardLib.sol#L149-L151](https://github.com/duongnq2798/maat/blob/main/contracts/src/GuardLib.sol#L149-L151)), so on a `BUY` the pool must send the stock straight to `recipient`, as `AerodromeSwapAdapter` has it do ([AerodromeSwapAdapter.sol#L31-L37](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol#L31-L37)). The vault checks no adapter leg for it: a route through the adapter that a policy blocks fails the swap as `SWAP_FAILED` instead of being refused with `POLICY_BLOCKED`.
+
+### Credit adapter
+
+- **Be bound to this vault and its USDC.** The mandate is refused with `InvalidConfig` unless the adapter has code, `vault()` returns this vault and `usdc()` returns this vault's USDC ([MandateVault.sol#L665-L680](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L665-L680)). [`test_rejectsAdapterBoundToAnotherVault`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) and [`test_rejectsAdapterWithOtherUsdc`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) cover it.
+- **Let only the vault move the position, and send what it withdraws or borrows to the vault.** The vault sends `supply`, `withdraw`, `borrow` and `repay` as low-level calls, approves exactly the amount for `supply` and `repay` and sets the approval back to zero, and ignores the return data ([MandateVault.sol#L611-L638](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L611-L638)). The interface comments say that withdrawn collateral and borrowed USDC go to the vault ([ICreditAdapter.sol#L20-L23](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/ICreditAdapter.sol#L20-L23)), and the vault does not check the amounts that come back: it only sets `recordedUsdc` to its own balance afterwards ([MandateVault.sol#L637](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L637)).
+- **Revert with exactly `HealthFactorTooLow(healthFactor, minHealthFactor)`** when a `borrow` or a `withdraw` would leave the health factor below the minimum the vault passes. Only a revert of that exact shape becomes `HEALTH_FACTOR_LOW` or `DERISK_WINDOW`; empty data, a panic or any other error becomes `CREDIT_FAILED` ([MandateVault.sol#L421-L433](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L421-L433)). [`test_adapterHealthCheckIsMappedToReasons`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) and [`test_adapterRevertNeverRevertsExecute`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) cover both. For a `BORROW` the vault first reads the adapter's projected health factor ([MandateVault.sol#L357-L361](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L357-L361)). For a `WITHDRAW_COLLATERAL` against debt this revert is the only health-factor check: on top of the checks every withdrawal runs, the vault adds only an open market, a readable `suppliedOf` for every listed token and, for every supplied stock, no pause, a valid and fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and it projects no health factor ([MandateVault.sol#L342-L349](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L342-L349), [L366-L388](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L366-L388)).
+- **Never revert in `suppliedOf`.** Return zero for a token the adapter does not support ([ICreditAdapter.sol#L28-L29](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/ICreditAdapter.sol#L28-L29)). The vault reads it for every listed token, and a revert fails closed: a `BUY` counts as above its concentration cap, and the credit checks that read it return `CREDIT_FAILED` ([MandateVault.sol#L463-L469](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L463-L469), [L516-L523](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L516-L523), [L369-L373](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L369-L373)).
+- **Answer the other views.** `supportsToken`, `debt`, `projectedHealthFactorAfterBorrow`, `collateralCustodian` and `collateralOperator` are read inside `try`, and a revert refuses the credit action with `CREDIT_FAILED` ([L324-L328](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L324-L328), [L343-L347](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L343-L347), [L357-L361](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L357-L361), [L445-L454](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L445-L454) of MandateVault.sol). A `debt` that reverts also fails a `BUY`'s concentration check ([L530-L539](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L530-L539)). The vault trusts the values these views return ([ICreditAdapter.sol#L6-L8](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/ICreditAdapter.sol#L6-L8)). They, and `suppliedOf`, must also return well-formed data: these are typed calls, so return data that does not decode reverts `execute` instead of refusing the action ([Refuse, do not revert](/docs/security/model#refuse-do-not-revert)).
+- **Return true from `hasPosition` while any debt or collateral remains.** While it does, or when it reverts, a mandate that switches to another adapter or turns credit off reverts with `CreditPositionOpen` ([MandateVault.sol#L684-L692](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L684-L692)). An adapter that answers false too early would let that mandate through and strand the position, because only the vault can move it. [`test_cannotSwitchAdapterWithOpenPosition`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) and [`test_unreadablePositionCountsAsOpen`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) cover it.
+- **Name the policy legs.** `collateralCustodian(token)` and `collateralOperator()` give the addresses the vault puts through each stock's transfer policy, next to the vault, the adapter and `tx.origin`. A `SUPPLY` checks the vault and the adapter as senders, the adapter and the custodian as receivers, and the adapter and the operator as executors. A `WITHDRAW_COLLATERAL` checks the custodian and the adapter as senders, the adapter and the vault as receivers, and the custodian and the adapter as executors ([MandateVault.sol#L455-L459](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L455-L459), [GuardLib.sol#L98-L115](https://github.com/duongnq2798/maat/blob/main/contracts/src/GuardLib.sol#L98-L115)).
+
+[`MockSwapAdapter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/mocks/MockSwapAdapter.sol) and [`MockCreditAdapter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/mocks/MockCreditAdapter.sol) show the vault working with a second implementation in unit tests. No adapter for another venue exists, and none has run on a fork. An adapter applied through the [timelock](/docs/help/glossary#timelock) is trusted from that moment.
+
+## Related
+
+- [Credit and the health factor](/docs/concepts/credit-and-health-factor): the four credit actions, the floor, the target and the de-risk window.
+- [The nine checks](/docs/concepts/nine-checks#other-actions): the checks the vault runs before it calls an adapter.
+- [Prices and premium](/docs/concepts/prices-and-premium#slippage-floor): where the swap's `minOut` floor comes from.
+- [Errors](/docs/reference/errors): the adapters' errors.
+- [Base addresses](/docs/reference/base-addresses): the Aerodrome pools and the Aave V4 contracts Maat uses.
+- [Agent configuration](/docs/reference/agent-configuration): the settings the agent reads, such as the vault it sends its intents to.
