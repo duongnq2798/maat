@@ -311,7 +311,7 @@ jobs:
             report="$RUNNER_TEMP/gitleaks/$scan.json"
             if [ -s "$report" ]; then
               echo "$scan:"
-              jq -r '.[] | "  \(.RuleID) in \(.File | @json) line \(.StartLine) commit \(.Commit)"' "$report"
+              jq -r '.[] | "  \(.RuleID | @json) in \(.File | @json) line \(.StartLine) commit \(.Commit)"' "$report"
             fi
           done
 
@@ -456,6 +456,6 @@ jobs:
             report="$RUNNER_TEMP/gitleaks/$scan.json"
             if [ -s "$report" ]; then
               echo "$scan:"
-              jq -r '.[] | "  \(.RuleID) in \(.File | @json) line \(.StartLine) commit \(.Commit)"' "$report"
+              jq -r '.[] | "  \(.RuleID | @json) in \(.File | @json) line \(.StartLine) commit \(.Commit)"' "$report"
             fi
           done

@@ -843,6 +843,15 @@ test("render: skipped tests, flaky tests and a skipped job are printed as given"
   );
 });
 
+test("render: one finding over one commit is written in the singular", () => {
+  const needs = greenNeeds();
+  needs.hygiene.outputs.history = '{"findings":1,"commits":1}';
+  assert.match(
+    renderSummary(JSON.stringify(needs)).markdown,
+    /^\| Secret scan, history \| success \| 1 finding over 1 commit \|$/m,
+  );
+});
+
 test("render: a missing report, a job with no outputs and an absent job show no report", () => {
   const needs = greenNeeds();
   needs.contracts = { result: "failure", outputs: { forge: '{"report":"missing"}' } };
