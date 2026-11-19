@@ -1,79 +1,416 @@
 <div align="center">
 
-<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: MARKET_CLOSED." width="100%">
+<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: MARKET_CLOSED. Tested on a local fork of Base mainnet; not deployed to mainnet." width="100%">
 
 # Maat
 
-**An AI treasury agent for tokenized stocks on Base. Claude proposes every trade; an onchain vault decides. The vault refuses to trade when the US market is closed, the price feed is stale, the pool has drifted from the oracle, or a stock split is pending. A refusal does not revert: the vault emits a typed `Decision` event and moves no money.**
+### The AI agent that knows when not to trade
 
-[![Status: unaudited, pre-mainnet](https://img.shields.io/badge/status-unaudited%2C%20pre--mainnet-b45309?style=flat-square)](#status)
-[![Tested on a Base mainnet fork](https://img.shields.io/badge/Base-mainnet%20fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
-[![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#built-for-stocks-maxxing-season)
+**An AI treasury agent for tokenized stocks on Base. A model (Claude) proposes trades; the onchain `MandateVault` decides. It refuses when the US market is closed, the feed is stale, the pool has drifted from the oracle or a stock split is pending. A refusal does not revert: the vault emits a typed `Decision` event and moves no money.**
+
+[![Status: unaudited, not on mainnet](https://img.shields.io/badge/status-unaudited%20%C2%B7%20not%20on%20mainnet-b45309?style=flat-square)](#status)
+[![Base mainnet fork tested](https://img.shields.io/badge/Base%20mainnet-fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
+[![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#by-track-agentic-stock-finance)
 [![CI](https://github.com/duongnq2798/maat/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/duongnq2798/maat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
-**[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[What is built](#status)** · **[The nine checks](#the-nine-checks)** · **[Safety](#safety-architecture)** · **[Fork evidence](#base-mainnet-fork-evidence)** · **[Limitations](#known-limitations)** · **[Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md)** · **[Website](https://maatonbase.xyz)** · **[@maatonbase](https://x.com/maatonbase)**
+**[For judges: 60 seconds](#maat-in-60-seconds)** · **[Live site](https://maatonbase.xyz)** · **[Try to make it say no](https://maatonbase.xyz/#try)** · **[Docs](https://maatonbase.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[Tested, in numbers](#tested-in-numbers)** · **[Status](#status)** · **[Security](SECURITY.md)** · **[@maatonbase](https://x.com/maatonbase)**
 
-<sub>Built for Base "Stocks Maxxing Season" (Agentic Stock Finance) · Solidity 0.8.28 on Base (Foundry, <code>hardfork = "base:Cobalt"</code>) · B20 stocks · Chainlink equity feeds · Aerodrome Slipstream · Aave V4 · Coinbase CDP Server Wallet · ERC-8021 Builder Codes · Claude</sub>
+<sub>Base "Stocks Maxxing Season" Builder Quest · Track: Agentic Stock Finance · Solidity 0.8.28 on Base (Foundry, <code>hardfork = "base:Cobalt"</code>) · TypeScript agent (viem 2.57.16, zod 4.6.7, <code>@anthropic-ai/sdk</code> 1.6.0, <code>@coinbase/cdp-sdk</code> 1.61.0) · Next.js 16.4.5 · B20 stocks · Chainlink equity feeds · Aerodrome Slipstream · Aave V4 · ERC-8021 Builder Codes</sub>
 
 </div>
-
-Tokenized stocks on Base trade 24 hours a day, 7 days a week. The stocks they track do not. When NYSE is
-closed, the Chainlink equity feed stops updating and the DEX price has nothing to anchor it; when a company
-splits its shares or pays a dividend, the B20 token's multiplier changes and every valuation shifts. An AI
-agent that trades by itself will happily buy at a Saturday price nobody can check.
-
-Maat puts the rules where the agent cannot talk its way around them. The agent's owner deploys a
-`MandateVault` with a mandate: which stocks, how much per trade and per day, the maximum gap between pool
-and oracle, the trading session, and the health factor for borrowing. Claude reads the vault's state and
-proposes trades. The agent can only send them through `execute`, and `execute` runs nine market and mandate
-checks in a fixed order, behind a pause switch and a balance check. If any check fails, the vault does not
-revert: it emits `Decision(allowed=false, reason)` and moves no money, so every refused `execute` call leaves
-a public, typed record. If the executor key leaks, the attacker gets exactly the same nine checks.
 
 > The LLM proposes. The contract decides.
 
 > [!IMPORTANT]
-> **Unaudited, and not on Base mainnet yet.** The contracts, the agent runtime and the website are built
-> and tested, including on a local fork of Base mainnet. No Maat contract has been deployed to Base
-> mainnet at this commit, so there is no live vault address or mainnet transaction to show yet; the owner
-> signs the deploy by hand ([`deployments/README.md`](deployments/README.md)). The site is being
-> deployed at [maatonbase.xyz](https://maatonbase.xyz). x402 revenue, the Guard Service API, MCP, the
-> Bankr Skill and `MandateFactory` are **planned, not built**. See [Status](#status).
+> **Status as of 2026-11-19.** The contracts are **unaudited**. **No Maat contract is deployed** to Base mainnet
+> or any testnet; the owner signs the deploy by hand ([`deployments/README.md`](deployments/README.md)). The
+> agent has run in live mode **only on a local fork of Base mainnet**, with a scripted proposer in place of
+> Claude and a local test account as the sender. The real Claude API and the Coinbase CDP Server Wallet have
+> been tested **only against fakes**. The website and its docs are **online** at [maatonbase.xyz](https://maatonbase.xyz).
+> x402 revenue, the Guard Service API, MCP, the Bankr Skill and `MandateFactory` are **planned, not built** on
+> `main` (an x402 Guard Service is in PR #2, open and unmerged). See [Status](#status).
+
+## Maat in 60 seconds
+
+- **What it is.** One AI agent, one onchain vault on Base. "Agent #1" is designed to trade only its own small
+  treasury ($20 to $200) in USDC and three tokenized stocks (NVDAc, GOOGLc, AAPLc). Claude proposes;
+  `MandateVault` runs nine checks on every buy and sell (concentration on a buy only), stops at the first
+  failure and records each verdict as a `Decision` event, with 19 typed refusal codes.
+- **Track and entry.** Agentic Stock Finance, in Base's "Stocks Maxxing Season" Builder Quest (2026-11-05 to
+  2026-12-05). A new build: the first commit is `009577d`, 2026-11-06. [Track fit](#by-track-agentic-stock-finance).
+- **Built on Base.** The checks read each B20 stock's pause flag, transfer policy, `uiMultiplier` and
+  `effectiveAt` through the B20 precompile, Chainlink's equity feeds on Base and Aerodrome Slipstream TWAPs.
+  Credit runs on the Aave V4 MAG7 Spoke. Agent transactions carry an ERC-8021 Builder Code, and the executor
+  is built for a Coinbase CDP Server Wallet.
+- **What is built and tested.** The vault, guard library, onchain NYSE calendar, Aerodrome and Aave V4
+  adapters, deploy script, agent runtime, and the website with a 49-page docs center. CI on `main`
+  ([run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467), 2026-11-19): 220 contract,
+  167 agent, 1,494 website unit and 259 end-to-end tests passed.
+- **What is not done yet.** No deploy (0 mainnet `Decision` events), no registered Builder Code, no run
+  against the real Claude API or CDP, no audit; x402 and the rest are planned (see the box above).
+- **Evidence.** On a local fork of Base mainnet at block 53,551,627 (Thursday 2026-11-05, 10:30 ET), the agent,
+  with a scripted proposer, bought $20 of NVDAc (allowed, 758,192 gas). With the clock moved to Saturday, a $10
+  GOOGLc buy was refused with `MARKET_CLOSED` and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
+- **Try it.** [Make the default mandate say no](https://maatonbase.xyz/#try) in a browser, or
+  [evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes) offline, with no keys.
+- **Demo video.** Not published yet (as of 2026-11-19).
 
 ## Contents
 
-- [How to evaluate Maat in 5 minutes](#how-to-evaluate-maat-in-5-minutes)
-- [Status](#status)
-- [The problem](#the-problem)
-- [Why it is different](#why-it-is-different)
-- [What Maat does](#what-maat-does)
-- [How a decision is made](#how-a-decision-is-made)
-- [The nine checks](#the-nine-checks)
-- [Safety architecture](#safety-architecture)
-- [Base mainnet fork evidence](#base-mainnet-fork-evidence)
-- [Base integrations](#base-integrations)
-- [The default mandate](#the-default-mandate)
-- [The agent runtime](#the-agent-runtime)
-- [The website](#the-website)
-- [Where things are in this repository](#where-things-are-in-this-repository)
-- [Development](#development)
-- [Deploying (owner only)](#deploying-owner-only)
-- [Known limitations](#known-limitations)
-- [Roadmap](#roadmap)
-- [Documentation](#documentation)
-- [Built for Stocks Maxxing Season](#built-for-stocks-maxxing-season)
-- [License](#license)
+- **Evidence:** [Check it with no clone](#check-it-with-no-clone) · [By track](#by-track-agentic-stock-finance) · [Tested, in numbers](#tested-in-numbers) · [Deployments and traction](#deployments-and-traction)
+- **Design:** [The problem](#the-problem) · [How Maat works](#how-maat-works) · [What the model decides](#what-the-model-decides-and-what-code-enforces) · [The nine checks](#the-nine-checks) · [Status](#status) · [Safety architecture](#safety-architecture)
+- **Base:** [Base mainnet fork evidence](#base-mainnet-fork-evidence) · [Base integrations](#base-integrations) · [Why not a spending cap?](#why-not-a-spending-cap-or-an-offchain-market-hours-check)
+- **Run it:** [Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes) · [Development](#development) · [Known limitations](#known-limitations) · [Roadmap](#roadmap)
+- **About:** [Built during the Quest](#built-during-the-quest) · [Compliance](#compliance) · [Where things are](#where-things-are-in-this-repository) · [Documentation](#documentation) · [Contact and security](#contact-and-security) · [License](#license)
+
+## Check it with no clone
+
+1. **Make it say no.** [maatonbase.xyz/#try](https://maatonbase.xyz/#try) simulates the default mandate's BUY
+   checks in your browser. Pause, policy, feed age, multiplier and premium are fixed at fork values; the
+   contract, not the page, is the source of truth.
+2. **Read the fork ledger.** [maatonbase.xyz/#ledger](https://maatonbase.xyz/#ledger) shows the four decisions
+   of the agent's run on a Base mainnet fork, labelled as a fork.
+3. **Open the CI run.** [Run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) on
+   `main`; [Tested, in numbers](#tested-in-numbers) links the job log behind each CI figure.
+4. **See what is built.** [Status and roadmap](https://maatonbase.xyz/docs/get-started/status).
+5. **Read the checks.** [The nine checks](https://maatonbase.xyz/docs/concepts/nine-checks).
+6. **Read it as plain text.** [`/llms.txt`](https://maatonbase.xyz/llms.txt) indexes the docs for AI readers;
+   [`/llms-full.txt`](https://maatonbase.xyz/llms-full.txt) holds all of them.
+
+<p align="center">
+  <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused, SIZE_LIMIT."></a>
+  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20 allowed, gas 758,192; SUPPLY NVDAc $15 allowed, 286,707; BORROW USDC $5 allowed, 484,173; BUY GOOGLc $10 on Sat 7 Nov refused with MARKET_CLOSED, 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
+</p>
+
+Left: the simulator refusing a $51 buy with `SIZE_LIMIT`. Right: the fork ledger.
+
+## By track: Agentic Stock Finance
+
+The quest page describes the track as "Build agents that research, earn or trade around tokenized stocks in
+novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-19:
+
+| Idea (quest page) | What Maat does | Status | Where |
+| --- | --- | --- | --- |
+| Agents that earn a stock treasury | Holds its own USDC and stocks. USDC that arrives is recorded as `RevenueReceived`, and new revenue repays debt. The planned income, x402 fees for safety checks, is not on `main` | **Partly**: x402 is in PR #2, unmerged | [`notifyRevenue`](contracts/src/MandateVault.sol#L124-L131), [`policy.ts`](agent/src/policy.ts#L71-L78) |
+| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L10-L19) |
+| Stock-backed credit for agents | Supplies stocks to the Aave V4 MAG7 Spoke, borrows USDC against them, repays and withdraws. A borrow needs an open market and a health factor of 1.5, or 2.0 in the de-risk window | **Built and fork-tested** | [`AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol), [`MandateVaultCreditFork.t.sol`](contracts/test/fork/MandateVaultCreditFork.t.sol) |
+| Agent-managed rebalancing | Equal weights after a 30% USDC reserve (23.3% per stock), rebalanced past a 5-point drift. The vault refuses a buy that takes one stock above 40% | **Built**, unit-tested; the fork run's trades came from a scripted proposer | [`policy.ts`](agent/src/policy.ts#L13), [`test_concentration`](contracts/test/MandateVault.t.sol#L106) |
+
+Bankr is a partner of this track. Nothing is built for it yet; a Bankr Skill is planned.
+
+## Tested, in numbers
+
+| What | Figure | Read at | Source |
+| --- | --- | --- | --- |
+| Contract unit tests | 220 passed, 0 failed, 0 skipped (8 suites) | CI, `main` `3778fea`, 2026-11-19 | [contracts job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662370563) |
+| Agent unit tests | 167 passed (24 files) | CI, `3778fea`, 2026-11-19 | [agent job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662370733) |
+| Website unit, component and parity tests | 1,494 passed (42 files) | CI, `3778fea`, 2026-11-19 | [web job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662370486) |
+| Website end-to-end tests (Playwright) | 259 passed, 0 failed, 0 skipped, 0 flaky | CI, `3778fea`, 2026-11-19 | [web job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662370486) |
+| Pages checked in the built site | the landing page and 49 docs pages | CI, `3778fea`, 2026-11-19 | [web job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662370486) |
+| Secret scan, full history | 0 findings over 426 commits (every ref in the CI checkout) | CI, `3778fea`, 2026-11-19 | [secret scan job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662369784) |
+| Secret scan, every commit message | 0 findings | CI, `3778fea`, 2026-11-19 | [secret scan job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662369784) |
+| Tests of the CI's own scripts | 67 passed | CI, `3778fea`, 2026-11-19 | [summary job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135670265212) |
+| `MandateVault` runtime size | 22,755 bytes, 1,821 under the 24,576-byte limit | CI, `3778fea`, 2026-11-19 | [contracts job](https://github.com/duongnq2798/maat/actions/runs/44553264467/job/135662370563) |
+| Contract fork tests | 14 passed (7 files), run by hand | recorded at `4492eed`, 2026-11-07 | [`contracts/test/fork/`](contracts/test/fork) |
+| Agent fork integration tests | 3 passed, run by hand | recorded at `4492eed`, 2026-11-07 | [`agent.fork.test.ts`](agent/test/integration/agent.fork.test.ts) |
+| Gas used in the agent fork run | BUY 758,192 · SUPPLY 286,707 · BORROW 484,173 · refusal log 111,116 | run by hand, 2026-11-07 | [`fork-gas.json`](agent/test/integration/fork-gas.json) |
+
+The CI figures are from push run 44553264467 on `3778fea`, the run read for this README. CI runs only the
+offline suites. The two fork suites need a Base archive RPC, so they run by hand and are as fresh as the last
+hand run. Since `4492eed`, no file in `contracts/src`, `contracts/script` or `agent/src` has changed
+(`git diff --stat 4492eed 3778fea` over those folders is empty); one fork test file has a 2-line change.
+No figure here is rounded.
+
+## Deployments and traction
+
+| Contract | Base mainnet |
+| --- | --- |
+| `MarketCalendar` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
+| `AerodromeSwapAdapter` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
+| `AaveV4CreditAdapter` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
+| `MandateVault` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
+
+- **Builder Code.** The ERC-8021 suffix is built and tested. No code is registered yet.
+- **Executor.** Not yet handed to the CDP Server Wallet; the runbook starts with the owner's own wallet.
+- **Mainnet `Decision` events.** 0.
+- **How a deploy happens.** Only the owner deploys, from their own wallet, with the checklist, commands, $20
+  smoke test, unwind procedure and executor handover in [`deployments/README.md`](deployments/README.md).
+
+## The problem
+
+Tokenized stocks on Base trade 24 hours a day, 7 days a week. The stocks they track do not. Each hazard below
+is something the vault checks for, with the reason code it returns.
+
+| Hazard | What goes wrong for an agent that trades 24/7 | Reason code |
+| --- | --- | --- |
+| **The market is closed** | NYSE trades 09:30 to 16:00 ET on weekdays. The Chainlink equity feeds on Base are assumed to update only from Sunday 20:00 ET to Friday 20:00 ET. On a Saturday or a holiday the DEX price has no live reference | `MARKET_CLOSED` |
+| **The oracle is stale or broken** | A feed that stopped updating, or returns zero or a negative answer, cannot value anything | `FEED_STALE`, `BAD_PRICE` |
+| **The pool has drifted from the oracle** | A thin CL pool can trade far from the feed. The vault compares a 30-minute TWAP with the oracle; in session on 2026-11-05 the gap measured 29 to 53 bps for the three basket stocks | `PREMIUM_TOO_HIGH` |
+| **A corporate action is under way** | A split or dividend changes the B20 `uiMultiplier`. Values computed across the change are wrong, so the vault waits out a cooldown after any change, and refuses while a change is scheduled | `MULTIPLIER_COOLDOWN` |
+| **The issuer paused the token, or its transfer policy blocks the path** | B20 tokens can pause transfers and enforce sender, receiver and executor policies. A swap that would fail mid-way should be refused up front | `TOKEN_PAUSED`, `POLICY_BLOCKED` |
+| **The agent is simply wrong** | It proposes too much, too often, or all in one stock | `SIZE_LIMIT`, `CONCENTRATION` |
+
+Spending caps on an agent wallet stop the last row. They do not know whether NYSE is open, whether the feed
+is alive or whether a split is pending. Maat checks all of these onchain, before any buy or sell.
+
+## How Maat works
+
+```mermaid
+flowchart TD
+    subgraph OWNER["Owner wallet"]
+        O["Owner key, immutable"]
+    end
+    subgraph HOST["Agent host (offchain)"]
+        P["Read state at one block,<br/>rule-based policy"] --> C["Claude proposes intents"]
+        C --> Z["zod re-validates,<br/>code sizes amounts"]
+        Z --> G["previewIntent, then GuardedSender:<br/>vault only, gas cap, Builder Code"]
+        G --> X["Executor key: a CDP Server Wallet<br/>(the owner's wallet holds<br/>the role until handover)"]
+    end
+    subgraph BASE["Base (onchain)"]
+        MV["MandateVault: nine checks"] -->|reads| R["MarketCalendar, Chainlink feeds,<br/>B20 tokens, policy registry"]
+        MV -->|"BUY, SELL"| SA["AerodromeSwapAdapter,<br/>Slipstream pools"]
+        MV -->|"SUPPLY, BORROW, REPAY,<br/>WITHDRAW_COLLATERAL"| CA["AaveV4CreditAdapter,<br/>Aave V4 MAG7 Spoke"]
+        MV -->|"each verdict"| D["Decision(allowed, reason, rationaleHash)"]
+    end
+    O -->|"deploy, queue rules (24 h timelock),<br/>pause, setExecutor, withdraw"| MV
+    X -->|"execute(intent)"| MV
+    ANY["Anyone"] -->|"notifyRevenue, syncMultiplier<br/>(record state only)"| MV
+```
+
+One round, every 15 minutes in session and every hour outside ([`scheduler.ts`](agent/src/loop/scheduler.ts#L4-L5)):
+
+1. **Read.** Read the vault, tokens, feeds and Aave position at one pinned block; if a required read fails, do
+   nothing. Reconcile any pending send, and send `syncMultiplier` for a stock whose multiplier changed.
+2. **Suggest.** A rule-based policy keeps an equal-weight basket of NVDAc, GOOGLc and AAPLc with 30% in USDC,
+   rebalances past a 5-point drift, supplies idle stock to Aave V4, borrows USDC when cash falls below seven
+   days of compute cost, and repays debt when revenue arrives (the planned source, x402 fees, is not built).
+3. **Propose.** Claude gets the state and the suggestions, and may adopt, resize or drop them. Proposing
+   nothing is a valid answer.
+4. **Check before sending.** Code re-validates the answer, clamps each amount except a borrow, previews it as
+   the executor, and sends it only if it is allowed, or if it is a safety refusal not yet logged today for that
+   reason. The compute bill goes first if at least $0.10 is owed: `PAY_EXPENSE` to an allowlisted payee, the
+   wallet that pays for its Claude usage (for Agent #1, the owner's). Claude's schema cannot express
+   `PAY_EXPENSE`; code adds it.
+5. **Decide.** The vault runs its checks and emits a `Decision` either way. A borrow needs an open market and a
+   projected health factor of at least 1.5; the health-factor floor rises in the hours before the feeds stop
+   for a weekend or holiday, to 2.0 inside that de-risk window.
+6. **Journal.** Everything goes to `data/journal.jsonl`, with each rationale next to its `rationaleHash`.
+
+`MAAT_MODE` defaults to `dry-run`: it reads the chain and calls Claude but sends nothing. Live mode through
+`npm run agent` needs a registered Builder Code and CDP keys, set up by the owner
+([`agent/README.md`](agent/README.md)). The fork integration test runs live mode with a test code
+(`bc_maattest`) and a local sender instead.
+
+The owner can pause the vault, swap the executor key and withdraw at any time, and can change the rules only
+through a 24-hour timelock. The default mandate ([`MaatConfig.defaultMandate`](contracts/script/MaatConfig.sol))
+allows $50 per trade and $100 per UTC day, and no stock above 40% of net equity after a buy
+([every value](https://maatonbase.xyz/docs/reference/default-parameters)).
+
+## What the model decides, and what code enforces
+
+| Step | Who decides | Bound | Where |
+| --- | --- | --- | --- |
+| Suggest | Code: a rule-based policy | Equal weights after a 30% USDC reserve, a 5-point drift trigger. Advisory only | [`policy.ts#L13`](agent/src/policy.ts#L13) |
+| Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L26`](agent/src/config.ts#L26) |
+| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L79-L80`](agent/src/llm/proposer.ts#L79-L80) |
+| Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L47-L71`](agent/src/intent.ts#L47-L71) |
+| Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L13`](agent/src/chain/preview.ts#L13) |
+| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per UTC day | [`refusals.ts#L4-L26`](agent/src/refusals.ts#L4-L26) |
+| Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; Builder Code appended | [`sender.ts#L26-L53`](agent/src/exec/sender.ts#L26-L53) |
+| Decide | The vault | The nine checks; the first failure is the reason; a refusal does not revert | [`MandateVault.sol#L257-L282`](contracts/src/MandateVault.sol#L257-L282) |
+| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L279-L280`](agent/src/loop/runOnce.ts#L279-L280) |
+
+The model chooses what to try and says why; code bounds its answer; only the vault decides.
+
+## The nine checks
+
+`BUY` and `SELL` go through these checks in this order. The first failure decides the reason.
+Code: [`MandateVault._check`](contracts/src/MandateVault.sol#L257-L282) and
+[`GuardLib.checkMarket`](contracts/src/GuardLib.sol#L44-L62).
+
+| # | Check | Refusal | Where | A test that shows it |
+| --- | --- | --- | --- | --- |
+| – | Vault not paused (every action except `REPAY`) | `VAULT_PAUSED` | [`MandateVault.sol#L259`](contracts/src/MandateVault.sol#L259) | `test_vaultPaused` |
+| 1 | Token is in the mandate. `BUY` needs an allowed token; `SELL` also works for exit-only tokens, so a delisted stock can still be sold | `TOKEN_NOT_ALLOWED` | [`MandateVault.sol#L266`](contracts/src/MandateVault.sol#L266) | `test_exitOnlyTokenCanBeSoldNotBought` |
+| 2 | Token transfers are not paused; a reverting read counts as paused | `TOKEN_PAUSED` | [`GuardLib.tokenPaused`](contracts/src/GuardLib.sol#L65) | `test_refusesPausedToken` |
+| 3 | Every leg of the transfer passes the B20 policy registry (sender, receiver, executor, including `tx.origin`) | `POLICY_BLOCKED` | [`GuardLib.transferPathAuthorized`](contracts/src/GuardLib.sol#L145) | `test_refusesWhenPolicyBlocksVault` |
+| 4 | Market open for the mandate's session (`REGULAR`: NYSE 09:30 to 16:00 ET with holidays and early closes) | `MARKET_CLOSED` | [`GuardLib.marketOpen`](contracts/src/GuardLib.sol#L74), [`MarketCalendar.isOpen`](contracts/src/MarketCalendar.sol#L63) | `test_refusalIsLoggedNotReverted`, `test_thanksgivingIsMarketClosedAtVaultLevel` |
+| 5 | Oracle answer is positive and not older than `maxStaleness` | `FEED_STALE`, `BAD_PRICE` | [`PriceLib.readFeed`](contracts/src/lib/PriceLib.sol), [`GuardLib.sol#L50-L52`](contracts/src/GuardLib.sol#L50-L52) | `test_refusesStaleFeed` |
+| 6 | No multiplier change: unchanged since the last snapshot, outside the cooldown, nothing scheduled | `MULTIPLIER_COOLDOWN` | [`GuardLib.multiplierBlocked`](contracts/src/GuardLib.sol#L118) | `test_multiplierChangeStartsCooldown`, `test_pendingMultiplierBlocks` |
+| 7 | Pool TWAP is within `maxPremiumBps` of the oracle | `PREMIUM_TOO_HIGH`, `BAD_PRICE` | [`PriceLib.premiumBps`](contracts/src/lib/PriceLib.sol), [`GuardLib.sol#L58-L60`](contracts/src/GuardLib.sol#L58-L60) | `test_refusesPremium` |
+| – | Amount is non-zero and covered by the balance. Market reasons take precedence | `INSUFFICIENT_BALANCE` | [`MandateVault.sol#L271-L274`](contracts/src/MandateVault.sol#L271-L274) | `test_marketReasonTakesPrecedenceOverBalance` |
+| 8 | Notional within the per-trade cap and the UTC-day cap | `SIZE_LIMIT` | [`MandateVault._withinCaps`](contracts/src/MandateVault.sol#L500) | `test_perTradeCap`, `test_dailyCap` |
+| 9 | `BUY` only: the stock's weight after the buy stays within `maxWeightBps`, measured on equity net of Aave debt; unreadable positions fail closed | `CONCENTRATION` | [`MandateVault._weightAfterBuyBps`](contracts/src/MandateVault.sol#L512) | `test_concentration`, `test_concentrationNetsCreditDebt` |
+
+After the checks pass, the vault swaps with a slippage floor it computes from the oracle price and
+`maxSlippageBps`, whatever `minOut` the agent sent (the agent always sends 0:
+`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`). A failed swap or transfer is recorded as `SWAP_FAILED` or
+`TRANSFER_FAILED`, and `execute` still does not revert.
+
+**Other actions** ([`_checkExpense`](contracts/src/MandateVault.sol#L284),
+[`_checkCredit`](contracts/src/MandateVault.sol#L295)). `PAY_EXPENSE` checks the payee allowlist, the balance,
+the per-trade cap and the shared daily cap, and works when the market is closed. `SUPPLY` checks the token, pause and policy path. `BORROW` needs an open
+market, healthy collateral (checks 2, 5 and 6 on every supplied stock) and the health-factor floor
+(`HEALTH_FACTOR_LOW`, `DERISK_WINDOW`). `REPAY` works at any hour, even while paused.
+
+**Refusal codes.** `enum Reason` in [`Types.sol`](contracts/src/Types.sol) is append-only: `OK` is 0, then 19
+typed refusals, each explained in [Refusal codes](https://maatonbase.xyz/docs/concepts/refusal-codes). The
+agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types.test.ts)), and so is the website's.
+
+## Status
+
+**Online**: served in public (the website only). **Built and tested**: on `main`, with passing tests.
+**Built**: on `main`, tested only as noted. **Planned**: not on `main`. **Not deployed**: no address on any network.
+
+| Component | Status | Where |
+| --- | --- | --- |
+| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
+| `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
+| `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 3 holidays and 2 early closes up to 2027-01-01 | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
+| `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
+| `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop) | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
+| Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner has not broadcast it yet | [`contracts/script`](contracts/script) |
+| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
+| ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
+| Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
+| Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests, 259 Playwright tests) | [`web/`](web) |
+| Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
+| x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
+| Guard Service HTTP API, MCP server, Bankr Skill | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
+| `MandateFactory`: any agent deploys its own vault | **Planned** (stretch goal) | [spec §3.7](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
+| Third-party audit | **None**. Treat the contracts as unaudited | |
+
+## Safety architecture
+
+**If the executor key leaks.** Say an attacker controls the server that runs the agent:
+
+| The attacker can | but cannot |
+| --- | --- |
+| Call `execute` with any intent | Skip any of the nine checks, trade outside the session or the stock list, or beat the $50 per-trade and $100 per-day caps |
+| Make bad but allowed trades inside the mandate | Send funds anywhere: swaps go to the allowlisted pool, borrowed USDC and collateral come back to the vault, and `PAY_EXPENSE` pays only allowlisted payees |
+| Borrow against the stocks | Push the projected health factor below 1.5 (2.0 in the de-risk window) |
+| Stop the agent | Change the mandate, withdraw, unpause or keep the key: the owner pauses or rotates the executor instantly, from their own wallet |
+
+The fork test `test_compromisedExecutorIsBounded`
+([`MandateVaultFork.t.sol`](contracts/test/fork/MandateVaultFork.t.sol#L83)) tries this against real Base
+state: the executor pays $100 to an attacker address (`PAYEE_NOT_ALLOWED`), buys $60 of NVDAc (`SIZE_LIMIT`)
+and calls `withdraw` (reverts `NotOwner`); the vault keeps all 200 USDC. Gaps: [Known limitations](#known-limitations).
+
+| Layer | What it enforces | Where |
+| --- | --- | --- |
+| **The executor's only power is `execute`** | Apart from `execute`, every function that moves funds or changes a rule is owner-only, and the owner is immutable. `notifyRevenue` and `syncMultiplier` are open to anyone and only record state | [`MandateVault.sol`](contracts/src/MandateVault.sol), `test_executorCannotUseOwnerFunctions` |
+| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert. That assumes no revert from plain ERC-20 `balanceOf` and `decimals` reads, or from the pool's `token0()` and the tick math that run after a TWAP `observe` returns, outside its `catch` | `test_refusalIsLoggedNotReverted` |
+| **Fail closed** | A reverting pause, policy, calendar, multiplier, feed or Aave read counts as unsafe. The feed case is in [`PriceLib.readFeed`](contracts/src/lib/PriceLib.sol#L13-L20), and no contract test makes the feed's `latestRoundData` revert | `test_reverting*FailsClosed` in [`GuardLib.t.sol`](contracts/test/GuardLib.t.sol), `test_unreadableCollateralFailsConcentrationClosed` |
+| **24-hour timelock** | Mandate, token and payee changes are queued, then applied with the exact queued values from 24 hours after queueing until 7 days after that, or cancelled | `test_mandateChangeNeedsTimelock`, `test_appliedParamsMustMatchQueued`, `test_expiredChangeReverts` |
+| **Owner escape hatches** | `setPaused` (instant; `REPAY` still works), `setExecutor` (instant key rotation), `withdraw` (only to the owner) | `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` |
+| **Guarded sender** | The agent sends only `execute`, `syncMultiplier` or `notifyRevenue` to the vault address, with an explicit gas limit (at most 3,000,000) and the Builder Code suffix | [`agent/src/exec/sender.ts`](agent/src/exec/sender.ts), [`sender.test.ts`](agent/test/sender.test.ts) |
+| **Exactly-once sends** | Every `execute` is stored as pending before it is sent; the next round reconciles it against `usedIntent` before doing anything else, so a send that threw after broadcast is not sent again. Not covered: a pending send dropped after the window; its bill is sent again, and if the first send lands late, the bill is paid twice ([Security model](https://maatonbase.xyz/docs/security/model)) | [`agent/src/loop/runOnce.ts`](agent/src/loop/runOnce.ts), `runOnce.test.ts` "reconciles a send that threw after broadcast instead of sending again" |
+
+<details>
+<summary>Eight more layers</summary>
+
+| Layer | What it enforces | Where |
+| --- | --- | --- |
+| **Nine checks, in the contract** | Market safety and size on every `BUY` and `SELL`, concentration on every `BUY`; health factor on every borrow | [The nine checks](#the-nine-checks) |
+| **Single-use intents** | Each intent id executes once, refused or not | `test_replayReverts` |
+| **Slippage floor from the oracle** | The vault, not the agent, sets the minimum output | `test_slippageFloorIsEnforcedEvenIfAgentSendsZero` |
+| **Calendar can only get stricter** | The calendar owner can add holidays and earlier closes, never remove them | `test_ownerCanOnlyMakeItStricter` |
+| **CDP account policy** | The executor wallet may only send zero-value transactions to the vault on Base; raw hash signing is rejected | [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts), [`cdpPolicy.test.ts`](agent/test/cdpPolicy.test.ts) |
+| **Halt on surprise** | If the preview said OK but the vault refused, or a receipt has no `Decision`, the round stops | `runOnce.test.ts` "halts when the preview said OK but the vault refused" |
+| **Rate limits** | `MAAT_MAX_TX_PER_DAY` (default 40). Safety refusals (market, policy, size, concentration, health factor) are logged onchain at most once per reason per UTC day; bookkeeping refusals such as `INSUFFICIENT_BALANCE` cost no gas | [`agent/src/refusals.ts`](agent/src/refusals.ts) |
+| **One agent per data directory** | A lock file is taken before the store or the wallet is opened | [`agent/src/loop/lock.ts`](agent/src/loop/lock.ts) |
+
+</details>
+
+Every actor, key and trust boundary: [Security model](https://maatonbase.xyz/docs/security/model) and
+[Threat model](https://maatonbase.xyz/docs/security/threat-model).
+
+## Base mainnet fork evidence
+
+Everything here ran on a local fork of Base mainnet, not on mainnet itself. Nothing was broadcast.
+
+**The agent, end to end.** [`agent.fork.test.ts`](agent/test/integration/agent.fork.test.ts) deploys the
+contracts from their compiled artifacts with a test helper ([`deploy.ts`](agent/test/integration/deploy.ts)) on
+an anvil fork at block 53,551,627 (Thursday 2026-11-05, 10:30 ET, NVDA feed 14 seconds old), funds the vault,
+runs agent rounds with a scripted proposer in place of Claude, and checks that every transaction carries the
+Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`.
+
+| Round | Intent | Decision | gasUsed |
+| --- | --- | --- | --- |
+| Thursday 10:30 ET | BUY $20 of NVDAc | allowed, `OK` | 758,192 |
+| Thursday 10:30 ET | SUPPLY $15 of NVDAc to Aave V4 | allowed, `OK` | 286,707 |
+| Thursday 10:30 ET | BORROW $5 USDC | allowed, `OK` | 484,173 |
+| Clock moved 2 days ahead (Saturday) | BUY $10 of GOOGLc | **refused**, `MARKET_CLOSED`, logged on the fork | 111,116 |
+
+The gas figures are the committed output of that run ([`fork-gas.json`](agent/test/integration/fork-gas.json));
+the website keeps a copy in [`web/content/facts.ts`](web/content/facts.ts), and its tests fail if the two differ. BUY gas varied by under 1% between two
+runs (754,854 and 758,192); the other three did not change. The Saturday row is the same fork with the clock
+moved forward, not a real Saturday block.
+
+**The contracts, against real Base state.** 14 Foundry fork tests in [`contracts/test/fork/`](contracts/test/fork)
+pin two mainnet blocks: `BLOCK_SESSION` 53,551,627 (Thursday 2026-11-05, in session) and `BLOCK_WEEKEND`
+53,340,127 (Saturday 2026-10-31, NVDA feed last updated Friday around 19:51 UTC). The deploy script itself runs
+in `DeployFork.t.sol`.
+
+| Test file | What it shows |
+| --- | --- |
+| `MandateVaultFork.t.sol` | Buys and sells NVDAc in session, buys the basket, refuses a real-weekend buy in both session modes, and bounds a compromised executor |
+| `MandateVaultCreditFork.t.sol` | The credit loop in session; then, with the clock moved to Saturday, a borrow and a collateral withdrawal against open debt are refused, while repay works and, once the debt is repaid, so does the withdrawal |
+| `AaveV4CreditAdapterFork.t.sol` | Full supply, borrow, repay and withdraw on the Aave V4 MAG7 Spoke; reserve ids match the chain; a borrow below the minimum health factor reverts |
+| `AerodromeSwapAdapterFork.t.sol` | Buys and sells NVDAc directly against the Slipstream pool |
+| `PriceLibFork.t.sol` | The live basket trades near the oracle price |
+| `B20Smoke.t.sol` | Reads B20 state through the precompile and transfers NVDAc |
+| `DeployFork.t.sol` | The deploy script wires every contract and address correctly |
+
+The measured in-session premiums at `BLOCK_SESSION` (NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps) are why the
+default `maxPremiumBps` is 100 rather than 50 ([`MaatConfig.sol`](contracts/script/MaatConfig.sol)).
+
+**How to reproduce.** Contract fork tests: the optional step at the end of the
+[5-minute guide](#how-to-evaluate-maat-in-5-minutes). The agent fork run needs a Base archive RPC and
+`base-anvil` v1.5.1, because upstream Anvil 1.9 reverts on the B20 `uiMultiplier()` call;
+[`agent/README.md`](agent/README.md#test) has the steps and estimates about 3 to 5 minutes on a public RPC.
+Also: [Reproduce the fork run](https://maatonbase.xyz/docs/guides/reproduce-the-fork-run).
+
+## Base integrations
+
+All addresses are Base mainnet, from [`contracts/script/BaseAddresses.sol`](contracts/script/BaseAddresses.sol)
+(verified on 2026-11-06). These are the contracts Maat integrates with, not Maat deployments.
+
+| Integration | How Maat uses it | Address |
+| --- | --- | --- |
+| **USDC** | Treasury and quote asset | [`0x8335…2913`](https://basescan.org/address/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |
+| **B20 stocks** | The basket: NVDAc, GOOGLc, AAPLc. The vault reads `isPaused`, `policyId`, `uiMultiplier` and `effectiveAt` | [NVDAc](https://basescan.org/address/0xb20000000000000000000078ee7ce2fE4908108C), [GOOGLc](https://basescan.org/address/0xb2000000000000000000002D0BA3164cc74f58B7), [AAPLc](https://basescan.org/address/0xb200000000000000000000C2e324d24d7eEcd1fb) |
+| **B20 policy registry** | Transfer-path authorization (check 3) | [`0x8453…0002`](https://basescan.org/address/0x8453000000000000000000000000000000000002) |
+| **Chainlink equity feeds** | Oracle price per raw token (multiplier already included), staleness | [NVDA](https://basescan.org/address/0x04689a41629776563E6822F76f2e57D148d28513), [GOOGL](https://basescan.org/address/0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2), [AAPL](https://basescan.org/address/0x787f13dEa48Db0897CbCDD985de77809D837F988) |
+| **Aerodrome Slipstream** | Swap venue and 30-minute TWAP; called directly, no router | [NVDAc/USDC](https://basescan.org/address/0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC), [GOOGLc/USDC](https://basescan.org/address/0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3), [AAPLc/USDC](https://basescan.org/address/0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6) |
+| **Aave V4 (MAG7 Spoke, Equities Hub)** | Stocks as collateral, USDC borrowing; the adapter is the Aave user and only its vault can move the position | [Spoke](https://basescan.org/address/0x17905Db0e4A3514467539956c084180616AE7B8D), [Hub](https://basescan.org/address/0xa4d5947Eb727A052bae69C593FfC84247EC9864E) |
+| **Coinbase CDP Server Wallet** | The executor key, with an account policy (sends only zero-value transactions to the vault on Base; raw hash signing rejected). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
+| **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
+| **Claude** | `claude-sonnet-5-5` by default (`MAAT_LOOP_MODEL`), with structured output, proposes the round's intents. Tested against a fake client only | [`agent/src/config.ts#L26`](agent/src/config.ts#L26) |
+
+AMZNc is not in the basket: its pool held only about $34k of liquidity when the basket was chosen.
+
+## Why not a spending cap, or an offchain market-hours check?
+
+Each common way to bound a trading agent leaves a gap that Maat's vault closes:
+
+| Alternative | What it stops | What it misses | What Maat does instead |
+| --- | --- | --- | --- |
+| A spending cap on the agent's wallet | Too much, too often | Whether NYSE is open, the feed is alive or a split is pending | Checks 4 to 7 run in the vault, beside the caps |
+| A market-hours or price check inside the agent | Bad moments, while the agent's code is honest | A bug, a wrong clock or a stolen host skips it | The vault runs checks 4 to 7 on every `BUY` and `SELL`, and the market-hours check on every borrow, whoever holds the key; on the fork it refuses a real-weekend buy (`test_weekendBuyIsRefusedInBothModes`) |
+| An offchain market-hours API | Weekend and holiday trades | Nothing onchain checks its answer | `MarketCalendar` computes the NYSE session and DST onchain, and stores holidays and early closes onchain (preloaded up to 2027-01-01) |
+| An account policy on the signing wallet | Calls to the wrong contract, value transfers | Market state: it sees calldata, not prices | Maat uses one too, behind the vault's checks |
+| Reverting on a failed check | The trade | The record: a revert leaves none | A typed `Decision` event for each refused `execute` |
 
 ## How to evaluate Maat in 5 minutes
 
 You need `git`, [Foundry](https://getfoundry.sh) 1.8.4 or newer (for the `hardfork = "base:Cobalt"`
 setting in `foundry.toml`, which the B20 stock precompiles need; 1.9.0 was used here), Node.js 24 with npm,
-and a bash shell (Linux, macOS, or Git Bash on Windows). No wallet, no RPC URL, no API key: every step below runs offline against mocks and fakes.
-
-On a fresh clone this path took about 4 minutes on a Windows 10 machine (Foundry 1.9.0, Node 24.12): most
-of it is compiling the contracts (about 1.5 minutes over steps 2 and 3) and two `npm ci` runs (about a
-minute each).
+and a bash shell (Linux, macOS, or Git Bash on Windows). No wallet, no RPC URL, no API key: every test below
+runs offline against mocks and fakes. Timed by hand on 2026-11-07 (`4492eed`, Windows 10, Foundry 1.9.0,
+Node 24.12), the five steps below took about 4 minutes on a fresh clone; that was before the docs center, and
+it has not been re-timed.
 
 1. **Clone.** Only the two direct submodules are needed (forge-std and v4-core); `--recursive` is not.
 
@@ -92,8 +429,8 @@ minute each).
    forge test --match-test test_refusalIsLoggedNotReverted -vvvv
    ```
 
-   Expected output (trimmed: `…` marks removed lines and shortened hashes; gas figures can differ by
-   Foundry version):
+   <details>
+   <summary>Expected output (trimmed: <code>…</code> marks removed lines and shortened hashes; gas figures can differ by Foundry version)</summary>
 
    ```text
    [PASS] test_refusalIsLoggedNotReverted() (gas: 198082)
@@ -116,11 +453,11 @@ minute each).
        │   └─ ← [Return] true
    ```
 
-   After snapshotting the token's multiplier, the vault checks that the token is in the mandate (check 1, a
-   storage read that the trace does not show), reads its pause flag (check 2) and its four transfer-policy
-   legs (check 3), then asks the calendar, which says closed (check 4). `reason: 6` is `MARKET_CLOSED` in
-   [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the vault still holds its 200 USDC,
-   and the intent id is spent, so the same request cannot be replayed.
+   </details>
+
+   Checks 1 to 3 pass (token listed, not paused, four policy legs), then the calendar says closed (check 4).
+   `reason: 6` is `MARKET_CLOSED` in [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the
+   vault still holds its 200 USDC, and the intent id is spent, so the same request cannot be replayed.
 
 3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters):
 
@@ -165,11 +502,14 @@ minute each).
    search index: … bytes gzipped, budget 760000
    ```
 
-   `npm run dev` then serves the page on http://localhost:3000. Its hero is the decision engine: toggle
-   between Thursday 5 Nov, 10:30 ET (allowed) and Saturday 7 Nov (refused, `MARKET_CLOSED`).
+   The same site is live at [maatonbase.xyz](https://maatonbase.xyz); `npm run dev` serves it on
+   http://localhost:3000.
 
-**Optional, needs a Base archive RPC:** the 14 contract fork tests run the real B20 tokens, feeds, pools and
-Aave V4 at two pinned mainnet blocks. Nothing is broadcast; Foundry forks the chain locally.
+<details>
+<summary><b>Optional: the 14 contract fork tests</b> (needs a Base archive RPC)</summary>
+
+They run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. Nothing is broadcast;
+Foundry forks the chain locally.
 
 ```bash
 cd contracts   # from the repository root
@@ -181,324 +521,7 @@ forge test --match-path "test/fork/*"
 Ran 7 test suites in …: 14 tests passed, 0 failed, 0 skipped (14 total tests)
 ```
 
-That took about 50 seconds here, at this commit.
-
-## Status
-
-What exists at this commit, and what does not.
-
-| Component | Status | Where |
-| --- | --- | --- |
-| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs every verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** on mainnet | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
-| `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
-| `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 3 holidays and 2 early closes up to 2027-01-01 | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
-| `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
-| `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop) | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
-| Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner has not broadcast it yet | [`contracts/script`](contracts/script) |
-| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
-| ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
-| Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Landing page with the interactive decision engine and the labeled fork ledger | **Built and tested** (the whole website's suites, the docs center included: 1,494 unit tests, 259 Playwright tests). Static export. Being deployed at [maatonbase.xyz](https://maatonbase.xyz) | [`web/`](web) |
-| Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
-| x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not implemented anywhere in this repository | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
-| Guard Service HTTP API, MCP server, Bankr Skill | **Planned** | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
-| `MandateFactory`: any agent deploys its own vault | **Planned** (stretch goal) | [spec §3.7](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
-| Third-party audit | **None**. Treat the contracts as unaudited | |
-
-## The problem
-
-Each hazard below is something the vault checks for, with the reason code it returns.
-
-| Hazard | What goes wrong for an agent that trades 24/7 | Reason code |
-| --- | --- | --- |
-| **The market is closed** | NYSE trades 09:30 to 16:00 ET on weekdays. The Chainlink equity feeds on Base update only from Sunday 20:00 ET to Friday 20:00 ET. On a Saturday or a holiday the DEX price has no live reference | `MARKET_CLOSED` |
-| **The oracle is stale or broken** | A feed that stopped updating, or returns zero or a negative answer, cannot value anything | `FEED_STALE`, `BAD_PRICE` |
-| **The pool has drifted from the oracle** | A thin CL pool can trade far from the feed. The vault compares a 30-minute TWAP with the oracle; in session on 2026-11-05 the gap measured 29 to 53 bps for the three basket stocks | `PREMIUM_TOO_HIGH` |
-| **A corporate action is under way** | A split or dividend changes the B20 `uiMultiplier`. Values computed across the change are wrong, so the vault waits out a cooldown after any change, and refuses while a change is scheduled | `MULTIPLIER_COOLDOWN` |
-| **The issuer paused the token, or its transfer policy blocks the path** | B20 tokens can pause transfers and enforce sender, receiver and executor policies. A swap that would fail mid-way should be refused up front | `TOKEN_PAUSED`, `POLICY_BLOCKED` |
-| **The agent is simply wrong** | It proposes too much, too often, or all in one stock | `SIZE_LIMIT`, `CONCENTRATION` |
-
-Spending caps on an agent wallet stop the last row. They do not know whether NYSE is open, whether the feed
-is alive or whether a split is pending. Maat checks all of these, onchain, on every trade.
-
-## Why it is different
-
-- **The market calendar is onchain.** `MarketCalendar` computes the NYSE session in America/New_York, with
-  daylight saving time, holidays and early closes. The vault never trusts the agent's clock or an offchain
-  API to say whether the market is open.
-- **It reads the B20 corporate-action surface.** The vault snapshots each token's `uiMultiplier`, watches
-  `effectiveAt` for a scheduled change, and refuses to trade through the cooldown. These guards exist
-  because Base's tokenized stocks expose these fields.
-- **Refusals are data.** Each intent ends in a typed `Decision` event carrying `keccak256` of Claude's
-  rationale. A refused trade leaves a public record instead of a revert that leaves none.
-- **Credit that knows about weekends.** Stocks back USDC loans on Aave V4, but borrowing needs an open
-  market, and the health-factor floor rises in the hours before the feeds stop for a weekend or holiday.
-- **The agent is untrusted by design.** The same checks bind Claude, the agent's own code and anyone who
-  steals the executor key.
-
-## What Maat does
-
-Maat is one agent with one vault: "Agent #1", owned by the team, trading only its own treasury of $20 to
-$200. It runs a loop meant to pay for itself:
-
-1. **Earn.** USDC that arrives in the vault is recorded as `RevenueReceived`. (The planned source is x402
-   fees for safety checks; that part is not built yet.)
-2. **Buy.** Keep an equal-weight basket of NVDAc, GOOGLc and AAPLc with 30% held in USDC, and rebalance when
-   a weight drifts more than 5 percentage points.
-3. **Supply.** Put idle stock on Aave V4 as collateral.
-4. **Borrow.** Borrow USDC against it when cash falls below seven days of compute cost, only while the market
-   is open and the projected health factor stays at or above 1.5 (2.0 in the de-risk window before a weekend
-   or a market holiday, when the feeds are about to stop).
-5. **Pay.** Track its own Claude spend and pay it in USDC with `PAY_EXPENSE` to an allowlisted payee, the
-   wallet that pays for its Claude usage (for Agent #1, the owner's). This works at any hour. Repay debt when
-   revenue arrives.
-
-Every step is an `Intent` that goes through `execute`. The owner can pause the vault, swap the executor key
-and withdraw funds at any time, and can change the rules only through a 24-hour timelock.
-
-## How a decision is made
-
-```mermaid
-flowchart LR
-    S["Vault state<br/>read at one block"] --> P["Rule-based policy<br/>suggests trades"]
-    P --> C["Claude<br/>proposes intents<br/>(JSON schema)"]
-    C --> Z["zod re-validates,<br/>agent clamps amounts"]
-    Z --> V["previewIntent<br/>eth_call as executor"]
-    V --> G["GuardedSender<br/>vault-only calldata,<br/>Builder Code, gas cap"]
-    G --> W["CDP Server Wallet<br/>policy: vault only,<br/>value 0, Base only"]
-    W --> E["MandateVault.execute<br/>nine checks"]
-    E -->|all pass| A["Aerodrome swap<br/>or Aave V4 action"]
-    E -->|any fails| R["Decision(allowed=false, reason)<br/>no funds move"]
-    A --> D["Decision(allowed=true, OK)"]
-```
-
-The agent-side steps are there to save gas and to keep a readable journal. None of them is trusted: the
-vault re-runs every check itself, and a stolen executor key faces exactly the same rules.
-
-A Claude proposal is a JSON object that must match a schema (at most 6 intents, each with an action, a
-stock, a dollar amount and a rationale of at most 600 characters). The agent keeps the rationale text in its
-journal and puts `keccak256(rationale)` onchain as `rationaleHash`, so each `Decision` can be matched to the
-reasoning behind it. Claude's schema cannot express `PAY_EXPENSE`; the bill payment is added by code.
-
-## The nine checks
-
-`BUY` and `SELL` go through these checks in this order. The first failure decides the reason.
-Code: [`MandateVault._check`](contracts/src/MandateVault.sol#L257-L282) and
-[`GuardLib.checkMarket`](contracts/src/GuardLib.sol#L44-L62).
-
-| # | Check | Refusal | Where | A test that shows it |
-| --- | --- | --- | --- | --- |
-| – | Vault not paused (every action except `REPAY`) | `VAULT_PAUSED` | [`MandateVault.sol#L259`](contracts/src/MandateVault.sol#L259) | `test_vaultPaused` |
-| 1 | Token is in the mandate. `BUY` needs an allowed token; `SELL` also works for exit-only tokens, so a delisted stock can still be sold | `TOKEN_NOT_ALLOWED` | [`MandateVault.sol#L266`](contracts/src/MandateVault.sol#L266) | `test_exitOnlyTokenCanBeSoldNotBought` |
-| 2 | Token transfers are not paused; a reverting read counts as paused | `TOKEN_PAUSED` | [`GuardLib.tokenPaused`](contracts/src/GuardLib.sol#L65) | `test_refusesPausedToken` |
-| 3 | Every leg of the transfer passes the B20 policy registry (sender, receiver, executor, including `tx.origin`) | `POLICY_BLOCKED` | [`GuardLib.transferPathAuthorized`](contracts/src/GuardLib.sol#L145) | `test_refusesWhenPolicyBlocksVault` |
-| 4 | Market open for the mandate's session (`REGULAR`: NYSE 09:30 to 16:00 ET with holidays and early closes) | `MARKET_CLOSED` | [`GuardLib.marketOpen`](contracts/src/GuardLib.sol#L74), [`MarketCalendar.isOpen`](contracts/src/MarketCalendar.sol#L63) | `test_refusalIsLoggedNotReverted`, `test_thanksgivingIsMarketClosedAtVaultLevel` |
-| 5 | Oracle answer is positive and not older than `maxStaleness` | `FEED_STALE`, `BAD_PRICE` | [`PriceLib.readFeed`](contracts/src/lib/PriceLib.sol), [`GuardLib.sol#L50-L52`](contracts/src/GuardLib.sol#L50-L52) | `test_refusesStaleFeed` |
-| 6 | No multiplier change: unchanged since the last snapshot, outside the cooldown, nothing scheduled | `MULTIPLIER_COOLDOWN` | [`GuardLib.multiplierBlocked`](contracts/src/GuardLib.sol#L118) | `test_multiplierChangeStartsCooldown`, `test_pendingMultiplierBlocks` |
-| 7 | Pool TWAP is within `maxPremiumBps` of the oracle | `PREMIUM_TOO_HIGH`, `BAD_PRICE` | [`PriceLib.premiumBps`](contracts/src/lib/PriceLib.sol), [`GuardLib.sol#L58-L60`](contracts/src/GuardLib.sol#L58-L60) | `test_refusesPremium` |
-| – | Amount is non-zero and covered by the balance. Market reasons take precedence | `INSUFFICIENT_BALANCE` | [`MandateVault.sol#L271-L274`](contracts/src/MandateVault.sol#L271-L274) | `test_marketReasonTakesPrecedenceOverBalance` |
-| 8 | Notional within the per-trade cap and the UTC-day cap | `SIZE_LIMIT` | [`MandateVault._withinCaps`](contracts/src/MandateVault.sol#L500) | `test_perTradeCap`, `test_dailyCap` |
-| 9 | `BUY` only: the stock's weight after the buy stays within `maxWeightBps`, measured on equity net of Aave debt; unreadable positions fail closed | `CONCENTRATION` | [`MandateVault._weightAfterBuyBps`](contracts/src/MandateVault.sol#L512) | `test_concentration`, `test_concentrationNetsCreditDebt` |
-
-After the checks pass, the vault swaps with a slippage floor it computes itself from the oracle price and
-`maxSlippageBps`, whatever `minOut` the agent sent (the agent always sends 0:
-`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`). A failed swap or token transfer is recorded as
-`SWAP_FAILED` or `TRANSFER_FAILED`, and `execute` still does not revert.
-
-**Other actions.** `PAY_EXPENSE` checks the payee allowlist, the balance and the shared daily cap, and works
-when the market is closed. `SUPPLY` checks the token, pause and policy path. `BORROW` needs an open market,
-healthy collateral (checks 2, 5 and 6 on every supplied stock) and a projected health factor of at least
-`minHealthFactor`, or `targetHealthFactor` inside the de-risk window, the hours before 20:00 ET on a Friday
-or on a weekday before a market holiday (`HEALTH_FACTOR_LOW`, `DERISK_WINDOW`). `REPAY` is allowed at any hour, even while the vault is paused.
-Withdrawing collateral with no debt outstanding is allowed at any hour, but not while the vault is paused.
-Code:
-[`_checkExpense`](contracts/src/MandateVault.sol#L284) and
-[`_checkCredit`](contracts/src/MandateVault.sol#L295).
-
-**All refusal reasons** (`enum Reason` in [`Types.sol`](contracts/src/Types.sol), append-only):
-
-| Group | Reasons (id) |
-| --- | --- |
-| Vault and routing | `VAULT_PAUSED` (1), `ACTION_NOT_SUPPORTED` (2) |
-| Token | `TOKEN_NOT_ALLOWED` (3), `TOKEN_PAUSED` (4), `POLICY_BLOCKED` (5) |
-| Market | `MARKET_CLOSED` (6), `FEED_STALE` (7), `BAD_PRICE` (8), `MULTIPLIER_COOLDOWN` (9), `PREMIUM_TOO_HIGH` (10) |
-| Size and funds | `SIZE_LIMIT` (11), `CONCENTRATION` (12), `PAYEE_NOT_ALLOWED` (13), `INSUFFICIENT_BALANCE` (14) |
-| Execution and credit | `SWAP_FAILED` (15), `TRANSFER_FAILED` (16), `CREDIT_FAILED` (17), `HEALTH_FACTOR_LOW` (18), `DERISK_WINDOW` (19) |
-
-`OK` is 0, so there are 19 typed refusals. The agent's copy of this enum is tested against `Types.sol`
-([`agent/test/types.test.ts`](agent/test/types.test.ts)), and so is the website's.
-
-## Safety architecture
-
-| Layer | What it enforces | Where |
-| --- | --- | --- |
-| **The executor's only power is `execute`** | Every function that moves funds or changes a rule is owner-only, and the owner is immutable. `notifyRevenue` and `syncMultiplier` are open to anyone and only record state | [`MandateVault.sol`](contracts/src/MandateVault.sol), `test_executorCannotUseOwnerFunctions` |
-| **Nine checks, in the contract** | Market safety, size and concentration on every trade; health factor on every borrow | [The nine checks](#the-nine-checks) |
-| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert (plain ERC-20 `balanceOf` and `decimals` reads are assumed not to) | `test_refusalIsLoggedNotReverted` |
-| **Single-use intents** | Each intent id executes once, refused or not | `test_replayReverts` |
-| **Fail closed** | A reverting pause, policy, calendar, multiplier, feed or Aave read counts as unsafe | `test_reverting*FailsClosed` in [`GuardLib.t.sol`](contracts/test/GuardLib.t.sol), `test_unreadableCollateralFailsConcentrationClosed` |
-| **Slippage floor from the oracle** | The vault, not the agent, sets the minimum output | `test_slippageFloorIsEnforcedEvenIfAgentSendsZero` |
-| **24-hour timelock** | Mandate, token and payee changes are queued, then applied with the exact queued values from 24 hours after queueing until 7 days after that, or cancelled | `test_mandateChangeNeedsTimelock`, `test_appliedParamsMustMatchQueued`, `test_expiredChangeReverts` |
-| **Owner escape hatches** | `setPaused` (instant; `REPAY` still works), `setExecutor` (instant key rotation), `withdraw` (only to the owner) | `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` |
-| **Calendar can only get stricter** | The calendar owner can add holidays and earlier closes, never remove them | `test_ownerCanOnlyMakeItStricter` |
-| **Guarded sender** | The agent sends only `execute`, `syncMultiplier` or `notifyRevenue` to the vault address, with an explicit gas limit (at most 3,000,000) and the Builder Code suffix | [`agent/src/exec/sender.ts`](agent/src/exec/sender.ts), [`sender.test.ts`](agent/test/sender.test.ts) |
-| **CDP account policy** | The executor wallet may only send zero-value transactions to the vault on Base; raw hash signing is rejected | [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts), [`cdpPolicy.test.ts`](agent/test/cdpPolicy.test.ts) |
-| **Exactly-once sends** | Every `execute` is stored as pending before it is sent; the next round reconciles it against `usedIntent` before doing anything else, so a lost receipt cannot pay a bill twice | [`agent/src/loop/runOnce.ts`](agent/src/loop/runOnce.ts), `runOnce.test.ts` "reconciles a send that threw after broadcast instead of sending again" |
-| **Halt on surprise** | If the preview said OK but the vault refused, or a receipt has no `Decision`, the round stops | `runOnce.test.ts` "halts when the preview said OK but the vault refused" |
-| **Rate limits** | `MAAT_MAX_TX_PER_DAY` (default 40). Safety refusals (market, policy, size, concentration, health factor) are logged onchain at most once per reason per UTC day; bookkeeping refusals such as `INSUFFICIENT_BALANCE` cost no gas | [`agent/src/refusals.ts`](agent/src/refusals.ts) |
-| **One agent per data directory** | A lock file is taken before the store or the wallet is opened | [`agent/src/loop/lock.ts`](agent/src/loop/lock.ts) |
-
-**If the executor key leaks.** Say an attacker controls the server that runs the agent:
-
-| The attacker can | but cannot |
-| --- | --- |
-| Call `execute` with any intent | Skip any of the nine checks, trade outside the session or the stock list, or beat the $50 per-trade and $100 per-day caps |
-| Make bad but allowed trades inside the mandate | Send funds anywhere: swaps go to the allowlisted pool, borrowed USDC and collateral come back to the vault, and `PAY_EXPENSE` pays only allowlisted payees |
-| Borrow against the stocks | Push the projected health factor below 1.5 (2.0 in the de-risk window) |
-| Stop the agent | Change the mandate, withdraw, unpause or keep the key: the owner pauses or rotates the executor instantly, from their own wallet |
-
-The fork test `test_compromisedExecutorIsBounded`
-([`MandateVaultFork.t.sol`](contracts/test/fork/MandateVaultFork.t.sol#L83)) tries this against real Base
-state: the executor pays $100 to an attacker address (`PAYEE_NOT_ALLOWED`), buys $60 of NVDAc (`SIZE_LIMIT`) and calls
-`withdraw` (reverts `NotOwner`); the vault keeps all 200 USDC. What is not covered is listed under
-[Known limitations](#known-limitations).
-
-## Base mainnet fork evidence
-
-Everything here ran on a local fork of Base mainnet, not on mainnet itself. Nothing was broadcast.
-
-**The agent, end to end.** [`agent/test/integration/agent.fork.test.ts`](agent/test/integration/agent.fork.test.ts)
-deploys the contracts with the real deploy script on an anvil fork at block 53,551,627 (Thursday
-2026-11-05, 10:30 ET, NVDA feed 14 seconds old), funds the vault, runs agent rounds with a scripted
-proposer in place of Claude, and checks that every transaction carries the Builder Code and an explicit gas
-limit, and that each preview matches the onchain `Decision`.
-
-| Round | Intent | Decision | gasUsed |
-| --- | --- | --- | --- |
-| Thursday 10:30 ET | BUY $20 of NVDAc | allowed, `OK` | 758,192 |
-| Thursday 10:30 ET | SUPPLY $15 of NVDAc to Aave V4 | allowed, `OK` | 286,707 |
-| Thursday 10:30 ET | BORROW $5 USDC | allowed, `OK` | 484,173 |
-| Clock moved 2 days ahead (Saturday) | BUY $10 of GOOGLc | **refused**, `MARKET_CLOSED`, logged onchain | 111,116 |
-
-The gas figures are the committed output of that run
-([`fork-gas.json`](agent/test/integration/fork-gas.json)); the website reads them from there and its tests
-fail if they differ. BUY gas varied by under 1% between two runs (754,854 and 758,192); the other three
-did not change. The Saturday row is the same fork with the clock moved forward, not a real Saturday block.
-
-**The contracts, against real Base state.** 14 Foundry fork tests in
-[`contracts/test/fork/`](contracts/test/fork) pin two mainnet blocks: `BLOCK_SESSION` 53,551,627 (Thursday
-2026-11-05, in session) and `BLOCK_WEEKEND` 53,340,127 (Saturday 2026-10-31, NVDA feed last updated Friday
-around 19:51 UTC).
-
-| Test file | What it shows |
-| --- | --- |
-| `MandateVaultFork.t.sol` | Buys and sells NVDAc in session, buys the basket, refuses a real-weekend buy in both session modes, and bounds a compromised executor |
-| `MandateVaultCreditFork.t.sol` | The credit loop in session; then, with the clock moved to Saturday, borrowing is refused while repay and withdraw still work |
-| `AaveV4CreditAdapterFork.t.sol` | Full supply, borrow, repay and withdraw on the Aave V4 MAG7 Spoke; reserve ids match the chain; a borrow below the minimum health factor reverts |
-| `AerodromeSwapAdapterFork.t.sol` | Buys and sells NVDAc directly against the Slipstream pool |
-| `PriceLibFork.t.sol` | The live basket trades near the oracle price |
-| `B20Smoke.t.sol` | Reads B20 state through the precompile and transfers NVDAc |
-| `DeployFork.t.sol` | The deploy script wires every contract and address correctly |
-
-The measured in-session premiums at `BLOCK_SESSION` (NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps) are why the
-default `maxPremiumBps` is 100 rather than 50
-([`MaatConfig.sol`](contracts/script/MaatConfig.sol)).
-
-**How to reproduce.** Contract fork tests: see the end of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes).
-The agent fork run needs a Base archive RPC and `base-anvil` v1.5.1, because upstream Anvil 1.9 reverts on the
-B20 `uiMultiplier()` call; it takes 3 to 5 minutes. Steps: [`agent/README.md`](agent/README.md#test).
-
-## Base integrations
-
-All addresses are Base mainnet, from [`contracts/script/BaseAddresses.sol`](contracts/script/BaseAddresses.sol)
-(verified on 2026-11-06).
-
-| Integration | How Maat uses it | Address |
-| --- | --- | --- |
-| **USDC** | Treasury and quote asset | [`0x8335…2913`](https://basescan.org/address/0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913) |
-| **B20 stocks** | The basket: NVDAc, GOOGLc, AAPLc. The vault reads `isPaused`, `policyId`, `uiMultiplier` and `effectiveAt` | [NVDAc](https://basescan.org/address/0xb20000000000000000000078ee7ce2fE4908108C), [GOOGLc](https://basescan.org/address/0xb2000000000000000000002D0BA3164cc74f58B7), [AAPLc](https://basescan.org/address/0xb200000000000000000000C2e324d24d7eEcd1fb) |
-| **B20 policy registry** | Transfer-path authorization (check 3) | [`0x8453…0002`](https://basescan.org/address/0x8453000000000000000000000000000000000002) |
-| **Chainlink equity feeds** | Oracle price per raw token (multiplier already included), staleness | [NVDA](https://basescan.org/address/0x04689a41629776563E6822F76f2e57D148d28513), [GOOGL](https://basescan.org/address/0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2), [AAPL](https://basescan.org/address/0x787f13dEa48Db0897CbCDD985de77809D837F988) |
-| **Aerodrome Slipstream** | Swap venue and 30-minute TWAP; called directly, no router | [NVDAc/USDC](https://basescan.org/address/0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC), [GOOGLc/USDC](https://basescan.org/address/0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3), [AAPLc/USDC](https://basescan.org/address/0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6) |
-| **Aave V4 (MAG7 Spoke, Equities Hub)** | Stocks as collateral, USDC borrowing; the adapter is the Aave user and only its vault can move the position | [Spoke](https://basescan.org/address/0x17905Db0e4A3514467539956c084180616AE7B8D), [Hub](https://basescan.org/address/0xa4d5947Eb727A052bae69C593FfC84247EC9864E) |
-| **Coinbase CDP Server Wallet** | The executor key, with an account policy (vault only, value 0, Base only). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
-| **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
-| **Claude** | `claude-sonnet-5-5` with structured output proposes the round's intents | [`agent/src/llm/proposer.ts`](agent/src/llm/proposer.ts) |
-
-AMZNc is not in the basket: its pool held only about $34k of liquidity when the basket was chosen.
-
-## The default mandate
-
-The deploy script uses [`MaatConfig.defaultMandate`](contracts/script/MaatConfig.sol) with the `REGULAR`
-session.
-
-| Parameter | Value | Meaning |
-| --- | --- | --- |
-| `sessionMode` | `REGULAR` | NYSE 09:30 to 16:00 ET, holidays and early closes applied |
-| `maxPremiumBps` | 100 | Pool TWAP may differ from the oracle by at most 1% |
-| `twapWindow` | 1800 s | 30-minute TWAP |
-| `maxSlippageBps` | 100 | Minimum swap output is 99% of the oracle-implied amount |
-| `maxStaleness` | 3600 s | Oracle answers older than one hour are stale |
-| `multiplierCooldown` | 1 day | Wait after a corporate-action multiplier change |
-| `perTradeCapUsd` / `dailyCapUsd` | $50 / $100 | Per trade, and per UTC day across trades and bill payments |
-| `maxWeightBps` (per stock) | 4000 | No stock above 40% of net equity after a buy |
-| `minHealthFactor` / `targetHealthFactor` | 1.5 / 2.0 | Borrow floor, and the floor inside the de-risk window |
-| `deriskWindow` | 8 hours | 12:00 to 20:00 ET on Fridays and on weekdays before a market holiday |
-
-## The agent runtime
-
-[`agent/`](agent) is a TypeScript service (Node 22.9 or newer, viem, zod). One round:
-
-1. Read the vault, tokens, feeds and Aave position at one pinned block. If any required read fails, do
-   nothing.
-2. Reconcile any transaction left pending by an earlier round.
-3. Send `syncMultiplier` for any stock whose multiplier changed.
-4. Compute rule-based suggestions, then ask Claude for intents.
-5. Pay the compute bill first if at least $0.10 is owed, then each proposal: build the intent, preview it
-   as the executor, and send it only if it is allowed, or if it is a market refusal worth logging today.
-6. Journal everything to `data/journal.jsonl`.
-
-It runs every 15 minutes in session and every hour outside. `MAAT_MODE` defaults to `dry-run`, which reads
-the chain and calls Claude but sends nothing. Live mode needs a registered Builder Code and CDP keys, and is
-set up by the owner. Runbook, configuration and recovery steps: [`agent/README.md`](agent/README.md).
-
-## The website
-
-[`web/`](web) is a static Next.js 16 export with no wallet, no RPC calls, no analytics and no cookies
-(`npm run check:out` fails if a third-party script appears in the built pages). The hero is the decision engine:
-a BUY on Thursday 10:30 ET (NVDAc, allowed) next to a BUY on Saturday (GOOGLc, refused), with the check that
-stops it. Every number on the page lives in [`web/content/facts.ts`](web/content/facts.ts) with its source.
-[`web/test/facts.test.ts`](web/test/facts.test.ts) checks the ones that come from code (the contracts, the
-agent's policy and the fork run) against that code; the rest, such as the planned x402 price, cite the
-design spec. Values that will exist only after the mainnet deploy are shown as `[after deploy]`, never as made-up
-hashes. Details: [`web/README.md`](web/README.md).
-
-## Where things are in this repository
-
-```text
-contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork base:Cobalt)
-  src/
-    MandateVault.sol       the vault: mandate, nine checks, Decision log, timelock, credit routing
-    GuardLib.sol           market-safety checks, inlined into the vault
-    MarketCalendar.sol     NYSE session, DST, holidays, early closes
-    Types.sol              Action, Reason, SessionMode, Intent, Mandate, TokenConfig
-    adapters/              AerodromeSwapAdapter, AaveV4CreditAdapter and their interfaces
-    lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
-    interfaces/            B20, Aave V4, Chainlink and pool interfaces
-  script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
-  test/                    8 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
-agent/                     TypeScript agent runtime
-  src/chain/               vault state reader, previewIntent
-  src/llm/                 Claude proposer, prompt, schema, pricing
-  src/exec/                Builder Code, calldata and gas rules, GuardedSender, CDP sender and policy
-  src/loop/                one round, scheduler, single-instance lock
-  src/ledger/              state store and JSONL journal
-  test/                    unit tests with fakes; integration/ runs the Base fork
-  scripts/                 cdp-setup.ts (owner, once), gen-abis.ts, smoke-claude.ts (paid API)
-web/                       Next.js landing page, brand assets, parity tests, Playwright e2e
-deployments/               mainnet deploy runbook and the (empty) address table
-docs/superpowers/          design specs and implementation plans
-```
+</details>
 
 ## Development
 
@@ -511,17 +534,12 @@ docs/superpowers/          design specs and implementation plans
 | Web, unit, component and parity | `npm test` | 1,494 | nothing |
 | Web, end to end | `npm run e2e` (after `npm run build`) | 259 | `npx playwright install chromium` |
 
-The counts are from the first green CI run on `e6f1a0b`, 2026-11-19, except the two marked by hand, which
-were measured at `4492eed`, 2026-11-07.
+The counts are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) on
+`main` (`3778fea`, 2026-11-19), except the two marked by hand, recorded at `4492eed`, 2026-11-07. Per-suite
+detail: [Run the tests](https://maatonbase.xyz/docs/guides/run-the-tests).
 
-Contract unit tests by suite, measured by hand at `e6f1a0b`, 2026-11-19: MandateVault 64,
-MandateVaultCredit 54, GuardLib 44, MandateVaultAdmin 23, AaveV4CreditAdapter 15, MarketCalendar 9,
-PriceLib 7, AerodromeSwapAdapter 4.
-
-Other useful commands: `forge build --sizes` (MandateVault is 22,755 bytes of runtime code, 1,821 under the
-24,576-byte limit, measured by hand at `e6f1a0b`, 2026-11-19), `npm run typecheck` in `agent/` and `web/`,
-`npm run verify` in `web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/`
-after a contract change.
+Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` and `web/`, `npm run verify` in
+`web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/` after a contract change.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
@@ -530,58 +548,138 @@ CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the four offlin
 unit, agent unit, web unit and web end to end), a secret scan of the full history and of every commit
 message, and a lint of the workflow itself, on every pull request and every push to `main`. Each run's
 summary shows the counts each runner reported. The contracts fork suite and the agent fork integration suite
-need an archive RPC and run by hand.
-
-## Deploying (owner only)
-
-Every mainnet transaction is signed by the owner from their own wallet; no script in this repository holds
-a key. [`deployments/README.md`](deployments/README.md) has the pre-broadcast checklist (the owner address is
-immutable, so a typo is permanent), the `forge script` commands, a $20 smoke test that expects a weekend
-`MARKET_CLOSED`, the credit smoke test, the unwind procedure, and the handover of the executor role to the
-CDP Server Wallet. Deployed addresses will be recorded in that file.
+need an archive RPC and run by hand. Lighthouse, a browser audit of the production site, also runs by hand
+([`web/README.md`](web/README.md#deploy-owner)).
 
 ## Known limitations
 
 - **Unaudited.** No third party has reviewed the contracts.
-- **Not on mainnet yet.** All execution evidence is from a local fork. The Base App mini-app, x402 revenue
-  and the live dashboard do not exist yet.
+- **Not on mainnet yet.** All execution evidence is from a local fork, with a scripted proposer; the real
+  Claude API and the CDP wallet have been tested only against fakes. The Base App mini-app, x402 revenue and
+  the live dashboard do not exist yet.
 - **The calendar must be maintained.** It ships with Thanksgiving 2026, Christmas 2026 and New Year 2027,
   plus early closes on 2026-11-27 and 2026-12-24. Later holidays need `addHoliday` from the calendar owner.
-  If one is missed, the session check treats that day as a normal session, and only the feed-staleness check
-  is left to stop a trade. `FEED_24_5` mode ignores early closes.
+  If one is missed, only the price checks are left to stop a trade that day: the feed-staleness check, once
+  the last answer is older than `maxStaleness`, and the premium check, if the pool drifts. `FEED_24_5` mode
+  ignores early closes.
 - **The feed is assumed to include the multiplier.** The vault treats each Chainlink equity answer as the
-  price of one raw token with the B20 multiplier already applied. That matched Coinbase's NAV price when it
-  was checked during development, with the multiplier close to 1
-  ([Plan 1](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)); it has not yet been observed
-  across a real split.
+  price of one raw token with the B20 multiplier applied. That matched Coinbase's NAV price when checked, with
+  the multiplier close to 1 ([Plan 1](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)); it
+  has not been observed across a real split.
 - **`tx.origin` in the policy check.** The B20 executor policy is checked against `tx.origin` (a read-only
-  policy lookup, never for authentication). The executor must therefore be an account the token's policy
-  allows, and `previewIntent` must be called with `from` set to the executor.
+  lookup, never for authentication), so the executor must be an account the token's policy allows, and
+  `previewIntent` must be called with `from` set to the executor.
 - **Preview cannot see everything.** `previewIntent` cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`,
-  `CREDIT_FAILED`, or Aave's health check after a collateral withdrawal against debt.
-- **Caps are simple.** The daily cap is a UTC-day counter. Credit actions are bounded by the health factor,
-  not by the trade caps. Bill payments share the daily cap with trades.
+  a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check after a borrow or a
+  collateral withdrawal against debt.
+- **Caps are simple.** The daily cap is a UTC-day counter. Credit actions are bounded by the health factor
+  (a borrow, or a collateral withdrawal against debt) or by what the vault holds (supply and repay), not by
+  the trade caps. Bill payments share the daily cap with trades.
 - **Gas estimation.** The vault catches inner failures, so `eth_estimateGas` can return a limit too low for
   the swap. The agent uses fixed floors (2,500,000 for `execute`) and a 3,000,000 cap instead.
 - **Operational costs.** The executor needs a little ETH on Base for gas (the CDP paymaster serves smart
-  accounts only). Dry-run mode still calls Claude, at roughly one cent per round.
+  accounts only). Dry-run mode still calls Claude, at roughly one cent per round: an estimate, since no
+  output from the real Claude API is committed to check it.
 - **The owner is a single key.** It is immutable and has no transfer function. A multisig owner is
   compatible but not set up.
-- **Dependency advisories.** `npm audit` reports 3 high-severity advisories in the agent (zod 3 and abitype
-  nested in `@coinbase/cdp-sdk`, no safe override yet). In the website it reports none: `web/package.json`
-  overrides `fflate` under `satori`, which renders the brand images, and `compression` under `serve`, which
-  the e2e tests use, to their first patched releases. Neither package ships in the static site.
+- **Dependency advisories** (as of 2026-11-19). `npm audit` reports 3 high-severity vulnerabilities in the
+  agent, all from one zod advisory, GHSA-mrhx-c7xc-m3w5 (zod 3 and abitype nested in `@coinbase/cdp-sdk`,
+  no safe override yet; see [`agent/README.md`](agent/README.md)). In the website it reports none: `web/package.json` overrides `fflate` 0.7.3 under `satori`, which renders the
+  brand images, to 0.7.5, and `compression` 1.8.1 under `serve`, which the e2e tests use, to 1.8.2 (PR #11).
+  Neither package ships in the static site.
+
+**The case against Maat.** It is unaudited and has no mainnet record: every execution so far ran on a local
+fork, with a scripted proposer in place of Claude, so nothing here shows how the real model behaves or how the
+vault holds up with real money. Its session check is only as good as a calendar the owner must keep current;
+its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
+counters; and one immutable owner key, with no multisig, controls the vault.
 
 ## Roadmap
 
-Planned, roughly in this order. None of this is built.
+Planned, roughly in this order. None of this is on `main`, and no dates are promised.
 
 1. Mainnet deploy of Agent #1's vault by the owner, executor handed to the CDP Server Wallet, the first real
    `Decision` events, the live ledger on the website and a Base App mini-app manifest (W2).
-2. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop.
+2. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
+   progress in PR #2, open and unmerged.
 3. MCP server and Bankr Skill exposing the same check.
 4. `MandateFactory`: any agent deploys its own vault with its own mandate.
 5. Daily diary and replay page (W3).
+
+## Built during the Quest
+
+Maat is an entry in Base's "Stocks Maxxing Season" Builder Quest (5 November to 5 December 2026), track
+Agentic Stock Finance. All code in this repository was written during the Quest: the first commit is
+`009577d` on 2026-11-06. The only third-party code in the tree is the two Solidity submodules below; npm
+packages install from the lockfiles.
+
+| Milestone | First commit | Last commit | Merged in | Merged on |
+| --- | --- | --- | --- | --- |
+| Design spec and Plan 1 (root commit) | `009577d`, 2026-11-06 | – | – | – |
+| Core contracts | `a5a82ab`, 2026-11-06 | `3af1ad8`, 2026-11-06 | `55e25b5` | 2026-11-07 |
+| Credit on Aave V4 | `c93c9e0`, 2026-11-06 | `bcfac11`, 2026-11-06 | `afedbf7` | 2026-11-07 |
+| Agent runtime | `16903ae`, 2026-11-06 | `1193248`, 2026-11-06 | `4700f47` | 2026-11-07 |
+| Website | `8ff47e4`, 2026-11-07 | `93f91ca`, 2026-11-07 | `a189f21`, `723283e` | 2026-11-07 |
+| Root README and MIT license | `4492eed`, 2026-11-07 | `a3ec9dd`, 2026-11-07 | `b33d166`, `e68aa39` | 2026-11-07 |
+| Simulator (PR #1) | `4bf219b`, 2026-11-08 | `72ceba3`, 2026-11-16 | `8608b7d` | 2026-11-16 |
+| Docs center (PR #3) | `6a378e0`, 2026-11-07 | `a98df14`, 2026-11-18 | `772e125` | 2026-11-19 |
+| CI and `SECURITY.md` (PR #4) | `71d24b0`, 2026-11-18 | `8fea383`, 2026-11-19 | `d7d44c4` | 2026-11-19 |
+| Docs follow-ups (PRs #6 to #10) | `e57d93a`, 2026-11-19 | `d986da3`, 2026-11-19 | `9649364`, `9ce4b01`, `5f803f6`, `afc976c`, `f21c9a1` | 2026-11-19 |
+| Website npm overrides (PR #11) | `35acb96`, 2026-11-19 | `a450edf`, 2026-11-19 | `3778fea` | 2026-11-19 |
+
+Dates are author dates in UTC+7. At `3778fea` (the merge of PR #11), `main` has 291 commits: 271 non-merge
+and 20 merges.
+
+| Part | Built with |
+| --- | --- |
+| Contracts | Solidity 0.8.28 (via IR, optimizer 200 runs, EVM `cancun`, `hardfork = "base:Cobalt"`); Foundry (CI pins v1.9.0); submodules forge-std v1.17.0 (used by the deploy script and tests) and Uniswap v4-core v4.0.0 (only `TickMath` and `FullMath` are imported, by `PriceLib` and the swap adapter) |
+| Agent | Node.js >=22.9, TypeScript 7.0.2, `@anthropic-ai/sdk` 1.6.0, `@coinbase/cdp-sdk` 1.61.0, viem 2.57.16, ox 1.8.13, zod 4.6.7; tests with vitest 5.1.0 |
+| Website | Node.js 24.x, Next.js 16.4.5, React 19.3.1, fumadocs-core and fumadocs-ui 16.18.1, fumadocs-mdx 15.5.0, Tailwind CSS 4.3.5, geist 1.9.2, zbsearch 4.0.1, zod 4.6.7; brand images with satori 0.63.2 and `@resvg/resvg-js` 2.6.2; tests with vitest 5.1.0, Playwright 1.65.0 and `@axe-core/playwright` 4.14.0 |
+| CI | GitHub Actions on Node.js 24, gitleaks (image pinned by digest), actionlint |
+
+**AI-assisted code.** Claude Code wrote most of the code. Each part started as a design spec, then a written
+plan, then implementation task by task, with a review after each task and of the whole branch at the end
+([`docs/superpowers`](docs/superpowers)). At `3778fea`, every non-merge commit on `main` (271 of 271) carries
+a `Co-Authored-By: Claude` trailer, and so do 16 of the 20 merge commits. The owner decides the product
+and signs the mainnet deploy and every owner-only call; once the owner hands the executor role to a CDP Server
+Wallet, that wallet signs the agent's transactions. From PR #3 on, Claude Code merged the pull requests from the
+owner's GitHub account.
+
+## Compliance
+
+- Maat holds only its own treasury.
+- It is not offered to US persons and does not let US users trade.
+- It gives no investment advice.
+- It confers no shareholder rights.
+- Maat is not affiliated with or endorsed by Base, Coinbase, Bankr, BaseStonk, Anthropic, Chainlink, Aave,
+  Aerodrome or any company whose stock is referenced.
+
+## Where things are in this repository
+
+```text
+.github/                   the CI workflow, its counting script and tests, Dependabot
+contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork base:Cobalt)
+  src/
+    MandateVault.sol       the vault: mandate, nine checks, Decision log, timelock, credit routing
+    GuardLib.sol           market-safety checks, inlined into the vault
+    MarketCalendar.sol     NYSE session, DST, holidays, early closes
+    Types.sol              Action, Reason, SessionMode, Intent, Mandate, TokenConfig
+    adapters/              AerodromeSwapAdapter, AaveV4CreditAdapter and their interfaces
+    lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
+    interfaces/            B20, Aave V4, Chainlink and pool interfaces
+  script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
+  test/                    8 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
+agent/                     TypeScript agent runtime
+  src/                     chain/ (state reader, preview), llm/ (Claude proposer, prompt, schema),
+                           exec/ (Builder Code, gas, GuardedSender, CDP), loop/ (round, scheduler, lock), ledger/
+  test/                    unit tests with fakes; integration/ runs the Base fork
+  scripts/                 cdp-setup.ts (owner, once), gen-abis.ts, smoke-claude.ts (paid API)
+web/                       Next.js landing page, docs center, brand assets, parity tests, Playwright e2e
+deployments/               mainnet deploy runbook and the (empty) address table
+docs/superpowers/          design specs and implementation plans
+docs/assets/readme/        the screenshots in this README
+SECURITY.md                how to report a security problem privately
+```
 
 ## Documentation
 
@@ -595,7 +693,7 @@ Planned, roughly in this order. None of this is built.
 | [CI spec](docs/superpowers/specs/2026-11-18-maat-ci-design.md) | The one CI workflow: its jobs and hardening, the secret scan, the counts in each run's summary, `SECURITY.md`, Dependabot and the pre-flip scan |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
-| [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, reconcile |
+| [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, the agent loop and its Base fork test |
 | [Plan W1: website](docs/superpowers/plans/2026-11-07-maat-web-w1.md) | The landing page and brand assets |
 | [Plan: docs center](docs/superpowers/plans/2026-11-07-maat-docs-center.md) | `/docs` inside the website: Fumadocs, the generated reference data, the pages and their gates |
 | [Plan: simulator](docs/superpowers/plans/2026-11-08-mandate-simulator.md) | The calendar and BUY-check ports in `web/content`, the Simulator component, the Try it section and their tests |
@@ -603,29 +701,20 @@ Planned, roughly in this order. None of this is built.
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
+| [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
 
-The specs record the design as approved and the plans record how the code was built; neither is updated
-afterwards, and some details changed during implementation (for example the default `maxPremiumBps` rose
-from 50 to 100, the de-risk window from 4 to 8 hours, and the spec's CDP spend cap became the vault's own caps
-plus `MAAT_MAX_TX_PER_DAY`). Where a spec or plan differs from the code, the code is correct.
+Online: [maatonbase.xyz/docs](https://maatonbase.xyz/docs), as plain text at
+[`/llms.txt`](https://maatonbase.xyz/llms.txt) and [`/llms-full.txt`](https://maatonbase.xyz/llms-full.txt), and a
+Markdown twin of every page at `/md/docs/<page>.md`.
 
-The docs center, by contrast, follows the code: every change to the contracts, the agent or the website
-updates the docs pages it affects, in the same change. Tests catch part of the drift, but not a sentence
-that has stopped being true. The rules and the commands are in [`web/README.md`](web/README.md#docs-content).
+The specs and plans record the design as it was planned; a few were edited later, but they are not kept in step
+with the code, so where they differ from it, the code is correct. The docs center follows the code; its rules are in [`web/README.md`](web/README.md#docs-content).
 
-## Built for Stocks Maxxing Season
+## Contact and security
 
-Maat is an entry in Base's "Stocks Maxxing Season" Builder Quest (5 November to 5 December 2026), track
-Agentic Stock Finance. All code in this repository was written during the Quest: the first commit is
-`009577d` on 2026-11-06.
-
-How it was built: each part started as a design spec, then a written plan, then implementation task by task
-with Claude Code, with a review after each task and a review of the whole branch at the end. The specs and
-plans are in [`docs/superpowers`](docs/superpowers), and every commit carries a `Co-Authored-By: Claude`
-trailer.
-
-Maat holds only its own treasury. It gives no investment advice, confers no shareholder rights and is not
-offered to US persons.
+- **X:** [@maatonbase](https://x.com/maatonbase).
+- **Security problems:** report them privately through GitHub's private report form, as
+  [`SECURITY.md`](SECURITY.md) describes. Never open a public issue for one.
 
 ## License
 
