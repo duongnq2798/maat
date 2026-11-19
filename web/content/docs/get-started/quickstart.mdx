@@ -4,7 +4,7 @@ description: Clone the repo, watch the vault refuse a Saturday buy, run the cont
 type: guide
 audience: [developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - contracts/test/MandateVault.t.sol
@@ -159,7 +159,7 @@ out/ is ready to deploy (landing and … docs pages checked)
 
 - Every Foundry suite reports `0 failed`. Vitest prints only `passed` counts when all tests pass, and a `failed` count appears next to them when one does not.
 - The refusal trace from step 2 shows `allowed: false, reason: 6`.
-- The last line of the website check starts with `out/ is ready to deploy`.
+- The website check prints a line that starts with `out/ is ready to deploy`, then the size of the search index.
 
 To check one claim at a time, [How it is tested](/docs/security/testing) names the test behind each guarantee and shows how to run it alone. For a contract test, that is the same `--match-test` filter as step 2.
 

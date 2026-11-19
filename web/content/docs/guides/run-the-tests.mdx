@@ -215,7 +215,7 @@ To write your own tests against the vault, start from the setup the existing sui
 
 - Every Foundry run ends with `0 failed`, and the size table shows a positive margin for `MandateVault`.
 - Vitest prints only `passed` counts when every test passes. A `failed` count appears next to them when one does not.
-- The last line of the website check starts with `out/ is ready to deploy`.
+- The website check prints a line that starts with `out/ is ready to deploy`, then the size of the search index.
 - Playwright ends with a `passed` count and no `failed` line.
 - A fork suite that shows as skipped did not run. The agent's fork test is skipped, not failed, when `BASE_RPC_URL` is not set.
 
