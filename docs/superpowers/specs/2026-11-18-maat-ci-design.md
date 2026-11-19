@@ -2,7 +2,8 @@
 
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
-  - Amended after review on 2026-11-19 (4.2, 4.4, 4.6, 5.1, 6.1, 6.2, 6.4 and 10); the owner has not yet confirmed the amendments.
+  - Amended after review on 2026-11-19 (4.2, 4.4, 4.6, 5.1, 6.1, 6.2, 6.4 and 10); the owner confirmed the amendments that day.
+  - Amended again on 2026-11-19, after the first CI runs (4.3, 4.4, 5.1, 6.1 and 8).
 - **Builds on:** `main` at 8608b7d. The owner approved the ecosystem plan on 2026-11-18, with CI as its first sub-project, and
   delegated one choice: CI holds no secret. The research behind the pins and versions below is in local, uncommitted notes; every
   fact this spec relies on is restated here with its source. Section 2 lists where this spec departs from that research, and why.
@@ -209,8 +210,8 @@ same version it is tested on. Reports go to `$RUNNER_TEMP`, outside the tree. Th
      `PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e.json`. One worker keeps the job the same on the 4-CPU public runners. No
      retries: a flaky test should be seen, not hidden.
   8. `extract vitest` into `unit` and `extract playwright` into `e2e`, each on `!cancelled()` with its own step's outcome.
-  9. On failure only, upload `web/test-results/` (Playwright's `outputDir` is `test-results/e2e`, with traces kept on failure) as the
-     artifact `e2e-traces`, kept 7 days.
+  9. Only when the end-to-end step failed (`failure() && steps.e2e.outcome == 'failure'`), upload `web/test-results/` (Playwright's
+     `outputDir` is `test-results/e2e`, with traces kept on failure) as the artifact `e2e-traces`, kept 7 days.
   10. The clean-tree check.
 - Job outputs: `unit` and `e2e`.
 - A test (section 5.3) fails if `verify` stops being exactly those four parts, so the job cannot drift from the local command.
@@ -272,8 +273,8 @@ test that writes a tracked file, or an untracked file that `.gitignore` does not
      `SCAN_EXIT: ${{ steps.messages.outputs.exit }}` for `messages`.
   5. **actionlint** (id `actionlint`) on `.github/workflows/`, through the pinned image (it bundles shellcheck), mounting only the
      workspace read-only with `-w /repo`, on `!cancelled()`, so it reports even when a scan has failed.
-  6. **Where** (id `where`), on `failure()`: for each scan report that exists, print each finding's `RuleID`, `File` (JSON-quoted),
-     `StartLine` and `Commit`, never `Secret`, `Match`, `Line` or `Message`.
+  6. **Where** (id `where`), on `failure()`: for each scan report that exists, print each finding's `RuleID` and `File` (both
+     JSON-quoted), `StartLine` and `Commit`, never `Secret`, `Match`, `Line` or `Message`.
 - Job outputs: `history`, `messages`, `canary` (the canary step's `outcome`) and `actionlint` (that step's `outcome`).
 
 ### 4.5 `summary`
@@ -339,9 +340,9 @@ A zero-dependency ES module (Node built-ins only), run on Node 24. Two commands:
     `path.relative(GITHUB_WORKSPACE, path.join(report.config.rootDir, file))`, where `file` is the spec file the report names.
 - `render` runs in `summary`. It reads `NEEDS_JSON` and appends a Markdown table to `$GITHUB_STEP_SUMMARY`: one row per suite with
   the job result, passed, failed, skipped (and flaky for end-to-end); the history scan as "N findings over M commits" and the message
-  scan as "N findings"; and the canary and actionlint rows as their step outcomes. An output that is absent or empty (its step never
-  ran, for example after a timeout) shows as "no report" and is never treated as malformed. It exits 0 unless `NEEDS_JSON` itself
-  does not parse; gating belongs to the shell step.
+  scan as "N findings", with "1 finding" and "1 commit" in the singular; and the canary and actionlint rows as their step outcomes.
+  An output that is absent or empty (its step never ran, for example after a timeout) shows as "no report" and is never treated as
+  malformed. It exits 0 unless `NEEDS_JSON` itself does not parse; gating belongs to the shell step.
 
 ### 5.2 The table's footer
 
@@ -436,7 +437,8 @@ keywords = ["mnemonic", "seed", "recovery"]
   - `gitleaks:allow` comments, which `--ignore-gitleaks-allow` turns off.
 
 *Note (2026-11-19, final review):* `useDefault = true` also inherits the default config's global allowlist regex
-`(?i)^true|false|null$`, which drops any secret that starts with `true` or contains `false`. Both are BIP-39 words, so
+`(?i)^true|false|null$`, which drops any secret that starts with `true`, contains `false` or ends with `null`. `true` and `false`
+are BIP-39 words (`null` is not), so
 `maat-mnemonic` misses about 0.6% of 12-word and 1.2% of 24-word phrases. It also misses the command-line form
 `--mnemonic "<words>"`, and `maat-rpc-url-with-key` misses `wss://` URLs and an explicit `:443` port (neither form appears in the
 repository). The rules stay as written: each fix changes what the rule reports as its secret, which only a CI run can prove.
@@ -587,6 +589,14 @@ The docs changelog cites only commits on `main`, so its CI entry comes after the
 9. **Before the flip.** The owner runs the workflow with `pre_flip: true` (section 4.6) and flips only after a clean `preflip` job.
 10. **After the flip.** The owner adds a ruleset on `main` that requires `summary` and blocks force pushes and deletions, with the
     owner as the only bypass, and enables private vulnerability reporting (with the `SECURITY.md` and docs change from 7.1).
+
+*Note (2026-11-19, after the first CI runs):* the owner made the repository public on 2026-11-19, before step 9's scan could run:
+`preflip` needs `ci.yml` on `main`, so the pull-request and issue text had not been scanned at the flip. The two CI runs on this
+pull request so far (on `96d8be9` and `e6f1a0b`) scanned the history and the commit messages of every branch and found nothing.
+Actions minutes on the standard runners now cost nothing, so the billing item and the cost paragraph below no longer apply. Step 7
+moves ahead of the deploy: `chore/ci` merges once the run on its last commit is green, and `preflip` then runs on `main` as the
+post-flip scan. Step 10's ruleset and private vulnerability reporting are no longer blocked. The Actions settings of the owner-only
+list were set on 2026-11-19, and the owner delegated the merges that day.
 
 **Owner-only actions.**
 
