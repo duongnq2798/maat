@@ -29,6 +29,7 @@ describe("DecisionEngine", () => {
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-verdict", "refused");
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-reason", "MARKET_CLOSED");
     expect(screen.getByText("replay · Base fork · block 53,551,627")).toBeInTheDocument();
+    expect(screen.getByText("INTENT · SCRIPTED FORK RUN")).toBeInTheDocument();
   });
 
   it("Thursday passes all nine and is allowed", async () => {

@@ -15,7 +15,8 @@ export interface BrandFile {
 // From web/, where npm runs the brand script, the tests and next build. Not new URL(..., import.meta.url): next build
 // bundles this file for app/og/[...slug]/route.ts, and Turbopack cannot resolve a folder named that way.
 const FONT_DIR = join(process.cwd(), "node_modules/geist/dist/fonts");
-const OG_ALT = "Maat: the AI agent that knows when not to trade. A Saturday trade refused with MARKET_CLOSED.";
+const OG_ALT =
+  "Maat: the AI agent that knows when not to trade. The market session check fails, and the vault refuses with MARKET_CLOSED.";
 /** Wide enough for mark + gap + "maat". Tune by eye in Step 5 so the wordmark ends 4-8 px from the right edge. */
 const LOCKUP_WIDTH = 184;
 
