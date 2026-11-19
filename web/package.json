@@ -53,5 +53,9 @@
     "vite": "8.3.6",
     "vitest": "5.1.0",
     "yaml": "2.9.1"
+  },
+  "overrides": {
+    "compression@1.8.1": "1.8.2",
+    "fflate@0.7.3": "0.7.5"
   }
 }
