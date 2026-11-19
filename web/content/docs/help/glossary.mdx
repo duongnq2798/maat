@@ -4,7 +4,7 @@ description: Plain definitions of the terms used across the docs, from B20 and u
 type: help
 audience: [newcomer, watcher, developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - contracts/src/Types.sol
@@ -257,7 +257,7 @@ A number, published as a [WAD](/docs/help/glossary#wad), that a [B20](/docs/help
 
 ### Vault
 
-`MandateVault`, the contract that holds a treasury's USDC and stocks, runs the checks on every [intent](/docs/help/glossary#intent) and records each verdict as a [Decision](/docs/help/glossary#decision). The [executor](/docs/help/glossary#executor) can move funds only through `execute`, and the [owner](/docs/help/glossary#owner) can withdraw at any time. Stock supplied as collateral leaves the vault for the credit adapter's position on [Aave V4](/docs/help/glossary#aave-v4) until it is withdrawn. See [MandateVault](/docs/reference/mandate-vault).
+`MandateVault`, the contract that holds a treasury's USDC and stocks, checks each [intent](/docs/help/glossary#intent) and records each verdict as a [Decision](/docs/help/glossary#decision). The <Fact name="checksPerTrade" /> checks apply to a `BUY` or `SELL` (check 9 to a `BUY` only), and each other [action](/docs/help/glossary#action) has its own checks. The [executor](/docs/help/glossary#executor) can move funds only through `execute`, and the [owner](/docs/help/glossary#owner) can withdraw at any time. Stock supplied as collateral leaves the vault for the credit adapter's position on [Aave V4](/docs/help/glossary#aave-v4) until it is withdrawn. See [MandateVault](/docs/reference/mandate-vault).
 
 ## W
 
@@ -269,4 +269,4 @@ A fixed-point number scaled so that one whole unit is `1e18`. The `uiMultiplier`
 
 ### x402
 
-The payment method named in the design for the treasury loop's planned revenue: another agent would pay <Fact name="x402Price" /> in USDC to ask whether a trade is safe right now. It is not built, and no service in this repository takes a payment. See [Planned, not built](/docs/get-started/status#planned-not-built) and [The treasury loop](/docs/concepts/treasury-loop#planned-earning).
+The payment method named in the design for the treasury loop's planned revenue: another agent would pay <Fact name="x402Price" /> in USDC to ask whether a trade is safe right now. It is not built on `main`, and no service on `main` takes a payment. [Pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds an x402 Guard Service. See [Planned, not built](/docs/get-started/status#planned-not-built) and [The treasury loop](/docs/concepts/treasury-loop#planned-earning).

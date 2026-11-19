@@ -4,7 +4,7 @@ description: How the agent keeps its basket, supplies idle stock, borrows for ru
 type: concept
 audience: [newcomer, watcher, builder]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - agent/src/policy.ts
   - agent/src/loop/runOnce.ts
@@ -109,7 +109,7 @@ When USDC falls below the runway plus the unpaid bill, the policy suggests a bor
 
 The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock is not allowed, is paused, has no valid, fresh feed answer or has no stable multiplier, when a credit view cannot be read, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
 
-The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing in this repository sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
+The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
 
 ## Paying its own bill
 
@@ -165,7 +165,7 @@ Two limits bound what a round can send. By default the agent sends at most <Fact
 
 <Callout type="note" title="Planned">
 
-The first step of the loop is not built. The design has other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. Earning from x402 safety checks is planned and not built: no service in this repository takes a payment. The [status page](/docs/get-started/status#planned-not-built) lists it with the other planned work.
+The first step of the loop is not built. The design has other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. Earning from x402 safety checks is planned and not built on `main`: no service on `main` takes a payment. [Pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds an x402 Guard Service. The [status page](/docs/get-started/status#planned-not-built) lists it with the other planned work.
 
 </Callout>
 
