@@ -3,7 +3,7 @@
 - **Date:** 2026-11-18
 - **Status:** approved by the owner on 2026-11-18
   - Amended after review on 2026-11-19 (4.2, 4.4, 4.6, 5.1, 6.1, 6.2, 6.4 and 10); the owner confirmed the amendments that day.
-  - Amended again on 2026-11-19, after the first CI runs (4.3, 4.4, 5.1, 6.1 and 8).
+  - Amended again on 2026-11-19, after the first CI runs (4.3, 4.4, 5.1, 6.1, 7.1 and 8).
 - **Builds on:** `main` at 8608b7d. The owner approved the ecosystem plan on 2026-11-18, with CI as its first sub-project, and
   delegated one choice: CI holds no secret. The research behind the pins and versions below is in local, uncommitted notes; every
   fact this spec relies on is restated here with its source. Section 2 lists where this spec departs from that research, and why.
@@ -505,8 +505,8 @@ reads, so before the flip the owner opens the edit history of every edited pull-
 ### 7.1 `SECURITY.md`
 
 At the root, where GitHub shows it most visibly. It says nothing that `web/content/docs/security/report-a-vulnerability.mdx` on
-`feat/docs-center` contradicts, and nothing that the mainnet deploy will make false. `chore/ci` merges after the deploy, so the file
-makes no claim about whether anything is deployed:
+`feat/docs-center` contradicts, and nothing that the mainnet deploy will make false. `chore/ci` now merges before the deploy (the
+section 8 note), and the file makes no claim about whether anything is deployed, so the deploy leaves it true:
 
 - Supported versions: `main`, and the contracts at the addresses listed in `deployments/` once they are listed there. The contracts
   are unaudited.
@@ -591,12 +591,17 @@ The docs changelog cites only commits on `main`, so its CI entry comes after the
     owner as the only bypass, and enables private vulnerability reporting (with the `SECURITY.md` and docs change from 7.1).
 
 *Note (2026-11-19, after the first CI runs):* the owner made the repository public on 2026-11-19, before step 9's scan could run:
-`preflip` needs `ci.yml` on `main`, so the pull-request and issue text had not been scanned at the flip. The two CI runs on this
-pull request so far (on `96d8be9` and `e6f1a0b`) scanned the history and the commit messages of every branch and found nothing.
-Actions minutes on the standard runners now cost nothing, so the billing item and the cost paragraph below no longer apply. Step 7
-moves ahead of the deploy: `chore/ci` merges once the run on its last commit is green, and `preflip` then runs on `main` as the
-post-flip scan. Step 10's ruleset and private vulnerability reporting are no longer blocked. The Actions settings of the owner-only
-list were set on 2026-11-19, and the owner delegated the merges that day.
+`preflip` needs `ci.yml` on `main`, so the pull-request refs and the pull-request and issue text had not been scanned at the flip.
+The three CI runs on this pull request before this note (on `96d8be9`, `e6f1a0b` and `af96622`) scanned the history and the commit
+messages of every pushed branch and found nothing. Actions minutes on the standard runners now cost nothing, so the billing item and
+the cost paragraph below no longer apply. Step 7 moves ahead of the deploy: `chore/ci` merges once the run on its last commit is
+green, and `preflip` then runs on `main` as the post-flip scan. The owner's check of 6.4, the edit history of every edited body and
+comment, moves with it to after the flip. Step 10's ruleset and private vulnerability reporting are no longer blocked. The Actions
+settings of the owner-only list were set on 2026-11-19, and the owner delegated the merges that day.
+
+The runs also settle two open points. 6.3's 0 findings on pushed refs is now a real result, not only an emulation, and section 10's
+first row is measured: the pull request records each job's duration and minutes. The first run after `feat/llm-providers` is pushed
+(step 8) is still to come.
 
 **Owner-only actions.**
 
