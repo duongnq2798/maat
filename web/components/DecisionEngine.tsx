@@ -50,7 +50,7 @@ export function DecisionEngine() {
 
       <div className="flex flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-5">
         <div className="flex flex-col gap-1">
-          <span className="font-mono text-[11px] text-ink-2">INTENT · PROPOSED BY CLAUDE</span>
+          <span className="font-mono text-[11px] text-ink-2">INTENT · SCRIPTED FORK RUN</span>
           <span className="text-[30px] font-semibold tracking-[-0.035em]">{moment.intent}</span>
         </div>
         <span className="font-mono text-xs text-ink-2">{moment.when}</span>

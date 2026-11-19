@@ -54,7 +54,7 @@ describe("brand assets (spec §6)", () => {
   it("the committed OG alt text has no trailing newline", () => {
     // Reads the file on disk: the in-memory string cannot catch a newline added when it was written.
     expect(readFileSync(join(WEB, "app/opengraph-image.alt.txt"), "utf8")).toBe(
-      "Maat: the AI agent that knows when not to trade. A Saturday trade refused with MARKET_CLOSED.",
+      "Maat: the AI agent that knows when not to trade. The market session check fails, and the vault refuses with MARKET_CLOSED.",
     );
   });
 
