@@ -16,8 +16,14 @@ agent does, report the Maat side here.
 
 ## How to report
 
-Send a direct message to [@maatonbase on X](https://x.com/maatonbase), say that you have found a security
-problem, and ask for a private channel. Send the details only after that channel is agreed.
+Use GitHub's private report form: on the repository's
+[Security and quality](https://github.com/duongnq2798/maat/security) tab, click **Report a vulnerability**,
+fill in the form and submit it. The form needs a GitHub account, and the report goes privately to the
+repository's maintainers.
+
+Without a GitHub account, send a direct message to [@maatonbase on X](https://x.com/maatonbase), say that you
+have found a security problem, and ask for a private channel. Send the details only after that channel is
+agreed.
 
 The website's [Report a vulnerability](https://maatonbase.xyz/docs/security/report-a-vulnerability) page
 says the same, and lists what to include in a report.
