@@ -161,7 +161,8 @@ minute each).
     Test Files  42 passed (42)
          Tests  1494 passed (1494)
    ...
-   out/ is ready to deploy
+   out/ is ready to deploy (landing and 49 docs pages checked)
+   search index: … bytes gzipped, budget 760000
    ```
 
    `npm run dev` then serves the page on http://localhost:3000. Its hero is the decision engine: toggle
