@@ -19,6 +19,9 @@ agent does, report the Maat side here.
 Send a direct message to [@maatonbase on X](https://x.com/maatonbase), say that you have found a security
 problem, and ask for a private channel. Send the details only after that channel is agreed.
 
+The website's [Report a vulnerability](https://maatonbase.xyz/docs/security/report-a-vulnerability) page
+says the same, and lists what to include in a report.
+
 Never open a public issue or a public pull request, and never post the details in a public reply.
 
 Never include a real private key, seed phrase or API key, yours or anyone's. A report never needs one.

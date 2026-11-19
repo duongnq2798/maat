@@ -504,18 +504,23 @@ docs/superpowers/          design specs and implementation plans
 | Suite | Command (in its folder) | Tests | Needs |
 | --- | --- | --- | --- |
 | Contracts, unit | `forge test --no-match-path "test/fork/*"` | 220 | nothing |
-| Contracts, fork | `forge test --match-path "test/fork/*"` | 14 | `BASE_RPC_URL` (archive) |
+| Contracts, fork | `forge test --match-path "test/fork/*"` | 14 (by hand) | `BASE_RPC_URL` (archive) |
 | Agent, unit | `npm test` | 167 | nothing |
-| Agent, fork integration | `npm run test:integration` | 3 | archive RPC, `base-anvil` v1.5.1 |
-| Web, unit, component and parity | `npm test` | 124 | nothing |
-| Web, end to end | `npm run e2e` (after `npm run build`) | 7 | `npx playwright install chromium` |
+| Agent, fork integration | `npm run test:integration` | 3 (by hand) | archive RPC, `base-anvil` v1.5.1 |
+| Web, unit, component and parity | `npm test` | 1,494 | nothing |
+| Web, end to end | `npm run e2e` (after `npm run build`) | 259 | `npx playwright install chromium` |
 
-Contract unit tests by suite: MandateVault 64, MandateVaultCredit 54, GuardLib 44, MandateVaultAdmin 23,
-AaveV4CreditAdapter 15, MarketCalendar 9, PriceLib 7, AerodromeSwapAdapter 4.
+The counts are from the first green CI run on `e6f1a0b`, 2026-11-19, except the two marked by hand, which
+were measured at `4492eed`, 2026-11-07.
+
+Contract unit tests by suite, measured by hand at `e6f1a0b`, 2026-11-19: MandateVault 64,
+MandateVaultCredit 54, GuardLib 44, MandateVaultAdmin 23, AaveV4CreditAdapter 15, MarketCalendar 9,
+PriceLib 7, AerodromeSwapAdapter 4.
 
 Other useful commands: `forge build --sizes` (MandateVault is 22,755 bytes of runtime code, 1,821 under the
-24,576-byte limit), `npm run typecheck` in `agent/` and `web/`, `npm run verify` in `web/` (typecheck, tests,
-build and output checks), and `npm run gen:abi` in `agent/` after a contract change.
+24,576-byte limit, measured by hand at `e6f1a0b`, 2026-11-19), `npm run typecheck` in `agent/` and `web/`,
+`npm run verify` in `web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/`
+after a contract change.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.

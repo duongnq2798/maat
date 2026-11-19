@@ -38,7 +38,7 @@ The fork tests ask Foundry for the `base` endpoint, which `contracts/foundry.tom
 
 Time: the offline contract, agent and website suites are the Quickstart's path, about five minutes on a fresh clone, and most of that is compiling and installing packages. The contract fork suite took about a minute in the README's run. The agent's fork test takes 3 to 5 minutes on a public RPC (agent/README.md).
 
-There is no CI in this repository yet (README.md, Development). Nothing runs these suites for you, so you run them locally, and a number or claim in these docs is only as fresh as the last time someone did.
+On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs the offline contract, agent and website suites, the website's end-to-end tests among them (README.md, Development). The two fork suites need an archive RPC, so CI does not run them: you run them yourself, and a fork claim in these docs is only as fresh as the last time someone did.
 
 ## The suites at a glance
 
