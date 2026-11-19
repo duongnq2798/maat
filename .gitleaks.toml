@@ -1,0 +1,51 @@
+# Read by gitleaks from the repository root.
+title = "Maat gitleaks config"
+
+[extend]
+useDefault = true
+
+# Seven made-up provider keys that agent unit tests declared before this file existed. gitleaks
+# lowercases both the secret and each stopword before it compares them, and a stopword suppresses
+# any secret that contains it; the values are written in lowercase by convention. A finding is
+# ignored only when it holds one of these values AND it sits in an agent unit-test file. A new
+# made-up key in a test carries the word "fake" in its value instead, which the default stopwords
+# already ignore.
+[[rules]]
+id = "generic-api-key"
+
+  [[rules.allowlists]]
+  description = "Made-up provider keys in agent unit tests, committed before this config"
+  condition = "AND"
+  paths = ['''^agent/test/(?:llm/)?[^/]+\.test\.ts$''']
+  stopwords = [
+    # The seven values, in lowercase, read from git at 45c22322, 50948801, b5de0e7a and efdc272d.
+    "bk_7hq2lm9xc4r",
+    "bk_7hq2lm9xc4rt6yb1nw3kp",
+    "bk_vq3lm8xc2rt5yb9nw4kp",
+    "fk-test-qm7vx2lc9rt4yb6nw1kp",
+    "gk_zq81mxv0lw3rt6yp2nd5",
+    "sk-maat-0th3runus3dk3yf0rt3sts",
+    "sk-maat-t3stk3y0nlyf0run1tt3sts",
+  ]
+
+[[rules]]
+id = "maat-evm-private-key"
+description = "A 32-byte hex private key next to a private-key name or the --private-key flag"
+regex = '''(?i)(?:private[_-]?key|priv[_-]?key|signer[_-]?key|deployer[_-]?key)["'`]?\s*(?:[:=]|=>|\s)\s*["'`]?(?:0x)?([0-9a-f]{64})\b'''
+keywords = ["private", "priv", "signer", "deployer"]
+
+[[rules]]
+id = "maat-rpc-url-with-key"
+description = "An RPC URL that carries a provider API key in its path"
+regex = '''(?i)https://[a-z0-9.-]*(?:alchemy\.com/v2|infura\.io/v3|quiknode\.pro|api\.developer\.coinbase\.com/rpc/v1/[a-z-]+)/([A-Za-z0-9_-]{16,})'''
+keywords = ["alchemy.com", "infura.io", "quiknode.pro", "api.developer.coinbase.com"]
+
+[[rules]]
+id = "maat-mnemonic"
+description = "A 12 to 24 word seed phrase assigned to a mnemonic-like name"
+regex = '''(?i)(?:mnemonic|seed[_ -]?phrase|recovery[_ -]?phrase)["'`]?\s*[:=]\s*["'`]?((?:[a-z]{3,8}[ \t]+){11,23}[a-z]{3,8})\b'''
+keywords = ["mnemonic", "seed", "recovery"]
+
+  [[rules.allowlists]]
+  description = "The public Anvil and Hardhat default mnemonic"
+  regexes = ['''^(?:test\s+){11}junk$''']

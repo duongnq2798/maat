@@ -4,7 +4,7 @@ description: "How each guarantee is tested: contract unit and fork suites, agent
 type: concept
 audience: [evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - contracts/test/MandateVault.t.sol
   - contracts/test/GuardLib.t.sol
@@ -210,7 +210,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | **Reentrancy** | No test has an adapter, a pool or a token call back into the vault during `execute`. [Reentrancy](/docs/security/model#reentrancy) says what the vault relies on instead of a guard |
 | **Static analysis and coverage** | No analyzer configuration or output (Slither, Aderyn, Mythril or another) and no line or branch coverage report is committed. The `forge-lint` comments in the sources, such as the one at `GuardLib.sol` line 130, switch off a named lint rule (`block-timestamp`, `calls-loop`, `require-revert-in-loop`) for the next line or a block of lines. No lint run or its output is committed |
 | **A hostile owner** | The vault has no defense against one, so there is nothing to test |
-| **Continuous integration** | There is no CI in this repository yet. The suites run when someone runs them, so any claim here is as fresh as the last run |
+| **The fork suites in CI** | On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs only the offline suites. The two fork suites need an archive RPC and run by hand, so a fork claim here is as fresh as the last run |
 
 If you can think of a test that belongs on this list, or one that fails, [Report a vulnerability](/docs/security/report-a-vulnerability) says how to tell the team.
 
