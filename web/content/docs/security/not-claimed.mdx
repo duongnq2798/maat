@@ -4,7 +4,7 @@ description: "No audit, no mainnet deployment yet, and the known limitations: wh
 type: concept
 audience: [evaluator, newcomer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - contracts/src/MandateVault.sol
@@ -88,9 +88,9 @@ When the preview said `OK` and the vault refused, the agent stops the round and 
 
 ## Dependency advisories
 
-**What it means for you.** `npm audit` reports high-severity advisories in the agent, in zod 3 and abitype nested inside `@coinbase/cdp-sdk`. There is no safe override yet. The agent's README describes them as denial-of-service issues that touch only internal data. In the website, `npm audit` reports moderate and high advisories in its dev-only tools: `fflate` under `satori`, which renders the brand images and each docs page's link preview at build time, and `compression` under `serve`, which the end-to-end tests use. None of the website's flagged packages ships in the static site. The counts change, so none is given here: run `npm audit` in `agent/` and in `web/` for today's list.
+**What it means for you.** `npm audit` reports high-severity advisories in the agent, in zod 3 and abitype nested inside `@coinbase/cdp-sdk`. There is no safe override yet. The agent's README describes them as denial-of-service issues that touch only internal data. In the website, `npm audit` reports none: `web/package.json` overrides two packages in its dev-only tools to their first patched releases, `fflate` under `satori`, which renders the brand images and each docs page's link preview at build time, and `compression` under `serve`, which the end-to-end tests use. Neither package ships in the static site. Each override names the old version it replaces, so it stops applying once `satori` or `serve` moves off that version. The counts change, so none is given here: run `npm audit` in `agent/` and in `web/` for today's list.
 
-**What would fix it.** For the agent, a release of `@coinbase/cdp-sdk` that uses zod 4. The agent's README warns that `npm audit fix --force` would downgrade the SDK to an old version, which is not a fix. For the website, updating or replacing the two dev tools.
+**What would fix it.** For the agent, a release of `@coinbase/cdp-sdk` that uses zod 4. The agent's README warns that `npm audit fix --force` would downgrade the SDK to an old version, which is not a fix. The website needs nothing more today. When `satori` or `serve` is updated, `npm audit` in `web/` shows whether the new version still needs an override.
 
 ## Found while writing these docs: withdrawing a token that has no code
 

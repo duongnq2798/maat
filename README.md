@@ -568,9 +568,9 @@ CDP Server Wallet. Deployed addresses will be recorded in that file.
 - **The owner is a single key.** It is immutable and has no transfer function. A multisig owner is
   compatible but not set up.
 - **Dependency advisories.** `npm audit` reports 3 high-severity advisories in the agent (zod 3 and abitype
-  nested in `@coinbase/cdp-sdk`, no safe override yet) and 4 in the website's dev-only tools (2 moderate,
-  2 high: `fflate` under `satori`, which renders the brand images, and `compression` under `serve`, which
-  the e2e tests use). None of the website's flagged packages ships in the static site.
+  nested in `@coinbase/cdp-sdk`, no safe override yet). In the website it reports none: `web/package.json`
+  overrides `fflate` under `satori`, which renders the brand images, and `compression` under `serve`, which
+  the e2e tests use, to their first patched releases. Neither package ships in the static site.
 
 ## Roadmap
 
