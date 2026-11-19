@@ -158,8 +158,8 @@ minute each).
    ```
 
    ```text
-    Test Files  14 passed (14)
-         Tests  124 passed (124)
+    Test Files  42 passed (42)
+         Tests  1494 passed (1494)
    ...
    out/ is ready to deploy
    ```
@@ -197,7 +197,7 @@ What exists at this commit, and what does not.
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Landing page with the interactive decision engine and the labeled fork ledger | **Built and tested** (124 unit tests, 7 Playwright tests). Static export. Being deployed at [maatonbase.xyz](https://maatonbase.xyz) | [`web/`](web) |
+| Landing page with the interactive decision engine and the labeled fork ledger | **Built and tested** (the whole website's suites, the docs center included: 1,494 unit tests, 259 Playwright tests). Static export. Being deployed at [maatonbase.xyz](https://maatonbase.xyz) | [`web/`](web) |
 | Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not implemented anywhere in this repository | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Guard Service HTTP API, MCP server, Bankr Skill | **Planned** | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
