@@ -506,7 +506,9 @@ it has not been re-timed.
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
-   fork-run gas log, so a number on the page that drifts from the code fails here.
+   fork-run gas log, so a number on the page that drifts from the code fails here. The exception is the decision
+   engine's feed-freshness limit, the recorded fork run's own `maxStaleness` (3600 s, from `deploy.ts` at
+   `4492eed`), which no test compares with that file, because the web job's CI checkout has no history.
 
    ```bash
    cd ../web
