@@ -45,7 +45,8 @@ export function cacheKey(vault: Address): string {
   return `maat:ledger:v1:${vault.toLowerCase()}`;
 }
 
-function defaultStorage(): Storage | null {
+/** The browser's localStorage, or null on the server or when the browser blocks it. */
+export function browserStorage(): Storage | null {
   try {
     return typeof window === "undefined" ? null : window.localStorage;
   } catch {
@@ -53,8 +54,23 @@ function defaultStorage(): Storage | null {
   }
 }
 
+/** A Storage that lives as long as the page: the cache between refreshes when localStorage is blocked. */
+export function memoryStorage(): Storage {
+  const m = new Map<string, string>();
+  return {
+    get length() {
+      return m.size;
+    },
+    clear: () => m.clear(),
+    getItem: (k) => m.get(k) ?? null,
+    key: (i) => [...m.keys()][i] ?? null,
+    removeItem: (k) => void m.delete(k),
+    setItem: (k, v) => void m.set(k, String(v)),
+  };
+}
+
 /** The cached entry for `vault`, or null. An entry that fails to parse, or belongs elsewhere, is removed. */
-export function loadCache(vault: Address, storage: Storage | null = defaultStorage()): LedgerCache | null {
+export function loadCache(vault: Address, storage: Storage | null = browserStorage()): LedgerCache | null {
   if (!storage) return null;
   try {
     const raw = storage.getItem(cacheKey(vault));
@@ -73,7 +89,7 @@ export function loadCache(vault: Address, storage: Storage | null = defaultStora
 }
 
 /** Stores the entry; a full or blocked storage is ignored, since the page can always rescan. */
-export function saveCache(entry: LedgerCache, storage: Storage | null = defaultStorage()): void {
+export function saveCache(entry: LedgerCache, storage: Storage | null = browserStorage()): void {
   if (!storage) return;
   try {
     storage.setItem(cacheKey(entry.vault), JSON.stringify(entry));
