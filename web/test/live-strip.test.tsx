@@ -35,10 +35,15 @@ function expected(timestamp: number) {
 
 type Answer = { timestamp: number; block?: bigint } | "down" | "hang";
 
-/** A reader that answers like Base: the recorded multicall, and a deployed MarketCalendar (if any) like the repo calendar. */
+/**
+ * A reader that answers like Base: the recorded multicall, and a deployed MarketCalendar (if any) like the repo calendar.
+ * `hold()` keeps the next calls in flight until `release(answer)`.
+ */
 function fakeReader(first: Answer) {
   let answer = first;
+  let gate: { promise: Promise<void>; open: () => void } | undefined;
   const call = vi.fn(async (tx: { to: Hex; data: Hex }): Promise<{ data: Hex; endpoint: string }> => {
+    if (gate) await gate.promise;
     const a = answer;
     if (a === "down") throw new RpcError(LIVE_RPCS.map((endpoint) => ({ endpoint, message: "HTTP 503" })));
     if (a === "hang") return new Promise(() => {});
@@ -48,7 +53,22 @@ function fakeReader(first: Answer) {
     return { data: encodeAggregate3Result(results(a.timestamp, a.block)), endpoint: LIVE_RPCS[0]! };
   });
   const reader: LiveReader = { call };
-  return { reader, call, set: (next: Answer) => void (answer = next) };
+  return {
+    reader,
+    call,
+    set: (next: Answer) => void (answer = next),
+    hold: () => {
+      let open = () => {};
+      const promise = new Promise<void>((resolve) => (open = resolve));
+      gate = { promise, open };
+    },
+    release: (next: Answer) => {
+      answer = next;
+      const g = gate;
+      gate = undefined;
+      g?.open();
+    },
+  };
 }
 
 let visibility: DocumentVisibilityState = "visible";
@@ -205,6 +225,80 @@ describe("the live strip", () => {
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     neverSafe();
+  });
+
+  it("keeps focus on Retry while it reads, gives Retry back when it fails, and moves focus to the strip when it works", async () => {
+    const fake = await mount("down", SAT + 14);
+    const retry = screen.getByRole("button", { name: "Retry" });
+    retry.focus();
+
+    fake.hold();
+    fireEvent.click(retry);
+    await advance(0);
+    expect(retry).toHaveTextContent("Retrying…");
+    expect(retry).toHaveAttribute("aria-disabled", "true");
+    expect(document.activeElement).toBe(retry);
+    expect(strip()).toHaveTextContent("Could not read Base mainnet");
+    fireEvent.click(retry); // ignored while the retry is in flight
+    expect(fake.call).toHaveBeenCalledTimes(2);
+
+    fake.release("down");
+    await advance(0);
+    expect(screen.getByRole("button", { name: "Retry" })).toBe(retry);
+    expect(retry).not.toHaveAttribute("aria-disabled");
+    expect(document.activeElement).toBe(retry);
+
+    fake.hold();
+    fireEvent.click(retry);
+    await advance(0);
+    fake.release({ timestamp: SAT });
+    await advance(0);
+    expect(fake.call).toHaveBeenCalledTimes(3);
+    expect(screen.getByText("LIVE")).toBeInTheDocument();
+    expect(retry).not.toBeInTheDocument();
+    expect(strip()).toHaveAttribute("tabindex", "-1");
+    expect(document.activeElement).toBe(strip());
+  });
+
+  it("sets no state and schedules nothing once unmounted during a read", async () => {
+    const errors = vi.spyOn(console, "error");
+    try {
+      vi.setSystemTime((SAT + 14) * 1000);
+      const fake = fakeReader({ timestamp: SAT });
+      fake.hold();
+      const { unmount } = render(<LiveStrip reader={fake.reader} />);
+      await advance(0);
+      expect(fake.call).toHaveBeenCalledTimes(1);
+      unmount();
+      fake.release({ timestamp: SAT });
+      await advance(0);
+      expect(vi.getTimerCount()).toBe(0);
+      await advance(REFRESH_MS * 3);
+      expect(fake.call).toHaveBeenCalledTimes(1);
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      errors.mockRestore();
+    }
+  });
+
+  it("calls a reading that aged on a hidden tab stale, with its age, and never blames the RPC's head for it", async () => {
+    // The head was 3 s behind when it was read; then the tab stays hidden for 3 min.
+    await mount({ timestamp: SAT - 3 }, SAT);
+    visibility = "hidden";
+    await advance(180_000);
+    expect(screen.getByText("NOT LIVE")).toBeInTheDocument();
+    expect(strip()).toHaveTextContent("last read block 60,013,066, 3 min ago");
+    expect(strip()).not.toHaveTextContent("behind your clock");
+  });
+
+  it("calls a reading stale once the wall clock passes the live limit, even while the monotonic clock slept", async () => {
+    await mount({ timestamp: SAT }, SAT + 3);
+    expect(screen.getByText("LIVE")).toBeInTheDocument();
+    // The device slept for 100 s: the wall clock jumped, the timers and performance.now() did not run.
+    vi.setSystemTime((SAT + 3 + 100) * 1000);
+    await advance(5_000);
+    expect(screen.getByText("NOT LIVE")).toBeInTheDocument();
+    expect(strip()).toHaveTextContent("last read block 60,013,066, 1 min 45 s ago");
   });
 
   it("does not read while the tab is hidden, and reads at once when it comes back after the refresh interval", async () => {

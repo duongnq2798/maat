@@ -24,31 +24,34 @@ interface Seen {
   /** Whether the latest read that settled failed. */
   failed: boolean;
   error?: string;
+  /** Whether a read that refresh() asked for has not settled yet. */
+  refreshing: boolean;
   /** The clocks when this was last looked at, so the render itself reads no clock. */
   nowMs: number;
   wallSec: number;
 }
 
-function judge(snapshot: LiveSnapshot, readAtMs: number): Reading {
+function judge(snapshot: LiveSnapshot, at: { nowMs: number; wallSec: number }): Reading {
   const session = sessionAt(snapshot);
   const verdicts = snapshot.tokens.map((t) => judgeToken(t, { timestamp: snapshot.timestamp, session }));
-  return { snapshot, verdicts, headline: headline(verdicts), session, readAtMs };
+  return { snapshot, verdicts, headline: headline(verdicts), session, readAtMs: at.nowMs, wallAtReadSec: at.wallSec };
 }
 
 /**
  * Base mainnet, read in the browser. Nothing runs during the server render: the static HTML and the first client render
  * are the reading state. After mount it reads once, then every `refreshMs` while the tab is visible; a tab that comes
  * back after more than `refreshMs` reads at once. One read at a time. A failed read keeps the last good reading, which
- * `classify` then marks as not live. `refresh` reads now (a Retry or Refresh button); `endpoints` are the keyless RPCs the
- * default reader tries, in order.
+ * `classify` then marks as not live. `refresh` reads now (a Retry or Refresh button), and `refreshing` stays true until
+ * that read settles, while the state stays as it was; `endpoints` are the keyless RPCs the default reader tries, in order.
  */
 export function useLiveSnapshot(opts: LiveSnapshotOptions = {}): {
   state: LiveState;
   refresh: () => void;
+  refreshing: boolean;
   endpoints: readonly string[];
 } {
   const refreshMs = opts.refreshMs ?? REFRESH_MS;
-  const [seen, setSeen] = useState<Seen>({ last: undefined, failed: false, nowMs: 0, wallSec: 0 });
+  const [seen, setSeen] = useState<Seen>({ last: undefined, failed: false, refreshing: false, nowMs: 0, wallSec: 0 });
 
   // The latest options, read when a read starts, so a new function each render does not restart the loop.
   const options = useRef(opts);
@@ -88,13 +91,15 @@ export function useLiveSnapshot(opts: LiveSnapshotOptions = {}): {
       timer = undefined;
       lastAttemptAt = now();
       try {
-        const reading = judge(await readSnapshot(reader()), now());
-        if (!disposed) setSeen({ last: reading, failed: false, nowMs: reading.readAtMs, wallSec: wall() });
+        const snapshot = await readSnapshot(reader());
+        // Both clocks as the answer arrived: the age runs from them, and the head's lag is fixed by the wall clock then.
+        const at = { nowMs: now(), wallSec: wall() };
+        if (!disposed) setSeen({ last: judge(snapshot, at), failed: false, refreshing: false, ...at });
       } catch (e) {
         const error = e instanceof Error ? e.message : String(e);
         // Clocks are read here, not in the updater, which React may call twice.
         const at = { nowMs: now(), wallSec: wall() };
-        if (!disposed) setSeen((s) => ({ last: s.last, failed: true, error, ...at }));
+        if (!disposed) setSeen((s) => ({ last: s.last, failed: true, error, refreshing: false, ...at }));
       } finally {
         inflight = false;
         if (!disposed) schedule();
@@ -125,14 +130,17 @@ export function useLiveSnapshot(opts: LiveSnapshotOptions = {}): {
   }, [refreshMs]);
 
   const refresh = useCallback(() => {
-    // Without a reading, a Retry shows the reading state until this read settles.
-    setSeen((s) => (s.last === undefined ? { ...s, failed: false, error: undefined } : s));
-    readNow.current?.();
+    const readOnce = readNow.current;
+    if (readOnce === null) return;
+    // A read already in flight answers this request too: it clears `refreshing` when it settles.
+    setSeen((s) => ({ ...s, refreshing: true }));
+    readOnce();
   }, []);
 
   return {
     state: classify(seen.last, seen.failed, seen.nowMs, seen.wallSec, seen.error),
     refresh,
+    refreshing: seen.refreshing,
     endpoints: LIVE_RPCS,
   };
 }

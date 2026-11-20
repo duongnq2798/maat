@@ -1,5 +1,6 @@
 "use client";
 
+import { type MouseEvent, useEffect, useRef } from "react";
 import { NAV_TOKENS } from "@/content/b20-nav";
 import type { LiveState } from "@/lib/live/freshness";
 import { formatAge, formatBlock, formatEt, formatUtc } from "@/lib/live/format";
@@ -62,7 +63,13 @@ function NowLink() {
   );
 }
 
-function Body({ state, refresh }: { state: LiveState; refresh: () => void }) {
+interface BodyProps {
+  state: LiveState;
+  refreshing: boolean;
+  onRetry: (e: MouseEvent<HTMLButtonElement>) => void;
+}
+
+function Body({ state, refreshing, onRetry }: BodyProps) {
   switch (state.status) {
     case "reading":
       return <p className="m-0">{READING}</p>;
@@ -70,12 +77,15 @@ function Body({ state, refresh }: { state: LiveState; refresh: () => void }) {
       return (
         <p className="m-0 text-ink">
           {FAILED}{" "}
+          {/* While the retry reads, the button stays where it is and keeps focus: aria-disabled, not disabled, since a
+              disabled button loses focus to the page. */}
           <button
             type="button"
-            onClick={refresh}
-            className="ml-1 h-6 cursor-pointer rounded-full border border-line-strong bg-transparent px-2.5 align-middle text-[12px] font-medium text-ink hover:border-ink"
+            onClick={onRetry}
+            aria-disabled={refreshing || undefined}
+            className="ml-1 h-6 cursor-pointer rounded-full border border-line-strong bg-transparent px-2.5 align-middle text-[12px] font-medium text-ink hover:border-ink aria-disabled:cursor-wait aria-disabled:text-ink-2 aria-disabled:hover:border-line-strong"
           >
-            Retry
+            {refreshing ? "Retrying…" : "Retry"}
           </button>
         </p>
       );
@@ -88,12 +98,9 @@ function Body({ state, refresh }: { state: LiveState; refresh: () => void }) {
             LIVE
           </span>{" "}
           <BlockLink n={snapshot.block}>{`Base block ${formatBlock(snapshot.block)}`}</BlockLink>
-          {/* Phones skip the block time to keep the line short; the block link opens it on Basescan. */}
-          <span className="max-sm:hidden">
-            <Sep />
-            <span className="whitespace-nowrap font-mono text-[12px]">
-              {formatUtc(snapshot.timestamp)} · {formatEt(snapshot.timestamp)}
-            </span>
+          <Sep />
+          <span className="whitespace-nowrap font-mono text-[12px]">
+            {formatUtc(snapshot.timestamp)} · {formatEt(snapshot.timestamp)}
           </span>
           <Sep />
           <span>{session.detail}</span>
@@ -132,12 +139,15 @@ function Body({ state, refresh }: { state: LiveState; refresh: () => void }) {
 }
 
 /**
- * Measured heights of a live weekend line (20 px lines): 3 lines at 343 px wide (a 375 px phone), 2 lines in the
- * one-column hero (608 to 935 px), 3 lines in the two-column hero from 1000 px (440 to 560 px). The strip reserves those,
- * so the landing does not move when that reading arrives; a longer verdict (a pass or a mixed refusal) adds a line or two.
+ * The height of the tallest line the strip can show, measured in the browser (20 px lines): live, with three different
+ * refusals and "Wednesday · open until 16:00 ET". It is 160 px at a 375 px phone (343 px wide), 80 px from 640 px (the
+ * one-column hero, 608 to 935 px wide), 120 px from 1000 px (the two-column hero, 440 px wide) and 100 px from 1280 px
+ * (560 px wide). Every state is reserved up front, so the landing never moves when a reading arrives; a short weekend
+ * line leaves the rest empty. Phones narrower than 375 px still grow a line for that three-refusal headline only.
+ * 62.5rem (1000 px), where the hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem) and
+ * xl (80rem).
  */
-// 62.5rem is 1000 px, where the hero's grid takes two columns; in rem, so Tailwind sorts it after sm (40rem).
-const RESERVE = "min-h-15 sm:min-h-10 min-[62.5rem]:min-h-15";
+const RESERVE = "min-h-40 sm:min-h-20 min-[62.5rem]:min-h-30 xl:min-h-25";
 
 /**
  * A quiet line under the landing H1: the Base block this browser read, its NYSE session, and what an agent under the
@@ -145,14 +155,30 @@ const RESERVE = "min-h-15 sm:min-h-10 min-[62.5rem]:min-h-15";
  * value is ever baked in.
  */
 export function LiveStrip({ reader }: { reader?: LiveReader }) {
-  const { state, refresh } = useLiveSnapshot({ reader });
+  const { state, refresh, refreshing } = useLiveSnapshot({ reader });
+  const box = useRef<HTMLDivElement>(null);
+  const focusAfterRetry = useRef(false);
+
+  const onRetry = (e: MouseEvent<HTMLButtonElement>) => {
+    if (refreshing) return;
+    focusAfterRetry.current = document.activeElement === e.currentTarget;
+    refresh();
+  };
+
+  // A retry that worked takes the focused Retry button away with the error; the focus goes to the strip, not the page.
+  useEffect(() => {
+    if (refreshing || !focusAfterRetry.current) return;
+    focusAfterRetry.current = false;
+    if (state.status !== "error") box.current?.focus();
+  }, [refreshing, state.status]);
+
   return (
-    <div data-live-strip={state.status} className={`${RESERVE} text-[13px] leading-5 text-ink-2`}>
+    <div ref={box} tabIndex={-1} data-live-strip={state.status} className={`${RESERVE} text-[13px] leading-5 text-ink-2`}>
       {/* The only live region: it changes when the status or the verdict does, never for a new block alone. */}
       <span role="status" aria-live="polite" className="sr-only">
         {announcement(state)}
       </span>
-      <Body state={state} refresh={refresh} />
+      <Body state={state} refreshing={refreshing} onRetry={onRetry} />
       <noscript>
         <p className="m-0">
           The live line needs JavaScript. <a href="/now">Right now on Base</a> explains what it reads.
