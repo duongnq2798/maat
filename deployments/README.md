@@ -75,7 +75,7 @@ cast wallet import maat-owner --interactive
 cast wallet address --account maat-owner
 ```
 
-The second command only prints the wallet's address (it signs nothing and sends nothing). Edit `contracts/.env`: set `MAAT_DEPLOYER` to the address just printed; set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address; leave `MAAT_EXPENSE_PAYEE_2` at the zero address unless you want a second payee (see "Environment"). Add `ETHERSCAN_API_KEY` (an Etherscan v2 key works for Basescan).
+The second command only prints the wallet's address (it signs nothing and sends nothing). Edit `contracts/.env`: set `MAAT_DEPLOYER` to the address just printed; set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address; leave `MAAT_EXPENSE_PAYEE_2` at the zero address unless you want a second payee (see "Environment"). Set `ETHERSCAN_API_KEY`, which the template leaves empty (an Etherscan v2 key works for Basescan).
 
 Before broadcasting, simulate again with the real `.env`: no environment variable overrides, no `--broadcast`, no key needed:
 

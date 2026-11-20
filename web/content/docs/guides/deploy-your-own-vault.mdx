@@ -4,7 +4,7 @@ description: "Deploy a vault with the default mandate: dry-run it on a fork firs
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-21
 sources:
   - deployments/README.md
   - contracts/script/Deploy.s.sol
@@ -104,7 +104,7 @@ You need the pieces below. Your wallet is the owner of the vault, so the steps t
 | An Etherscan v2 API key | `ETHERSCAN_API_KEY` in `contracts/.env`, for `--verify`. A v2 key works for Basescan. |
 | USDC on Base | What you fund the vault with. |
 
-`contracts/.env.example` lists `BASE_RPC_URL` and the five addresses, the optional one at the zero address; add `ETHERSCAN_API_KEY` yourself. Git ignores `contracts/.env`, so a fresh clone has none: [the first step](#create-contractsenv) creates it. The deploy script reads the addresses like this:
+`contracts/.env.example` lists `BASE_RPC_URL`, the five addresses, the optional one at the zero address, and an empty `ETHERSCAN_API_KEY` that you fill in yourself. Git ignores `contracts/.env`, so a fresh clone has none: [the first step](#create-contractsenv) creates it. The deploy script reads the addresses like this:
 
 ```solidity title="contracts/script/Deploy.s.sol#L23-L27"
         address deployer = vm.envAddress("MAAT_DEPLOYER");
@@ -226,7 +226,7 @@ The second command only prints the wallet's address. It signs nothing and sends 
 - Set `MAAT_DEPLOYER` to the address just printed.
 - Set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address. `MAAT_OWNER` can be a separate address instead, as [Before you start](#before-you-start) explains.
 - Leave `MAAT_EXPENSE_PAYEE_2` at the zero address, unless you want a second payee.
-- Add `ETHERSCAN_API_KEY`.
+- Set `ETHERSCAN_API_KEY`, which the template leaves empty.
 
 This file is for the commands you run in `contracts/`. The agent reads its own `agent/.env`, which repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with the rules in [The whole path](#the-whole-path).
 
