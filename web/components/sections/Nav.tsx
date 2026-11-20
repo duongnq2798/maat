@@ -1,24 +1,27 @@
 import { Mark } from "@/components/ui/Mark";
 import { SITE } from "@/lib/site";
 
+// Section anchors on the landing; "Ledger" is its own page, /ledger, with the fork run and the mainnet vault.
 const LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#reasons", label: "Refusals" },
   { href: "#try", label: "Try it" },
-  { href: "#ledger", label: "Ledger" },
+  { href: "/ledger", label: "Ledger" },
   { href: "#mandate", label: "Mandate" },
 ] as const;
 
-export function Nav() {
+/** The site's top bar. Off the landing (`onLanding={false}`), its section anchors point back at the landing. */
+export function Nav({ onLanding = true }: { onLanding?: boolean }) {
+  const to = (href: string) => (onLanding || !href.startsWith("#") ? href : `/${href}`);
   return (
     <nav aria-label="Main" className="wrap flex flex-wrap items-center justify-between gap-3 py-[18px]">
-      <a href="#top" aria-label="Maat home" className="flex items-center gap-2.5 text-ink">
+      <a href={onLanding ? "#top" : "/"} aria-label="Maat home" className="flex items-center gap-2.5 text-ink">
         <Mark />
         <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
       </a>
       <div className="flex flex-wrap items-center gap-1">
         {LINKS.map((l) => (
-          <a key={l.href} href={l.href} className="navlink max-[720px]:hidden">
+          <a key={l.href} href={to(l.href)} className="navlink max-[720px]:hidden">
             {l.label}
           </a>
         ))}

@@ -6,6 +6,7 @@ import {
   checkDocsPage,
   checkExport,
   checkLandingIsolation,
+  checkLedgerPage,
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
@@ -488,5 +489,46 @@ describe("checkSearchIndex", () => {
 
   it("flags an index with no records", () => {
     expect(checkSearchIndex(index(), 1, page)).toEqual(["out/api/search.json holds no search records"]);
+  });
+});
+
+describe("checkLedgerPage", () => {
+  const page = (body: string) =>
+    [
+      '<!DOCTYPE html><html lang="en"><head><title>Mainnet ledger · Maat</title>',
+      '<link rel="canonical" href="https://maat.example/ledger"/>',
+      '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
+      '<script src="/_next/static/chunks/ledger.js" async=""></script>',
+      `</head><body><a href="#main">Skip</a><main id="main">${body}</main></body></html>`,
+    ].join("");
+  const URL_ = "https://maat.example/ledger";
+  const SITEMAP = `<url><loc>${URL_}</loc></url>`;
+  const check = (html: string, vault: boolean, sitemap = SITEMAP) => checkLedgerPage({ html, vaultRecorded: vault, sitemap, url: URL_ });
+  const WAITING = page("<p>Waiting for the mainnet deploy</p>");
+  const CONNECTING = page("<p>Connecting to Base…</p>");
+
+  it("passes the waiting page before a vault is recorded, and the connecting page after", () => {
+    expect(check(WAITING, false)).toEqual([]);
+    expect(check(CONNECTING, true)).toEqual([]);
+  });
+
+  it("fails when the static state does not match the deployments table", () => {
+    expect(check(CONNECTING, false)).toEqual(["out/ledger.html does not show the waiting state, but no vault is recorded"]);
+    expect(check(WAITING, true)).toEqual(["out/ledger.html shows the waiting state, but a vault is recorded"]);
+  });
+
+  it("fails when the sitemap does not list the page", () => {
+    expect(check(WAITING, false, "<urlset></urlset>")).toEqual([`out/sitemap.xml does not list ${URL_}`]);
+  });
+
+  it("names a missing canonical URL, an anchor without a target and a third-party script", () => {
+    const bad = WAITING.replace('<link rel="canonical" href="https://maat.example/ledger"/>', "")
+      .replace('<a href="#main">', '<a href="#nowhere">')
+      .replace("/_next/static/chunks/ledger.js", "https://cdn.example/x.js");
+    expect(check(bad, false)).toEqual([
+      "out/ledger.html has no canonical URL ending in /ledger",
+      "out/ledger.html: link #nowhere has no target",
+      "out/ledger.html: third-party script https://cdn.example/x.js",
+    ]);
   });
 });

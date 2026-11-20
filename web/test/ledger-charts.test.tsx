@@ -103,6 +103,12 @@ describe("HealthFactorChart", () => {
     expect(screen.queryByRole("img")).toBeNull();
   });
 
+  it("takes the empty sentence from the page, so a failed read never reads as no debt", () => {
+    render(<HealthFactorChart hf={null} min={1.5} target={2} emptyText="Health factor unavailable: the read failed." />);
+    expect(screen.getByText("Health factor unavailable: the read failed.")).toBeInTheDocument();
+    expect(screen.queryByText("No debt, so no health factor to watch.")).toBeNull();
+  });
+
   it("places the floor and target marks and reads above the target", () => {
     const { container } = render(<HealthFactorChart hf={2.4} min={1.5} target={2} />);
     expect(screen.getByRole("img", { name: "Health factor 2.40: floor 1.50, target 2.00, above the target" })).toBeInTheDocument();

@@ -344,3 +344,28 @@ export function checkMarkdownCopies(text: string, path?: string): string[] {
   });
   return problems;
 }
+
+/**
+ * Problems with out/ledger.html: its static state matches the build's deployments table (the waiting view while no
+ * vault is recorded, a connecting line once one is), it names its canonical URL, its in-page links have targets, it
+ * loads no third-party script, and the sitemap lists it.
+ */
+export function checkLedgerPage(opts: { html: string; vaultRecorded: boolean; sitemap: string; url: string }): string[] {
+  const { html, vaultRecorded, sitemap, url } = opts;
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(problem);
+  };
+  const waiting = html.includes("Waiting for the mainnet deploy");
+  if (vaultRecorded) need(!waiting, "out/ledger.html shows the waiting state, but a vault is recorded");
+  else need(waiting, "out/ledger.html does not show the waiting state, but no vault is recorded");
+  need(/<link rel="canonical" href="[^"]*\/ledger"/.test(html), "out/ledger.html has no canonical URL ending in /ledger");
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `out/ledger.html: link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `out/ledger.html: third-party script ${src}`);
+  }
+  need(sitemap.includes(`<loc>${url}</loc>`), `out/sitemap.xml does not list ${url}`);
+  return problems;
+}

@@ -52,11 +52,15 @@ export function formatUsd6(v: bigint): string {
   return `${sign}$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** "Thu 26 Nov 10:30", New York time, for unix seconds. */
+export function etLabel(ts: number): string {
+  const t = localTime(ts);
+  return `${dayLabel(isoOfDay(t.etDay))} ${clockLabel(t.minuteOfDay)}`;
+}
+
 function when(ts: number | undefined): { timeLabel: string; etDay: string } | null {
   if (ts === undefined) return null;
-  const t = localTime(ts);
-  const iso = isoOfDay(t.etDay);
-  return { timeLabel: `${dayLabel(iso)} ${clockLabel(t.minuteOfDay)}`, etDay: iso };
+  return { timeLabel: etLabel(ts), etDay: isoOfDay(localTime(ts).etDay) };
 }
 
 function amountLabel(d: DecisionEvent, symbol: string, decimals: number | undefined): string {

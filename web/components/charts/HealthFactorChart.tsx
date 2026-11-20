@@ -11,7 +11,18 @@ function standing(hf: number, min: number, target: number): Standing {
  * The credit position's health factor on a meter from 1.0, with the mandate's floor (below it the vault refuses new
  * borrowing and the agent must de-risk) and its target.
  */
-export function HealthFactorChart({ hf, min, target }: { hf: number | null; min: number; target: number }) {
+export function HealthFactorChart({
+  hf,
+  min,
+  target,
+  emptyText = "No debt, so no health factor to watch.",
+}: {
+  hf: number | null;
+  min: number;
+  target: number;
+  /** What to say when `hf` is null: no debt by default; the page says so when the read failed instead. */
+  emptyText?: string;
+}) {
   const lo = 1;
   const hi = hf === null ? target * 1.5 : Math.max(target * 1.5, Math.min(hf * 1.1, target * 3));
   const at = (v: number) => `${Math.min(1, Math.max(0, (v - lo) / (hi - lo))) * 100}%`;
@@ -23,7 +34,7 @@ export function HealthFactorChart({ hf, min, target }: { hf: number | null; min:
       title="Health factor"
       note="From the credit adapter. Collateral value against debt; Aave liquidates below 1.0."
       isEmpty={hf === null}
-      emptyText="No debt, so no health factor to watch."
+      emptyText={emptyText}
     >
       {hf !== null && s !== null ? (
         <>

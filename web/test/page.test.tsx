@@ -21,7 +21,8 @@ describe("landing page", () => {
   it("every in-page link has a target", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
-    expect([...ids].sort()).toEqual(["how", "ledger", "main", "mandate", "reasons", "top", "try"]);
+    // The nav's "Ledger" opens /ledger; the landing's #ledger section links there too.
+    expect([...ids].sort()).toEqual(["how", "main", "mandate", "reasons", "top", "try"]);
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
   });
 

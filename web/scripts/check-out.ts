@@ -9,6 +9,7 @@ import {
   checkDocsPage,
   checkExport,
   checkLandingIsolation,
+  checkLedgerPage,
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
@@ -19,7 +20,7 @@ import {
   shipsPublicly,
 } from "../lib/check-out";
 import rationales from "../content/generated/rationales.json";
-import { deploymentsFile } from "../lib/chain/config";
+import { deploymentConfig, deploymentsFile } from "../lib/chain/config";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
 import { docsData } from "../lib/docs/generated";
 import { siteUrl } from "../lib/site";
@@ -36,6 +37,7 @@ const REQUIRED = [
   "apple-icon.png",
   "opengraph-image.png",
   "docs.html",
+  "ledger.html",
   "api/search.json",
   "llms.txt",
   "llms-full.txt",
@@ -56,6 +58,18 @@ if (existsSync(index)) {
   const html = read("index.html");
   problems.push(...checkExport(html));
   problems.push(...checkLandingIsolation(html, (url) => read(url)));
+}
+
+// The mainnet ledger: its static state follows the deployments table the build read, and the sitemap lists it.
+if (existsSync(join(OUT, "ledger.html")) && existsSync(join(OUT, "sitemap.xml"))) {
+  problems.push(
+    ...checkLedgerPage({
+      html: read("ledger.html"),
+      vaultRecorded: deploymentConfig(docsData.deployments) !== null,
+      sitemap: read("sitemap.xml"),
+      url: new URL("/ledger", siteUrl()).href,
+    }),
+  );
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
