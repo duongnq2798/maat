@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: MARKET_CLOSED. Tested on a local fork of Base mainnet; not deployed to mainnet." width="100%">
+<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: Market closed (MARKET_CLOSED). Tested on a local fork of Base mainnet; not deployed to mainnet." width="100%">
 
 # Maat
 
