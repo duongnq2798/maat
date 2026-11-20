@@ -57,7 +57,7 @@ export function MandatePanel({ treasury, pending }: { treasury: Treasury | null;
   return (
     <section aria-label="Mandate" className="grid gap-6 lg:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <div className="card overflow-hidden">
-        <table className="w-full border-collapse text-left">
+        <table className="w-full table-fixed border-collapse text-left">
           <caption className="px-5 pt-4 pb-2 text-left text-sm font-semibold text-ink">
             {treasury ? "The mandate onchain" : "The mandate as configured for the deploy"}
           </caption>
@@ -67,11 +67,11 @@ export function MandatePanel({ treasury, pending }: { treasury: Treasury | null;
               const differs = treasury !== null && def !== undefined && def !== r.v;
               return (
                 <tr key={r.k} className="border-t border-line-soft">
-                  <th scope="row" className="px-5 py-2.5 align-top text-sm font-normal text-ink-body">
+                  <th scope="row" className="w-[55%] px-5 py-2.5 align-top text-sm font-normal text-ink-body [overflow-wrap:anywhere]">
                     {r.label}
-                    <span className="block font-mono text-[11px] text-ink-3">{r.k}</span>
+                    <span className="block font-mono text-[11px] text-ink-2">{r.k}</span>
                   </th>
-                  <td className="px-5 py-2.5 text-right align-top font-mono text-[13px] text-ink">
+                  <td className="px-5 py-2.5 text-right align-top font-mono text-[13px] text-ink [overflow-wrap:anywhere]">
                     {r.v}
                     {treasury === null ? (
                       <span className="ml-2 rounded bg-surface-soft px-1.5 py-0.5 text-[11px] text-ink-2">configured</span>
@@ -86,7 +86,7 @@ export function MandatePanel({ treasury, pending }: { treasury: Treasury | null;
             })}
           </tbody>
         </table>
-        <p className="border-t border-line px-5 py-3 font-mono text-[11px] text-ink-2">
+        <p className="border-t border-line px-5 py-3 font-mono text-[11px] text-ink-2 [&_a]:underline [&_a]:underline-offset-2">
           {treasury ? (
             <>
               Read from mandate() at block {treasury.blockNumber.toString()}; defaults from{" "}

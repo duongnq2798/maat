@@ -14,7 +14,7 @@ export function HowWeRead() {
             How this page reads Base
           </h2>
         </div>
-        <ol className="m-0 flex list-decimal flex-col gap-4 pl-5 text-[15px] leading-relaxed text-ink-body">
+        <ol className="m-0 flex list-decimal [&_a]:underline [&_a]:underline-offset-2 flex-col gap-4 pl-5 text-[15px] leading-relaxed text-ink-body">
           <li>
             Your browser asks a public Base RPC ({DEFAULT_RPCS.map(hostOf).join(", falling back to ")}) for the vault&apos;s
             logs since its deploy block and decodes them with the vault&apos;s own{" "}

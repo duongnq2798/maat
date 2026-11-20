@@ -67,7 +67,7 @@ export function HealthFactorChart({
               <span className="absolute bottom-0 -translate-x-1/2 whitespace-nowrap font-mono text-[10px] text-ink-2" style={{ left: at(min) }}>
                 floor {min.toFixed(2)}
               </span>
-              <span className="absolute bottom-0 left-0 font-mono text-[10px] text-ink-3">1.0</span>
+              <span className="absolute bottom-0 left-0 font-mono text-[10px] text-ink-2">1.0</span>
             </div>
           </div>
         </>

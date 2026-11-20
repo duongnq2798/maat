@@ -42,7 +42,7 @@ export function DecisionsPerDayChart({ days }: { days: readonly DayCount[] }) {
     >
       <div role="img" aria-label={`Decisions per day: ${plural(days.length, "day")}, ${formatInt(allowed)} allowed, ${formatInt(refused)} refused`}>
         <div className="flex gap-2" aria-hidden="true">
-          <div className="relative h-40 w-6 shrink-0 font-mono text-[10px] tabular-nums text-ink-3">
+          <div className="relative h-40 w-6 shrink-0 font-mono text-[10px] tabular-nums text-ink-2">
             {ticks.map((t) => (
               <span key={t} className="absolute right-0 translate-y-1/2 leading-none" style={{ bottom: pct(t) }}>
                 {formatInt(t)}
@@ -87,7 +87,7 @@ export function DecisionsPerDayChart({ days }: { days: readonly DayCount[] }) {
             </div>
           </div>
         </div>
-        <div className="ml-8 mt-1 flex font-mono text-[10px] text-ink-3" aria-hidden="true">
+        <div className="ml-8 mt-1 flex font-mono text-[10px] text-ink-2" aria-hidden="true">
           {days.map((d, i) => (
             <span key={d.day} className="flex-1 whitespace-nowrap text-center">
               {labeled(i) ? shortDay(d.label) : ""}

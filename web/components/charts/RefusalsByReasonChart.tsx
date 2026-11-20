@@ -44,7 +44,7 @@ export function RefusalsByReasonChart({
             >
               <span className="font-mono text-xs text-ink [overflow-wrap:anywhere]">
                 {d.label}
-                {d.label !== d.code ? <span className="ml-1.5 text-ink-3">{d.code}</span> : null}
+                {d.label !== d.code ? <span className="ml-1.5 text-ink-2">{d.code}</span> : null}
               </span>
               <span className="relative h-3" aria-hidden="true">
                 <span data-mark="refusal" className="absolute inset-y-0 left-0 rounded-r-[4px] bg-refuse" style={{ width: `${(r.count / max) * 100}%` }} />

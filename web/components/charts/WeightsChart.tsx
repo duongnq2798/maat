@@ -13,8 +13,10 @@ const pctLabel = (bps: number) => `${(bps / 100).toFixed(1)}%`;
 /** Each stock's weight of net equity against the mandate's target weight and the token's onchain cap. */
 export function WeightsChart({ holdings, targetPct }: { holdings: readonly WeightRow[]; targetPct: number }) {
   const largest = Math.max(targetPct, ...holdings.flatMap((h) => [h.weightBps, h.maxWeightBps].filter((v): v is number => v !== null).map((v) => v / 100)));
-  const end = Math.min(100, Math.ceil((largest * 1.15) / 10) * 10);
-  const step = end <= 50 ? 10 : 25;
+  // At most three axis labels, so they never crowd on a phone.
+  const reach = largest * 1.15;
+  const step = reach <= 20 ? 10 : reach <= 50 ? 25 : 50;
+  const end = Math.min(100, Math.ceil(reach / step) * step);
   const ticks = Array.from({ length: Math.floor(end / step) + 1 }, (_, i) => i * step);
   const at = (pct: number) => `${(Math.min(pct, end) / end) * 100}%`;
   const targetAt = (Math.min(targetPct, end) / end) * 100;
@@ -57,7 +59,7 @@ export function WeightsChart({ holdings, targetPct }: { holdings: readonly Weigh
                   <span key={t} className="absolute inset-y-0 w-px bg-grid" style={{ left: at(t) }} />
                 ))}
                 {h.weightBps === null ? (
-                  <span className="absolute inset-y-0 left-1 flex items-center text-xs text-ink-3">unavailable</span>
+                  <span className="absolute inset-y-0 left-1 flex items-center text-xs text-ink-2">unavailable</span>
                 ) : h.weightBps > 0 ? (
                   <span data-mark="weight" className="absolute left-0 top-1/2 h-3 -translate-y-1/2 rounded-r-[4px] bg-accent" style={{ width: at(h.weightBps / 100) }} />
                 ) : null}
@@ -70,10 +72,11 @@ export function WeightsChart({ holdings, targetPct }: { holdings: readonly Weigh
             </div>
           ))}
           <span />
-          <div className="relative mt-1 h-3 font-mono text-[10px] tabular-nums text-ink-3">
+          <div className="relative mt-1 h-3 font-mono text-[10px] tabular-nums text-ink-2">
             {ticks.map((t, i) => (
               <span
                 key={t}
+                data-tick
                 className={`absolute ${i === 0 ? "" : i === ticks.length - 1 ? "-translate-x-full" : "-translate-x-1/2"}`}
                 style={{ left: at(t) }}
               >

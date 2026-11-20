@@ -96,6 +96,18 @@ describe("WeightsChart", () => {
   });
 });
 
+describe("WeightsChart axis", () => {
+  it("labels at most three ticks so they never crowd on a phone", () => {
+    const { container } = render(<WeightsChart holdings={[{ symbol: "NVDAc", weightBps: 2980, maxWeightBps: 4000 }]} targetPct={23.3} />);
+    expect([...container.querySelectorAll("[data-tick]")].map((t) => t.textContent)).toEqual(["0%", "25%", "50%"]);
+  });
+
+  it("steps by 10 for small weights", () => {
+    const { container } = render(<WeightsChart holdings={[{ symbol: "NVDAc", weightBps: 1200, maxWeightBps: null }]} targetPct={10} />);
+    expect([...container.querySelectorAll("[data-tick]")].map((t) => t.textContent)).toEqual(["0%", "10%", "20%"]);
+  });
+});
+
 describe("HealthFactorChart", () => {
   it("says so when there is no debt", () => {
     render(<HealthFactorChart hf={null} min={1.5} target={2} />);

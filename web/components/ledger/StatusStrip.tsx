@@ -17,7 +17,7 @@ export function WaitingStrip() {
       </p>
       <p className="mt-2 max-w-[760px] text-sm leading-relaxed text-ink-2">
         The MandateVault is not on Base mainnet yet. Once the owner deploys it and the{" "}
-        <a href={repoFileUrl("deployments/README.md")}>deployments table</a> records its address, this page reads the
+        <a href={repoFileUrl("deployments/README.md")} className="underline underline-offset-2">deployments table</a> records its address, this page reads the
         vault&apos;s decisions, balances and rules straight from Base, in your browser. Until then the charts below are
         empty and the mandate shows the configured values.
       </p>
