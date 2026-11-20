@@ -7,7 +7,7 @@
 | Base mainnet | AaveV4CreditAdapter | | | |
 | Base mainnet | MandateVault | | | |
 
-Owner = your wallet. The executor is temporarily your wallet until Plan 2 (CDP Server Wallet). Payee = the compute-expense wallet, plus an optional second payee.
+Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet, plus an optional second payee.
 
 ## Environment
 
@@ -27,7 +27,17 @@ Set `MAAT_EXPENSE_PAYEE_2` when you already know a second address the vault shou
 
 `MaatConfig.defaultMandate` uses `maxPremiumBps = 100` (not 50): the premium of TWAP(1800s) against Chainlink, measured in session at `BLOCK_SESSION`, is 53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc.
 
+It uses `maxSlippageBps = 150` and `maxStaleness = 90000` (25 hours), measured on Base mainnet (read-only RPC) over the 10 NYSE sessions of Nov 2-6 and Nov 9-13, 2026. The measurement script and its data are not in the repository, so these figures cannot be re-run from it:
+
+- `maxStaleness` is the feeds' 24h heartbeat plus 1h. The Chainlink B20 equity feeds update on a 0.5% price move or every 24h, so in session the latest answer was older than 1h for 45.9% of the time on AAPL, 37.6% on GOOGL and 9.8% on NVDA, and never older than 24h. A dead feed is still caught. For BUY and SELL the TWAP-vs-oracle premium check is the guard against a frozen price; BORROW and WITHDRAW_COLLATERAL against debt have no premium check and rely on the 25h limit alone.
+- `maxSlippageBps`: the worst BUY cost against the oracle (pool spot price plus fee, sampled every 15 minutes in session) was 121 bps on NVDAc, p99 109 bps. At 150 bps a $50 trade loses at most $0.75 to slippage.
+- Simulated $50 BUYs passed 81% (NVDAc), 60% (GOOGLc) and 53% (AAPLc) of the time with the old limits (`maxStaleness = 3600`, `maxSlippageBps = 100`), and 93%, 98% and 99% with these values. Most NVDAc refusals left are `PREMIUM_TOO_HIGH` in the first 45 minutes after the open, when the 30-minute TWAP still reflects the overnight price.
+
 Credit (Aave V4 MAG7 Spoke): `minHealthFactor = 1.5`, `targetHealthFactor = 2.0` (buffer included), `deriskWindow = 8h` (from 12:00 ET on Friday until 20:00 ET, when the feed stops; for a REGULAR session this is 12:00–16:00). The window also applies to the last session before a day off: Monday–Thursday when the next day is a holiday in `MarketCalendar`, for example Thursday 2026-12-24 (early close at 13:00, so the in-session window is 12:00–13:00) and Thursday 2026-12-31, which come before two holidays that fall on Fridays; also Wednesday 2026-11-25, before Thanksgiving. Borrowing is allowed only when the market is open and the HF after the borrow is ≥ 1.5 (≥ 2.0 inside the window). Repay and adding collateral are allowed even when the market is closed. When the vault is paused with `setPaused(true)`, REPAY still runs so that debt can always be reduced; SUPPLY, BORROW, WITHDRAW_COLLATERAL (along with BUY, SELL, PAY_EXPENSE) are refused with `VAULT_PAUSED`.
+
+## Foundry
+
+The B20 stocks are precompiles, and the `MandateVault` constructor reads `uiMultiplier()` from each basket token, so the dry-run, the simulation and the broadcast below all need a Foundry that runs the B20 precompile. Foundry 1.8.4 or newer does when it runs in `contracts/`, where `foundry.toml` sets `hardfork = "base:Cobalt"`: the contract fork test `test_deployWiresEverything` runs this script on a Base fork that way (the README's runs used 1.9.0). Upstream Anvil 1.9 does not, because it reverts on `uiMultiplier()`, so do not point the script at a local upstream Anvil node. A local node must be Base's build, `base-anvil` v1.5.1, described in [`agent/README.md`](../agent/README.md#test).
 
 ## Dry-run (no broadcast, no key needed)
 

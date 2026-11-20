@@ -1,11 +1,12 @@
 "use client";
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
 import type { CheckMark } from "@/content/engine";
 import { FACTS } from "@/content/facts";
 import { clockLabel, dayLabel } from "@/content/format";
-import { REASON_MEANING } from "@/content/reasons";
+import { REASON_MEANING, reasonText } from "@/content/reasons";
 import {
   AMOUNT_CHIPS_USD,
   amountPending,
@@ -41,6 +42,11 @@ const LEGEND = "mb-3 p-0 font-mono text-[11px] text-ink-2";
 const DAY_MINUTES = 1440;
 const USD6 = 1_000_000;
 const pct = (bps: number) => `${bps / 100}%`;
+/** The window spans a year end, so its bounds carry the year: "Thu 5 Nov 2026". */
+function withYear(dayNumber: number): string {
+  const iso = isoOfDay(dayNumber);
+  return `${dayLabel(iso)} ${iso.slice(0, 4)}`;
+}
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -176,7 +182,7 @@ export function Simulator() {
     if (!parsed || full) return;
     setS((p) => (p.tape.length >= MAX_TAPE ? p : { ...p, tape: [...p.tape, p.intent] }));
     setNotice(
-      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${result.reason}`}`,
+      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${reasonText(result.reason)}`}`,
     );
   };
   async function copyLink() {
@@ -279,7 +285,7 @@ export function Simulator() {
           </div>
           {dayInvalid ? (
             <p id="sim-day-hint" className="m-0 mt-2 text-[13px] text-refuse">
-              Pick a date from {dayLabel(isoOfDay(WINDOW.first))} to {dayLabel(isoOfDay(WINDOW.last))}.
+              Pick a date from {withYear(WINDOW.first)} to {withYear(WINDOW.last)}.
             </p>
           ) : null}
           <div className="mt-5 flex flex-col gap-2">
@@ -362,7 +368,7 @@ export function Simulator() {
                 <span className="font-mono text-[11px] opacity-80">IF EXECUTED NOW · SIMULATED</span>
                 <span className="text-[26px] font-semibold tracking-[-0.03em]">{result.allowed ? "Allowed" : "Refused"}</span>
               </div>
-              <span className="font-mono text-[13px] font-semibold [overflow-wrap:anywhere]">{result.reason}</span>
+              <ReasonTag code={result.reason} tone="verdict" layout="stacked" className="ml-auto text-right [overflow-wrap:anywhere]" />
             </div>
             <p className="m-0 text-sm leading-normal opacity-90">
               {result.reason === "OK" ? "It says yes. Change one thing to make it say no." : REASON_MEANING[result.reason]}
@@ -432,9 +438,16 @@ export function Simulator() {
                   <span className="[overflow-wrap:anywhere]">
                     <span className="text-ink-2">{clockLabel(e.intent.minute)}</span> {simIntentLabel(e.intent)}
                   </span>
-                  <span className={e.allowed ? "text-accent" : "font-semibold text-refuse"}>
-                    {e.allowed ? "Allowed" : `Refused · ${e.reason}`}
-                  </span>
+                  {e.allowed ? (
+                    <span className="text-accent">Allowed</span>
+                  ) : (
+                    // A flex row, so the label stays on the line of "Refused ·" and only the code wraps under it.
+                    <span className="flex items-baseline gap-x-1.5 font-semibold text-refuse">
+                      <span className="shrink-0">{"Refused · "}</span>
+                      {/* The code is the muted tag: it drops the semibold of the words before it. */}
+                      <ReasonTag code={e.reason} tone="refuse" layout="inline" className="[&>:last-child]:font-normal" />
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

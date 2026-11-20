@@ -1,14 +1,48 @@
+import type { Root } from "fumadocs-core/page-tree";
 import { REASON_MEANING_DOCS, REASONS } from "../../content/reasons";
 import { SITE } from "../site";
 import { forkLedger, GROUP_OF, decisionEventSource, mandateTable } from "./content-data";
 import { DATA_COMPONENTS, type DataComponent } from "./data-components";
+import type { Deployment } from "./docs-data";
 import { codeParts, FACT_TABLE_HEAD, type FactCode, factTable } from "./fact-text";
-import { type FlowData, ARCHITECTURE, DECISION_LOOP, MARKET_WEEK_CAPTION, MARKET_WEEK_MODES, TIMELOCK_FLOW, TREASURY_LOOP } from "./flows";
+import {
+  type FlowData,
+  type ScaleData,
+  ARCHITECTURE,
+  DECISION_LOOP,
+  HEALTH_FACTOR_SCALE,
+  MARKET_WEEK_CAPTION,
+  MARKET_WEEK_MODES,
+  MULTIPLIER_FLOW,
+  TIMELOCK_FLOW,
+  TREASURY_LOOP,
+} from "./flows";
 import { STATUS_LABEL, STATUSES, type DocStatus } from "./frontmatter";
 import { docsData } from "./generated";
+import { headingId } from "./links";
 import { READER_PATHS } from "./reader-paths";
-import { kindLabels, NO_DEFAULT, NO_EXAMPLE, READ_BY, readByDetail, requiredDetail, requiredLabel } from "./reference-labels";
-import { accessLabel, errorSignature, eventSignature, findContract, findItem, functionSignature } from "./signatures";
+import {
+  DEPLOYMENT_HEAD,
+  deploymentHref,
+  DEPLOYMENTS_CAPTION,
+  DEPLOYMENTS_FILE,
+  ENV_COMMENT,
+  hasAddress,
+  kindLabels,
+  NO_DEFAULT,
+  NO_DEPLOYMENT,
+  NO_EXAMPLE,
+  READ_BY,
+  readByDetail,
+  requiredDetail,
+  requiredLabel,
+  SELECTOR,
+  SOURCE_COMMENT,
+  stateLabel,
+  TOPIC0,
+} from "./reference-labels";
+import { sectionIndex } from "./sections";
+import { accessLabel, errorSignature, eventSignature, findContract, findItem, type FunctionGroup, functionGroups, functionSignature } from "./signatures";
 import type { SolParam } from "./sol-surface";
 
 // Relative imports only: source.config.ts loads this file through the fumadocs-mdx bundler, outside Next.
@@ -17,12 +51,17 @@ import type { SolParam } from "./sol-surface";
 // the real components from the same data; lib/docs/remark-component-text.ts prints these in their place. Plain
 // Markdown, no HTML, so a reader or a model gets the signatures, the tables and the steps, not a raw tag.
 
-/** The literal attributes of a tag: a string, a bare flag, or a list of strings. */
-export type Props = Readonly<Record<string, string | boolean | readonly string[]>>;
+/** A list written as an expression: of strings, or of lists, as a grouped <FunctionIndex> writes its groups. */
+export type PropList = readonly (string | PropList)[];
+
+/** The literal attributes of a tag: a string, a bare flag, or a list. */
+export type Props = Readonly<Record<string, string | boolean | PropList>>;
 
 export interface TextContext {
   /** Whether a docs page has shipped, by slug ("get-started/quickstart"). */
   readonly exists: (slug: string) => boolean;
+  /** The docs page tree, as Fumadocs builds the sidebar from content/docs: what a section index lists. */
+  readonly tree?: () => Root;
 }
 
 type Render = (props: Props, ctx: TextContext) => string;
@@ -57,13 +96,27 @@ function optionalStr(name: string, props: Props, key: string): string | undefine
   return props[key] === undefined ? undefined : str(name, props, key);
 }
 
+const isStrings = (v: unknown): v is readonly string[] => Array.isArray(v) && v.every((x) => typeof x === "string");
+
 function strings(name: string, props: Props, key: string): readonly string[] {
   const v = props[key];
-  if (!Array.isArray(v)) throw new Error(`<${name} /> needs a list of strings for "${key}"`);
+  if (!isStrings(v)) throw new Error(`<${name} /> needs a list of strings for "${key}"`);
+  return v;
+}
+
+/** The groups of a <FunctionIndex>: each a section name, then the names of its functions. */
+function groupList(name: string, props: Props, key: string): readonly FunctionGroup[] | undefined {
+  const v = props[key];
+  if (v === undefined) return undefined;
+  const isGroup = (g: unknown): g is FunctionGroup => Array.isArray(g) && g.length === 2 && typeof g[0] === "string" && isStrings(g[1]);
+  if (!Array.isArray(v) || !v.every(isGroup)) throw new Error(`<${name} /> needs a list of ["group", ["function", ...]] for "${key}"`);
   return v;
 }
 
 // Reference entries
+
+const hash = (label: string, value: string) => `${label}: ${code(value)}`;
+const sourceComment = (notice: string) => notice && `${SOURCE_COMMENT} ${notice}`;
 
 function paramRows(params: readonly SolParam[], indexed: boolean): string | undefined {
   if (params.length === 0) return undefined;
@@ -79,26 +132,43 @@ const fn: Render = (props) => {
   return blocks(
     fence("solidity", functionSignature(f)),
     `Who may call: ${accessLabel(f.access)}. Kind: ${kindLabels(f).join(", ")}.`,
-    f.notice,
+    hash(SELECTOR, f.selector),
+    sourceComment(f.notice),
   );
 };
 
+/**
+ * Each function links its entry, as on the page (`name (Contract)` with `qualify`). Grouped, a group's name heads its
+ * rows as a one-cell row linking its section, and a row says only what the function does to state.
+ */
 const functionIndex: Render = (props) => {
-  const c = findContract(surface, str("FunctionIndex", props, "contract"));
+  const contract = str("FunctionIndex", props, "contract");
+  const qualify = props.qualify === true;
+  const groups = groupList("FunctionIndex", props, "groups");
+  const entry = (name: string) => link(code(name), `#${headingId(qualify ? `${name} (${contract})` : name)}`);
+  if (groups) {
+    return mdTable(
+      ["Function", "Kind"],
+      functionGroups(surface, contract, groups).flatMap((g) => [
+        [link(g.name, `#${headingId(g.name)}`)],
+        ...g.functions.map((f) => [entry(f.name), stateLabel(f)]),
+      ]),
+    );
+  }
   return mdTable(
     ["Function", "Who may call", "Kind"],
-    c.functions.map((f) => [code(f.name), accessLabel(f.access), kindLabels(f).join(", ")]),
+    findContract(surface, contract).functions.map((f) => [entry(f.name), accessLabel(f.access), kindLabels(f).join(", ")]),
   );
 };
 
 const eventEntry: Render = (props) => {
   const e = findItem(surface, str("EventEntry", props, "contract"), "events", str("EventEntry", props, "name"));
-  return blocks(fence("solidity", eventSignature(e)), e.notice, paramRows(e.params, true));
+  return blocks(fence("solidity", eventSignature(e)), hash(TOPIC0, e.topic0), sourceComment(e.notice), paramRows(e.params, true));
 };
 
 const errorEntry: Render = (props) => {
   const e = findItem(surface, str("ErrorEntry", props, "contract"), "errors", str("ErrorEntry", props, "name"));
-  return blocks(fence("solidity", errorSignature(e)), e.notice, paramRows(e.params, false));
+  return blocks(fence("solidity", errorSignature(e)), hash(SELECTOR, e.selector), sourceComment(e.notice), paramRows(e.params, false));
 };
 
 const typeEntry: Render = (props) => {
@@ -112,7 +182,7 @@ const typeEntry: Render = (props) => {
   }
   const st = surface.structs.find((s) => s.name === name);
   if (!st) throw new Error(`type ${name} is not in content/generated/contracts.json (run npm run docs:gen)`);
-  return blocks(st.notice, paramRows(st.fields, false));
+  return blocks(sourceComment(st.notice), paramRows(st.fields, false));
 };
 
 const envVars = docsData.agent.env;
@@ -133,7 +203,7 @@ const envVar: Render = (props) => {
     `- Default: ${v.default === null ? NO_DEFAULT : code(v.default)}`,
     `- In .env.example: ${v.example ? code(v.example) : NO_EXAMPLE}`,
   ];
-  return blocks(fields.join("\n"), v.note);
+  return blocks(fields.join("\n"), v.note && `${ENV_COMMENT} ${v.note}`);
 };
 
 const scriptEntry: Render = (props) => {
@@ -162,6 +232,28 @@ const addressTable: Render = () =>
       return a.group !== "" && a.group !== docsData.addresses[i - 1]?.group ? [[a.group], row] : [row];
     }),
   );
+
+/**
+ * The table of deployments/README.md: while no row has an address, one sentence that says so; once one has, every row,
+ * with a Base mainnet address and transaction linked to Basescan, then the file it comes from.
+ */
+export function deploymentText(rows: readonly Deployment[]): string {
+  const file = link(code(DEPLOYMENTS_FILE), `${SITE.repoUrl}/blob/main/${DEPLOYMENTS_FILE}`);
+  if (!rows.some(hasAddress)) return `${NO_DEPLOYMENT[0]}${file}${NO_DEPLOYMENT[1]}`;
+  const cell = (d: Deployment, key: "address" | "tx") => {
+    const href = deploymentHref(d, key);
+    return d[key] === "" ? "" : href ? link(code(d[key]), href) : code(d[key]);
+  };
+  return blocks(
+    mdTable(
+      DEPLOYMENT_HEAD,
+      rows.map((d) => [d.network, code(d.contract), cell(d, "address"), cell(d, "tx"), d.date]),
+    ),
+    `${DEPLOYMENTS_CAPTION[0]}${file}${DEPLOYMENTS_CAPTION[1]}`,
+  );
+}
+
+const deploymentTable: Render = () => deploymentText(docsData.deployments);
 
 const inCode = (c: FactCode) => codeParts(c).map((p) => (p.code ? code(p.text) : p.text)).join("");
 
@@ -200,7 +292,7 @@ const forkLedgerText: Render = () => {
   return blocks(
     mdTable(
       ["Time (ET)", "Intent", "Decision", "Gas", "Note"],
-      t.rows.map((r) => [r.time, r.intent, code(r.decision), r.gas, r.note ?? ""]),
+      t.rows.map((r) => [r.time, r.intent, `${r.decision} (${code(r.code)})`, r.gas, r.note ?? ""]),
     ),
     t.caption,
   );
@@ -214,6 +306,14 @@ const routerCards: Render = (_props, ctx) =>
     return `- **${p.reader}**: ${p.want} ${cta}`;
   }).join("\n");
 
+/** Each group's cards as a list of links with their descriptions; a named group under its name, in bold, not a heading. */
+const sectionIndexText: Render = (props, ctx) => {
+  if (!ctx.tree) throw new Error("<SectionIndex /> needs the docs page tree (TextContext.tree)");
+  return sectionIndex(ctx.tree(), optionalStr("SectionIndex", props, "section") ?? "")
+    .map((g) => blocks(g.name && `**${g.name}**`, g.cards.map((c) => `- ${link(c.title, c.url)}${c.description ? `: ${c.description}` : ""}`).join("\n")))
+    .join("\n\n");
+};
+
 const statusBadge: Render = (props) => {
   const status = str("StatusBadge", props, "status");
   if (!(STATUSES as readonly string[]).includes(status)) throw new Error(`<StatusBadge status="${status}" /> is not a status (${STATUSES.join(", ")})`);
@@ -226,6 +326,12 @@ const flow =
   (data: FlowData): Render =>
   () =>
     blocks(`**${data.label}**`, data.steps.map((s, i) => `${i + 1}. **${s.title}**: ${s.detail}`).join("\n"), data.caption);
+
+/** A scale's ranges as a list, highest first, each led by its bounds; the colour of its edge is left out, as its title says it. */
+const scale =
+  (data: ScaleData): Render =>
+  () =>
+    blocks(`**${data.label}**`, data.bands.map((b) => `- **${b.range}**: ${b.title}. ${b.detail}`).join("\n"), data.caption);
 
 const marketWeek: Render = () =>
   blocks(MARKET_WEEK_MODES.map((m) => `- ${code(m.mode)} is open ${m.text}`).join("\n"), MARKET_WEEK_CAPTION);
@@ -242,17 +348,21 @@ export const COMPONENT_TEXT: Readonly<Record<DataComponent, Render>> = {
   ScriptEntry: scriptEntry,
   ScriptFile: scriptFile,
   AddressTable: addressTable,
+  DeploymentTable: deploymentTable,
   FactTable: factTableText,
   ReasonTable: reasonTable,
   MandateTable: mandateTableText,
   EventSignature: eventSignatureText,
   ForkLedger: forkLedgerText,
   RouterCards: routerCards,
+  SectionIndex: sectionIndexText,
   StatusBadge: statusBadge,
   DecisionLoop: flow(DECISION_LOOP),
   Architecture: flow(ARCHITECTURE),
   TimelockFlow: flow(TIMELOCK_FLOW),
   TreasuryLoop: flow(TREASURY_LOOP),
+  MultiplierFlow: flow(MULTIPLIER_FLOW),
+  HealthFactorScale: scale(HEALTH_FACTOR_SCALE),
   MarketWeek: marketWeek,
 };
 

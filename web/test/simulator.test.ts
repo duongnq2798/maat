@@ -55,7 +55,7 @@ describe("simulator: one BUY against the default mandate", () => {
       ["PASS", "transfers active"],
       ["PASS", "authorized"],
       ["PASS", "Thursday · open until 16:00"],
-      ["PASS", "14s ≤ 3600s"],
+      ["PASS", "14s ≤ 90000s"],
       ["PASS", "no change 24h"],
       ["PASS", "53 ≤ 100 bps"],
       ["PASS", "$20 ≤ $50 · $20 of $100 today"],
@@ -104,10 +104,10 @@ describe("simulator: one BUY against the default mandate", () => {
   });
 
   it("shows the feed age only for the feed it was measured on", () => {
-    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 3600s");
+    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 90000s");
     for (const token of ["GOOGLc", "AAPLc"] as const) {
       const check = evaluate(on(THU), buy(token, 10)).checks[4];
-      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 3600s", "PASS", true]);
+      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 90000s", "PASS", true]);
     }
   });
 
@@ -256,13 +256,13 @@ describe("simulator: presets and copy", () => {
   it("writes the post for a refusal and for a yes", () => {
     const sat = { ...DEFAULT_SCENARIO, etDay: day("2026-11-07"), intent: buy("NVDAc", 50) };
     expect(postText(sat, evaluate(replay(sat.etDay, []), sat.intent))).toBe(
-      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED.",
+      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: Market closed (MARKET_CLOSED).",
     );
     expect(postText(DEFAULT_SCENARIO, { allowed: true, reason: "OK" })).toBe(
       "I asked Maat's simulator to buy $20 of NVDAc on Thu 5 Nov at 10:30 ET. All nine checks passed. Can you make it say no?",
     );
-    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toContain(
-      "$5 of a token outside the mandate",
+    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toBe(
+      "I tried to buy $5 of a token outside the mandate on Thu 5 Nov at 10:30 ET. Maat's simulator said no: Token not allowed (TOKEN_NOT_ALLOWED).",
     );
   });
 

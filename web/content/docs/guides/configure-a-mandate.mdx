@@ -4,7 +4,7 @@ description: Change the limits, tokens and payees before you deploy, and underst
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/script/MaatConfig.sol
   - contracts/src/MandateVault.sol
@@ -29,7 +29,7 @@ sources:
 next: [guides/deploy-your-own-vault, guides/change-a-rule]
 ---
 
-This guide shows where every default of the [mandate](/docs/help/glossary#mandate) lives in the code, how to change one before you deploy, and which values the vault rejects with an error instead of accepting. It is written for builders who deploy their own vault. Nothing is deployed yet, so you are changing the values that the deploy script is built to use, and the vault's rules below are built and tested.
+This guide shows where every default of the [mandate](/docs/help/glossary#mandate) lives in the code, how to change one before you deploy, and which values the [vault](/docs/help/glossary#vault) rejects with an error instead of accepting. It is written for builders who deploy their own vault. Nothing is deployed yet, so you are changing the values that the deploy script is built to use, and the vault's rules below are built and tested.
 
 ## Before you start
 
@@ -38,16 +38,16 @@ This guide is for builders who edit the deploy configuration before the first de
 | Need | Detail |
 | --- | --- |
 | A clone of the repository | `contracts/script/MaatConfig.sol` is the file you edit. |
-| [Foundry](https://getfoundry.sh) | 1.8.4 or newer, for `forge script` and `forge test`. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer, for `forge script` and `forge test`. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock [precompiles](/docs/help/glossary#precompile) need. |
 | `contracts/.env` | Not in a clone, because git ignores it. Create it in `contracts/` with `cp .env.example .env`, as in [Create `contracts/.env`](/docs/guides/deploy-your-own-vault#create-contractsenv) in Deploy your own vault. The dry run reads `BASE_RPC_URL` and the optional `MAAT_EXPENSE_PAYEE_2` from it, and sets the four required `MAAT_*` addresses on its own command line. |
-| A Base RPC | `BASE_RPC_URL` in `contracts/.env`. The template sets Base's public endpoint; if it answers HTTP 429, use your own URL. |
+| A [Base](/docs/help/glossary#base) RPC | `BASE_RPC_URL` in `contracts/.env`. The template sets Base's public endpoint; if it answers HTTP 429, use your own URL. |
 | bash | Linux, macOS, or Git Bash on Windows, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). The dry run uses bash syntax, which PowerShell and cmd do not run. |
 
 Time: the edit is a few lines. Checking it takes the dry run and the unit tests.
 
 <Callout type="note" title="Before the first deploy only">
 
-Editing `MaatConfig.sol` changes the values a new deployment starts with. It changes nothing on a vault that already exists. After a vault is deployed, every change to the mandate, to a stock's settings or to the [payee](/docs/help/glossary#payee) list goes through the [timelock](/docs/help/glossary#timelock): the owner queues it, waits <Fact name="timelockHours" />, then applies exactly the queued values within <Fact name="gracePeriodDays" />, and even a tighter limit waits. [Change a rule](/docs/guides/change-a-rule) walks through that.
+Editing `MaatConfig.sol` changes the values a new deployment starts with. It changes nothing on a vault that already exists. After a vault is deployed, every change to the mandate, to a stock's settings or to the [payee](/docs/help/glossary#payee) list goes through the [timelock](/docs/help/glossary#timelock): the [owner](/docs/help/glossary#owner) queues it, waits <Fact name="timelockHours" />, then applies exactly the queued values within <Fact name="gracePeriodDays" />, and even a tighter limit waits. [Change a rule](/docs/guides/change-a-rule) walks through that.
 
 </Callout>
 
@@ -66,7 +66,7 @@ Open `contracts/script/MaatConfig.sol`. The table says where each setting is set
 | `sessionMode` | `Deploy.s.sol` passes `SessionMode.REGULAR` to `defaultMandate` | Enum | <Fact name="mandate.sessionMode" /> |
 | `maxPremiumBps` | `defaultMandate` | [Basis points](/docs/help/glossary#basis-point-bps), the widest [premium](/docs/help/glossary#premium) | <Fact name="mandate.maxPremiumBps" /> |
 | `maxSlippageBps` | `defaultMandate` | Basis points | <Fact name="mandate.maxSlippageBps" /> |
-| `maxStaleness` | `defaultMandate` | Seconds, the oldest answer ([staleness](/docs/help/glossary#staleness)) an oracle may give | <Fact name="mandate.maxStalenessSec" /> |
+| `maxStaleness` | `defaultMandate` | Seconds, which the code writes as `25 hours`, the oldest answer ([staleness](/docs/help/glossary#staleness)) an oracle may give | <Fact name="mandate.maxStalenessSec" /> |
 | `multiplierCooldown` | `defaultMandate` | Seconds, which the code writes as `1 days` | <Fact name="mandate.multiplierCooldownSec" /> |
 | `twapWindow` | `defaultMandate` | Seconds, the averaging window of the [TWAP](/docs/help/glossary#twap) | <Fact name="mandate.twapWindowSec" /> |
 | `perTradeCapUsd` | `defaultMandate` | USDC units | <Fact name="mandate.perTradeCapUsd" /> |
@@ -76,8 +76,8 @@ Open `contracts/script/MaatConfig.sol`. The table says where each setting is set
 | `targetHealthFactor` | The constant `TARGET_HEALTH_FACTOR` | WAD | <Fact name="mandate.targetHealthFactor" /> |
 | `deriskWindow` | The constant `DERISK_WINDOW` | Seconds, which the code writes as `8 hours`. It is the length of the [de-risk window](/docs/help/glossary#de-risk-window) | <Fact name="mandate.deriskWindowSec" /> |
 | Each stock's `allowed`, `feed`, `pool` and `maxWeightBps` | `basket()` | Booleans, addresses, basis points | Allowed, with a `maxWeightBps` of <Fact name="mandate.maxWeightBps" /> |
-| Each stock's Aave reserve | `creditReserves()`, in the same order as the basket | Reserve ids | None |
-| [Payees](/docs/help/glossary#payee) | `Deploy.s.sol` builds a list of one or two from `MAAT_EXPENSE_PAYEE` and the optional `MAAT_EXPENSE_PAYEE_2` | Addresses | None |
+| Each stock's [Aave](/docs/help/glossary#aave-v4) reserve | `creditReserves()`, in the same order as the basket | Reserve ids | None |
+| Payees | `Deploy.s.sol` builds a list of one or two from `MAAT_EXPENSE_PAYEE` and the optional `MAAT_EXPENSE_PAYEE_2` | Addresses | None |
 | Owner and [executor](/docs/help/glossary#executor) | The `MAAT_OWNER` and `MAAT_EXECUTOR` environment variables | Addresses | None |
 
 The credit constants sit at the top of the library:
@@ -90,16 +90,22 @@ The credit constants sit at the top of the library:
     uint32 internal constant DERISK_WINDOW = 8 hours;
 ```
 
-The rest of the mandate is built in `defaultMandate`. The comment in it records why `maxPremiumBps` is not the smaller value the design started with:
+The rest of the mandate is built in `defaultMandate`. Its comments record the measurements behind three limits: why `maxPremiumBps` is not the smaller value the design started with, and where `maxSlippageBps` and `maxStaleness` come from ([Why these values](/docs/concepts/mandate#why-these-values) has the full numbers):
 
-```solidity title="contracts/script/MaatConfig.sol#L20-L37"
+```solidity title="contracts/script/MaatConfig.sol#L20-L43"
         return Mandate({
             sessionMode: mode,
             // 100 not 50: measured in-session TWAP(1800s)-vs-Chainlink premiums at BLOCK_SESSION were
             // NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps (measured in session on a Base fork).
             maxPremiumBps: 100,
-            maxSlippageBps: 100,
-            maxStaleness: 3600,
+            // Worst BUY cost against the oracle (pool spot plus fee, 15-min samples, NYSE sessions of Nov 2-6
+            // and 9-13 2026) was 121 bps on NVDAc, p99 109 bps. 150 costs at most $0.75 on a $50 trade.
+            maxSlippageBps: 150,
+            // The feeds' 24h heartbeat plus 1h. They update on a 0.5% move or every 24h; in those sessions
+            // they were older than 1h for up to 46% of the time (AAPL), never older than 24h. A dead feed is
+            // still caught. For BUY and SELL the TWAP-vs-oracle premium check guards against a frozen price;
+            // BORROW and WITHDRAW_COLLATERAL against debt have no premium check and rely on this limit alone.
+            maxStaleness: 25 hours,
             multiplierCooldown: 1 days,
             twapWindow: 1800,
             perTradeCapUsd: 50e6,
@@ -113,9 +119,9 @@ The rest of the mandate is built in `defaultMandate`. The comment in it records 
         });
 ```
 
-The stocks and their feeds and pools are listed in `basket()`:
+The stocks and their [feeds](/docs/help/glossary#chainlink-equity-feed) and pools are listed in `basket()`:
 
-```solidity title="contracts/script/MaatConfig.sol#L40-L49"
+```solidity title="contracts/script/MaatConfig.sol#L46-L55"
     function basket() internal pure returns (address[] memory toks, TokenConfig[] memory cfgs) {
         toks = new address[](3);
         cfgs = new TokenConfig[](3);
@@ -145,7 +151,7 @@ Edit the line and keep the unit. For example, this halves both caps:
 +            dailyCapUsd: 50e6,
 ```
 
-To change which stocks the vault trades, edit `basket()`. A stock you add has to be a [B20](/docs/help/glossary#b20) token, because the vault reads its `uiMultiplier()` when it lists the stock. It needs a Chainlink feed that reports <Fact name="priceDecimals" /> and a pool of that stock and USDC (the default swap adapter works with Aerodrome Slipstream pools). To use it as collateral, also add its Aave reserve id to `creditReserves()`: the credit adapter only handles the stocks listed there, and its constructor rejects a reserve whose underlying token is not the stock (`ReserveMismatch`). To start with two payees, set `MAAT_EXPENSE_PAYEE_2` as well as `MAAT_EXPENSE_PAYEE` ([Deploy your own vault](/docs/guides/deploy-your-own-vault#before-you-start) says when); for more, edit `expensePayees` in `Deploy.s.sol`. The vault allows any other change to the payees later through the timelock.
+To change which stocks the vault trades, edit `basket()`. A stock you add has to be a B20 token, because the vault reads its `uiMultiplier()` when it lists the stock. It needs a Chainlink feed that reports <Fact name="priceDecimals" /> and a pool of that stock and USDC (the default swap adapter works with [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pools). To use it as collateral, also add its Aave reserve id to `creditReserves()`: the credit adapter only handles the stocks listed there, and its constructor rejects a reserve whose underlying token is not the stock (`ReserveMismatch`). To start with two payees, set `MAAT_EXPENSE_PAYEE_2` as well as `MAAT_EXPENSE_PAYEE` ([Deploy your own vault](/docs/guides/deploy-your-own-vault#before-you-start) says when); for more, edit `expensePayees` in `Deploy.s.sol`. The vault allows any other change to the payees later through the timelock.
 
 <Callout type="warning" title="The agent knows three stocks">
 
@@ -202,7 +208,7 @@ Ran … tests for test/MandateVault.t.sol:MandateVaultTest
 Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
 ```
 
-The tests that do read `MaatConfig.sol` are the contract fork tests, which build their vaults from it, and the website's parity tests, which compare it with the numbers the docs cite. After you change a default, they can fail because they still expect the old value. [Run the tests](/docs/guides/run-the-tests) covers them.
+The tests that do read `MaatConfig.sol` are the contract [fork tests](/docs/help/glossary#fork-test), which build their vaults from it, and the website's parity tests, which compare it with the numbers the docs cite. After you change a default, they can fail because they still expect the old value. [Run the tests](/docs/guides/run-the-tests) covers them.
 
 The agent's fork test does not read `MaatConfig.sol`. `agent/test/integration/deploy.ts` writes out the deploy script's mandate, feeds, pools and credit reserves by hand, and takes the stock addresses from the agent's `BASKET`. No test compares the two, so after your edit that test still deploys the old defaults until you change `deploy.ts` too.
 
@@ -259,7 +265,7 @@ The first six rules apply only when `creditAdapter` is not the zero address. Wit
 | Rule | Error |
 | --- | --- |
 | The credit adapter has no code | `InvalidConfig` |
-| The adapter's `vault()` is not this vault, or the call reverts | `InvalidConfig` |
+| The adapter's `vault()` is not this vault, or the call [reverts](/docs/help/glossary#revert) | `InvalidConfig` |
 | The adapter's `usdc()` is not this vault's USDC, or the call reverts | `InvalidConfig` |
 | `minHealthFactor` is below <Fact name="healthFactorBound" /> (one WAD) | `InvalidConfig` |
 | `targetHealthFactor` is below `minHealthFactor` | `InvalidConfig` |
@@ -288,7 +294,7 @@ The constructor also rejects a zero owner, executor, USDC or policy registry, an
 
 ### What the vault does not check
 
-The vault does not check `maxPremiumBps`, `maxStaleness`, `multiplierCooldown`, `twapWindow`, `perTradeCapUsd`, `dailyCapUsd` or a stock's `maxWeightBps`, and it does not require the per-trade cap to be at most the daily cap. A typo in one of them deploys without an error. A `twapWindow` of zero, for example, makes the pool price unreadable, so every trade that reaches [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle) is refused with `BAD_PRICE`. Check these values by eye against the default table above.
+The vault does not check `maxPremiumBps`, `maxStaleness`, `multiplierCooldown`, `twapWindow`, `perTradeCapUsd`, `dailyCapUsd` or a stock's `maxWeightBps`, and it does not require the per-trade cap to be at most the daily cap. A typo in one of them deploys without an error. A `twapWindow` of zero, for example, makes the pool price unreadable, so every trade that reaches [check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle) is [refused](/docs/help/glossary#refusal) with `BAD_PRICE`. Check these values by eye against the default table above.
 
 The tests that pin the rules are `test_constructorRejectsCalendarWithoutCode`, `test_applyMandateRejectsCalendarWithoutCode`, `test_constructorRejectsSwapAdapterWithoutCode` and `test_maxSlippageAbove100PercentIsInvalid` for the mandate, `test_rejectsAdapterWithoutCode`, `test_rejectsAdapterBoundToAnotherVault`, `test_rejectsAdapterWithOtherUsdc`, `test_rejectsBadHealthFactorBounds` and `test_acceptsBoundaryHealthFactorBounds` for credit, and `test_constructorRejectsFeedWithoutCode`, `test_constructorRejectsPoolWithoutCode`, `test_constructorRejectsPoolWithMismatchedTokens`, `test_rejectsFeedWithNon8Decimals`, `test_rejectsTokenWithMoreThan18Decimals` and `test_rejectsListingAnAddressWithoutCode` for stocks. The timelock around `applyMandate` is pinned in `MandateVaultAdmin.t.sol` by `test_mandateChangeNeedsTimelock` and `test_appliedParamsMustMatchQueued`.
 
@@ -296,7 +302,7 @@ The tests that pin the rules are `test_constructorRejectsCalendarWithoutCode`, `
 
 - The dry run finishes without an error, and the owner, executor and payee lines show the addresses you passed.
 - The rule tests pass. They do not read your edit, so a pass means the rules in the tables above still hold.
-- After you deploy, the vault's constructor has emitted `MandateApplied` with the hash of your mandate and `PolicyHashUpdated` with the policy hash, which commits to the mandate, the stocks and the payees. The contract fork test `test_deployWiresEverything` asserts that a vault built by the script holds exactly the mandate and basket that `MaatConfig.sol` defines.
+- After you deploy, the vault's constructor has emitted `MandateApplied` with the hash of your mandate and `PolicyHashUpdated` with the [policy hash](/docs/help/glossary#policy-hash), which commits to the mandate, the stocks and the payees. The contract fork test `test_deployWiresEverything` asserts that a vault built by the script holds exactly the mandate and basket that `MaatConfig.sol` defines.
 
 ## Common mistakes
 

@@ -1,10 +1,14 @@
 // @vitest-environment node
 import type { SortedResult } from "fumadocs-core/search";
+import { type AdvancedIndex, initAdvancedSearch } from "fumadocs-core/search/server";
 import { describe, expect, it } from "vitest";
 import { READER_PATHS } from "@/lib/docs/reader-paths";
-import { SEARCH_INDEX_URL, SEARCH_START_PAGES, searchTokenizer, titleFirst } from "@/lib/docs/search";
-import { searchStructure } from "@/lib/docs/search-index";
-import { docsPages } from "./helpers/docs";
+import { namesQuery, SEARCH_INDEX_URL, SEARCH_PARAMS, SEARCH_START_PAGES, SEARCH_TOKENIZER, searchTokenizer, titleFirst } from "@/lib/docs/search";
+import { docsSearch } from "@/lib/docs/search-client";
+import { componentText } from "@/lib/docs/component-text";
+import { docsTree } from "@/lib/docs/remark-component-text";
+import { searchStructure, sectionIndexLines } from "@/lib/docs/search-index";
+import { DOCS_DIR, docsPages } from "./helpers/docs";
 
 const tokenizer = searchTokenizer();
 const tokenize = (text: string) => tokenizer.tokenize(text);
@@ -17,6 +21,16 @@ function page(url: string, title: string, ...records: string[]): SortedResult[] 
   ];
 }
 const pagesOf = (results: SortedResult[]) => results.filter((r) => r.type === "page").map((r) => r.url);
+
+/** The results split into pages the way the dialog splits them (byPage in lib/docs/search.ts): a page, then its records. */
+function byPage(results: SortedResult[]): SortedResult[][] {
+  const pages: SortedResult[][] = [];
+  for (const result of results) {
+    if (result.type === "page" || pages.length === 0) pages.push([result]);
+    else pages.at(-1)!.push(result);
+  }
+  return pages;
+}
 
 describe("titleFirst", () => {
   const results = [
@@ -61,8 +75,148 @@ describe("titleFirst", () => {
     expect(pagesOf(titleFirst(meaning, "the calendar can't be read", tokenize))).toEqual(["/docs/concepts/refusal-codes", "/docs/concepts/mandate"]);
   });
 
+  it("next puts a page with a heading that names the query, before the pages matched only in their text", () => {
+    const vault: SortedResult[] = [
+      { id: "/docs/reference/mandate-vault", url: "/docs/reference/mandate-vault", type: "page", content: "MandateVault" },
+      { id: "/docs/reference/mandate-vault-0", url: "/docs/reference/mandate-vault#execute", type: "heading", content: "execute" },
+    ];
+    const execute = [
+      ...page("/docs/security/testing", "How it is tested", "Each handler sends an intent to execute."),
+      ...vault,
+      ...page("/docs/concepts/intents", "Execute an intent", "An intent runs once."),
+    ];
+    expect(pagesOf(titleFirst(execute, "execute(Intent", tokenize))).toEqual(["/docs/concepts/intents", "/docs/reference/mandate-vault", "/docs/security/testing"]);
+  });
+
   it("leaves the results alone for a query with no words", () => {
     expect(titleFirst(results, " ", tokenize)).toBe(results);
+  });
+});
+
+describe("namesQuery", () => {
+  const named = (query: string, heading: string) => namesQuery(query, tokenize)(heading);
+
+  it("takes the identifier a query writes as code, in any case, and names the heading that is that identifier", () => {
+    for (const query of ["execute(Intent", "execute(", "execute()", "MandateVault.execute", "`execute`", "EXECUTE(intent"]) {
+      expect(named(query, "execute"), query).toBe(true);
+    }
+    expect(named("execute(Intent", "`execute`")).toBe(true);
+    expect(named("execute(Intent", "execute(Intent calldata intent)")).toBe(true);
+  });
+
+  it("does not name a heading that only starts like the identifier, shares its stem or says more", () => {
+    for (const heading of ["executor", "Execution", "Executor only", "Execute an intent", "Intent"]) {
+      expect(named("execute(Intent", heading), heading).toBe(false);
+    }
+  });
+
+  it("names a reference entry whose heading adds the contract that shares its name, for a query written as code", () => {
+    expect(named("supply(address", "supply (ICreditAdapter)")).toBe(true);
+    expect(named("NotOwner(", "NotOwner (MandateVault)")).toBe(true);
+    expect(named("supply(address", "supply and borrow (ICreditAdapter)")).toBe(false);
+    // Plain words compare the heading as it is written.
+    expect(named("supply", "supply (ICreditAdapter)")).toBe(false);
+  });
+
+  it("names, for plain words, a heading that holds each of them and nothing else, stemmed as the index stems them", () => {
+    expect(named("environment variables", "Environment variable")).toBe(true);
+    expect(named("MARKET_CLOSED", "MARKET_CLOSED")).toBe(true);
+    expect(named("queuemandate", "queueMandate")).toBe(true);
+    // Holding every word is not enough: "agent" is a word of 22 headings on 13 pages, which would all pass the cap.
+    expect(named("environment variables", "Set the environment variables")).toBe(false);
+    expect(named("environment variables", "Environment")).toBe(false);
+  });
+
+  it("names nothing for a query with no words", () => {
+    expect(named(" ", "execute")).toBe(false);
+    expect(named("(", "(")).toBe(false);
+  });
+
+  it("names no heading of one character, like each letter of the Glossary, for plain words or code", () => {
+    expect(named("a", "A")).toBe(false);
+    expect(named("a(", "A")).toBe(false);
+    expect(named("c", " C ")).toBe(false);
+    // A short name is still a name.
+    expect(named("WAD", "WAD")).toBe(true);
+    expect(named("b20(", "B20")).toBe(true);
+  });
+});
+
+describe("the dialog's search", () => {
+  /** A page of a synthetic index: its title, its headings (each anchored by its own text) and its text records. */
+  const doc = (url: string, title: string, headings: string[], texts: string[]): AdvancedIndex => ({
+    id: url,
+    url,
+    title,
+    structuredData: { headings: headings.map((content) => ({ id: content, content })), contents: texts.map((content) => ({ heading: undefined, content })) },
+  });
+  /**
+   * Prose like the invariant suite's: long, and holding both words of "execute(Intent" more than once, so each one
+   * outscores the one-word heading and, from four of them on, the per-page cap leaves the heading out of the results.
+   */
+  const longRecord = (i: number) =>
+    `Run ${i} builds an intent the way the agent does, previews the intent and sends it to execute. The vault spends the intent ` +
+    `id before any check, so a second execute of that intent is counted apart, and the totals must match what the vault holds.`;
+
+  /** docsSearch over an index built from `pages` the way the build builds it, downloaded from a data: URL. */
+  async function searchOver(pages: AdvancedIndex[]) {
+    const exported = await initAdvancedSearch({ indexes: pages, tokenizer: SEARCH_TOKENIZER, sort: { enabled: false } }).export();
+    return docsSearch(`data:application/json,${encodeURIComponent(JSON.stringify(exported))}`);
+  }
+
+  for (const n of [0, 5, 10, 20, 40]) {
+    it(`lists the heading that names "execute(Intent" first under its page, and that page first, beside ${n} long records holding both words`, async () => {
+      const search = await searchOver([
+        doc("/docs/reference/vault", "Vault", ["execute", "executor", "Executor only"], Array.from({ length: n }, (_, i) => longRecord(i))),
+        // Pages matched only in their text, whose short records outscore the vault's: the engine lists them first, and
+        // from 16 of them on, five results each, they take all of the result limit's 80 places.
+        ...Array.from({ length: n }, (_, i) => doc(`/docs/notes/${i}`, `Note ${i}`, [], [1, 2, 3, 4].map((k) => `Execute intent ${i}, step ${k}.`))),
+      ]);
+      const results = await search("execute(Intent");
+      expect(results.filter((r) => r.content === "execute").map((r) => r.url)).toEqual(["/docs/reference/vault#execute"]);
+      const vault = results.findIndex((r) => r.id === "/docs/reference/vault");
+      expect(results[vault + 1]).toMatchObject({ type: "heading", content: "execute" });
+      expect(pagesOf(results)[0]).toBe("/docs/reference/vault");
+      // Each page is listed once, under the cap and with at most the one heading that names the query on top of it: the
+      // near misses "executor" and "Executor only" are not lifted past the cap.
+      expect(new Set(pagesOf(results)).size).toBe(pagesOf(results).length);
+      for (const [page, ...records] of byPage(results)) {
+        expect(records.length, page!.url).toBeLessThanOrEqual(SEARCH_PARAMS.groupBy.maxResult + 1);
+      }
+    });
+  }
+
+  /** A page like the Glossary, one section per letter, whose letters' headings hold the letter alone. */
+  const glossary = doc("/docs/help/glossary", "Glossary", ["A", "B", "C"], ["Definitions of the terms the docs use, one section per letter."]);
+  /** Pages that hold the words "a" and "c" in their text, and more words that start with them. */
+  const shares = (n: number) =>
+    Array.from({ length: n }, (_, i) =>
+      doc(`/docs/notes/${i}`, `Note ${i}`, [], [1, 2, 3, 4].map((k) => `At step ${k} of round ${i} the agent buys class A and class C shares, checks the cap and counts the collateral.`)),
+    );
+
+  it("leaves a page matched only by a heading of one letter where the engine ranks it, for a one-letter query", async () => {
+    const search = await searchOver([glossary, ...shares(3)]);
+    for (const query of ["a", "c"]) {
+      const pages = pagesOf(await search(query));
+      expect(pages, query).toHaveLength(4);
+      expect(pages.at(-1), query).toBe("/docs/help/glossary");
+    }
+  });
+
+  it("does not bring back a page the result limit left out, for its heading of one letter", async () => {
+    // From 16 of these pages on, five results each, they take all of the result limit's 80 places.
+    const search = await searchOver([glossary, ...shares(20)]);
+    for (const query of ["a", "c"]) {
+      const results = await search(query);
+      expect(pagesOf(results), query).not.toContain("/docs/help/glossary");
+      expect(results.length, query).toBeLessThanOrEqual(SEARCH_PARAMS.limit);
+    }
+  });
+
+  it("finds nothing for a name that no heading or prose holds, written as code or not", async () => {
+    const search = await searchOver([doc("/docs/concepts/market-hours", "Market hours", ["Holidays"], ["The calendar lists each holiday."])]);
+    expect(await search("civilFromDays")).toEqual([]);
+    expect(await search("DateLib.civilFromDays(")).toEqual([]);
   });
 });
 
@@ -126,16 +280,49 @@ describe("searchStructure", () => {
   });
 });
 
+describe("section indexes are not search content", () => {
+  const tree = docsTree(DOCS_DIR);
+  const lines = sectionIndexLines(tree);
+  const text = (section?: string) => componentText("SectionIndex", section === undefined ? {} : { section }, { exists: () => true, tree: () => tree });
+  const contents = (data: ReturnType<typeof searchStructure>) => data.contents.map((c) => c.content);
+
+  it("finds a section page by its purpose sentence: its cards repeat the titles and descriptions of pages found on their own", () => {
+    for (const section of ["get-started", "concepts", "guides", "reference", "security", "help"]) {
+      const data = searchStructure(`One sentence of purpose.\n\n${text(section)}\n`, [], `/docs/${section}`, lines);
+      expect(contents(data), section).toEqual(["One sentence of purpose."]);
+    }
+  });
+
+  it("keeps the rest of the docs home and its headings, without its map of the sections", () => {
+    const markdown = `The lead.\n\n## Explore by section\n\n${text()}\n\n## Where to find things\n\n- **Search:** press Ctrl K.\n`;
+    const toc = [{ url: "#explore-by-section" }, { url: "#where-to-find-things" }];
+    const data = searchStructure(markdown, toc, "/docs", lines);
+    expect(data.headings.map((h) => h.content)).toEqual(["Explore by section", "Where to find things"]);
+    expect(contents(data)).toEqual(["The lead.", "**Search:** press Ctrl K."]);
+  });
+
+  it("leaves out whole lines only, and nothing inside a code fence", () => {
+    const card = "- [MarketCalendar](/docs/reference/market-calendar): x";
+    const omit = new Set([card]);
+    const markdown = ["Before.", "", card, "", "```md", card, "```", "", `${card} and more.`].join("\n");
+    expect(contents(searchStructure(markdown, [], "/docs/x", omit))).toEqual(["Before.", "MarketCalendar: x and more."]);
+    expect(lines.has("**Contracts**")).toBe(true);
+    expect(lines.has("")).toBe(false);
+  });
+});
+
 describe("the dialog's start pages", () => {
   const titles = new Map(docsPages().map((p) => [p.slug, /^title: "?(.+?)"?$/m.exec(p.source)?.[1]]));
 
   it("lists each reader's first page, then four pages people look things up in", () => {
-    expect(SEARCH_START_PAGES.slice(0, READER_PATHS.length)).toEqual(READER_PATHS.map((p) => ({ label: p.cta, url: `/docs/${p.slug}` })));
+    expect(SEARCH_START_PAGES.slice(0, READER_PATHS.length).map((p) => p.url)).toEqual(READER_PATHS.map((p) => `/docs/${p.slug}`));
     expect(SEARCH_START_PAGES[0]).toEqual({ label: "What is Maat", url: "/docs/get-started/what-is-maat" });
-    for (const { label, url } of SEARCH_START_PAGES.slice(READER_PATHS.length)) {
-      expect(titles.get(url.slice("/docs/".length)), url).toBe(label);
-    }
     expect(SEARCH_START_PAGES).toHaveLength(READER_PATHS.length + 4);
+  });
+
+  it("labels each page with its title, as a result names it, not with a call to action", () => {
+    for (const { label, url } of SEARCH_START_PAGES) expect(label, url).toBe(titles.get(url.slice("/docs/".length)));
+    expect(SEARCH_START_PAGES.map((p) => p.label)).toContain("Quickstart: verify Maat in five minutes");
   });
 
   it("names only pages that exist", () => {

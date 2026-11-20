@@ -1,0 +1,31 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/maat/maat/web/playwright.config.ts",
+    "rootDir": "/home/runner/work/maat/maat/web/e2e",
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalTimeout": 0,
+    "maxFailures": 0,
+    "metadata": { "actualWorkers": 1 },
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/maat/maat/web/test-results/e2e",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": { "actualWorkers": 1 },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/maat/maat/web/e2e",
+        "testIgnore": [],
+        "testMatch": ["**/*.@(spec|test).?(c|m)[jt]s?(x)"],
+        "timeout": 30000
+      }
+    ],
+    "reporter": [["list"], ["json"]],
+    "version": "1.65.0",
+    "workers": 1
+  },
+  "suites": [],
+  "errors": [],
+  "stats": { "startTime": "2026-11-18T09:00:00.000Z", "duration": 812.3, "expected": 0, "skipped": 0, "unexpected": 0, "flaky": 0 }
+}

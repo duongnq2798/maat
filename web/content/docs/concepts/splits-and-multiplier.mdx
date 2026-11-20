@@ -4,7 +4,7 @@ description: Why a change to a B20 token's uiMultiplier pauses trading in it, ho
 type: concept
 audience: [developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/GuardLib.sol
   - contracts/src/MandateVault.sol
@@ -80,6 +80,10 @@ An unchanged value records nothing. A changed one is stored, stamped with the bl
 
 The check does not wait for the snapshot to catch up. It compares the token's current multiplier with the snapshot every time it runs, so a changed multiplier blocks the stock as soon as the token reports it, before anyone records the change. Recording then starts the cooldown clock. In [live mode](/docs/help/glossary#live-mode) the agent is built to send `syncMultiplier` for any stock whose multiplier differs from the snapshot, before it proposes anything ([Step 1 of a round](/docs/get-started/how-a-decision-is-made#step-1-read-the-vault)).
 
+In order, from the moment the token changes to the moment the stock is allowed again:
+
+<MultiplierFlow />
+
 Credit actions show why recording matters. A `BORROW` or a `REPAY` must name USDC, and `execute` records only the intent's token, so a valid one records nothing for the stocks held as collateral. After a change in one of them, `BORROW`, and `WITHDRAW_COLLATERAL` against debt, are refused with `MULTIPLIER_COOLDOWN` once the earlier checks pass ([The cooldown](#the-cooldown)). The vault's cooldown clock does not start until `syncMultiplier`, an `execute` that names that stock, or an `applyTokenConfig` for it records the change, so waiting alone does not clear the block. Anyone can call `syncMultiplier` ([Anyone can sync](#anyone-can-sync)), and the agent is built to call it as above.
 
 ## The cooldown
@@ -103,7 +107,7 @@ Check 6 of [the nine checks](/docs/concepts/nine-checks#6-stable-multiplier) ret
 
 The cooldown counts from when the vault records the change, because the vault only knows when it noticed. Until someone records it, the first branch keeps blocking with no time limit. `test_multiplierChangeStartsCooldown` changes a mock token's multiplier, gets `MULTIPLIER_COOLDOWN`, and gets an allowed buy once the cooldown has passed.
 
-The same function guards more than trades. A `BUY` and a `SELL` meet it as check 6, and a `SELL` of an exit-only stock is still guarded (`test_exitOnlyTokenIsStillMultiplierGuarded`). A `BORROW`, and a `WITHDRAW_COLLATERAL` against debt, meet it through `GuardLib.collateralHealthy` for every stock supplied as collateral (`test_collateralMultiplierChangeBlocksBorrow`). `SUPPLY`, `REPAY`, `PAY_EXPENSE` and a withdrawal with no debt do not read the multiplier. [Refusal codes](/docs/concepts/refusal-codes#multiplier_cooldown) lists the actions that can return it.
+The same function guards more than trades. A `BUY` and a `SELL` meet it as check 6, and a `SELL` of an exit-only stock is still guarded (`test_exitOnlyTokenIsStillMultiplierGuarded`). A `BORROW`, and a `WITHDRAW_COLLATERAL` against debt, meet it through `GuardLib.collateralHealthy` for every stock supplied as collateral (`test_collateralMultiplierChangeBlocksBorrow`). `SUPPLY`, `REPAY`, `PAY_EXPENSE` and a withdrawal with no debt do not meet it, so no multiplier change refuses them. `execute` still records a change for the intent's token before any check, when that token has a market ([How the vault notices](#how-the-vault-notices)). [Refusal codes](/docs/concepts/refusal-codes#multiplier_cooldown) lists the actions that can return it.
 
 ## Scheduled changes
 

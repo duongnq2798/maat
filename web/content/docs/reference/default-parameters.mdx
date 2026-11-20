@@ -4,7 +4,7 @@ description: Every default the vault, the calendar and the agent ship with, with
 type: reference
 audience: [builder, developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-17
 sources:
   - web/content/facts.ts
   - web/content/docs-facts.ts
@@ -61,6 +61,8 @@ A default is a value the code uses until someone changes it. This page lists the
 />
 
 [The mandate](/docs/concepts/mandate) explains what each field limits and which check reads it, and [Configure a mandate](/docs/guides/configure-a-mandate) shows how to change one before you deploy.
+
+Three of the limits come from measurements on Base. `maxPremiumBps` sits above the pool premiums measured on the fork. `maxStaleness` is the feeds' 24-hour heartbeat plus one hour, and `maxSlippageBps` sits above the worst buy cost measured against the oracle, 121 bps, both measured on Base mainnet over ten NYSE sessions in November 2026. [Why these values](/docs/concepts/mandate#why-these-values) has the numbers.
 
 ## Calendar
 

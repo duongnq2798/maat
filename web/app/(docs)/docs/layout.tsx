@@ -4,7 +4,10 @@ import { Mark } from "@/components/ui/Mark";
 import { source } from "@/lib/docs-source";
 import { SITE } from "@/lib/site";
 
-/** The docs header (logo, search, GitHub, X), the sidebar by section and the theme toggle in its footer. */
+/**
+ * The docs header (logo, search, GitHub, X) and the sidebar by section, with the theme toggle in its footer. The
+ * license and the disclaimer close every page instead (app/(docs)/docs/[[...slug]]/page.tsx).
+ */
 export default function Layout({ children }: { children: ReactNode }) {
   return (
     <DocsLayout
