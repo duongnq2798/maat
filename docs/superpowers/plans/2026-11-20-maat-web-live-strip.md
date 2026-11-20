@@ -653,7 +653,7 @@ describe("the keyless live reader", () => {
     const f = vi.fn(async () => ok("0x"));
     await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, 60_013_066n);
     const [, init] = f.mock.calls[0] as unknown as [string, RequestInit];
-    expect(JSON.parse(String(init.body)).params[1]).toBe("0x393b40a");
+    expect(JSON.parse(String(init.body)).params[1]).toBe("0x393ba0a");
   });
 
   it("falls back on a JSON-RPC error body", async () => {
