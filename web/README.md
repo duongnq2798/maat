@@ -191,4 +191,4 @@ It checks the `out/` the last build left and does not build, so run it after `np
 | `brand/out/x-avatar.png`, `x-banner.png` | X profile photo and header |
 | `brand/out/favicon-32.png`, `icon-512.png`, `apple-icon-180.png` | icons (also copied into `app/`) |
 
-The geometry lives in `brand/mark.ts`. Change it there and run `npm run brand`. A test fails if the committed SVGs no longer match.
+The geometry lives in `brand/mark.ts`. Change it there and run `npm run brand`. A test fails if the committed SVGs no longer match. The OG image, its alt text and the X banner also show the Market closed label from `REASON_LABEL` in `content/reasons.ts`: after changing it, run `npm run brand` and commit the PNGs and `app/opengraph-image.alt.txt`.
