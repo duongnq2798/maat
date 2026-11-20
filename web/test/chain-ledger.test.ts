@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, type AbiEvent, type Address, type Hash, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
-import { REASON_MEANING, REASONS } from "@/content/reasons";
+import { REASON_LABEL, REASON_MEANING, REASONS } from "@/content/reasons";
 import { vaultAbi } from "@/lib/chain/abi";
 import type { CachedLog } from "@/lib/chain/cache";
 import { decodeVaultLogs } from "@/lib/chain/events";
@@ -194,9 +194,9 @@ describe("summarize", () => {
 });
 
 describe("reasonDisplay", () => {
-  it("keeps the code as the label and REASON_MEANING as the note, until REASON_LABEL lands", () => {
-    expect(reasonDisplay("MARKET_CLOSED")).toEqual({ label: "MARKET_CLOSED", code: "MARKET_CLOSED", meaning: REASON_MEANING.MARKET_CLOSED });
-    expect(reasonDisplay("OK").meaning).toBe("Every check passed.");
+  it("labels each code with REASON_LABEL, keeps the code, and explains it with REASON_MEANING", () => {
+    expect(reasonDisplay("MARKET_CLOSED")).toEqual({ label: "Market closed", code: "MARKET_CLOSED", meaning: REASON_MEANING.MARKET_CLOSED });
+    expect(reasonDisplay("OK")).toEqual({ label: REASON_LABEL.OK, code: "OK", meaning: `${REASON_LABEL.OK}.` });
   });
 });
 

@@ -1,4 +1,4 @@
-import { REASON_MEANING, type ReasonCode } from "@/content/reasons";
+import { REASON_LABEL, REASON_MEANING, type ReasonCode } from "@/content/reasons";
 
 export interface ReasonDisplay {
   /** Shown first. */
@@ -10,9 +10,9 @@ export interface ReasonDisplay {
 }
 
 /**
- * The one place the ledger turns a reason code into text. When content/reasons.ts gains REASON_LABEL (another branch
- * adds plain labels such as "Market closed"), `label` becomes REASON_LABEL[code].
+ * The one place the ledger turns a reason code into text: the plain label from REASON_LABEL, the code itself, and the
+ * sentence from REASON_MEANING (for OK, the label as a sentence).
  */
 export function reasonDisplay(code: ReasonCode): ReasonDisplay {
-  return { label: code, code, meaning: code === "OK" ? "Every check passed." : REASON_MEANING[code] };
+  return { label: REASON_LABEL[code], code, meaning: code === "OK" ? `${REASON_LABEL.OK}.` : REASON_MEANING[code] };
 }

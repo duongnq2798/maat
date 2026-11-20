@@ -188,6 +188,16 @@ describe("/ledger reading mainnet", () => {
     expect(items[0]).toHaveTextContent("SIZE_LIMIT");
   });
 
+  it("names each verdict in plain words, with the onchain code beside it", () => {
+    render(<LedgerApp initial="loading" />);
+    const items = within(screen.getByRole("list", { name: "Mainnet decisions" })).getAllByRole("listitem");
+    expect(within(items[0]!).getByText("Refused · Over the size limit")).toBeInTheDocument();
+    expect(within(items[0]!).getByText("SIZE_LIMIT", { selector: "code" })).toBeInTheDocument();
+    expect(within(items[2]!).getByText("Allowed · All checks passed")).toBeInTheDocument();
+    fireEvent.click(within(screen.getByRole("group", { name: /Refusals by reason/ })).getByRole("button", { name: /Market closed/ }));
+    expect(screen.getByRole("button", { name: /Market closed\s*MARKET_CLOSED.*clear the reason filter/ })).toBeInTheDocument();
+  });
+
   it("checks each rationale against its onchain hash", () => {
     render(<LedgerApp initial="loading" />);
     expect(screen.getByText("Hash verified")).toBeInTheDocument();

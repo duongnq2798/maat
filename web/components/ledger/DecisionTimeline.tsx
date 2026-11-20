@@ -9,6 +9,7 @@ import type { MainnetDecision } from "@/lib/chain/ledger";
 import type { LedgerSnapshot } from "@/lib/chain/load";
 import { verifyRationale, type RationaleCheck } from "@/lib/chain/rationale";
 import { reasonDisplay } from "@/lib/chain/reason";
+import { ReasonTag } from "@/components/ui/ReasonTag";
 
 type Verdict = "all" | "allowed" | "refused";
 const PAGE = 25;
@@ -48,7 +49,7 @@ const NOT_READ: Record<"checking" | "unavailable", { text: string; className: st
 function Row({ d, text, rationaleState }: { d: MainnetDecision; text: string | undefined; rationaleState: LedgerSnapshot["rationaleState"] }) {
   const check = verifyRationale(text, d.rationaleHash);
   const badge = check === "missing" && rationaleState !== "read" ? NOT_READ[rationaleState] : BADGE[check];
-  const reason = d.allowed ? null : reasonDisplay(d.reason);
+  const reason = reasonDisplay(d.reason);
   return (
     <li className="grid gap-x-6 gap-y-2 border-b border-line-soft px-5 py-4 md:grid-cols-[150px_minmax(0,1fr)_auto]">
       <div className="font-mono text-[13px] text-ink-2">
@@ -61,14 +62,15 @@ function Row({ d, text, rationaleState }: { d: MainnetDecision; text: string | u
             {d.action} · {d.symbol} · {d.amountLabel}
           </span>
           <span
-            className={`inline-block rounded-lg px-2.5 py-1 font-mono text-xs font-semibold ${
+            className={`inline-block rounded-lg px-2.5 py-1 text-xs font-semibold ${
               d.allowed ? "bg-accent-tint text-accent" : "bg-refuse-tint text-refuse"
             }`}
           >
-            {d.allowed ? "ALLOWED" : `REFUSED · ${reason!.label}`}
+            {d.allowed ? "Allowed" : "Refused"} · {reason.label}
           </span>
+          <code className="font-mono text-[11px] text-ink-2">{reason.code}</code>
         </p>
-        {reason ? <p className="text-sm text-ink-2">{reason.meaning}</p> : null}
+        {d.allowed ? null : <p className="text-sm text-ink-2">{reason.meaning}</p>}
         <div className="flex flex-col gap-1.5">
           <span title={badge.title} className={`self-start rounded-md px-2 py-0.5 font-mono text-[11px] font-semibold ${badge.className}`}>
             {badge.text}
@@ -131,7 +133,7 @@ export function DecisionTimeline({
         ))}
         {reason ? (
           <button type="button" aria-pressed onClick={() => onReason(null)} className={chip(true)}>
-            {reasonDisplay(reason).label}
+            <ReasonTag code={reason} tone="verdict" layout="inline" />
             <span aria-hidden="true"> ×</span>
             <span className="sr-only"> (clear the reason filter)</span>
           </button>
