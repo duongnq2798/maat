@@ -62,6 +62,47 @@ export function checkExport(html: string): string[] {
   return problems;
 }
 
+/** The /now page's h1; its title is this, then the site's name. */
+const NOW_HEADING = "Right now on Base";
+
+/**
+ * Problems with the exported /now page (out/now.html); an empty list means it is ready to ship. Like the landing's live
+ * strip, it reads Base in the browser, so its HTML holds the reading state and never a chain value, a live pill or a
+ * verdict: the method, the addresses and the thresholds are not readings and may be there.
+ */
+export function checkNowPage(html: string): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`out/now.html: ${problem}`);
+  };
+
+  need(html.includes('<html lang="en"'), 'missing <html lang="en">');
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
+  need(title === `${NOW_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${NOW_HEADING} · ${SITE.name}"`);
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
+  // An entity such as &#x27; counts as one character.
+  const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;
+  need(length >= 50 && length <= 160, `meta description is ${description === undefined ? "missing" : `${length} characters`}, want 50 to 160`);
+  need(/<link rel="canonical" href="https?:\/\/[^"/]+\/now"/.test(html), "the canonical link is missing, not absolute or not /now");
+  const og = /<meta property="og:image" content="([^"]+)"/.exec(html)?.[1];
+  need(og !== undefined && /^https?:\/\//.test(og), "og:image is missing or not an absolute URL");
+  need(new RegExp(`<h1[^>]*>${NOW_HEADING}</h1>`).test(html), `the h1 is not "${NOW_HEADING}"`);
+
+  need(html.includes("Reading Base mainnet"), "the board's reading state is not in the exported HTML");
+  need(!html.includes(">LIVE<"), "the exported HTML shows a LIVE pill, so a reading was baked into the page");
+  need(!html.includes("basescan.org/block/"), "the exported HTML links a Base block, so a reading was baked into the page");
+  need(!html.includes("data-verdict-line"), "the exported HTML holds a verdict line, so a reading was baked into the page");
+
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
+  }
+  need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+  return problems;
+}
+
 /**
  * Problems with one exported docs page. `known` holds the URL path of every exported docs page (/docs, /docs/x).
  * `exported` says whether a URL path outside /docs is a file in out/ (/, /llms.txt, /data/abi/x.json).

@@ -8,6 +8,7 @@ import {
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
+  checkNowPage,
   checkOgImage,
   checkSearchIndex,
   SEARCH_INDEX_GZIP_BUDGET,
@@ -72,6 +73,58 @@ describe("checkExport", () => {
     ],
   ])("flags %s", (_name, html, problem) => {
     expect(checkExport(html).join("\n")).toMatch(problem);
+  });
+});
+
+const NOW = [
+  '<!DOCTYPE html><html lang="en" class="f"><head>',
+  `<title>Right now on Base · ${SITE.name}</title>`,
+  '<meta name="description" content="What an agent under Maat&#x27;s default mandate would do right now with the 13 B20 tokens that have a NAV, read from Base mainnet in your browser."/>',
+  '<link rel="canonical" href="https://maat.example/now"/>',
+  '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
+  '<script src="/_next/static/chunks/main.js" async=""></script>',
+  '</head><body><a href="#main" class="skip-link">Skip to content</a>',
+  '<main id="main"><h1 class="m-0 text-ink">Right now on Base</h1>',
+  '<div data-now-board="reading" class="b"><span role="status" aria-live="polite" class="sr-only">Reading Base mainnet…</span>',
+  '<p class="m-0">Reading Base mainnet…</p></div>',
+  '<a href="https://basescan.org/address/0xcA11bde05977b3631167028862bE2a173976CA11">0xcA11bde05977b3631167028862bE2a173976CA11</a>',
+  "</main></body></html>",
+].join("");
+
+describe("checkNowPage", () => {
+  it("accepts a /now page that is ready to ship", () => {
+    expect(checkNowPage(NOW)).toEqual([]);
+  });
+
+  it.each([
+    ["a missing lang", NOW.replace(' lang="en"', ""), /lang="en"/],
+    ["a wrong title", NOW.replace(`Right now on Base · ${SITE.name}`, SITE.title), /title/],
+    ["a short meta description", NOW.replace(/content="What an agent[^"]*"/, 'content="Too short."'), /10 characters/],
+    ["a missing canonical /now", NOW.replace('<link rel="canonical" href="https://maat.example/now"/>', ""), /canonical/],
+    ["the landing's canonical", NOW.replace("https://maat.example/now", "https://maat.example/"), /canonical/],
+    ["a relative canonical", NOW.replace("https://maat.example/now", "/now"), /canonical/],
+    ["a relative og:image", NOW.replace("https://maat.example/opengraph-image.png", "/opengraph-image.png"), /og:image/],
+    ["a missing h1", NOW.replace('<h1 class="m-0 text-ink">Right now on Base</h1>', ""), /h1/],
+    ["another h1", NOW.replace(">Right now on Base</h1>", ">Now</h1>"), /h1/],
+    ["no reading state", NOW.replaceAll("Reading Base mainnet…", ""), /reading state/],
+    [
+      "a baked block number",
+      NOW.replace("</h1>", '</h1><a href="https://basescan.org/block/60013066">Base block 60,013,066</a>'),
+      /links a Base block/,
+    ],
+    ["a baked LIVE pill", NOW.replace("</h1>", '</h1><span class="p"><span aria-hidden="true"></span>LIVE</span>'), /LIVE pill/],
+    ["a baked verdict", NOW.replace("</h1>", '</h1><span data-verdict-line="refuse-all">An agent…</span>'), /verdict/],
+    ["a link without a target", NOW.replace('href="#main"', 'href="#nowhere"'), /#nowhere/],
+    ["a third-party script", NOW.replace("/_next/static/chunks/main.js", "https://cdn.example/x.js"), /third-party script/],
+    ["Google Fonts", NOW.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), /Google Fonts/],
+  ])("flags %s", (_name, html, problem) => {
+    expect(checkNowPage(html).join("\n")).toMatch(problem);
+  });
+
+  it("names out/now.html in every problem", () => {
+    const problems = checkNowPage("<html></html>");
+    expect(problems.length).toBeGreaterThan(0);
+    for (const p of problems) expect(p).toMatch(/^out\/now\.html: /);
   });
 });
 
