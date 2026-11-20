@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import { collectErrors, measureFit } from "./helpers";
+import { collectErrors, contentRight, lineCount, measureFit, rightEdge } from "./helpers";
 
 // 1024: the narrowest width that keeps the hero in two columns, so the engine card shares its row.
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
@@ -65,34 +65,67 @@ test("the moment toggle works by mouse and keyboard", async ({ page }) => {
   await expect(sat).toHaveAttribute("aria-pressed", "true");
 });
 
-test("the hero verdict reads the plain label over its code, right-aligned above the outcome line", async ({ page }) => {
-  // Reduced motion shows the verdict at its final size at once, so its lines are measured unscaled.
-  await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/");
-  const hero = page.locator("#top");
-  const tag = hero.locator('[role="status"] [data-reason-tag]');
-  // Where the text of each line ends: the tag's label, its code, then the outcome line under the tag.
-  const expectOneRightEdge = async () => {
-    const edges = await tag.evaluate((el) =>
-      [...el.children, el.nextElementSibling].map((line) => {
-        const range = document.createRange();
-        range.selectNodeContents(line!);
-        return Math.round(range.getBoundingClientRect().right);
-      }),
-    );
-    expect(edges).toHaveLength(3);
-    expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
-  };
+// 1280: the default desktop width, where the verdict fits on one row. 375: a phone, where the right column wraps
+// under the verdict word and must still end at the box's right edge.
+for (const width of [1280, 375]) {
+  test(`the hero verdict reads the plain label over its code, right-aligned above the outcome line, at ${width}px`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 900 });
+    // Reduced motion shows the verdict at its final size at once, so its lines are measured unscaled.
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const hero = page.locator("#top");
+    const box = hero.locator('[role="status"] > div');
+    const tag = hero.locator('[role="status"] [data-reason-tag]');
+    // Where the text of each line ends: the tag's label, its code, then the outcome line under the tag. The column that
+    // holds the three ends at the box's content edge.
+    const expectOneRightEdge = async () => {
+      const edges = await tag.evaluate((el) =>
+        [...el.children, el.nextElementSibling].map((line) => {
+          const range = document.createRange();
+          range.selectNodeContents(line!);
+          return Math.round(range.getBoundingClientRect().right);
+        }),
+      );
+      expect(edges).toHaveLength(3);
+      expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
+      expect(Math.abs((await rightEdge(tag.locator(".."))) - (await contentRight(box)))).toBeLessThanOrEqual(1);
+    };
 
-  await expect(tag).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
-  await expect(tag).toHaveText(/^Market closed\s*MARKET_CLOSED$/);
-  await expectOneRightEdge();
+    await expect(tag).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
+    await expect(tag).toHaveText(/^Market closed\s*MARKET_CLOSED$/);
+    // The label and the code are separate boxes, so the rendered text breaks between them; textContent has no break.
+    expect(await tag.innerText()).toMatch(/^Market closed\s+MARKET_CLOSED$/);
+    await expectOneRightEdge();
 
-  await hero.getByRole("button", { name: "Thu 5 Nov · 10:30" }).click();
-  await expect(tag).toHaveAttribute("data-reason-tag", "OK");
-  await expect(tag).toHaveText(/^All checks passed\s*OK$/);
-  await expectOneRightEdge();
-});
+    await hero.getByRole("button", { name: "Thu 5 Nov · 10:30" }).click();
+    await expect(tag).toHaveAttribute("data-reason-tag", "OK");
+    await expect(tag).toHaveText(/^All checks passed\s*OK$/);
+    expect(await tag.innerText()).toMatch(/^All checks passed\s+OK$/);
+    await expectOneRightEdge();
+  });
+}
+
+// Each problem card's header holds the eyebrow on the left and the trap's label over its code on the right. When the two
+// do not fit side by side, the tag drops under the eyebrow, so neither breaks mid-phrase. 375: a phone. 1440: three
+// columns, where card 03's eyebrow and label are both long.
+for (const width of [375, 1440]) {
+  test(`each problem card keeps its eyebrow and its label on one line, the tag flush right, at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const cards = page.locator('section[aria-labelledby="problem-title"] article');
+    await expect(cards).toHaveCount(3);
+    for (const [i, card] of (await cards.all()).entries()) {
+      const tag = card.locator("[data-reason-tag]");
+      expect(await lineCount(card.locator("> div:first-child > span:first-child")), `card ${i + 1} eyebrow lines`).toBe(1);
+      expect(await lineCount(tag.locator("> :first-child")), `card ${i + 1} label lines`).toBe(1);
+      expect(Math.abs((await rightEdge(tag)) - (await contentRight(card))), `card ${i + 1} tag to right edge`).toBeLessThanOrEqual(1);
+    }
+  });
+}
 
 test("the ledger filters", async ({ page }) => {
   await page.goto("/#ledger");
@@ -155,9 +188,13 @@ test("the landing has no serious or critical axe violations", async ({ page }) =
   expect(blocking).toEqual([]);
 });
 
-// Review Focus 1: on a phone, the longest labels ("Pool price too far from oracle", "Price feed out of date") wrap
-// inside the Refusals items, the ledger cell and the simulator verdict, and the page never scrolls sideways.
-test("the landing does not scroll sideways at 375 px", async ({ page }) => {
+// On a phone every label must wrap inside its own box: the default page holds all nineteen refusal labels in the
+// Refusals list, the three problem cards, the hero and simulator verdicts and the decoded event. The page never scrolls
+// sideways, the simulator's verdict tag stays flush right, and the decoded reason's "//" stays on the line of the label
+// after it. The problem cards and the hero verdict have their own tests at this width above.
+test("at 375 px the landing does not scroll sideways, and the simulator verdict and the decoded note stay whole", async ({
+  page,
+}) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
@@ -167,4 +204,32 @@ test("the landing does not scroll sideways at 375 px", async ({ page }) => {
     innerWidth: window.innerWidth,
   }));
   expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
+
+  // The simulator verdict: the tag ends at the box's content edge, and its label and code end together, on the default
+  // yes and on a Saturday no.
+  const sim = page.locator("#try");
+  const box = sim.locator('[role="status"] > div');
+  const tag = box.locator("[data-reason-tag]");
+  const expectFlushRight = async () => {
+    expect(Math.abs((await rightEdge(tag)) - (await contentRight(box)))).toBeLessThanOrEqual(1);
+    const edges = await tag.evaluate((el) =>
+      [...el.children].map((line) => {
+        const range = document.createRange();
+        range.selectNodeContents(line);
+        return Math.round(range.getBoundingClientRect().right);
+      }),
+    );
+    expect(edges).toHaveLength(2);
+    expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
+  };
+  // Hydrated: Post on X carries the absolute share link only once the simulator runs, so the click below lands.
+  await expect(sim.getByRole("link", { name: "Post on X" })).toHaveAttribute("href", /&url=/);
+  await expect(box).toHaveAttribute("data-reason", "OK");
+  await expectFlushRight();
+  await sim.getByRole("button", { name: "Sat 7 Nov", exact: true }).click();
+  await expect(box).toHaveAttribute("data-reason", "MARKET_CLOSED");
+  await expectFlushRight();
+
+  // The decoded event: "// Market closed" moves to the next line whole, so the marker never ends the line above.
+  expect(await lineCount(page.locator("#how dd span", { hasText: "// Market closed" }))).toBe(1);
 });

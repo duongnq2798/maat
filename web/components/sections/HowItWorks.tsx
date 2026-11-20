@@ -81,7 +81,13 @@ export function HowItWorks() {
                   <dt className="text-ink-2">{d.k}</dt>
                   <dd className={`m-0 [overflow-wrap:anywhere] ${d.tone ? toneClass[d.tone] : ""}`}>
                     {d.v}
-                    {d.note ? <span className="font-normal text-ink-2">{` // ${d.note}`}</span> : null}
+                    {/* One inline block after a plain space: when the line runs out, "//" moves down with its label. */}
+                    {d.note ? (
+                      <>
+                        {" "}
+                        <span className="inline-block font-normal text-ink-2">{`// ${d.note}`}</span>
+                      </>
+                    ) : null}
                   </dd>
                 </div>
               ))}

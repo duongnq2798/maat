@@ -42,7 +42,7 @@ describe("Simulator", () => {
     expect(screen.getByRole("status")).toHaveTextContent("It says yes. Change one thing to make it say no.");
     expect(ui.tag()).toHaveAttribute("data-reason-tag", "OK");
     expect(ui.tag()?.textContent).toMatch(/^All checks passed\s*OK$/);
-    // The live region reads, in order: the verdict, the plain label, its code, then the meaning line (Review Focus 3).
+    // The live region reads, in order: the verdict, the plain label, its code, then the meaning line.
     expect(screen.getByRole("status")).toHaveTextContent(
       /^IF EXECUTED NOW · SIMULATED\s*Allowed\s*All checks passed\s*OK\s*It says yes\. Change one thing to make it say no\.$/,
     );
@@ -60,7 +60,7 @@ describe("Simulator", () => {
     expect(ui.tag()).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
     expect(ui.tag()?.textContent).toMatch(/^Market closed\s*MARKET_CLOSED$/);
     expect(screen.getByRole("status")).toHaveTextContent("NYSE is closed for the mandate's session");
-    // The live region reads, in order: the verdict, the plain label, its code, then the meaning line (Review Focus 3).
+    // The live region reads, in order: the verdict, the plain label, its code, then the meaning line.
     expect(screen.getByRole("status")).toHaveTextContent(
       /^IF EXECUTED NOW · SIMULATED\s*Refused\s*Market closed\s*MARKET_CLOSED\s*NYSE is closed for the mandate's session: a weekend, a holiday or after hours\.$/,
     );

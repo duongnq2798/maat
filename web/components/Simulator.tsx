@@ -363,7 +363,7 @@ export function Simulator() {
                 <span className="font-mono text-[11px] opacity-80">IF EXECUTED NOW · SIMULATED</span>
                 <span className="text-[26px] font-semibold tracking-[-0.03em]">{result.allowed ? "Allowed" : "Refused"}</span>
               </div>
-              <ReasonTag code={result.reason} tone="verdict" layout="stacked" className="text-right [overflow-wrap:anywhere]" />
+              <ReasonTag code={result.reason} tone="verdict" layout="stacked" className="ml-auto text-right [overflow-wrap:anywhere]" />
             </div>
             <p className="m-0 text-sm leading-normal opacity-90">
               {result.reason === "OK" ? "It says yes. Change one thing to make it say no." : REASON_MEANING[result.reason]}
@@ -436,8 +436,9 @@ export function Simulator() {
                   {e.allowed ? (
                     <span className="text-accent">Allowed</span>
                   ) : (
-                    <span className="font-semibold text-refuse">
-                      {"Refused · "}
+                    // A flex row, so the label stays on the line of "Refused ·" and only the code wraps under it.
+                    <span className="flex items-baseline gap-x-1.5 font-semibold text-refuse">
+                      <span className="shrink-0">{"Refused · "}</span>
                       {/* The code is the muted tag: it drops the semibold of the words before it. */}
                       <ReasonTag code={e.reason} tone="refuse" layout="inline" className="[&>:last-child]:font-normal" />
                     </span>

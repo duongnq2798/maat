@@ -22,7 +22,7 @@ const TONE: Record<ReasonTagTone, { label: string; code: string }> = {
 
 const LAYOUT: Record<ReasonTagLayout, string> = {
   stacked: "inline-flex flex-col gap-0.5",
-  inline: "inline-flex flex-wrap items-baseline gap-x-1.5",
+  inline: "inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5",
 };
 
 /**

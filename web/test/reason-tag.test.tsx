@@ -48,7 +48,7 @@ describe("ReasonTag", () => {
 
   it.each<[ReasonTagLayout, string]>([
     ["stacked", "inline-flex flex-col gap-0.5"],
-    ["inline", "inline-flex flex-wrap items-baseline gap-x-1.5"],
+    ["inline", "inline-flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5"],
   ])("layout %s lays the root out as %j", (layout, rootClass) => {
     const { root } = setup({ code: "MARKET_CLOSED", layout });
     expect(root.className).toBe(rootClass);

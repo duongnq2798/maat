@@ -37,6 +37,10 @@ test("a visitor makes it say no, by mouse and keyboard", async ({ page }) => {
   await expect(ui.tape).toHaveCount(2);
   await expect(ui.tape.nth(1)).toContainText("Refused · Too much in one stock");
   await expect(ui.tape.nth(1).locator('[data-reason-tag="CONCENTRATION"]')).toContainText("CONCENTRATION");
+  // The label and the code are separate boxes, so the rendered text breaks between them; textContent has no break.
+  expect(await ui.tape.nth(1).locator('[data-reason-tag="CONCENTRATION"]').innerText()).toMatch(
+    /^Too much in one stock\s+CONCENTRATION$/,
+  );
 
   // One minute per arrow key: 15:59 is in session, 16:00 is not.
   await ui.button("Reset day").click();
@@ -118,6 +122,23 @@ for (const width of [360, 1024]) {
     await ui.button("Copy link").click();
     await expect(ui.root.getByRole("textbox", { name: "Copy this link:" })).toBeVisible();
     await expect(ui.tape.first()).toContainText("Refused · Token not allowed");
+    // "Refused ·" stays whole on the label's line: when the row runs out of room, the code wraps under the label. Line
+    // tops come from a Range over the text: "Refused · " can be a bare text node, which has no box of its own.
+    const prefix = await ui.tape
+      .first()
+      .locator("> span:last-child")
+      .evaluate((el) => {
+        const tops = (node: Node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return [...range.getClientRects()].map((r) => Math.round(r.top));
+        };
+        const own = tops(el.firstChild!);
+        const label = tops(el.querySelector("[data-reason-tag] > :first-child")!);
+        return { lines: new Set(own).size, offset: Math.abs(own[0]! - label[0]!) };
+      });
+    expect(prefix.lines).toBe(1);
+    expect(prefix.offset).toBeLessThanOrEqual(1);
     await expect(ui.tape.first().locator('[data-reason-tag="TOKEN_NOT_ALLOWED"]')).toContainText("TOKEN_NOT_ALLOWED");
     fit = await measureFit(page);
     expect(fit.overflow).toBeLessThanOrEqual(0);

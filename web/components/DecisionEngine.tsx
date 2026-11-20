@@ -95,7 +95,7 @@ export function DecisionEngine() {
             <span className="font-mono text-[11px] opacity-80">VAULT DECISION</span>
             <span className="text-[26px] font-semibold tracking-[-0.03em]">{moment.allowed ? "Allowed" : "Refused"}</span>
           </div>
-          <div className="flex flex-col gap-1.5 text-right">
+          <div className="ml-auto flex flex-col gap-1.5 text-right">
             <ReasonTag code={moment.reason} tone="verdict" layout="stacked" />
             <span className="font-mono text-[11px] opacity-80">{moment.outcome}</span>
           </div>
