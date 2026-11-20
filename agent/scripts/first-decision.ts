@@ -16,6 +16,8 @@
 // - payee: the zero address (BUY); rationaleHash: keccak256 of the --rationale text.
 // - The amount is not clamped to the vault's USDC balance, which takes a read. The vault answers
 //   INSUFFICIENT_BALANCE instead, after the market checks.
+// --builder-code is the code as Base Dashboard shows it. A hex form (0x and hex digits only) is refused, and the
+// tool prints the codes it reads back from its own execute calldata, so the owner can check them before sending.
 // Send execute with an explicit gas limit, EXECUTE_GAS_FLOOR, as the agent does: src/exec/calls.ts says why an
 // estimate alone is unsafe for this vault.
 // SELL is not offered: its amount is a raw stock amount, and converting dollars to it takes the live price.
@@ -25,7 +27,7 @@ import { parseArgs } from "node:util";
 import { encodeFunctionData, getAbiItem, getAddress, isAddress, isHex, parseUnits, size, toEventSelector, zeroAddress, type Address, type Hex } from "viem";
 import { mandateVaultAbi } from "../src/abi/index.js";
 import { BASKET, type TokenSymbol } from "../src/addresses.js";
-import { BUILDER_CODE_RE, builderSuffix, withSuffix } from "../src/exec/builderCode.js";
+import { BUILDER_CODE_RE, builderSuffix, codesIn, withSuffix } from "../src/exec/builderCode.js";
 import { EXECUTE_GAS_FLOOR, encodeExecute } from "../src/exec/calls.js";
 import { intentId, rationaleHash } from "../src/intent.js";
 import { actionId, REASONS, type OnchainIntent } from "../src/types.js";
@@ -59,6 +61,8 @@ export interface FirstDecision {
   rationale: string;
   builderCode: string;
   suffix: Hex;
+  /** The Builder Codes read back from executeCalldata with ox's Attribution.fromData. */
+  codesInCalldata: readonly string[];
   intent: OnchainIntent;
   /** previewIntent(intent): a free eth_call. */
   previewCalldata: Hex;
@@ -76,6 +80,8 @@ export class InputError extends Error {
 /** At most 9 digits before the point and 6 after: the text is parsed as written, never through a JS number. */
 const USD_RE = /^\d{1,9}(\.\d{1,6})?$/;
 const ZERO_ID: Hex = `0x${"00".repeat(32)}`;
+/** A hex form copied from a web page, such as 0x6d61..., which BUILDER_CODE_RE alone would let through. */
+const HEX_FORM_RE = /^0x[0-9a-f]*$/;
 
 export function buildFirstDecision(input: FirstDecisionInput): FirstDecision {
   if (!isAddress(input.vault)) {
@@ -117,6 +123,11 @@ export function buildFirstDecision(input: FirstDecisionInput): FirstDecision {
   if (!BUILDER_CODE_RE.test(input.builderCode)) {
     throw new InputError(`--builder-code ${JSON.stringify(input.builderCode)} does not match ${BUILDER_CODE_RE.source}`);
   }
+  if (HEX_FORM_RE.test(input.builderCode)) {
+    throw new InputError(
+      `--builder-code ${JSON.stringify(input.builderCode)} is a hex form; give the code exactly as Base Dashboard shows it (deployments/go-live.md step 2, item 3)`,
+    );
+  }
   const suffix = builderSuffix(input.builderCode);
 
   const rationale = input.rationale ?? `Owner-sent first decision: BUY ${usd} USD of ${listed.symbol}`;
@@ -131,6 +142,11 @@ export function buildFirstDecision(input: FirstDecisionInput): FirstDecision {
     payee: zeroAddress,
     rationaleHash: rationaleHash(rationale),
   };
+  const executeCalldata = withSuffix(encodeExecute(intent), suffix);
+  const codesInCalldata = codesIn(executeCalldata);
+  if (codesInCalldata.length !== 1 || codesInCalldata[0] !== input.builderCode) {
+    throw new Error(`the execute calldata carries the codes ${JSON.stringify(codesInCalldata)}, not ${JSON.stringify([input.builderCode])}`);
+  }
   return {
     vault,
     symbol: listed.symbol,
@@ -139,9 +155,10 @@ export function buildFirstDecision(input: FirstDecisionInput): FirstDecision {
     rationale,
     builderCode: input.builderCode,
     suffix,
+    codesInCalldata,
     intent,
     previewCalldata: encodeFunctionData({ abi: mandateVaultAbi, functionName: "previewIntent", args: [intent] }),
-    executeCalldata: withSuffix(encodeExecute(intent), suffix),
+    executeCalldata,
   };
 }
 
@@ -161,6 +178,7 @@ export function render(d: FirstDecision): string {
     `  rationaleHash  ${i.rationaleHash}`,
     `  rationale      ${JSON.stringify(d.rationale)} (keep this text: the chain stores only its hash)`,
     `Builder Code     ${d.builderCode}, ERC-8021 suffix ${d.suffix} (${size(d.suffix)} bytes)`,
+    `Codes in calldata ${JSON.stringify(d.codesInCalldata)} (read back from the execute calldata below)`,
     "",
     "1. previewIntent(intent) calldata, for a free read-only eth_call:",
     d.previewCalldata,
@@ -179,6 +197,9 @@ export function render(d: FirstDecision): string {
     `  EXECUTOR=$(cast call "$VAULT" "executor()(address)" --rpc-url "$RPC")`,
     `  cast call "$VAULT" --data ${d.previewCalldata} --from "$EXECUTOR" --rpc-url "$RPC"`,
     "  cast to-dec <the 0x... word it prints>     # the Reason id: 0 = OK, 6 = MARKET_CLOSED",
+    "",
+    "  # Before c: the Builder Code and Codes in calldata lines above must show your code exactly as Base Dashboard",
+    "  # shows it, and the execute calldata must end with the suffix on the Builder Code line. Otherwise do not send.",
     "",
     "  # c. Send it, signed by the executor's keystore. The gas limit is the agent's execute floor.",
     `  cast send "$VAULT" --data ${d.executeCalldata} --gas-limit ${EXECUTE_GAS_FLOOR} --account <your-keystore> --rpc-url "$RPC"`,

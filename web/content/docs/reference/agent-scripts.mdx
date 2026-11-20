@@ -4,7 +4,7 @@ description: "The npm scripts in the agent package: what each runs, the modes th
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-20
+lastReviewed: 2026-11-21
 sources:
   - agent/package.json
   - agent/src/main.ts
@@ -162,7 +162,7 @@ If the vault address is missing or is not an address, it prints its usage and ex
 
 <ScriptFile name="first-decision.ts" />
 
-For the owner, while their own wallet is the vault's executor. It builds one `BUY` intent the way the agent builds one, and prints the intent, the calldata of `previewIntent`, the calldata of `execute` with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix appended, and `cast` command templates with placeholders. It makes no network call, reads no `.env` file and no environment variable, holds no key and sends nothing. The owner runs the printed commands, signed with their own keystore. [deployments/go-live.md](https://github.com/duongnq2798/maat/blob/main/deployments/go-live.md) uses it for the owner's first two intents.
+For the owner, while their own wallet is the vault's executor. It builds one `BUY` intent the way the agent builds one, and prints the intent, the calldata of `previewIntent`, the calldata of `execute` with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix appended, the codes it reads back from that calldata, and `cast` command templates with placeholders. It makes no network call, reads no `.env` file and no environment variable, holds no key and sends nothing. The owner runs the printed commands, signed with their own keystore. [deployments/go-live.md](https://github.com/duongnq2798/maat/blob/main/deployments/go-live.md) uses it for the owner's first two intents.
 
 ```bash
 cd agent
@@ -173,7 +173,7 @@ node --import tsx scripts/first-decision.ts --vault <VAULT_ADDRESS> --token NVDA
 | --- | --- |
 | `--vault` | Required. The vault address. A mixed-case address must have a valid checksum |
 | `--token` | Required. `NVDAc`, `GOOGLc` or `AAPLc`, in any letter case |
-| `--builder-code` | Required. Your Builder Code, which must match `^[a-z0-9_]{1,32}$` |
+| `--builder-code` | Required. Your Builder Code as Base Dashboard shows it, which must match `^[a-z0-9_]{1,32}$`. It refuses a hex form, `0x` followed by hex digits only |
 | `--salt` | Derives the intent id the agent's way, from the run id `first-decision:<salt>` and index 0. Give `--salt` or `--id`, not both |
 | `--id` | Takes the intent id as given: `0x` and 64 hex digits, not all zeros |
 | `--usd` | The dollars to spend, `5` by default, with at most 9 digits before the point and 6 after |

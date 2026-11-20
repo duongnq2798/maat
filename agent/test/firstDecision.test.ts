@@ -64,6 +64,7 @@ describe("first-decision execute calldata", () => {
     expect(withoutSuffix(d.executeCalldata)).toBe(encodeExecute(d.intent));
     expect(decodeFunctionData({ abi: mandateVaultAbi, data: withoutSuffix(d.executeCalldata) }).args).toEqual([d.intent]);
     expect(codesIn(d.executeCalldata)).toEqual([CODE]);
+    expect(d.codesInCalldata).toEqual([CODE]);
     expect(codesIn(withoutSuffix(d.executeCalldata))).toEqual([]);
   });
 
@@ -124,6 +125,11 @@ describe("first-decision inputs", () => {
   it.each(["BC_UPPER", "", "a".repeat(33), "bc_a,b", "bc-dash"])("rejects the builder code %j", (builderCode) => {
     expect(() => build({ builderCode })).toThrow(InputError);
     expect(() => build({ builderCode })).toThrow(/--builder-code/);
+  });
+
+  it.each(["0x6d6161745f66616b65", "0xdeadbeef", "0x"])("refuses the hex form %j of a builder code, which the pattern alone lets through", (builderCode) => {
+    expect(() => build({ builderCode })).toThrow(InputError);
+    expect(() => build({ builderCode })).toThrow(/is a hex form; give the code exactly as Base Dashboard shows it \(deployments\/go-live\.md step 2, item 3\)/);
   });
 
   it.each(["TSLAc", "USDC", "NVDA", ""])("rejects the token %j", (token) => {
@@ -205,6 +211,14 @@ describe("first-decision command line", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
+  it("prints the codes it reads back from the execute calldata, and the Builder Code check between the preview and the send", () => {
+    const r = run(ARGV);
+    expect(r.out).toContain(`Codes in calldata ["${CODE}"]`);
+    const check = r.out.indexOf("# Before c:");
+    expect(check).toBeGreaterThan(r.out.indexOf("# b. Dry run"));
+    expect(check).toBeLessThan(r.out.indexOf("cast send"));
+  });
+
   it("never fills a template from the environment", () => {
     vi.stubEnv("BASE_RPC_URL", "https://fake-rpc.example");
     vi.stubEnv("RPC", "https://fake-rpc.example");
@@ -223,6 +237,10 @@ describe("first-decision command line", () => {
     expect(run(ARGV.slice(2)).err).toMatch(/missing --vault/);
     expect(run([...ARGV, "--usd", "0"]).code).toBe(1);
     expect(run([...ARGV, "--usd", "123456789012345678901234"])).toMatchObject({ code: 1, err: expect.stringMatching(/^first-decision: --usd /) });
+    expect(run([...ARGV.slice(0, -1), "0x6d6161745f66616b65"])).toMatchObject({
+      code: 1,
+      err: expect.stringMatching(/^first-decision: --builder-code "0x6d6161745f66616b65" is a hex form/),
+    });
     expect(run([...ARGV, "--bogus"]).code).toBe(2);
     expect(run(["--help"])).toMatchObject({ code: 0, err: "" });
   });
