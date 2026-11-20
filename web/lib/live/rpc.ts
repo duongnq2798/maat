@@ -39,6 +39,7 @@ export function createReader(opts: { urls?: readonly string[]; fetch?: typeof fe
           const json = (await res.json()) as { result?: unknown; error?: { message?: string } };
           if (json.error) throw new Error(json.error.message ?? "JSON-RPC error");
           if (typeof json.result !== "string" || !HEX.test(json.result)) throw new Error("the result is not hex");
+          if (json.result === "0x") throw new Error("the call returned no data");
           return { data: json.result as Hex, endpoint };
         } catch (e) {
           failures.push({ endpoint, message: ctl.signal.aborted ? `no answer in ${timeoutMs / 1000} s` : e instanceof Error ? e.message : String(e) });

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MULTICALL3, NAV_TOKENS } from "@/content/b20-nav";
 import { decodeAggregate3, encodeAggregate3, encodeAggregate3Result, encodeCall, SELECTORS, word } from "@/lib/live/abi";
-import type { LiveReader } from "@/lib/live/rpc";
+import { type LiveReader, RpcError } from "@/lib/live/rpc";
 import { buildCalls, calendarAddress, decodeSnapshot, readSnapshot } from "@/lib/live/snapshot";
 import fixture from "./fixtures/live-aggregate3.json";
 
@@ -73,5 +73,24 @@ describe("one reading of Base", () => {
     const results = decodeAggregate3(fixture.response as `0x${string}`);
     const again = decodeAggregate3(encodeAggregate3Result(results));
     expect(decodeSnapshot(again, fixture.twapWindowSec).block).toBe(BigInt(fixture.expected.blockNumber));
+  });
+
+  it("keeps all 13 tokens and reports open: null when the calendar call fails", async () => {
+    const cal = "0x00000000000000000000000000000000000000ca" as const;
+    const call = vi.fn()
+      .mockResolvedValueOnce({ data: fixture.response, endpoint: "https://base-rpc.publicnode.com" })
+      .mockRejectedValueOnce(new RpcError([{ endpoint: "https://base-rpc.publicnode.com", message: "boom" }]));
+    const s = await readSnapshot({ call }, { twapWindowSec: fixture.twapWindowSec, calendar: cal });
+    expect(s.tokens).toHaveLength(NAV_TOKENS.length);
+    expect(s.calendar).toEqual({ source: "onchain", address: cal, open: null });
+  });
+
+  it("reads empty return data as null, never false or 0", () => {
+    const results = decodeAggregate3(fixture.response as `0x${string}`);
+    results[2] = { success: true, returnData: "0x" }; // AAPLc isPaused
+    results[3] = { success: true, returnData: "0x" }; // AAPLc uiMultiplier
+    const t = decodeSnapshot(results, fixture.twapWindowSec).tokens[0];
+    expect(t?.paused).toBeNull();
+    expect(t?.uiMultiplier).toBeNull();
   });
 });

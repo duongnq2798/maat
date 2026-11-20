@@ -81,6 +81,11 @@ export async function readSnapshot(reader: LiveReader, opts: { twapWindowSec?: n
   const { data, endpoint } = await reader.call({ to: MULTICALL3, data: encodeAggregate3(buildCalls(window)) }, "latest");
   const s = decodeSnapshot(decodeAggregate3(data), window);
   if (calendar === null) return { ...s, endpoint, calendar: { source: "repo" } };
-  const open = await reader.call({ to: calendar, data: encodeCall(SELECTORS.isOpen, BigInt(s.timestamp), REGULAR) }, s.block);
-  return { ...s, endpoint, calendar: { source: "onchain", address: calendar, open: decodeBool({ success: true, returnData: open.data }) } };
+  try {
+    const open = await reader.call({ to: calendar, data: encodeCall(SELECTORS.isOpen, BigInt(s.timestamp), REGULAR) }, s.block);
+    return { ...s, endpoint, calendar: { source: "onchain", address: calendar, open: decodeBool({ success: true, returnData: open.data }) } };
+  } catch {
+    // A failed calendar call must not discard the token readings; the caller counts open: null as closed.
+    return { ...s, endpoint, calendar: { source: "onchain", address: calendar, open: null } };
+  }
 }

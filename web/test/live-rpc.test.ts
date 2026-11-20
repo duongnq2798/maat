@@ -19,7 +19,7 @@ describe("the keyless live reader", () => {
   });
 
   it("sends a block number as a hex tag", async () => {
-    const f = vi.fn(async () => ok("0x"));
+    const f = vi.fn(async () => ok("0x11"));
     await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, 60_013_066n);
     const [, init] = f.mock.calls[0] as unknown as [string, RequestInit];
     expect(JSON.parse(String(init.body)).params[1]).toBe("0x393ba0a");
@@ -44,16 +44,37 @@ describe("the keyless live reader", () => {
 
   it("gives up on an endpoint after the timeout", async () => {
     vi.useFakeTimers();
+    try {
     const f = vi.fn((_u: string, init: RequestInit) => new Promise<Response>((_, reject) => init.signal?.addEventListener("abort", () => reject(new Error("aborted")))));
     const p = createReader({ fetch: f as unknown as typeof fetch, timeoutMs: 8000, urls: ["https://a.example"] }).call({ to: "0x01", data: "0x02" }, "latest");
     const caught = p.catch((e: unknown) => e);
     await vi.advanceTimersByTimeAsync(8000);
-    expect(await caught).toBeInstanceOf(RpcError);
-    vi.useRealTimers();
+    const err = await caught;
+    expect(err).toBeInstanceOf(RpcError);
+    expect((err as RpcError).failures[0]?.message).toContain("no answer in 8 s");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("rejects a result that is not hex", async () => {
     const f = vi.fn(async () => ok("nope"));
     await expect(createReader({ fetch: f as unknown as typeof fetch, urls: ["https://a.example"] }).call({ to: "0x01", data: "0x02" }, "latest")).rejects.toBeInstanceOf(RpcError);
+  });
+
+  it("treats an empty result as a failed endpoint and moves on", async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok("0x")).mockResolvedValueOnce(ok("0x11"));
+    const r = await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, "latest");
+    expect(r).toEqual({ data: "0x11", endpoint: LIVE_RPCS[1] });
+  });
+
+  it("reports both messages when both endpoints return a JSON-RPC error", async () => {
+    const f = vi.fn().mockResolvedValueOnce(rpcError("request limit reached")).mockResolvedValueOnce(rpcError("over rate limit"));
+    const err = await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, "latest").catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RpcError);
+    expect((err as RpcError).failures).toEqual([
+      { endpoint: LIVE_RPCS[0], message: "request limit reached" },
+      { endpoint: LIVE_RPCS[1], message: "over rate limit" },
+    ]);
   });
 });
