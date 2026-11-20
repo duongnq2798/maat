@@ -49,11 +49,18 @@ describe("data tables", () => {
     expect(() => EventSignature({ name: "Paused" })).toThrow("only Decision is in FACTS");
   });
 
-  it("ForkLedger has one row per fork decision and names the fork block", () => {
+  it("ForkLedger has one row per fork decision, each decision a plain label with its code, and names the fork block", () => {
     render(<ForkLedger />);
     const rows = within(screen.getByRole("region", { name: "Decisions from the fork run" })).getAllByRole("row");
     expect(rows).toHaveLength(1 + getDecisions().length);
-    expect(screen.getByText("REFUSED · MARKET_CLOSED")).toBeInTheDocument();
+    const decisions = rows.slice(1).map((row) => within(row).getAllByRole("cell")[2]!);
+    expect(decisions.map((td) => td.textContent)).toEqual([
+      "Allowed · All checks passed (OK)",
+      "Allowed · All checks passed (OK)",
+      "Allowed · All checks passed (OK)",
+      "Refused · Market closed (MARKET_CLOSED)",
+    ]);
+    expect(decisions.map((td) => td.querySelector("code")?.textContent)).toEqual(["OK", "OK", "OK", "MARKET_CLOSED"]);
     expect(screen.getByText(/block 53,551,627/)).toBeInTheDocument();
   });
 });

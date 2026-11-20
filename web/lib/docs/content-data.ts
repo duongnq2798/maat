@@ -1,7 +1,7 @@
 import { decisionLabel, gasLabel, getDecisions, intentLabel } from "../../content/decisions";
 import { FACTS } from "../../content/facts";
 import { mandateRows } from "../../content/mandate";
-import { REASON_GROUPS, type RefusalCode } from "../../content/reasons";
+import { type ReasonCode, REASON_GROUPS, type RefusalCode } from "../../content/reasons";
 import { factFor } from "./fact-text";
 
 // Relative imports only: source.config.ts loads this file through the fumadocs-mdx bundler, outside Next.
@@ -27,7 +27,8 @@ export function mandateTable(): MandateTableData {
 
 export interface ForkLedgerData {
   readonly caption: string;
-  readonly rows: readonly { readonly time: string; readonly intent: string; readonly decision: string; readonly gas: string; readonly note?: string }[];
+  /** decision is decisionLabel(), "Refused · Market closed"; code is the reason code the docs print after it, in brackets. */
+  readonly rows: readonly { readonly time: string; readonly intent: string; readonly decision: string; readonly code: ReasonCode; readonly gas: string; readonly note?: string }[];
 }
 
 /** The decisions the agent made in the fork run, as the landing page's ledger shows them. */
@@ -38,6 +39,7 @@ export function forkLedger(): ForkLedgerData {
       time: r.timeLabel,
       intent: intentLabel(r),
       decision: decisionLabel(r),
+      code: r.reason,
       gas: gasLabel(r),
       note: r.note,
     })),

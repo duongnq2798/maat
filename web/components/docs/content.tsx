@@ -144,7 +144,7 @@ export function ForkLedger() {
           <tr key={`${r.time} ${r.intent}`}>
             <td>{r.time}</td>
             <td>{r.intent}</td>
-            <td><code>{r.decision}</code></td>
+            <td>{r.decision} (<code>{r.code}</code>)</td>
             <td>{r.gas}</td>
             <td>{r.note}</td>
           </tr>

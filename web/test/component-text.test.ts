@@ -272,10 +272,12 @@ describe("tables of shared data", () => {
     expect(out.at(-1)).toMatch(/^Set in contracts\/script\/MaatConfig\.sol;/);
   });
 
-  it("ForkLedger gives one row per fork decision, then the caption naming the fork block", () => {
+  it("ForkLedger gives one row per fork decision, each decision a label with its code, then the caption naming the fork block", () => {
     const out = lines(text("ForkLedger"));
     expect(out[0]).toBe("| Time (ET) | Intent | Decision | Gas | Note |");
     expect(out.filter((l) => l.startsWith("| "))).toHaveLength(2 + getDecisions().length);
+    expect(out.filter((l) => l.includes(" | Allowed · All checks passed (`OK`) | "))).toHaveLength(getDecisions().filter((r) => r.allowed).length);
+    expect(out.filter((l) => l.includes(" | Refused · Market closed (`MARKET_CLOSED`) | "))).toHaveLength(1);
     expect(out.at(-1)).toContain(`block ${factFor("forkBlock").text}`);
   });
 

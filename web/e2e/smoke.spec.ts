@@ -68,7 +68,8 @@ test("the ledger filters", async ({ page }) => {
   await expect(rows).toHaveCount(4);
   await page.getByRole("button", { name: "Refused", exact: true }).click();
   await expect(rows).toHaveCount(1);
-  await expect(rows.first()).toContainText("REFUSED · MARKET_CLOSED");
+  await expect(rows.first()).toContainText("Refused · Market closed");
+  await expect(rows.first().locator("code")).toHaveText("MARKET_CLOSED");
   await page.getByRole("button", { name: "Allowed", exact: true }).click();
   await expect(rows).toHaveCount(3);
 });

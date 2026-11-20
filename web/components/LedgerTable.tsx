@@ -3,6 +3,7 @@
 import { type ReactNode, useState } from "react";
 import { decisionLabel, type DecisionRow, gasLabel, intentLabel } from "@/content/decisions";
 import { formatInt } from "@/content/format";
+import { REASON_MEANING } from "@/content/reasons";
 
 type Filter = "all" | "allowed" | "refused";
 
@@ -20,6 +21,16 @@ const EMPTY: Record<Filter, string> = {
 
 function rowKey(r: DecisionRow): string {
   return r.txHash ?? `${r.timeLabel}|${intentLabel(r)}`;
+}
+
+/**
+ * The row's own note. Rows read from mainnet may carry none; then a refused row shows what its code means and an
+ * allowed row shows nothing. The vault sets allowed only with OK, so a refused row's reason is a refusal code; the
+ * `!== "OK"` test says so to the compiler, which narrows the reason to RefusalCode, the key type of REASON_MEANING.
+ */
+function noteOf(r: DecisionRow): string | undefined {
+  if (r.note !== undefined) return r.note;
+  return !r.allowed && r.reason !== "OK" ? REASON_MEANING[r.reason] : undefined;
 }
 
 export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; heading: ReactNode }) {
@@ -82,15 +93,19 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
                   <td className="py-[18px] pl-6 pr-2 font-mono text-[13px] text-ink-2">{r.timeLabel}</td>
                   <td className="px-2 py-[18px] text-base font-medium">{intentLabel(r)}</td>
                   <td className="px-2 py-[18px]">
-                    <span
-                      className={`inline-block rounded-lg px-2.5 py-1.5 font-mono text-xs font-semibold ${
-                        r.allowed ? "bg-accent-tint text-accent" : "bg-refuse-tint text-refuse"
-                      }`}
-                    >
-                      {decisionLabel(r)}
-                    </span>
+                    {/* The code sits beside the badge, as a tag, and wraps under it when the column is narrow. */}
+                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span
+                        className={`inline-block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+                          r.allowed ? "bg-accent-tint text-accent" : "bg-refuse-tint text-refuse"
+                        }`}
+                      >
+                        {decisionLabel(r)}
+                      </span>
+                      <code className="font-mono text-[11px] text-ink-2">{r.reason}</code>
+                    </div>
                   </td>
-                  <td className="px-2 py-[18px] text-sm leading-normal text-ink-2">{r.note}</td>
+                  <td className="px-2 py-[18px] text-sm leading-normal text-ink-2">{noteOf(r)}</td>
                   <td className="py-[18px] pl-2 pr-6 font-mono text-[13px]">{gasLabel(r)}</td>
                 </tr>
               ))
