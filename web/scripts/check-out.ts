@@ -11,6 +11,7 @@ import {
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
+  checkNowPage,
   checkOgImage,
   checkSearchIndex,
   docsLocalhostUrls,
@@ -31,6 +32,7 @@ const REQUIRED = [
   "icon.png",
   "apple-icon.png",
   "opengraph-image.png",
+  "now.html",
   "docs.html",
   "api/search.json",
   "llms.txt",
@@ -52,6 +54,13 @@ if (existsSync(index)) {
   const html = read("index.html");
   problems.push(...checkExport(html));
   problems.push(...checkLandingIsolation(html, (url) => read(url)));
+}
+
+// /now reads Base in the browser too: its export holds the reading state and no chain value. The sitemap lists it.
+if (existsSync(join(OUT, "now.html"))) problems.push(...checkNowPage(read("now.html")));
+const nowUrl = new URL("/now", siteUrl()).href;
+if (existsSync(join(OUT, "sitemap.xml")) && !read("sitemap.xml").includes(`<loc>${nowUrl}</loc>`)) {
+  problems.push(`sitemap.xml does not list ${nowUrl}`);
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
@@ -124,5 +133,5 @@ if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);
