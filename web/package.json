@@ -14,6 +14,7 @@
     "brand": "tsx scripts/brand.ts",
     "check:out": "tsx scripts/check-out.ts",
     "docs:gen": "tsx scripts/docs-gen.ts",
+    "rationales": "tsx scripts/rationales.ts",
     "verify": "npm run typecheck && npm test && npm run build && npm run check:out",
     "e2e": "playwright test"
   },
