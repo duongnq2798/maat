@@ -1,10 +1,10 @@
 ---
 title: Credit and the health factor
-description: How the vault supplies stock to Aave V4, borrows USDC against it, and keeps the health factor above its floor before weekends.
+description: How the vault supplies stock to Aave V4 and borrows USDC against it, and the health floor and the pre-weekend or pre-holiday target a borrow must clear.
 type: concept
 audience: [developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/adapters/AaveV4CreditAdapter.sol
   - contracts/src/adapters/ICreditAdapter.sol
@@ -18,7 +18,7 @@ sources:
 next: [reference/adapters, guides/pause-withdraw-recover]
 ---
 
-The vault can put its stock to work. It supplies a stock to [Aave V4](/docs/help/glossary#aave-v4) as collateral, borrows USDC against it, repays, and takes the collateral back. This page explains the four credit actions, the [health factor](/docs/help/glossary#health-factor) that limits them, the stricter limit that applies in the hours before the Chainlink feeds stop for a weekend or a holiday, and what still works when the market is closed or the vault is paused. The vault's credit rules are tested with a mock adapter in unit tests and, with the real Aave V4, on a Base mainnet fork. No position has been opened on mainnet, because nothing is deployed.
+The vault can put its stock to work. It supplies a stock to [Aave V4](/docs/help/glossary#aave-v4) as collateral, borrows USDC against it, repays, and takes the collateral back. This page explains the four credit actions, the [health factor](/docs/help/glossary#health-factor) that limits them, the stricter limit that applies in the hours before the [Chainlink feeds](/docs/help/glossary#chainlink-equity-feed) stop for a weekend or a holiday, and what still works when the market is closed or the vault is paused. The vault's credit rules are tested with a mock adapter in unit tests and, with the real Aave V4, on a Base mainnet fork. No position has been opened on mainnet, because nothing is deployed.
 
 ## The four credit actions
 
@@ -34,8 +34,8 @@ Credit is one lending position, held by a credit adapter that the [mandate](/doc
 What the vault checks for each action:
 
 - **`SUPPLY`.** The stock is allowed, and the adapter supports it. The stock is not paused. Every leg of the move passes its transfer policy. The amount is non-zero and within the vault's balance.
-- **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. The stock is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a live feed, no pause and a stable multiplier. The adapter then checks the health factor after the withdrawal.
-- **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a live feed and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the de-risk window. The adapter checks again after the borrow.
+- **`WITHDRAW_COLLATERAL`.** The stock is listed, allowed or not, and the adapter supports it. The stock is not paused, and the path passes the transfer policy. The amount is non-zero and within what is supplied. With debt outstanding, the market must also be open, and every supplied stock needs a valid, fresh feed answer, no pause and a stable [multiplier](/docs/help/glossary#uimultiplier). The adapter then checks the health factor after the withdrawal.
+- **`BORROW`.** The token is USDC, and the amount is non-zero. The market is open. Every supplied stock is allowed, not paused, and has a valid, fresh feed answer and a stable multiplier. The projected health factor is at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window). The adapter checks again after the borrow.
 - **`REPAY`.** The token is USDC, and the amount is non-zero and within the vault's USDC balance.
 
 A few more points:
@@ -71,7 +71,7 @@ The second is the figure Aave reports now, `healthFactor()`. The adapter, not th
 
 Two numbers in the mandate set how much room a credit action must leave:
 
-- The floor, `minHealthFactor`, is <Fact name="mandate.minHealthFactor" /> by default. A borrow, or a collateral withdrawal against debt, that would leave the health factor below it returns [`HEALTH_FACTOR_LOW`](/docs/concepts/refusal-codes#health_factor_low).
+- The floor, `minHealthFactor`, is <Fact name="mandate.minHealthFactor" /> by default. A borrow, or a collateral withdrawal against debt, that would leave the health factor below it returns [`HEALTH_FACTOR_LOW`](/docs/concepts/refusal-codes#health_factor_low). The exception is a withdrawal that Aave's spoke refuses before the adapter's own check runs: that withdrawal returns [`CREDIT_FAILED`](/docs/concepts/refusal-codes#credit_failed). The spoke is the Aave contract the adapter calls to supply, borrow, repay and withdraw. The mock Aave spoke in the unit tests refuses a withdrawal that would leave less than <Fact name="healthFactorBound" />, and no test sends such a withdrawal.
 - The target, `targetHealthFactor`, is <Fact name="mandate.targetHealthFactor" /> by default. It replaces the floor inside the [de-risk window](#the-de-risk-window). An action that would leave the health factor at or above the floor but below the target returns [`DERISK_WINDOW`](/docs/concepts/refusal-codes#derisk_window) there.
 
 [The mandate](/docs/concepts/mandate#minhealthfactor) describes both fields. One function turns a health factor into a reason, and it reads like the rule:
@@ -85,6 +85,10 @@ Two numbers in the mandate set how much room a credit action must leave:
 ```
 
 When a credit adapter is set, the vault accepts a floor only at or above <Fact name="healthFactorBound" />, a target at or above the floor, and a window of at most <Fact name="maxDeriskWindowHours" />. It also requires the adapter to name this vault and this USDC. Otherwise the new mandate is rejected with `InvalidConfig`.
+
+Together these rules split the health factor into four ranges. The scale shows them with the default floor and target, from the highest:
+
+<HealthFactorScale />
 
 The health factor is checked twice. The vault uses the projection for `BORROW` when it runs the checks. Then it passes the health factor the action needs to the adapter, the floor or, inside the window, the target. The adapter re-reads the real figure after the action and reverts if it is too low:
 
@@ -101,7 +105,7 @@ On the fork, `test_borrowBelowMinimumHealthFactorReverts`, in the same adapter t
 
 ## The de-risk window
 
-The design assumes the Chainlink equity feeds stop at the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" /> on a Friday, which the repository has not measured; the vault keeps that time as a constant, `FEED_FREEZE_MINUTE`. A borrow needs an open market. The README puts the idea in one line: the health-factor floor rises in the hours before the feeds stop for a weekend or holiday. The [de-risk window](/docs/help/glossary#de-risk-window) is that stretch of time. Inside it, `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the target instead of the floor.
+The design assumes the Chainlink equity feeds stop at the [feed edge](/docs/help/glossary#feed-edge), <Fact name="feedEdge" /> on a Friday, which the repository has not measured; the vault keeps that time as a constant, `FEED_FREEZE_MINUTE`. A borrow needs an open market. The README puts the idea in one line: the health-factor floor rises in the hours before the feeds stop for a weekend or holiday. The de-risk window is that stretch of time. Inside it, `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the target instead of the floor.
 
 ```solidity title="contracts/src/MandateVault.sol#L403-L419"
     function _inDeriskWindow() internal view returns (bool) {

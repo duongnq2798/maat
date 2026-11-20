@@ -4,7 +4,7 @@ description: "Every external and public function of MandateVault: its signature,
 type: reference
 audience: [developer, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/MandateVault.sol
   - contracts/src/IMandateVaultEvents.sol
@@ -13,7 +13,9 @@ sources:
 next: [reference/events, concepts/timelock-and-roles]
 ---
 
-`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it [reverts](/docs/help/glossary#revert) or refuses. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet, so there is no address to give ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+`MandateVault` is built to hold the treasury and to check every [intent](/docs/help/glossary#intent) against the [mandate](/docs/help/glossary#mandate) before it moves a token. This page lists each of its external and public functions with its signature, who may call it, what it changes, which events it emits, and how it [reverts](/docs/help/glossary#revert) or refuses. Each entry also gives the function's selector, the first four bytes of the keccak-256 hash of its canonical ABI signature (the name and the parameter types, with a struct as a tuple and an enum as `uint8`): the calldata of a call to the function starts with it. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet, so there is no address to give ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+
+To call or decode a [vault](/docs/help/glossary#vault) from code without building the repo, use its <a href="/data/abi/MandateVault.json">ABI (JSON)</a>: `mandateVaultAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
 
 <Callout type="note" title="Refusals are not reverts">
 
@@ -21,7 +23,36 @@ By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed` ([so
 
 </Callout>
 
-<FunctionIndex contract="MandateVault" />
+<FunctionIndex
+  contract="MandateVault"
+  groups={[
+    ["Executor only", ["execute"]],
+    ["Anyone", ["previewIntent", "notifyRevenue", "syncMultiplier"]],
+    ["Owner, instant", ["setExecutor", "setPaused", "withdraw", "fund"]],
+    ["Owner, timelocked", ["queueMandate", "queueTokenConfig", "queuePayee", "cancelChange", "applyMandate", "applyTokenConfig", "applyPayee"]],
+    ["Views", ["mandate", "mandateHash", "tokens", "payees", "policyHash", "today", "mandateChangeHash", "tokenChangeHash", "payeeChangeHash"]],
+    [
+      "Public state",
+      [
+        "owner",
+        "usdc",
+        "policyRegistry",
+        "executor",
+        "paused",
+        "tokenConfig",
+        "allowedPayee",
+        "usedIntent",
+        "spentOnDay",
+        "lastMultiplier",
+        "multiplierChangedAt",
+        "queuedAt",
+        "recordedUsdc",
+        "TIMELOCK",
+        "GRACE_PERIOD",
+      ],
+    ],
+  ]}
+/>
 
 ## Executor only
 
@@ -35,7 +66,7 @@ Only the current `executor` may call it: any other caller reverts with `NotExecu
 
 #### Gas
 
-The vault sets no gas requirement of its own. It catches failures inside the swap, token and credit calls, so a plain `eth_estimateGas` can return a limit that leaves those calls too little gas, and a low limit has been seen to record `SWAP_FAILED` for a swap that works with more gas ([Troubleshooting](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit)). A starved inner call is recorded and spends the id; a transaction that runs out of gas outside those calls reverts and leaves the id unused. The floor of <Fact name="executeGasFloor" /> and the cap of <Fact name="maxGas" /> are the agent's own choice, not a vault rule ([Gas estimation](/docs/security/not-claimed#gas-estimation)). From the code, not measured: a `BUY`, a `BORROW` and a `WITHDRAW_COLLATERAL` against debt read every listed token, delisted ones included, so their gas grows as `tokens()` grows.
+The vault sets no gas requirement of its own. It catches failures inside the swap, token and credit calls, so a plain `eth_estimateGas` can return a limit that leaves those calls too little gas, and a low limit has been seen to record `SWAP_FAILED` for a swap that works with more gas ([Troubleshooting](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit)). A starved inner call is recorded, and spends the id, only when the gas left after it is enough to finish `execute`. Otherwise the transaction reverts and leaves the id unused, as it does whenever it runs out of gas outside those calls. The floor of <Fact name="executeGasFloor" /> and the cap of <Fact name="maxGas" /> are the agent's own choice, not a vault rule ([Gas estimation](/docs/security/not-claimed#gas-estimation)). From the code, not measured: a `BUY`, a `BORROW` and a `WITHDRAW_COLLATERAL` against debt read every listed token, delisted ones included, so their gas grows as `tokens()` grows.
 
 ## Anyone
 
@@ -43,7 +74,7 @@ The vault sets no gas requirement of its own. It catches failures inside the swa
 
 <Fn contract="MandateVault" name="previewIntent" />
 
-The source comment above says less than the code does: the [preview](/docs/help/glossary#preview) cannot predict a `CREDIT_FAILED` from the adapter call itself, but it returns `CREDIT_FAILED` when a credit view that the checks read is unreadable. Anyone may call this read-only function. It returns the `Reason` that `execute` would reach for the same intent before acting, and `OK` means the checks pass: it is the check verdict, not the execution result. It cannot see a failure that happens while the vault acts (`SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED` from the adapter call) or the adapter's own health check after a `BORROW` or a `WITHDRAW_COLLATERAL` against debt (for a `BORROW` the preview reads only the adapter's projected [health factor](/docs/help/glossary#health-factor)). It does not look at `usedIntent`, so a reused id previews normally while `execute` reverts with `IntentAlreadyUsed`. The transfer-policy check reads `tx.origin`, so preview with `from` set to the address that sends the transaction, which is the executor itself when the executor is a plain account (an EOA), to get the verdict `execute` would reach ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
+The source comment above says less than the code does: the [preview](/docs/help/glossary#preview) cannot predict a `CREDIT_FAILED` from the adapter call itself, but it returns `CREDIT_FAILED` when a credit view that the checks read is unreadable. Anyone may call this read-only function. It returns the `Reason` that `execute` would reach for the same intent before acting, and `OK` means the checks pass: it is the check verdict, not the execution result. It cannot see a failure that happens while the vault acts (`SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED` from the adapter call) or the adapter's own health check after a `BORROW` or a `WITHDRAW_COLLATERAL` against debt (for a `BORROW` the preview reads only the adapter's projected [health factor](/docs/help/glossary#health-factor)). It does not look at `usedIntent`, so a reused id previews normally while `execute` reverts with `IntentAlreadyUsed`. The transfer-policy check reads `tx.origin`, so preview with `from` set to the address that sends the transaction, which is the executor itself when the executor is a plain account with no code, to get the verdict `execute` would reach ([check 3](/docs/concepts/nine-checks#3-transfer-policy)).
 
 ### notifyRevenue
 
@@ -77,7 +108,7 @@ Sets the `paused` flag to `p` and emits `PausedSet`, even when the value does no
 
 <Fn contract="MandateVault" name="withdraw" />
 
-Sends `amount` of `token` from the vault to the owner address, and only to the owner, then emits `Withdrawn`. For USDC it first runs `notifyRevenue` and afterwards sets `recordedUsdc` to the new balance, so a withdrawal is not counted as revenue or as a loss. A token that returns `false` makes it revert with `TransferFailed`, and a token that reverts passes its own revert up. It does not check that `token` is a contract, so an address without code makes the call do nothing and `Withdrawn` is still emitted. It moves only tokens the vault holds: collateral supplied to the credit adapter stays there until a `WITHDRAW_COLLATERAL` brings it home.
+Sends `amount` of `token` from the vault to the owner address, and only to the owner, then emits `Withdrawn`. For USDC it first runs `notifyRevenue` and afterwards sets `recordedUsdc` to the new balance, so a withdrawal is not counted as revenue or as a loss. A token that returns `false` makes it revert with `TransferFailed`, and a token that reverts passes its own revert up. It does not check that `token` is a contract, so a `token` that is a plain account with no code makes the call do nothing and `Withdrawn` is still emitted. It moves only tokens the vault holds: collateral supplied to the credit adapter stays there until a `WITHDRAW_COLLATERAL` brings it home.
 
 ### fund
 
@@ -251,7 +282,7 @@ The USDC that allowed trades and bill payments counted against the daily cap on 
 
 <Fn contract="MandateVault" name="lastMultiplier" />
 
-The [uiMultiplier](/docs/help/glossary#uimultiplier) the vault last recorded for a token, as a [WAD](/docs/help/glossary#wad), or zero for a token it never gave a market. The multiplier check compares it with the live value, and a mismatch blocks the token. `syncMultiplier`, `execute` and a re-applied token config update it.
+The [uiMultiplier](/docs/help/glossary#uimultiplier) the vault last recorded for a token, as a [WAD](/docs/help/glossary#wad), or zero for a token it never gave a market. The multiplier check compares it with the token's current value, and a mismatch blocks the token. `syncMultiplier`, `execute` and a re-applied token config update it.
 
 ### multiplierChangedAt
 
@@ -310,7 +341,7 @@ The constructor is not a function you can call later, so it has no entry above. 
         _requireValidMandate(mandate_);
 ```
 
-It reverts with `ZeroAddress` if the owner, executor, USDC or policy registry is the zero address, with `LengthMismatch` if `tokens_` and `configs_` differ in length, and with `BadUsdcDecimals` if USDC does not report <Fact name="usdcDecimals" />. It then validates the mandate with the rules under [`InvalidConfig`](/docs/reference/errors#invalidconfig), so a mandate with a credit adapter needs an adapter that is already bound to this vault. Each token is stored the way `applyTokenConfig` stores it, and each payee is added, with a zero payee reverting `ZeroAddress` and a repeated payee counted once. The constructor emits `MandateApplied`, then a `TokenConfigApplied` for each token and a `PayeeApplied` for each payee, and `PolicyHashUpdated` last. It does not emit `ExecutorSet`: that event marks later changes, and the first executor is readable from `executor()`.
+It reverts with `ZeroAddress` if the owner, executor, USDC or policy registry is the zero address, with `LengthMismatch` if `tokens_` and `configs_` differ in length, and with `BadUsdcDecimals` if USDC does not report <Fact name="usdcDecimals" />. It then validates the mandate with the rules under [`InvalidConfig`](/docs/reference/errors#invalidconfig), so a mandate with a credit adapter needs an adapter that is already bound to this vault. Each token is stored the way `applyTokenConfig` stores it, and each payee is added, with a zero payee reverting `ZeroAddress` and a repeated payee counted once. The constructor emits `MandateApplied`, then a `TokenConfigApplied` for each token and a `PayeeApplied` for each payee, and `PolicyHashUpdated` last. It does not emit `ExecutorSet`: that event marks later changes, so read the first executor from the deploy's constructor arguments, or from `executor()` while no `ExecutorSet` has followed.
 
 ## Related
 

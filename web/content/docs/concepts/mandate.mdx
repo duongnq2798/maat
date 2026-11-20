@@ -4,12 +4,13 @@ description: "Every field of the onchain mandate: what it limits, its default va
 type: concept
 audience: [developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/Types.sol
   - contracts/script/MaatConfig.sol
   - contracts/script/Deploy.s.sol
   - contracts/src/MandateVault.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
   - contracts/test/MandateVault.t.sol
   - contracts/test/MandateVaultCredit.t.sol
   - contracts/test/GuardLib.t.sol
@@ -143,7 +144,7 @@ The address of the contract that performs swaps. The default is the Aerodrome Sl
 
 ### creditAdapter
 
-The address of the credit adapter. The default is the Aave V4 adapter. `address(0)` disables credit: `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` then return `ACTION_NOT_SUPPORTED`. When the field is set, it must be a contract bound to this vault and to its USDC. The vault refuses to switch or remove an adapter that still holds a position (`CreditPositionOpen`).
+The address of the credit adapter. The default is the [Aave V4](/docs/help/glossary#aave-v4) adapter. `address(0)` disables credit: `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` and `REPAY` then return `ACTION_NOT_SUPPORTED`. When the field is set, it must be a contract bound to this vault and to its USDC. The vault refuses to switch or remove an adapter that still holds a position (`CreditPositionOpen`).
 
 - **Unit:** an address.
 - **Default:** the adapter that the deploy script creates in the same run.
@@ -155,7 +156,7 @@ The lowest [health factor](/docs/help/glossary#health-factor) that a borrow, or 
 
 - **Unit:** WAD.
 - **Default:** <Fact name="mandate.minHealthFactor" />.
-- **Read by:** `BORROW` and `WITHDRAW_COLLATERAL` against debt. It returns `HEALTH_FACTOR_LOW`. See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
+- **Read by:** `BORROW` and `WITHDRAW_COLLATERAL` against debt. It returns `HEALTH_FACTOR_LOW`. The exception is a withdrawal that Aave's spoke refuses before the adapter's own check runs: that withdrawal returns [`CREDIT_FAILED`](/docs/concepts/refusal-codes#credit_failed). The spoke is the Aave contract the adapter calls to supply, borrow, repay and withdraw. See [Credit and the health factor](/docs/concepts/credit-and-health-factor).
 
 ### targetHealthFactor
 
@@ -225,7 +226,7 @@ The largest share of net equity one stock may reach after a buy.
 - **The session is `REGULAR`.** The [design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) calls it safer and better for pool liquidity, and it keeps `FEED_24_5` off until the after-hours premium is shown to be stable.
 - **The de-risk window ends at the feed edge.** The design assumes the Chainlink equity feeds stop on Friday at <Fact name="feedEdge" />, which has not been measured ([The feed edge](/docs/concepts/market-hours#the-feed-edge)). The vault keeps that moment as a constant, `FEED_FREEZE_MINUTE`, and counts the window back from it. Its length of <Fact name="mandate.deriskWindowSec" /> is chosen so that the last trading hours of a regular Friday session fall inside it (a comment in `MaatConfig.sol`).
 - **The health factor target includes a buffer.** `MaatConfig.sol` notes that <Fact name="mandate.targetHealthFactor" /> already includes the buffer the design asked for on top of its target.
-- **The caps bound a bad trade.** The per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> limit what a leaked executor key or a bad proposal can cost. The fork test `test_compromisedExecutorIsBounded` tries a buy above the per-trade cap as the executor, against real Base state, and gets `SIZE_LIMIT`.
+- **The caps bound a bad trade.** The per-trade cap of <Fact name="mandate.perTradeCapUsd" /> and the daily cap of <Fact name="mandate.dailyCapUsd" /> limit what a leaked executor key or a bad proposal can cost. The [fork test](/docs/help/glossary#fork-test) `test_compromisedExecutorIsBounded` tries a buy above the per-trade cap as the executor, against real Base state, and gets `SIZE_LIMIT`.
 - **The weight cap sits above the agent's own target.** The agent's policy aims for <Fact name="targetWeightPct" /> per stock and rebalances at a drift of <Fact name="rebalanceDriftPct" />. The vault's cap of <Fact name="mandate.maxWeightBps" /> is a separate, looser limit that applies to whatever the agent proposes.
 
 The TWAP window and the multiplier cooldown come from the design spec. The staleness limit and the slippage tolerance come from a measurement on Base mainnet over the ten NYSE sessions of 2026-11-02 to 2026-11-06 and 2026-11-09 to 2026-11-13. Read-only RPC calls gave each feed's full round history, from which the feed's age was computed every minute of the session, and the pool's spot price plus its fee gave the cost of a buy against the oracle every 15 minutes. The measurement script and its data are not in the repository, so these figures cannot be re-run from it.

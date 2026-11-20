@@ -1,0 +1,119 @@
+{
+  "config": {
+    "configFile": "/home/runner/work/maat/maat/web/playwright.config.ts",
+    "rootDir": "/home/runner/work/maat/maat/web/e2e",
+    "forbidOnly": true,
+    "fullyParallel": false,
+    "globalTimeout": 0,
+    "maxFailures": 0,
+    "metadata": { "actualWorkers": 1 },
+    "projects": [
+      {
+        "outputDir": "/home/runner/work/maat/maat/web/test-results/e2e",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": { "actualWorkers": 1 },
+        "id": "chromium",
+        "name": "chromium",
+        "testDir": "/home/runner/work/maat/maat/web/e2e",
+        "testIgnore": [],
+        "testMatch": ["**/*.@(spec|test).?(c|m)[jt]s?(x)"],
+        "timeout": 30000
+      }
+    ],
+    "reporter": [["list"], ["json"]],
+    "version": "1.65.0",
+    "workers": 1
+  },
+  "suites": [
+    {
+      "title": "smoke.spec.ts",
+      "file": "smoke.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "the ledger filters",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 30000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "chromium",
+              "projectName": "chromium",
+              "results": [
+                { "workerIndex": 0, "parallelIndex": 0, "status": "passed", "duration": 960, "errors": [], "stdout": [], "stderr": [], "retry": 0, "startTime": "2026-11-18T09:00:03.000Z", "annotations": [], "attachments": [] }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "smoke-ledger-filters",
+          "file": "smoke.spec.ts",
+          "line": 65,
+          "column": 1
+        }
+      ],
+      "suites": [
+        {
+          "title": "the landing page",
+          "file": "smoke.spec.ts",
+          "column": 6,
+          "line": 44,
+          "specs": [
+            {
+              "title": "the moment toggle works by mouse and keyboard",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 30000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "chromium",
+                  "projectName": "chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 5120,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveAttribute\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('switch', { name: 'Moment' })\nExpected: \u001b[32m\"true\"\u001b[39m\nReceived: \u001b[31m\"false\"\u001b[39m",
+                        "stack": "Error: expect(locator).toHaveAttribute(expected) failed\n    at /home/runner/work/maat/maat/web/e2e/smoke.spec.ts:52:34",
+                        "location": { "file": "/home/runner/work/maat/maat/web/e2e/smoke.spec.ts", "column": 34, "line": 52 }
+                      },
+                      "errors": [
+                        {
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoHaveAttribute\u001b[2m(\u001b[22m\u001b[32mexpected\u001b[39m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('switch', { name: 'Moment' })\nExpected: \u001b[32m\"true\"\u001b[39m\nReceived: \u001b[31m\"false\"\u001b[39m",
+                          "location": { "file": "/home/runner/work/maat/maat/web/e2e/smoke.spec.ts", "column": 34, "line": 52 }
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-11-18T09:00:01.000Z",
+                      "annotations": [],
+                      "attachments": [
+                        { "name": "trace", "contentType": "application/zip", "path": "/home/runner/work/maat/maat/web/test-results/e2e/smoke-the-landing-page-chromium/trace.zip" }
+                      ],
+                      "errorLocation": { "file": "/home/runner/work/maat/maat/web/e2e/smoke.spec.ts", "column": 34, "line": 52 }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "smoke-moment-toggle",
+              "file": "smoke.spec.ts",
+              "line": 46,
+              "column": 3
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": { "startTime": "2026-11-18T09:00:00.000Z", "duration": 6390.2, "expected": 1, "skipped": 0, "unexpected": 1, "flaky": 0 }
+}

@@ -1,6 +1,18 @@
 // @vitest-environment node
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
-import { generateDocsData, parseAgentEnv, parseBaseAddresses, serialize } from "@/lib/docs/docs-data";
+import { ABI_NAMES, abiFile, abiUrl } from "@/lib/docs/abi";
+import {
+  generateAbis,
+  generateDocsData,
+  parseAbis,
+  parseAgentEnv,
+  parseBaseAddresses,
+  parseDeployments,
+  serialize,
+} from "@/lib/docs/docs-data";
+import { collectTestLines } from "@/lib/docs/remark-test-anchors";
 import { buildSurface, type SolContract } from "@/lib/docs/sol-surface";
 import { readRepo, REPO_ROOT } from "./helpers/solidity";
 
@@ -13,7 +25,16 @@ const one = (text: string, name: string): SolContract => {
 describe("buildSurface", () => {
   it("keeps external and public functions with their access, mutability, params, returns and notice", () => {
     const c = one(
-      `contract V {
+      `struct Intent {
+    bytes32 id;
+}
+struct Mandate {
+    uint256 cap;
+}
+enum Reason {
+    OK
+}
+contract V {
     address public immutable owner;
     modifier onlyOwner() { if (msg.sender != owner) revert(); _; }
     /// @notice Pauses it.
@@ -113,7 +134,12 @@ describe("buildSurface", () => {
     ]);
     const v = s.contracts.find((c) => c.name === "V");
     expect(v?.events).toEqual([
-      { name: "Done", notice: "", params: [{ type: "bytes32", name: "id", indexed: true }, { type: "bool", name: "ok" }] },
+      {
+        name: "Done",
+        notice: "",
+        params: [{ type: "bytes32", name: "id", indexed: true }, { type: "bool", name: "ok" }],
+        topic0: keccak("Done(bytes32,bool)"),
+      },
     ]);
     expect(v?.errors.map((e) => e.name)).toEqual(["NotOwner", "TransferFailed"]);
     expect(s.contracts.map((c) => c.name)).toEqual(["IE", "V"]); // libraries are not listed
@@ -147,12 +173,19 @@ describe("buildSurface", () => {
   });
 });
 
+/** A parameter of the compiled ABI: a tuple names its fields in `components`. */
+interface AbiParam {
+  type: string;
+  indexed?: boolean;
+  components?: AbiParam[];
+}
+
 /** The ABI the agent compiled from the same sources (agent/src/abi/generated.ts, written by forge). */
 function agentAbi(name: string): {
   type: string;
   name?: string;
   stateMutability?: string;
-  inputs?: { indexed?: boolean }[];
+  inputs?: AbiParam[];
   outputs?: unknown[];
 }[] {
   const src = readRepo("agent/src/abi/generated.ts");
@@ -189,14 +222,176 @@ describe("parity with the compiled ABI", () => {
   });
 });
 
+const keccak = (text: string) => `0x${bytesToHex(keccak_256(utf8ToBytes(text)))}`;
+/** The first four bytes of the hash: a function's or an error's selector. */
+const selector = (text: string) => keccak(text).slice(0, 10);
+
+describe("selectors and topic 0", () => {
+  it("hashes the canonical signature: an enum as uint8, a contract or an interface as an address, a struct as the tuple of its fields", () => {
+    const s = buildSurface([
+      {
+        file: "contracts/src/X.sol",
+        text: [
+          "enum Side {",
+          "    BUY,",
+          "    SELL",
+          "}",
+          "struct Inner {",
+          "    uint a;",
+          "    Side side;",
+          "}",
+          "struct Order {",
+          "    Inner inner;",
+          "    address[] list;",
+          "}",
+          "interface IPool {}",
+          "contract V {",
+          "    event Placed(Order indexed order, Side side);",
+          "    error Bad(uint256 got, IPool pool);",
+          "    mapping(address => mapping(uint256 => bool)) public seen;",
+          "    function place(Order calldata order, IPool pool, Inner[] memory inners, bytes calldata data) external {}",
+          "}",
+        ].join("\n"),
+      },
+    ]);
+    const v = s.contracts.find((c) => c.name === "V");
+    expect(v?.functions.map((f) => [f.name, f.selector])).toEqual([
+      ["place", selector("place(((uint256,uint8),address[]),address,(uint256,uint8)[],bytes)")],
+      ["seen", selector("seen(address,uint256)")],
+    ]);
+    expect(v?.events.map((e) => e.topic0)).toEqual([keccak("Placed(((uint256,uint8),address[]),uint8)")]);
+    expect(v?.errors.map((e) => e.selector)).toEqual([selector("Bad(uint256,address)")]);
+  });
+
+  it("fails on a parameter type it cannot encode, instead of hashing a wrong signature", () => {
+    const text = "contract V {\n    function f(Unknown u) external {}\n}";
+    expect(() => buildSurface([{ file: "contracts/src/V.sol", text }])).toThrow("V.f: cannot encode the type Unknown");
+  });
+
+  it("fails on an anonymous event, whose logs carry no topic 0", () => {
+    const text = "contract V {\n    event Quiet(uint256 a) anonymous;\n}";
+    expect(() => buildSurface([{ file: "contracts/src/V.sol", text }])).toThrow("V.Quiet: an anonymous event has no topic 0");
+  });
+
+  it("gives the values computed independently with viem and cast", () => {
+    const vault = generateDocsData(REPO_ROOT).surface.contracts.find((c) => c.name === "MandateVault");
+    const fn = (name: string) => vault?.functions.find((f) => f.name === name)?.selector;
+    const err = (contract: string, name: string) =>
+      generateDocsData(REPO_ROOT)
+        .surface.contracts.find((c) => c.name === contract)
+        ?.errors.find((e) => e.name === name)?.selector;
+    const topic = (name: string) => vault?.events.find((e) => e.name === name)?.topic0;
+    expect(fn("execute")).toBe("0x4ad3993f");
+    expect(fn("previewIntent")).toBe("0x0ee774db");
+    expect(err("MandateVault", "NotExecutor")).toBe("0xc32d1d76");
+    expect(err("MandateVault", "IntentAlreadyUsed")).toBe("0xb256356e");
+    expect(err("MandateVault", "NotOwner")).toBe("0x30cd7471");
+    expect(err("MandateVault", "InvalidConfig")).toBe("0x35be3ac8");
+    expect(err("MandateVault", "ChangeNotQueued")).toBe("0x8b2bb7d5");
+    expect(err("MandateVault", "ChangeNotReady")).toBe("0x2b169f55");
+    expect(err("MandateVault", "ChangeExpired")).toBe("0x051a48c0");
+    expect(err("ICreditAdapter", "HealthFactorTooLow")).toBe("0x7e7222b7");
+    expect(err("AerodromeSwapAdapter", "InsufficientOutput")).toBe("0x2c19b8b8");
+    expect(topic("Decision")).toBe("0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322");
+    // The two queue events whose topic 0 guides/watch-decisions-onchain prints.
+    expect(topic("MandateChangeQueued")).toBe("0x7fa3c0bb17162e829120b28266b7550061c3b40db9435802b3b81b4be2f1d4b1");
+    expect(topic("TokenConfigChangeQueued")).toBe("0x52c7e79abff67f340ea03b262ee706f9f7b59fd984c52ae45155eaef031057d9");
+  });
+
+  /** A parameter's type as the compiled ABI encodes it: a tuple is its components in brackets. */
+  const abiType = (p: AbiParam): string => (p.type.startsWith("tuple") ? `(${(p.components ?? []).map(abiType).join(",")})${p.type.slice(5)}` : p.type);
+
+  it.each([
+    ["MandateVault", "mandateVaultAbi"],
+    ["MarketCalendar", "marketCalendarAbi"],
+    ["ICreditAdapter", "creditAdapterAbi"],
+  ])("%s has the selector and the topic 0 of every function, error and event in the compiled ABI", (contract, abiName) => {
+    const c = generateDocsData(REPO_ROOT).surface.contracts.find((k) => k.name === contract);
+    if (!c) throw new Error(`${contract} missing from the generated surface`);
+    const ours = [
+      ...c.functions.map((f) => `function ${f.name} ${f.selector}`),
+      ...c.events.map((e) => `event ${e.name} ${e.topic0}`),
+      ...c.errors.map((e) => `error ${e.name} ${e.selector}`),
+    ].sort();
+    const abi = agentAbi(abiName)
+      .filter((e) => e.type !== "constructor")
+      .map((e) => {
+        const hash = keccak(`${e.name}(${(e.inputs ?? []).map(abiType).join(",")})`);
+        return `${e.type} ${e.name} ${e.type === "event" ? hash : hash.slice(0, 10)}`;
+      })
+      .sort();
+    expect(ours).toEqual(abi);
+  });
+});
+
+describe("the published ABIs", () => {
+  it.each([
+    ["MandateVault", "mandateVaultAbi"],
+    ["ICreditAdapter", "creditAdapterAbi"],
+    ["MarketCalendar", "marketCalendarAbi"],
+  ] as const)("%s.json is {source, note, abi}, with exactly %s from agent/src/abi/generated.ts", (name, abiName) => {
+    const file = abiFile(name);
+    expect(Object.keys(file)).toEqual(["source", "note", "abi"]);
+    expect(file.abi).toEqual(agentAbi(abiName));
+    expect(file.source).toBe(
+      `${abiName} in agent/src/abi/generated.ts (https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which npm run gen:abi in agent/ generates from the compiled contracts in contracts/out.`,
+    );
+    expect(file.note).toBe("ABI of contracts that are built and fork-tested, not deployed. The contracts are unaudited.");
+    expect(abiUrl(name)).toBe(`/data/abi/${name}.json`);
+  });
+
+  it("publishes Maat's own contracts only: no third-party interface, and no swap adapter, which generated.ts does not hold", () => {
+    expect(ABI_NAMES).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar"]);
+    expect(Object.keys(parseAbis(readRepo("agent/src/abi/generated.ts")))).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar"]);
+  });
+
+  it("reads the ABIs the same from a CRLF checkout", () => {
+    const lf = readRepo("agent/src/abi/generated.ts").replace(/\r\n/g, "\n");
+    expect(parseAbis(lf.replace(/\n/g, "\r\n"))).toEqual(parseAbis(lf));
+  });
+
+  it("fails when generated.ts lacks an ABI it publishes", () => {
+    expect(() => parseAbis("export const erc20Abi = [] as const;\n")).toThrow(/mandateVaultAbi is not in agent\/src\/abi\/generated\.ts/);
+  });
+});
+
 describe("committed data is current", () => {
   const data = generateDocsData(REPO_ROOT);
   it.each([
     ["web/content/generated/contracts.json", data.surface],
     ["web/content/generated/base-addresses.json", data.addresses],
+    // The table in deployments/README.md, which the owner fills in after a deploy.
+    ["web/content/generated/deployments.json", data.deployments],
     ["web/content/generated/agent.json", data.agent],
+    // The ABIs that /data/abi/*.json publish: the build reads this copy, never agent/ (spec §5.3).
+    ["web/content/generated/abi.json", generateAbis(REPO_ROOT)],
+    // A test that moves changes its line, so the links that remarkTestAnchors points at it need a regeneration too.
+    ["web/content/generated/tests.json", collectTestLines(REPO_ROOT)],
   ] as const)("%s matches the sources (run `npm run docs:gen` in web/ if this fails)", (file, value) => {
     expect(readRepo(file).replace(/\r\n/g, "\n")).toBe(serialize(value));
+  });
+});
+
+describe("the test lines of the repo", () => {
+  const tests = collectTestLines(REPO_ROOT);
+
+  it("finds test_replayReverts on the line of MandateVault.t.sol that defines it", () => {
+    const lines = readRepo("contracts/test/MandateVault.t.sol").split(/\r?\n/);
+    const defined = lines.findIndex((l) => l.includes("function test_replayReverts(")) + 1;
+    expect(defined).toBeGreaterThan(0);
+    expect(tests["contracts/test/MandateVault.t.sol"]?.test_replayReverts).toBe(defined);
+  });
+
+  it("finds a Vitest title on the line of its it() call", () => {
+    const lines = readRepo("agent/test/runOnce.test.ts").split(/\r?\n/);
+    const title = "halts when the preview said OK but the vault refused";
+    expect(lines[(tests["agent/test/runOnce.test.ts"]?.[title] ?? 0) - 1]).toContain(`it("${title}"`);
+  });
+
+  it("covers both test folders", () => {
+    const files = Object.keys(tests);
+    expect(files.some((f) => f.startsWith("contracts/test/fork/"))).toBe(true);
+    expect(files.some((f) => f.startsWith("agent/test/integration/"))).toBe(true);
   });
 });
 
@@ -282,5 +477,80 @@ describe("parseBaseAddresses", () => {
     expect(groups.map((g) => g.split(" ").slice(0, 3).join(" "))).toEqual(["Aerodrome Slipstream pools,", "Aave V4 Equities"]);
     expect(parsed.filter((a) => a.group !== "").every((a) => a.note === "")).toBe(true);
     expect(parsed.filter((a) => a.note !== "").map((a) => a.name)).toEqual(["BLOCK_SESSION", "BLOCK_WEEKEND"]);
+  });
+});
+
+describe("parseDeployments", () => {
+  const VAULT = `0x${"11".repeat(20)}`;
+  const TX = `0x${"22".repeat(32)}`;
+  const table = (...rows: string[]) => ["# Deployments", "", "| Network | Contract | Address | Tx | Date |", "|---|---|---|---|---|", ...rows].join("\n");
+
+  it("reads one row per contract the deploy script deploys, on Base mainnet, from deployments/README.md", () => {
+    const rows = parseDeployments(readRepo("deployments/README.md"));
+    expect(rows.map((r) => [r.network, r.contract])).toEqual([
+      ["Base mainnet", "MarketCalendar"],
+      ["Base mainnet", "AerodromeSwapAdapter"],
+      ["Base mainnet", "AaveV4CreditAdapter"],
+      ["Base mainnet", "MandateVault"],
+    ]);
+  });
+
+  it("reads the first table only, an empty cell as empty, and a cell's text without its link or code marks", () => {
+    const text = table(
+      "| Base mainnet | MarketCalendar | | | |",
+      `| Base mainnet | MandateVault | [\`${VAULT}\`](https://basescan.org/address/${VAULT}) | \`${TX}\` | 2026-12-01 |`,
+      "",
+      "Owner = your wallet.",
+      "",
+      "| Network | Contract | Address | Tx | Date |",
+      "|---|---|---|---|---|",
+      "| Base mainnet | Later | 0x | | |",
+    );
+    expect(parseDeployments(text)).toEqual([
+      { network: "Base mainnet", contract: "MarketCalendar", address: "", tx: "", date: "" },
+      { network: "Base mainnet", contract: "MandateVault", address: VAULT, tx: TX, date: "2026-12-01" },
+    ]);
+  });
+
+  it("gives the same rows for a CRLF checkout", () => {
+    const lf = readRepo("deployments/README.md").replace(/\r\n/g, "\n");
+    expect(parseDeployments(lf.replace(/\n/g, "\r\n"))).toEqual(parseDeployments(lf));
+  });
+
+  it("fails on a table whose columns change, naming them, on a row with another number of cells, and on a file with no table", () => {
+    expect(() => parseDeployments(table("| Base mainnet | MandateVault | | | |").replace("| Tx |", "| Commit | Tx |"))).toThrow(
+      "deployments/README.md: the table's columns are Network | Contract | Address | Commit | Tx | Date, not Network | Contract | Address | Tx | Date",
+    );
+    expect(() => parseDeployments(table("| Base mainnet | MandateVault | | |"))).toThrow(
+      "deployments/README.md: the row | Base mainnet | MandateVault | | | has 4 cells, not 5",
+    );
+    expect(() => parseDeployments("# Deployments\n\nNone yet.\n")).toThrow("deployments/README.md has no table");
+  });
+
+  it("fails on an address that is neither empty nor 0x and 40 hex digits, so a placeholder never reads as a deployment", () => {
+    for (const address of ["TBD", "-", "0x1234…abcd", `0x${"11".repeat(19)}`]) {
+      const row = `| Base mainnet | MandateVault | ${address} | | |`;
+      expect(() => parseDeployments(table(row))).toThrow(
+        `deployments/README.md: the row ${row} has the address ${address}, not an empty cell or 0x and 40 hex digits`,
+      );
+    }
+    expect(() => parseDeployments(table(`| Base mainnet | MandateVault | [0x1234…abcd](https://basescan.org/address/${VAULT}) | | |`))).toThrow(
+      "has the address 0x1234…abcd,",
+    );
+  });
+
+  it("fails on a row on any network but Base mainnet, and on a Tx that is neither empty nor 0x and 64 hex digits", () => {
+    // DEPLOYMENT_NETWORK: the deploy script and the agent are built for Base mainnet only.
+    for (const network of ["Base", "Base Mainnet", "Base Sepolia"]) {
+      const row = `| ${network} | MandateVault | ${VAULT} | | |`;
+      expect(() => parseDeployments(table(row))).toThrow(`deployments/README.md: the row ${row} is on the network ${network}, not Base mainnet`);
+    }
+    for (const tx of ["TBD", "0xabc…", `0x${"22".repeat(31)}`]) {
+      const row = `| Base mainnet | MandateVault | ${VAULT} | ${tx} | 2026-12-01 |`;
+      expect(() => parseDeployments(table(row))).toThrow(
+        `deployments/README.md: the row ${row} has the transaction ${tx}, not an empty cell or 0x and 64 hex digits`,
+      );
+    }
+    expect(parseDeployments(table(`| Base mainnet | MandateVault | ${VAULT} | ${TX} | 2026-12-01 |`)).map((d) => d.tx)).toEqual([TX]);
   });
 });

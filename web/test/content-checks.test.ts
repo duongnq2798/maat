@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
+  codedTestTitles,
   docsLinks,
+  excerptHref,
   excerpts,
   factNames,
   foreignCharacters,
@@ -9,8 +11,12 @@ import {
   headingIds,
   isDistinctive,
   malformedExcerptTitles,
+  notDeployedClaims,
   prose,
+  quotedTestTitles,
   repoPaths,
+  testNameLinks,
+  unknownTestNames,
 } from "@/lib/docs/content-checks";
 
 const PAGE = [
@@ -127,5 +133,162 @@ describe("page parts", () => {
     const text = "excerpt title must read path#L<from>-L<to>, with the fence at the start of the line";
     expect(excerpts(src).map((e) => e.line)).toEqual([1]);
     expect(malformedExcerptTitles(src)).toEqual([4, 6, 8, 10, 12].map((line) => ({ line, text })));
+  });
+
+  it("excerptHref links an excerpt title to its lines on main, and no other title", () => {
+    const repo = "https://github.com/o/r";
+    expect(excerptHref("contracts/src/GuardLib.sol#L44-L62", repo)).toBe(`${repo}/blob/main/contracts/src/GuardLib.sol#L44-L62`);
+    for (const title of ["agent/.env.example", "contracts/src/GuardLib.sol#L44", "contracts/src/GuardLib.sol#L44-62", "a#b#L1-L2"]) {
+      expect(excerptHref(title, repo), title).toBeNull();
+    }
+  });
+});
+
+describe("cited tests", () => {
+  const repo = "https://github.com/o/r";
+  const names = new Set([
+    "test_replayReverts",
+    "test_revertingIsPausedFailsClosed",
+    "test_revertingCalendarFailsClosed",
+    "test_priceFromSqrt_stockIsToken0",
+    "test_priceFromSqrt_stockIsToken1",
+  ]);
+
+  it("unknownTestNames flags a test name in inline code that no test has, and skips fences and plain prose", () => {
+    const src = [
+      "`test_replayReverts` refuses a replay, `test_replayRevert` does not exist.",
+      "The output reads `[PASS] test_replayReverts()`, then `forge test --match-test \"test_replayReverts|test_gone\"`.",
+      "```bash",
+      "forge test --match-test test_inFence",
+      "```",
+      "Plain test_inProse is not code.",
+    ].join("\n");
+    expect(unknownTestNames(src, names)).toEqual([
+      { line: 1, text: "test_replayRevert" },
+      { line: 2, text: "test_gone" },
+    ]);
+  });
+
+  it("unknownTestNames reads `*` as any letters, which must match a test, and 'the two `test_x` tests' as that many tests starting so", () => {
+    expect(unknownTestNames("the other `test_reverting*FailsClosed` tests in the same file", names)).toEqual([]);
+    expect(unknownTestNames("`test_reverting*Closes`", names)).toEqual([{ line: 1, text: "test_reverting*Closes: no test matches" }]);
+    expect(unknownTestNames("and the two `test_priceFromSqrt` tests cover it", names)).toEqual([]);
+    expect(unknownTestNames("the three `test_priceFromSqrt` tests", names)).toEqual([
+      { line: 1, text: "test_priceFromSqrt: 2 tests start so, not 3" },
+    ]);
+    // Without "the two ... tests" around it, a prefix is a misspelt name.
+    expect(unknownTestNames("`test_priceFromSqrt`", names)).toEqual([{ line: 1, text: "test_priceFromSqrt" }]);
+  });
+
+  it("quotedTestTitles reads the quoted titles in a line or table cell that links a test file under agent/test", () => {
+    const url = (file: string) => `${repo}/blob/main/agent/test/${file}`;
+    const src = [
+      `| Row | [\`runOnce.test.ts\`](${url("runOnce.test.ts")}): "halts", "drops" | The README calls this row "Exactly-once sends" |`,
+      `See "a title" in [\`sender.test.ts\`](${url("sender.test.ts")}), and [\`lock.test.ts\`](${url("lock.test.ts")}).`,
+      `A quote "elsewhere", and [the fakes](${repo}/tree/main/agent/test/fakes) "not a file".`,
+      "```ts",
+      `it("in a fence", () => {}); // ${url("x.test.ts")}`,
+      "```",
+      `<Callout title="An attribute">See [\`a.test.ts\`](${url("a.test.ts")}) and \`"inline code"\`.</Callout>`,
+    ].join("\n");
+    expect(quotedTestTitles(src, repo)).toEqual([
+      { line: 1, text: "halts", files: ["agent/test/runOnce.test.ts"] },
+      { line: 1, text: "drops", files: ["agent/test/runOnce.test.ts"] },
+      { line: 2, text: "a title", files: ["agent/test/sender.test.ts", "agent/test/lock.test.ts"] },
+    ]);
+  });
+
+  it("codedTestTitles reads each code span with a space in a line or table cell that names a test file under agent/test", () => {
+    const files = ["agent/test/policy.test.ts", "agent/test/runOnce.test.ts", "agent/test/integration/agent.fork.test.ts"];
+    const fork = `${repo}/blob/main/agent/test/integration/agent.fork.test.ts`;
+    const src = [
+      "---",
+      "description: `in frontmatter` in `agent/test/policy.test.ts`",
+      "---",
+      "The test `all cash: buys` in `agent/test/policy.test.ts` pins `BUY` and `BORROW` (`caps a buy`).",
+      "Billed anyway (`bills a failed call` in `runOnce.test.ts`).",
+      `See [\`agent.fork.test.ts\`](${fork}): \`use as collateral\`, run by \`npm run test:integration\`.`,
+      "| `in another cell` | `runOnce.test.ts`: `halts now` |",
+      "`no agent test here` beside `web/test/facts.test.ts` and `lock.test.ts`.",
+      "```ts",
+      "`in a fence` in `agent/test/policy.test.ts`",
+      "```",
+    ].join("\n");
+    expect(codedTestTitles(src, repo, files)).toEqual([
+      { line: 4, text: "all cash: buys", files: ["agent/test/policy.test.ts"] },
+      { line: 4, text: "caps a buy", files: ["agent/test/policy.test.ts"] },
+      { line: 5, text: "bills a failed call", files: ["agent/test/runOnce.test.ts"] },
+      { line: 6, text: "use as collateral", files: ["agent/test/integration/agent.fork.test.ts"] },
+      { line: 7, text: "halts now", files: ["agent/test/runOnce.test.ts"] },
+    ]);
+  });
+
+  it("codedTestTitles skips a command that starts with environment settings", () => {
+    const text = "Run `MAAT_MODE=dry-run npm test` for `agent/test/policy.test.ts`.";
+    expect(codedTestTitles(text, repo, ["agent/test/policy.test.ts"])).toEqual([]);
+  });
+
+  it("testNameLinks reads every link whose text is a test name, with the file it opens", () => {
+    const src = [
+      `[\`test_replayReverts\`](${repo}/blob/main/contracts/test/MandateVault.t.sol) and [the file](${repo}/blob/main/contracts/test/GuardLib.t.sol).`,
+      "```md",
+      `[\`test_inFence\`](${repo}/blob/main/contracts/test/MandateVault.t.sol)`,
+      "```",
+      `[\`test_concentration\`](${repo}/blob/main/contracts/test/MandateVault.t.sol#L9), [\`test_x\`](https://github.com/other/repo/blob/main/a.t.sol)`,
+    ].join("\n");
+    expect(testNameLinks(src, repo)).toEqual([
+      { line: 1, name: "test_replayReverts", file: "contracts/test/MandateVault.t.sol" },
+      { line: 5, name: "test_concentration", file: "contracts/test/MandateVault.t.sol" },
+    ]);
+  });
+});
+
+describe("notDeployedClaims", () => {
+  it("finds each phrase that says nothing is deployed, in any case, one finding per line, in frontmatter, JSX, tables and prose", () => {
+    const src = [
+      "---",
+      'description: "No audit, no mainnet deployment yet."',
+      "---",
+      '<Callout type="fork" title="Not deployed yet">',
+      "Nothing is deployed, and no Maat vault is deployed.",
+      "| Deployment | None. No Maat contract is deployed |",
+      "No vault is deployed. No Maat calendar is deployed. The team has deployed no vault; it has deployed none.",
+      "The owner has not broadcast it. Nothing was broadcast, and nothing has been broadcast.",
+      "## Not on mainnet yet",
+      "It is fork-tested, not live, and none is live: there is no live vault and no live system to probe.",
+      "The address table is empty today. No mainnet deploy has been run.",
+      "| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | No | x |",
+      "Its address cells are empty today.",
+      "- Today that table is empty, and no page carries the Live on mainnet label.",
+      "The table in `deployments/README.md` is empty. The table of deployed addresses, which is empty, waits.",
+    ].join("\n");
+    expect(notDeployedClaims(src)).toEqual([
+      { line: 2, text: "no mainnet deployment" },
+      { line: 4, text: "Not deployed" },
+      { line: 5, text: "Nothing is deployed, no Maat vault is deployed" },
+      { line: 6, text: "No Maat contract is deployed" },
+      { line: 7, text: "No vault is deployed, No Maat calendar is deployed, has deployed no, has deployed none" },
+      { line: 8, text: "has not broadcast, Nothing was broadcast, nothing has been broadcast" },
+      { line: 9, text: "Not on mainnet" },
+      { line: 10, text: "not live, none is live, no live vault, no live system" },
+      { line: 11, text: "table is empty, No mainnet deploy" },
+      { line: 12, text: "deployed to [Base](/docs/help/glossary#base) mainnet? | No" },
+      { line: 13, text: "empty today" },
+      { line: 14, text: "table is empty" },
+      { line: 15, text: "table in `deployments/README.md` is empty, table of deployed addresses, which is empty" },
+    ]);
+  });
+
+  it("leaves out what stays true after a deploy: a fork run broadcasts nothing, where the agent has run, what a deployed vault does, a question answered otherwise, a sentence about a table that ends before the words is empty", () => {
+    const src = [
+      "Nothing is broadcast: Foundry forks the chain locally.",
+      "The agent has run in live mode only on a fork.",
+      "Once a vault is deployed on Base mainnet, the same steps read it.",
+      "On a Saturday the DEX price has no live reference.",
+      "| Has a third party audited the contracts? | No | x |",
+      "| Is Maat deployed to Base mainnet? | Yes | x |",
+      "The table has four rows. Each new line is empty of code.",
+    ].join("\n");
+    expect(notDeployedClaims(src)).toEqual([]);
   });
 });

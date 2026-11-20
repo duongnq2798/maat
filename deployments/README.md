@@ -7,7 +7,7 @@
 | Base mainnet | AaveV4CreditAdapter | | | |
 | Base mainnet | MandateVault | | | |
 
-Owner = your wallet. The executor is temporarily your wallet until Plan 2 (CDP Server Wallet). Payee = the compute-expense wallet.
+Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet.
 
 ## Default mandate
 
