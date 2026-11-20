@@ -1,11 +1,12 @@
 "use client";
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
 import type { CheckMark } from "@/content/engine";
 import { FACTS } from "@/content/facts";
 import { clockLabel, dayLabel } from "@/content/format";
-import { REASON_MEANING } from "@/content/reasons";
+import { REASON_MEANING, reasonText } from "@/content/reasons";
 import {
   AMOUNT_CHIPS_USD,
   amountPending,
@@ -176,7 +177,7 @@ export function Simulator() {
     if (!parsed || full) return;
     setS((p) => (p.tape.length >= MAX_TAPE ? p : { ...p, tape: [...p.tape, p.intent] }));
     setNotice(
-      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${result.reason}`}`,
+      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${reasonText(result.reason)}`}`,
     );
   };
   async function copyLink() {
@@ -362,7 +363,7 @@ export function Simulator() {
                 <span className="font-mono text-[11px] opacity-80">IF EXECUTED NOW · SIMULATED</span>
                 <span className="text-[26px] font-semibold tracking-[-0.03em]">{result.allowed ? "Allowed" : "Refused"}</span>
               </div>
-              <span className="font-mono text-[13px] font-semibold [overflow-wrap:anywhere]">{result.reason}</span>
+              <ReasonTag code={result.reason} tone="verdict" layout="stacked" className="text-right [overflow-wrap:anywhere]" />
             </div>
             <p className="m-0 text-sm leading-normal opacity-90">
               {result.reason === "OK" ? "It says yes. Change one thing to make it say no." : REASON_MEANING[result.reason]}
@@ -432,9 +433,15 @@ export function Simulator() {
                   <span className="[overflow-wrap:anywhere]">
                     <span className="text-ink-2">{clockLabel(e.intent.minute)}</span> {simIntentLabel(e.intent)}
                   </span>
-                  <span className={e.allowed ? "text-accent" : "font-semibold text-refuse"}>
-                    {e.allowed ? "Allowed" : `Refused · ${e.reason}`}
-                  </span>
+                  {e.allowed ? (
+                    <span className="text-accent">Allowed</span>
+                  ) : (
+                    <span className="font-semibold text-refuse">
+                      {"Refused · "}
+                      {/* The code is the muted tag: it drops the semibold of the words before it. */}
+                      <ReasonTag code={e.reason} tone="refuse" layout="inline" className="[&>:last-child]:font-normal" />
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>
