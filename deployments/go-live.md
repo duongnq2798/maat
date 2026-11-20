@@ -168,7 +168,22 @@ The signatures are those of `contracts/src/interfaces/IB20Asset.sol`: `isPaused(
 | `policyId` for `keccak256("TRANSFER_EXECUTOR_POLICY")` (line 29), the policy of the executor leg | A number. `0` means always allow: the vault then asks the registry nothing (`GuardLib.sol` line 165), so skip the third call | An error, or an empty line: the vault answers `POLICY_BLOCKED` (`GuardLib.sol` lines 171-173) |
 | `isAuthorized` with that number and your wallet | `true` | `false`, or an error: on every BUY and SELL the vault checks `tx.origin` against this policy (`GuardLib.sol` lines 151 and 155), so it answers `POLICY_BLOCKED` |
 
-On a stop, do not broadcast; find out why first. The vault also checks the pool (as sender and executor) and the vault itself (as receiver) on a BUY (`GuardLib.sol` lines 150-151). The vault has no address before step 5, so the step 7 preview covers those legs. After step 9 the CDP executor sends `execute`, so before its `setExecutor` there, run the third call again with the CDP address in place of `$MAAT_EXECUTOR`, and with `--rpc-url "$RPC"` if that shell unset `BASE_RPC_URL` (in a new shell, set `REGISTRY` and `POLICY` again as above first).
+On a stop, do not broadcast; find out why first. After step 9 the CDP executor sends `execute`, so before its `setExecutor` there, run the third call again with the CDP address in place of `$MAAT_EXECUTOR`, and with `--rpc-url "$RPC"` if that shell unset `BASE_RPC_URL` (in a new shell, set `REGISTRY` and `POLICY` again as above first).
+
+A BUY has three more legs (`GuardLib.sol` lines 150-151): the NVDAc pool as sender and as executor, and the vault as receiver. The pool is `NVDAC_USDC_POOL` (`script/BaseAddresses.sol` line 18, which `MaatConfig.basket` sets for NVDAc), so its two legs need no deploy. The vault's leg needs the vault's address, and the simulation above already printed it on its `MandateVault` line: the script derives it from the deployer's nonce, so it holds as long as the deployer wallet sends nothing else before step 5. Check the three legs in the same shell, still before step 5:
+
+```bash
+POOL=0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC
+SIM_VAULT=0x...   # the MandateVault line of the simulation above
+SENDER_POLICY=$(cast call "$NVDAC" "policyId(bytes32)(uint64)" "$(cast keccak TRANSFER_SENDER_POLICY)" --rpc-url "$BASE_RPC_URL" | cut -d' ' -f1)
+RECEIVER_POLICY=$(cast call "$NVDAC" "policyId(bytes32)(uint64)" "$(cast keccak TRANSFER_RECEIVER_POLICY)" --rpc-url "$BASE_RPC_URL" | cut -d' ' -f1)
+echo "$SENDER_POLICY $RECEIVER_POLICY"
+cast call "$REGISTRY" "isAuthorized(uint64,address)(bool)" "$SENDER_POLICY" "$POOL" --rpc-url "$BASE_RPC_URL"
+cast call "$REGISTRY" "isAuthorized(uint64,address)(bool)" "$RECEIVER_POLICY" "$SIM_VAULT" --rpc-url "$BASE_RPC_URL"
+cast call "$REGISTRY" "isAuthorized(uint64,address)(bool)" "$POLICY" "$POOL" --rpc-url "$BASE_RPC_URL"
+```
+
+Read them by the rules of the table above. `TRANSFER_SENDER_POLICY` and `TRANSFER_RECEIVER_POLICY` are lines 27 and 28 of `IB20Asset.sol`, and the last call reuses `POLICY`, the executor policy. Each policy id must be a number, an id of `0` skips its `isAuthorized` call, and each `isAuthorized` you run must print `true`. On a stop, do not broadcast. In step 5, check that the broadcast prints the same `MandateVault` address as `SIM_VAULT`; the step 7 preview then runs every leg again against the deployed vault.
 
 ## 5. Broadcast with --verify (owner)
 
