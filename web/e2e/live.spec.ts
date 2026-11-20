@@ -87,7 +87,7 @@ test("in session the strip passes the market checks for two basket tokens and re
     results = withFeed(results, symbol, answer, SESSION_TS - 10);
   }
   await clockAfter(page, SESSION_TS);
-  await routeLiveRpc(page, { results });
+  await routeLiveRpc(page, { results, open: true });
   await page.goto("/");
 
   const s = strip(page);

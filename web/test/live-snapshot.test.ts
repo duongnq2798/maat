@@ -46,9 +46,23 @@ describe("one reading of Base", () => {
     expect(() => decodeSnapshot([], fixture.twapWindowSec)).toThrow(/results/);
   });
 
-  it("reads the repo calendar until MarketCalendar is in the deployments table", async () => {
-    expect(calendarAddress()).toBeNull();
-    const s = await readSnapshot(recorded(), { twapWindowSec: fixture.twapWindowSec, calendar: null });
+  it("finds the Base mainnet MarketCalendar in the deployments table, and null while its address cell is empty", () => {
+    const cal = "0x00000000000000000000000000000000000000ca";
+    const row = (address: string, network = "Base mainnet", contract = "MarketCalendar") => ({ network, contract, address });
+    expect(calendarAddress([row("")])).toBeNull();
+    expect(calendarAddress([])).toBeNull();
+    expect(calendarAddress([row(cal)])).toBe(cal);
+    expect(calendarAddress([row("", "Base mainnet", "MandateVault"), row(` ${cal} `)])).toBe(cal);
+    expect(calendarAddress([row("0x00ca")])).toBeNull();
+    expect(calendarAddress([row("pending")])).toBeNull();
+    expect(calendarAddress([row(cal, "Base Sepolia")])).toBeNull();
+    expect(calendarAddress([row(cal, "Base mainnet", "MandateVault")])).toBeNull();
+  });
+
+  it("reads the repo calendar when no MarketCalendar address is given, with one call", async () => {
+    const reader = recorded();
+    const s = await readSnapshot(reader, { twapWindowSec: fixture.twapWindowSec, calendar: null });
+    expect(reader.call).toHaveBeenCalledTimes(1);
     expect(s.calendar).toEqual({ source: "repo" });
     expect(s.endpoint).toBe("https://base-rpc.publicnode.com");
   });

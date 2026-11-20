@@ -40,9 +40,12 @@ function expected(timestamp: number, edit: Edit = (r) => r) {
 /** The recorded answer at `timestamp`, changed by `edit` if given; or no answer at all. */
 type Answer = { timestamp: number; block?: bigint; edit?: Edit } | "down" | "hang";
 
+const isMulticall = (tx: { to: Hex }) => tx.to.toLowerCase() === MULTICALL3.toLowerCase();
+
 /**
  * A reader that answers like Base: the recorded multicall, and a deployed MarketCalendar (if any) like the repo calendar.
- * `hold()` keeps the next calls in flight until `release(answer)`.
+ * `hold()` keeps the next calls in flight until `release(answer)`. `multicalls()` counts the multicalls only, so no
+ * test depends on whether the deployments table names a MarketCalendar, which adds one call to each good reading.
  */
 function fakeReader(first: Answer) {
   let answer = first;
@@ -52,7 +55,7 @@ function fakeReader(first: Answer) {
     const a = answer;
     if (a === "down") throw new RpcError(LIVE_RPCS.map((endpoint) => ({ endpoint, message: "HTTP 503" })));
     if (a === "hang") return new Promise(() => {});
-    if (tx.to.toLowerCase() !== MULTICALL3.toLowerCase()) {
+    if (!isMulticall(tx)) {
       return { data: `0x${word(regularSession(a.timestamp).open ? 1n : 0n)}`, endpoint: LIVE_RPCS[0]! };
     }
     const r = results(a.timestamp, a.block);
@@ -62,6 +65,7 @@ function fakeReader(first: Answer) {
   return {
     reader,
     call,
+    multicalls: () => call.mock.calls.filter(([tx]) => isMulticall(tx)).length,
     set: (next: Answer) => void (answer = next),
     hold: () => {
       let open = () => {};
@@ -200,7 +204,7 @@ describe("the live strip", () => {
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     fake.set("down");
     await advance(REFRESH_MS);
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     expect(screen.getByText("NOT LIVE")).toBeInTheDocument();
     expect(screen.queryByText("LIVE")).toBeNull();
     expect(strip()).toHaveTextContent("last read block 60,013,066, 30 s ago");
@@ -220,7 +224,7 @@ describe("the live strip", () => {
     const fake = await mount({ timestamp: SAT }, SAT + 14);
     fake.set("hang");
     await advance(REFRESH_MS);
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     // Re-classified every 5 s without a new answer: past the limit, the old reading is no longer live.
     await advance(LIVE_MAX_AGE_MS - REFRESH_MS + 5_000);
@@ -228,7 +232,7 @@ describe("the live strip", () => {
     expect(screen.queryByText("LIVE")).toBeNull();
     expect(strip()).toHaveTextContent("last read block 60,013,066, 1 min 35 s ago");
     expect(strip()).not.toHaveTextContent("the RPC did not answer since");
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     neverSafe();
   });
 
@@ -255,7 +259,7 @@ describe("the live strip", () => {
     fake.set({ timestamp: SAT });
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await advance(0);
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     neverSafe();
@@ -274,7 +278,7 @@ describe("the live strip", () => {
     expect(document.activeElement).toBe(retry);
     expect(strip()).toHaveTextContent("Could not read Base mainnet");
     fireEvent.click(retry); // ignored while the retry is in flight
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
 
     fake.release("down");
     await advance(0);
@@ -287,7 +291,7 @@ describe("the live strip", () => {
     await advance(0);
     fake.release({ timestamp: SAT });
     await advance(0);
-    expect(fake.call).toHaveBeenCalledTimes(3);
+    expect(fake.multicalls()).toBe(3);
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     expect(retry).not.toBeInTheDocument();
     expect(strip()).toHaveAttribute("tabindex", "-1");
@@ -302,13 +306,13 @@ describe("the live strip", () => {
       fake.hold();
       const { unmount } = render(<LiveStrip reader={fake.reader} />);
       await advance(0);
-      expect(fake.call).toHaveBeenCalledTimes(1);
+      expect(fake.multicalls()).toBe(1);
       unmount();
       fake.release({ timestamp: SAT });
       await advance(0);
       expect(vi.getTimerCount()).toBe(0);
       await advance(REFRESH_MS * 3);
-      expect(fake.call).toHaveBeenCalledTimes(1);
+      expect(fake.multicalls()).toBe(1);
       expect(errors).not.toHaveBeenCalled();
     } finally {
       errors.mockRestore();
@@ -339,14 +343,14 @@ describe("the live strip", () => {
     const fake = await mount({ timestamp: SAT }, SAT + 14);
     visibility = "hidden";
     await advance(REFRESH_MS * 3 + 5_000);
-    expect(fake.call).toHaveBeenCalledTimes(1);
+    expect(fake.multicalls()).toBe(1);
     expect(screen.getByText("NOT LIVE")).toBeInTheDocument();
     visibility = "visible";
     await act(async () => {
       document.dispatchEvent(new Event("visibilitychange"));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     expect(screen.getByText("LIVE")).toBeInTheDocument();
   });
 
@@ -359,9 +363,9 @@ describe("the live strip", () => {
       document.dispatchEvent(new Event("visibilitychange"));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(fake.call).toHaveBeenCalledTimes(1);
+    expect(fake.multicalls()).toBe(1);
     await advance(REFRESH_MS - 10_000);
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
   });
 
   it("announces only the status and the verdict: a new block alone changes nothing a screen reader hears", async () => {
@@ -422,7 +426,7 @@ describe("a page that wakes up", () => {
     visibility = "visible";
     act(() => void document.dispatchEvent(new Event("visibilitychange")));
     // The read has started and is held: only the clocks can have changed the state.
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     const state = hook.result.current.state;
     expect(state.status).toBe("stale");
     expect(state.status === "stale" && state.ageMs).toBe(600_000);
@@ -436,7 +440,7 @@ describe("a page that wakes up", () => {
     const { hook, fake } = await asleep();
     // The tab never reported itself hidden: only pageshow says the page is back.
     act(() => void window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     const state = hook.result.current.state;
     expect(state.status).toBe("stale");
     expect(state.status === "stale" && state.ageMs).toBe(600_000);

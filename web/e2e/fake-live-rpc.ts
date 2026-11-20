@@ -1,7 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import fixture from "../test/fixtures/live-aggregate3.json" with { type: "json" };
 import { type Hex, MULTICALL3, NAV_TOKENS } from "../content/b20-nav";
-import { regularSession } from "../content/calendar";
 import { type CallResult, decodeAggregate3, decodeObserve, encodeAggregate3Result, SELECTORS, word } from "../lib/live/abi";
 import { twapPrice8 } from "../lib/live/price";
 import { LIVE_RPCS } from "../lib/live/rpc";
@@ -20,9 +19,9 @@ export const WEEKEND_TS = Date.UTC(2026, 10, 21, 15, 0, 0) / 1000;
 
 /**
  * What the fake answers: the recorded reading at a weekend timestamp or as recorded (in session), both RPCs failing with
- * HTTP 503, or the multicall results given.
+ * HTTP 503, or the multicall results given with what a deployed MarketCalendar says of their block (`open`).
  */
-export type Scenario = "weekend" | "session" | "down" | { results: CallResult[] };
+export type Scenario = "weekend" | "session" | "down" | { results: CallResult[]; open: boolean };
 
 /** The recorded multicall results, with the block-number word kept and the timestamp word set to `timestamp`. */
 export function fixtureResults(timestamp: number = SESSION_TS): CallResult[] {
@@ -62,6 +61,13 @@ function results(s: Exclude<Scenario, "down">): CallResult[] {
   return s.results;
 }
 
+/** What a deployed MarketCalendar's isOpen answers at the scenario's block: the NYSE is closed on the weekend. */
+function calendarOpen(s: Exclude<Scenario, "down">): boolean {
+  if (s === "weekend") return false;
+  if (s === "session") return true;
+  return s.open;
+}
+
 // The public RPCs answer with CORS open; so does the fake, so the browser reads its answers.
 const CORS = { "access-control-allow-origin": "*" };
 
@@ -72,7 +78,10 @@ interface JsonRpcRequest {
 }
 
 export interface LiveRpc {
-  /** How many JSON-RPC requests reached the fake, over both hosts. */
+  /**
+   * How many aggregate3 multicalls reached the fake, over both hosts. A deployed MarketCalendar's isOpen call is not
+   * counted, so no spec depends on whether the deployments table names one.
+   */
   calls(): number;
   /** What the fake answers from now on, held requests included. */
   set(s: Scenario): void;
@@ -82,9 +91,9 @@ export interface LiveRpc {
 
 /**
  * Routes both hosts of LIVE_RPCS to the fake. An eth_call to Multicall3's aggregate3 gets the scenario's results; an
- * isOpen call to a MarketCalendar (once deployments name one) gets the repo calendar's answer at that timestamp;
- * anything else gets a JSON-RPC error. "down" answers HTTP 503 on both hosts. With `hold`, every request waits for
- * `release()`, so a spec can look at the page while it is still reading.
+ * isOpen call to a MarketCalendar (once deployments name one) gets the scenario's session; anything else gets a
+ * JSON-RPC error. "down" answers HTTP 503 on both hosts. With `hold`, every request waits for `release()`, so a spec
+ * can look at the page while it is still reading.
  */
 export async function routeLiveRpc(page: Page, scenario: Scenario, opts: { hold?: boolean } = {}): Promise<LiveRpc> {
   let current = scenario;
@@ -98,27 +107,27 @@ export async function routeLiveRpc(page: Page, scenario: Scenario, opts: { hold?
       await route.fulfill({ status: 204, headers: { ...CORS, "access-control-allow-headers": "content-type", "access-control-allow-methods": "POST" } });
       return;
     }
-    count++;
+    const rpc = (request.postDataJSON() ?? {}) as JsonRpcRequest;
+    const tx = rpc.params?.[0];
+    const to = tx?.to?.toLowerCase() ?? "";
+    const data = tx?.data ?? "";
+    const multicall = rpc.method === "eth_call" && to === MULTICALL3.toLowerCase() && data.startsWith(SELECTORS.aggregate3);
+    if (multicall) count++;
     if (gate) await gate;
     const s = current;
     if (s === "down") {
       await route.fulfill({ status: 503, headers: CORS, contentType: "text/plain", body: "Service Unavailable" });
       return;
     }
-    const rpc = (request.postDataJSON() ?? {}) as JsonRpcRequest;
     const reply = (body: { result: Hex } | { error: { code: number; message: string } }) =>
       route.fulfill({ status: 200, headers: CORS, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, ...body }) });
-    const tx = rpc.params?.[0];
-    const to = tx?.to?.toLowerCase() ?? "";
-    const data = tx?.data ?? "";
     if (rpc.method !== "eth_call") {
       await reply({ error: { code: -32601, message: `the fake RPC answers eth_call only, not ${rpc.method}` } });
-    } else if (to === MULTICALL3.toLowerCase() && data.startsWith(SELECTORS.aggregate3)) {
+    } else if (multicall) {
       await reply({ result: encodeAggregate3Result(results(s)) });
     } else if (data.startsWith(SELECTORS.isOpen)) {
-      // isOpen(uint64 timestamp, SessionMode mode): the timestamp is the first word after the selector.
-      const ts = Number(BigInt(`0x${data.slice(10, 74)}`));
-      await reply({ result: `0x${word(regularSession(ts).open ? 1n : 0n)}` });
+      // isOpen(uint256 ts, uint8 mode), as MarketCalendar.isOpen(uint256, SessionMode) encodes: the scenario's session.
+      await reply({ result: `0x${word(calendarOpen(s) ? 1n : 0n)}` });
     } else {
       await reply({ error: { code: -32000, message: `the fake RPC has no answer for a call to ${to}` } });
     }

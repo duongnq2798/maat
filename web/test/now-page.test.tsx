@@ -17,9 +17,25 @@ import { HEAD_MAX_LAG_SEC, REFRESH_MS } from "@/lib/live/freshness";
 import { LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { decodeSnapshot } from "@/lib/live/snapshot";
 import { headline, headlineText, judgeToken, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
+import deployments from "@/content/generated/deployments.json";
 import { SITE } from "@/lib/site";
 import fixture from "./fixtures/live-aggregate3.json";
 import { failSlot, passingBasket, roundData, SLOTS, type Slot, slotIndex } from "./helpers/live";
+
+// The deployments table the page reads is a copy that a test may change, so no test depends on whether MarketCalendar
+// is deployed yet: the tests of each session source say which one they want.
+vi.mock("@/content/generated/deployments.json", async (importOriginal) => ({
+  default: structuredClone((await importOriginal<{ default: unknown }>()).default),
+}));
+
+const calendarRow = () => deployments.find((r) => r.network === "Base mainnet" && r.contract === "MarketCalendar")!;
+const deployedCalendar = calendarRow().address;
+/** Put `address` in the table's Base mainnet MarketCalendar row ("" for none), for this test only. */
+const deployCalendar = (address: string) => void (calendarRow().address = address);
+afterEach(() => deployCalendar(deployedCalendar));
+
+/** A MarketCalendar address for the tests of the onchain session source. */
+const CAL = "0x00000000000000000000000000000000000000ca";
 
 const BLOCK = BigInt(fixture.expected.blockNumber); // 60,013,066
 const TS = Number(fixture.expected.timestamp); // Fri 2026-11-20 16:43:08 UTC, 11:43 ET: in session
@@ -46,20 +62,32 @@ function expected(r: CallResult[]) {
 
 type Answer = CallResult[] | "down";
 
-/** A reader that answers like Base: the multicall from `answer`, and a deployed MarketCalendar (if any) like the repo calendar. */
-function fakeReader(first: Answer) {
+const isMulticall = (tx: { to: Hex }) => tx.to.toLowerCase() === MULTICALL3.toLowerCase();
+
+/**
+ * A reader that answers like Base: the multicall from `answer`, and a deployed MarketCalendar's isOpen like the repo
+ * calendar at the block's timestamp, or with a failed call. `multicalls()` counts the multicalls only: a deployed
+ * calendar adds one call to each good reading.
+ */
+function fakeReader(first: Answer, calendar: "repo" | "down" = "repo") {
   let answer = first;
-  const call = vi.fn(async (tx: { to: Hex; data: Hex }): Promise<{ data: Hex; endpoint: string }> => {
+  const call = vi.fn(async (tx: { to: Hex; data: Hex }, _block: "latest" | bigint): Promise<{ data: Hex; endpoint: string }> => {
     const a = answer;
     if (a === "down") throw new RpcError(LIVE_RPCS.map((endpoint) => ({ endpoint, message: "HTTP 503" })));
-    if (tx.to.toLowerCase() !== MULTICALL3.toLowerCase()) {
+    if (!isMulticall(tx)) {
+      if (calendar === "down") throw new RpcError(LIVE_RPCS.map((endpoint) => ({ endpoint, message: "HTTP 503" })));
       const ts = Number(BigInt(a[1]!.returnData));
       return { data: `0x${word(regularSession(ts).open ? 1n : 0n)}`, endpoint: LIVE_RPCS[0]! };
     }
     return { data: encodeAggregate3Result(a), endpoint: LIVE_RPCS[0]! };
   });
   const reader: LiveReader = { call };
-  return { reader, call, set: (next: Answer) => void (answer = next) };
+  return {
+    reader,
+    call,
+    multicalls: () => call.mock.calls.filter(([tx]) => isMulticall(tx)).length,
+    set: (next: Answer) => void (answer = next),
+  };
 }
 
 const neverSafe = () => expect(document.body.textContent).not.toMatch(/safe/i);
@@ -179,7 +207,8 @@ describe("the /now page", () => {
     ]);
   });
 
-  it("names the calls of the one multicall, the calendar and the endpoints, in the order they are tried", () => {
+  it("names the calls of the one multicall, the repo calendar and the endpoints, in the order they are tried", () => {
+    deployCalendar("");
     setup();
     for (const call of ["aggregate3", "getBlockNumber()", "getCurrentBlockTimestamp()", "isPaused(0)", "uiMultiplier()", "effectiveAt()", "latestRoundData()"]) {
       expect(method()).toHaveTextContent(call);
@@ -189,6 +218,19 @@ describe("the /now page", () => {
     expect(method()).toHaveTextContent("web/content/calendar.ts");
     expect([...method().querySelectorAll("[data-endpoint]")].map((li) => li.textContent)).toEqual([...LIVE_RPCS]);
     expect(method()).toHaveTextContent("nothing is signed");
+  });
+
+  it("says a deployed MarketCalendar gives the session, with its Basescan link, once the deployments table names it", () => {
+    deployCalendar(CAL);
+    setup();
+    expect(method()).toHaveTextContent(
+      `A second eth_call at the same block asks MarketCalendar (${CAL}) isOpen(blockTimestamp, REGULAR). A failed call counts as closed.`,
+    );
+    const link = within(method()).getByRole("link", { name: CAL });
+    expect(link).toHaveAttribute("href", `https://basescan.org/address/${CAL}`);
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(method()).not.toHaveTextContent("web/content/calendar.ts");
+    neverSafe();
   });
 
   it("gives the method section the id the verdict line links its vault checks not run to", () => {
@@ -217,9 +259,9 @@ const advance = (ms: number) =>
   });
 
 /** Render the board with the visitor's clock at `wallSec`, and let the first read answer. */
-async function mount(first: Answer, wallSec = TS + 14) {
+async function mount(first: Answer, wallSec = TS + 14, calendar: "repo" | "down" = "repo") {
   vi.setSystemTime(wallSec * 1000);
-  const fake = fakeReader(first);
+  const fake = fakeReader(first, calendar);
   render(<NowBoard reader={fake.reader} />);
   await advance(0);
   return fake;
@@ -293,6 +335,7 @@ describe("the /now board", () => {
   });
 
   it("shows the live reading's block, time, session and its source, the endpoint that answered, and the headline", async () => {
+    deployCalendar("");
     await mount(results());
     const e = expected(results());
     expect(screen.getByText("LIVE")).toBeInTheDocument();
@@ -308,6 +351,34 @@ describe("the /now board", () => {
     expect(verdictSentence()).toBe(headlineText(e.headline));
     expect(screen.getByRole("status").textContent).toBe(`Live. ${headlineText(e.headline)}`);
     neverSafe();
+  });
+
+  it("asks a deployed MarketCalendar at the block it read, and names it, with its Basescan link, as the session's source", async () => {
+    deployCalendar(CAL);
+    const fake = await mount(results());
+    const e = expected(results());
+    expect(fake.multicalls()).toBe(1);
+    const asked = fake.call.mock.calls.filter(([tx]) => !isMulticall(tx));
+    expect(asked).toHaveLength(1);
+    expect(asked[0]![0].to).toBe(CAL);
+    expect(asked[0]![1]).toBe(BLOCK);
+    expect(screen.getByText("LIVE")).toBeInTheDocument();
+    expect(board()).toHaveTextContent(`${e.session.detail} (MarketCalendar at ${CAL})`);
+    expect(within(board()).getByRole("link", { name: CAL })).toHaveAttribute("href", `https://basescan.org/address/${CAL}`);
+    expect(board()).not.toHaveTextContent("repo calendar");
+    // It answers as the repo calendar does, so the verdicts are the same.
+    expect(verdictSentence()).toBe(headlineText(e.headline));
+    neverSafe();
+  });
+
+  it("counts a deployed MarketCalendar it could not read as closed, and says so", async () => {
+    deployCalendar(CAL);
+    await mount(passingBasket(results()), TS + 14, "down");
+    expect(screen.getByText("LIVE")).toBeInTheDocument();
+    expect(board()).toHaveTextContent(`MarketCalendar unreadable · counted closed (MarketCalendar at ${CAL})`);
+    // A basket that passes every market check in session is refused: the session counts as closed.
+    expect(verdictSentence()).toBe(headlineText({ kind: "refuse-all", reason: "MARKET_CLOSED" }));
+    for (const symbol of FACTS.basket.value) for (const el of values(symbol, "mandate")) expectVerdict(el, "MARKET_CLOSED");
   });
 
   it("shows one row and one card per token, with the values read and the two verdicts judgeToken gives", async () => {
@@ -509,7 +580,7 @@ describe("the /now board", () => {
     fake.set(results({ timestamp: TS + 2, block: BLOCK + 1n }));
     fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
     await advance(0);
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     expect(screen.getByRole("link", { name: "Base block 60,013,067" })).toBeInTheDocument();
     expect(screen.getByRole("status")).toBe(status);
     expect(status.textContent).toBe(said);
@@ -540,7 +611,7 @@ describe("the /now board", () => {
     fake.set(results());
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await advance(0);
-    expect(fake.call).toHaveBeenCalledTimes(2);
+    expect(fake.multicalls()).toBe(2);
     expect(screen.getByText("LIVE")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
     for (const el of values("AAPLc", "nav")) expect(el.textContent).not.toBe("—");
