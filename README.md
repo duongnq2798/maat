@@ -280,6 +280,9 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 
 **Online**: served in public (the website only). **Built and tested**: on `main`, with passing tests.
 **Built**: on `main`, tested only as noted. **Planned**: not on `main`. **Not deployed**: no address on any network.
+The test counts in the table are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467)
+on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `4492eed`, 2026-11-07, as in
+[Tested, in numbers](#tested-in-numbers). Later commits add tests, so a suite run on this tree can report more.
 
 | Component | Status | Where |
 | --- | --- | --- |
