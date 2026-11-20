@@ -426,8 +426,8 @@ export function measureToken(input: { window: WindowSpan; updates: readonly Feed
 - [ ] **Step 2:** Run the tests. Expect them to fail because the modules are missing.
 - [ ] **Step 3:** Implement `schema.ts`, `edition.ts` and the CLI. Add the npm script.
 - [ ] **Step 4:** Run the tests and `npm run typecheck`. Expect both to pass.
-- [ ] **Step 5: Reproduce the worked example.** Run `npm run gap-index -- --edition 0 --window 2026-11-13 --token NVDAc --stdout`. Expect:
-  - the freeze from block 57,113,037 (answer "160.76543559") to 58,002,228 (answer "164.86250000"), `hours` 49.4;
+- [ ] **Step 5: Reproduce the worked example.** Run `npm run -s gap-index -- --edition 0 --window 2026-11-13 --token NVDAc --stdout`. Expect:
+  - the freeze from block 57,113,037 (answer "160.76543559") to 58,002,228 (answer "164.86245491"), `hours` 49.4;
   - `returnMoveBps` about +254: whatever the formula gives, recorded as read;
   - the aggregator `0xf72b1eb5932800f3d2a5eec5f99e6cd586479675`, phase 2.
 
@@ -480,7 +480,7 @@ export function measureToken(input: { window: WindowSpan; updates: readonly Feed
     - the headline "Fri 13 Nov 16:00 ET → Mon 16 Nov 09:30 ET · blocks 57,066,122 → 58,245,121" with Basescan block links;
     - a complete window shows its chart tabs and table;
     - a pending window shows "Measured after it ends, Mon 23 Nov 09:30 ET" and no figures;
-  - the section "How these numbers are read": windows (section 2), what is read (section 3, with both topics and the RPC), the measures (section 4), the exact command `npm run gap-index -- --edition 0 --window <id> --token <SYM> --stdout`, "Nothing here is signed, and the site has no server.", and a link to `/now`.
+  - the section "How these numbers are read": windows (section 2), what is read (section 3, with both topics and the RPC), the measures (section 4), the exact command `npm run -s gap-index -- --edition 0 --window <id> --token <SYM> --stdout`, "Nothing here is signed, and the site has no server.", and a link to `/now`.
 - `checkGapIndexPage(html)` in `lib/check-out.ts` is called for `out/gap-index.html`. It requires:
   - the canonical `/gap-index`;
   - the H1;

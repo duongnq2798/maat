@@ -38,7 +38,8 @@ Everything comes from Base mainnet over `https://base-rpc.publicnode.com`, which
 
 What this endpoint allows, measured:
 
-- logs back to about block 51,000,000 (2026-09-07);
+- headers and logs from block 51,000,000 exactly (2026-09-07T13:55:47Z); below that it answers 403;
+- Base made 2 s blocks until about block 53,556,000 (about 2026-11-05) and 0.2 s blocks after;
 - at most 50,000 blocks and at most 10 addresses per `eth_getLogs` call;
 - logs that carry `blockTimestamp`;
 - no state reads at old blocks ("Archive requests require a personal token"), so the index uses logs only.
@@ -90,13 +91,13 @@ Worked example (NVDAc, window 2026-11-13, aggregator 0xf72b1eb5932800f3d2a5eec5f
 
 - The window has 35 AnswerUpdated logs.
 - The last update before the freeze was at block 57,113,037, 2026-11-13T23:36:23Z (18:36 ET), with answer 160.76543559.
-- The next update was at block 58,002,228, 2026-11-16T01:00:21Z (Sun 20:00 ET), with answer 164.8625.
+- The next update was at block 58,002,228, 2026-11-16T01:00:21Z (Sun 20:00 ET), with answer 164.86245491 (as read).
 - So the feed was frozen about 49.40 h, and the return move was about +254 bps.
 - `FACTS.feedEdgeMin` in `web/content/facts.ts` says the repo assumes the feeds stop Fri 20:00 ET and resume Sun 20:00 ET, and that this was "not measured in the repository". The index measures it.
 
 ## 5. Output
 
-`npm run gap-index -- --edition 0` writes `web/content/gap-index/edition-0.json`. A zod schema in `web/lib/gap/schema.ts` checks the file. It holds:
+`npm run -s gap-index -- --edition 0` writes `web/content/gap-index/edition-0.json`. A zod schema in `web/lib/gap/schema.ts` checks the file. It holds:
 
 - the edition number, date range and title;
 - the RPC, the two topics, and the head block (number and timestamp) read when the script ran;
