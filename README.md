@@ -282,7 +282,7 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 
 | Component | Status | Where |
 | --- | --- | --- |
-| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (230 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
+| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
 | `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027) | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
@@ -291,7 +291,7 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,546 unit tests, 266 Playwright tests) | [`web/`](web) |
+| Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests, 259 Playwright tests) | [`web/`](web) |
 | Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Guard Service HTTP API, MCP server, Bankr Skill | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
@@ -513,7 +513,7 @@ it has not been re-timed.
 
    ```text
     Test Files  44 passed (44)
-         Tests  1546 passed (1546)
+         Tests  1547 passed (1547)
    ...
    out/ is ready to deploy (landing and 49 docs pages checked)
    search index: … bytes gzipped, budget 760000
@@ -552,7 +552,9 @@ Ran 7 test suites in …: 14 tests passed, 0 failed, 0 skipped (14 total tests)
 | Web, end to end | `npm run e2e` (after `npm run build`) | 259 | `npx playwright install chromium` |
 
 The counts are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) on
-`main` (`3778fea`, 2026-11-19), except the two marked by hand, recorded at `4492eed`, 2026-11-07. Per-suite
+`main` (`3778fea`, 2026-11-19), except the two marked by hand, recorded at `4492eed`, 2026-11-07. Commits
+after `3778fea` add tests, so a command run on this tree can report more than its row; the expected output in
+steps 3 to 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) is what this tree prints. Per-suite
 detail: [Run the tests](https://maatonbase.xyz/docs/guides/run-the-tests).
 
 Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` and `web/`, `npm run verify` in
