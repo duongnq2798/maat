@@ -4,6 +4,7 @@ import {
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
+  checkGapIndexPage,
   checkLandingIsolation,
   checkLocalhost,
   checkMarkdownCopies,
@@ -14,6 +15,7 @@ import {
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
 } from "@/lib/check-out";
+import { formatHours, PUBLISHED } from "@/content/gap-index";
 import { SITE } from "@/lib/site";
 
 const GOOD = [
@@ -130,6 +132,54 @@ describe("checkNowPage", () => {
     const problems = checkNowPage("<html></html>");
     expect(problems.length).toBeGreaterThan(0);
     for (const p of problems) expect(p).toMatch(/^out\/now\.html: /);
+  });
+});
+
+/** The NVDAc hours of the first complete window the page shows, as the page writes them. */
+const FIRST_NVDA_HOURS = (() => {
+  const w = PUBLISHED.flatMap((e) => e.windows).find((x) => x.status === "complete");
+  if (w?.status !== "complete") throw new Error("no complete window is published");
+  return formatHours(w.tokens.find((t) => t.symbol === "NVDAc")!.freeze!.hours);
+})();
+
+const GAP = [
+  '<!DOCTYPE html><html lang="en" class="f"><head>',
+  `<title>Weekend Gap Index · ${SITE.name}</title>`,
+  '<link rel="canonical" href="https://maat.example/gap-index"/>',
+  '<script src="/_next/static/chunks/main.js" async=""></script>',
+  '</head><body><a href="#main" class="skip-link">Skip to content</a>',
+  '<main id="main"><h1 class="m-0 text-ink">Weekend Gap Index</h1>',
+  `<ul><li>${FIRST_NVDA_HOURS} frozen</li></ul>`,
+  '<a href="https://basescan.org/block/57066122">57,066,122</a>',
+  "</main></body></html>",
+].join("");
+
+describe("checkGapIndexPage", () => {
+  it("accepts a /gap-index page that is ready to ship", () => {
+    expect(FIRST_NVDA_HOURS).toMatch(/^\d+\.\d{2} h$/);
+    expect(checkGapIndexPage(GAP)).toEqual([]);
+  });
+
+  it.each([
+    ["a missing canonical", GAP.replace('<link rel="canonical" href="https://maat.example/gap-index"/>', ""), /canonical/],
+    ["the landing's canonical", GAP.replace("https://maat.example/gap-index", "https://maat.example/"), /canonical/],
+    ["a relative canonical", GAP.replace("https://maat.example/gap-index", "/gap-index"), /canonical/],
+    ["a missing h1", GAP.replace('<h1 class="m-0 text-ink">Weekend Gap Index</h1>', ""), /h1/],
+    ["another h1", GAP.replace(">Weekend Gap Index</h1>", ">Gap Index</h1>"), /h1/],
+    ["a wrong title", GAP.replace(`Weekend Gap Index · ${SITE.name}`, SITE.title), /title/],
+    ["no NVDAc hours in the HTML", GAP.replace(FIRST_NVDA_HOURS, ""), /NVDAc/],
+    ["the word safe", GAP.replace("</h1>", "</h1><p>Weekends are safe.</p>"), /safe/],
+    ["the word safety", GAP.replace("</h1>", "</h1><p>A Safety margin.</p>"), /safe/],
+    ["a link without a target", GAP.replace('href="#main"', 'href="#nowhere"'), /#nowhere/],
+    ["a third-party script", GAP.replace("/_next/static/chunks/main.js", "https://cdn.example/x.js"), /third-party script/],
+  ])("flags %s", (_name, html, problem) => {
+    expect(checkGapIndexPage(html).join("\n")).toMatch(problem);
+  });
+
+  it("names out/gap-index.html in every problem", () => {
+    const problems = checkGapIndexPage("<html></html>");
+    expect(problems.length).toBeGreaterThan(0);
+    for (const p of problems) expect(p).toMatch(/^out\/gap-index\.html: /);
   });
 });
 
