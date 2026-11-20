@@ -97,7 +97,7 @@ Work in the checkout you will deploy from.
 
 ## 2. Builder Code and Base Dashboard (owner)
 
-1. Register the project at https://dashboard.base.org and open Settings → Builder Code ([`agent/README.md`](../agent/README.md#live-run-owner-only), step 1).
+1. Register the project at https://dashboard.base.org, then open **Settings** → **Project Settings** → **Builder Code**, the path Base's [Builder Codes page](https://docs.base.org/base-chain/quickstart/builder-codes) gives ([`agent/README.md`](../agent/README.md#live-run-owner-only), step 1, covers the same registration).
 2. Write the code down exactly as shown. It must match `^[a-z0-9_]{1,32}$` (`BUILDER_CODE_RE` in `agent/src/exec/builderCode.ts`); the tools here refuse any other code.
 3. Use the code as it is, never a hex form copied from a web page: `first-decision.ts` and the agent encode it themselves with `Attribution.toDataSuffix` from `ox/erc8021`, the ERC-8021 schema-0 suffix.
 
@@ -227,6 +227,8 @@ Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor,
 
    - **Logs** tab: the `Decision` event, with `intentId` equal to the printed id, `allowed` false and `reason` 6. Basescan decodes it once the vault is verified (step 5); otherwise use template **d**.
    - **Input Data**: it ends with the Builder Code suffix the tool printed (`...0080218021802180218021802180218021`).
+
+   Then check the attribution a second way, with the [Builder Code Validation](https://builder-code-checker.vercel.app/) tool that Base's [Builder Codes page](https://docs.base.org/base-chain/quickstart/builder-codes) links under "How Do I Verify That My Transaction Was Properly Attributed?": select the transaction type, enter the transaction hash and click **Check Attribution**.
 
    The vault's own event list is at `https://basescan.org/address/<vault address>`.
 
