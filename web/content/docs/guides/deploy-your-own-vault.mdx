@@ -37,6 +37,8 @@ sources:
   - agent/test/integration/agent.fork.test.ts
   - contracts/test/Deploy.t.sol
   - agent/src/main.ts
+  - deployments/go-live.md
+  - agent/scripts/first-decision.ts
 next: [guides/run-the-agent, guides/change-a-rule, guides/pause-withdraw-recover]
 ---
 
@@ -44,7 +46,7 @@ This guide takes you from a clone of the repository to a `MandateVault` with the
 
 <Callout type="fork" title="Not deployed yet">
 
-The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the smoke tests come from the runbook, the smoke tests with a gas limit or a [preview](/docs/help/glossary#preview) added here. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. The Maat team has run none of the commands on this page, so none is proven on mainnet. The contracts are unaudited.
+The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the credit smoke test come from the runbook, the credit smoke test with a gas limit and a [preview](/docs/help/glossary#preview) before each send added here. The BUY smoke-test lines were written for this page: `deployments/README.md` no longer carries them, and sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, as `deployments/go-live.md` steps 7 and 8 say. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. The Maat team has run none of the commands on this page, so none is proven on mainnet. The contracts are unaudited.
 
 </Callout>
 
@@ -314,7 +316,7 @@ The smoke tests need a weekday session (this BUY and the [credit smoke test](#ru
 
 <Callout type="warning" title="Owner only">
 
-The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. These lines carry no Builder Code. deployments/README.md sends the smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, which appends one. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
+The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. These lines carry no Builder Code. deployments/README.md sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, which appends one. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
 
 ```bash
 cast call "$VAULT" "previewIntent((bytes32,uint8,address,uint256,uint256,address,bytes32))(uint8)" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL"
