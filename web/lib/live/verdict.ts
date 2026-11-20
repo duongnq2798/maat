@@ -29,8 +29,8 @@ export interface Session {
 function sessionDetail(ts: number): { open: boolean; detail: string } {
   const s = regularSession(ts);
   const t = localTime(ts);
+  // The strip and /now print the block's ET clock right before this detail, so the detail never repeats it.
   const name = WEEKDAY_NAMES[t.weekday] ?? "";
-  const at = `${clockLabel(t.minuteOfDay)} ET`;
   if (s.open) return { open: true, detail: `${name} · open until ${clockLabel(s.closeMin)} ET` };
   switch (s.why) {
     case "holiday":
@@ -38,14 +38,14 @@ function sessionDetail(ts: number): { open: boolean; detail: string } {
     case "weekend":
       return { open: false, detail: `${name} · NYSE closed` };
     case "before-open":
-      return { open: false, detail: `${at} · opens ${clockLabel(s.openMin)}` };
+      return { open: false, detail: `${name} · opens ${clockLabel(s.openMin)} ET` };
     case "after-close":
       return {
         open: false,
         detail:
           s.closeMin < FACTS.nyseSessionMin.value.close
-            ? `${at} · early close ${clockLabel(s.closeMin)}`
-            : `${at} · closed at ${clockLabel(s.closeMin)}`,
+            ? `${name} · early close ${clockLabel(s.closeMin)} ET`
+            : `${name} · closed at ${clockLabel(s.closeMin)} ET`,
       };
   }
 }
