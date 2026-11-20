@@ -4,7 +4,7 @@ description: "The folders and main files of the Maat repository: what each one h
 type: reference
 audience: [developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-20
 sources:
   - README.md
   - .gitattributes
@@ -79,7 +79,7 @@ The TypeScript agent, its tests and its scripts. Run the npm commands in `agent/
 | [`agent/src/abi/`](https://github.com/duongnq2798/maat/tree/main/agent/src/abi) | The contract ABIs the agent calls the chain with, generated from the compiled contracts | [`npm run gen:abi`](/docs/reference/agent-scripts#genabi) |
 | [`agent/test/`](https://github.com/duongnq2798/maat/tree/main/agent/test) | The unit tests, which run against fakes of the chain, Claude and the CDP wallet. `fakes/` holds the fake chain, receipts and sender | [Agent unit tests](/docs/guides/run-the-tests#agent-unit-tests) |
 | [`agent/test/integration/`](https://github.com/duongnq2798/maat/tree/main/agent/test/integration) | The agent's fork test. It starts the Base build of Anvil on a mainnet fork, deploys the contracts there and runs agent rounds against them, with fixed proposals in place of Claude. `fork-gas.json` is the committed gas log | [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) |
-| [`agent/scripts/`](https://github.com/duongnq2798/maat/tree/main/agent/scripts) | `cdp-setup.ts`, which the [owner](/docs/help/glossary#owner) runs once to create the executor account and its policy; `gen-abis.ts`, behind `npm run gen:abi`; and `smoke-claude.ts`, which makes one paid Claude call | [Script files](/docs/reference/agent-scripts#script-files) |
+| [`agent/scripts/`](https://github.com/duongnq2798/maat/tree/main/agent/scripts) | `cdp-setup.ts`, which the [owner](/docs/help/glossary#owner) runs once to create the executor account and its policy; `first-decision.ts`, which builds one `BUY` intent offline for the owner to send; `gen-abis.ts`, behind `npm run gen:abi`; and `smoke-claude.ts`, which makes one paid Claude call | [Script files](/docs/reference/agent-scripts#script-files) |
 
 ## Website
 

@@ -4,13 +4,14 @@ description: "The npm scripts in the agent package: what each runs, the modes th
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-20
 sources:
   - agent/package.json
   - agent/src/main.ts
   - agent/scripts/gen-abis.ts
   - agent/scripts/cdp-setup.ts
   - agent/scripts/smoke-claude.ts
+  - agent/scripts/first-decision.ts
   - agent/README.md
   - agent/src/config.ts
   - agent/src/loop/lock.ts
@@ -34,6 +35,7 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
 | `npm run gen:abi` | Rewrites the generated ABI file | The compiled contracts | None |
 | `cdp-setup.ts` | [Owner](/docs/help/glossary#owner) only. Creates the [executor](/docs/help/glossary#executor) account and its policy | The three CDP credentials | Coinbase CDP |
+| `first-decision.ts` | For the owner. Builds one `BUY` [intent](/docs/help/glossary#intent) offline and prints its calldata and `cast` commands | A vault address and a Builder Code | None |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
 
@@ -155,6 +157,32 @@ node --env-file=.env --import tsx scripts/cdp-setup.ts <VAULT_ADDRESS>
 If the vault address is missing or is not an address, it prints its usage and exits with an error. On success it prints the account address and the policy id, then three steps that you do yourself: call `setExecutor` on the vault from the owner wallet, send a little ETH on Base to the account for gas, and set `MAAT_EXECUTOR` to the account address in `.env`. [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) has the owner's command under "Switch the executor to the CDP Server Wallet". This page shows no output for the script, because the CDP path has never run against the real CDP.
 
 </Callout>
+
+### first-decision.ts
+
+<ScriptFile name="first-decision.ts" />
+
+For the owner, while their own wallet is the vault's executor. It builds one `BUY` intent the way the agent builds one, and prints the intent, the calldata of `previewIntent`, the calldata of `execute` with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix appended, and `cast` command templates with placeholders. It makes no network call, reads no `.env` file and no environment variable, holds no key and sends nothing. The owner runs the printed commands, signed with their own keystore. [deployments/go-live.md](https://github.com/duongnq2798/maat/blob/main/deployments/go-live.md) uses it for the owner's first two intents.
+
+```bash
+cd agent
+node --import tsx scripts/first-decision.ts --vault <VAULT_ADDRESS> --token NVDAc --salt <SALT> --builder-code <BUILDER_CODE>
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--vault` | Required. The vault address. A mixed-case address must have a valid checksum |
+| `--token` | Required. `NVDAc`, `GOOGLc` or `AAPLc`, in any letter case |
+| `--builder-code` | Required. Your Builder Code, which must match `^[a-z0-9_]{1,32}$` |
+| `--salt` | Derives the intent id the agent's way, from the run id `first-decision:<salt>` and index 0. Give `--salt` or `--id`, not both |
+| `--id` | Takes the intent id as given: `0x` and 64 hex digits, not all zeros |
+| `--usd` | The dollars to spend, `5` by default, with at most 9 digits before the point and 6 after |
+| `--action` | `BUY`, the default and the only action it builds. It refuses `SELL`, because a `SELL` amount is a raw stock amount and turning dollars into one takes the live price |
+| `--rationale` | The rationale text. The intent carries its keccak256 hash, so keep the text. By default it names the amount and the token |
+
+The intent's `minOut` is 0, as the agent sends it for a `BUY`: the vault swaps with the larger of `minOut` and its own oracle floor, so the script needs no price. Its payee is the zero address. The amount is not capped at the vault's USDC balance, which would take a read, so a `BUY` larger than the balance gets `INSUFFICIENT_BALANCE` from the vault. The vault accepts each id once, and `execute` reverts with [`IntentAlreadyUsed`](/docs/reference/errors#intentalreadyused) on an id it has seen, so every send needs a new salt. The send template sets a gas limit of <Fact name="executeGasFloor" />, the floor the agent uses for `execute`.
+
+It exits with 0 when it prints the intent, or its usage for `--help`. It exits with 1 when a required flag is missing or a value is not valid, and with 2 when it cannot read the flags, for example an unknown one. Both print the error and the usage. It is not an npm script; `npm run typecheck` checks it and `npm test` runs its unit tests.
 
 ### gen-abis.ts
 
