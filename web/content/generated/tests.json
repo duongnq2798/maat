@@ -272,6 +272,12 @@
     "test_rejectsTokenNotInPool": 41,
     "test_rejectsCallbackOutsideSwap": 47
   },
+  "contracts/test/Deploy.t.sol": {
+    "test_expensePayees_onePayee": 22,
+    "test_expensePayees_twoPayees": 28,
+    "test_expensePayees_secondEqualToFirstReverts": 42,
+    "test_expensePayees_secondUnsetGivesOnePayee": 47
+  },
   "contracts/test/GuardLib.t.sol": {
     "test_okReturnsOraclePrice": 99,
     "test_paused": 105,
