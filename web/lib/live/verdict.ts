@@ -53,10 +53,11 @@ function sessionDetail(ts: number): { open: boolean; detail: string } {
 /** The session at the block: MarketCalendar when deployed (a failed read counts as closed), else the repo's REGULAR calendar. */
 export function sessionAt(snapshot: Pick<LiveSnapshot, "timestamp" | "calendar">): Session {
   const repo = sessionDetail(snapshot.timestamp);
-  if (snapshot.calendar.source === "onchain") {
-    return { open: snapshot.calendar.open === true, source: "onchain", detail: repo.detail };
-  }
-  return { open: repo.open, source: "repo", detail: repo.detail };
+  const cal = snapshot.calendar;
+  if (cal.source === "repo") return { open: repo.open, source: "repo", detail: repo.detail };
+  if (cal.open === null) return { open: false, source: "onchain", detail: "MarketCalendar unreadable · counted closed" };
+  if (cal.open === repo.open) return { open: cal.open, source: "onchain", detail: repo.detail };
+  return { open: cal.open, source: "onchain", detail: cal.open ? "MarketCalendar: open" : "MarketCalendar: closed" };
 }
 
 export type Mark = "PASS" | "FAIL" | "SKIP" | "NOT_RUN";
@@ -90,8 +91,11 @@ interface Outcome {
 const ok = (detail: string): Outcome => ({ reason: "OK", detail });
 const fail = (reason: RefusalCode, detail: string): Outcome => ({ reason, detail });
 
+const HOUR_SEC = 3600;
+
+/** Hours floored to 0.1 h, so a cooldown that has not ended never reads as its full length. */
 function hours(sec: number): string {
-  return String(Math.round((sec / 3600) * 10) / 10);
+  return String(Math.floor((sec * 10) / HOUR_SEC) / 10);
 }
 
 const NOT_RUN_DETAIL: Readonly<Record<number, string>> = {

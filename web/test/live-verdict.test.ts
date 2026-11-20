@@ -84,7 +84,64 @@ describe("what an agent under the default mandate would do", () => {
   });
 });
 
+describe("rows after a failure and outside the basket", () => {
+  it("marks exactly the rows after a failed session check", () => {
+    const v = judgeToken(reading({ feed: { answer: 1n, updatedAt: BigInt(SAT - 50 * 3600) } }), { timestamp: SAT, session: closed });
+    expect(v.checks.map((c) => c.mark)).toEqual(["PASS", "PASS", "NOT_RUN", "FAIL", "SKIP", "SKIP", "SKIP", "NOT_RUN", "NOT_RUN"]);
+    expect(v.checks.slice(4, 7).map((c) => c.detail)).toEqual(["not reached", "not reached", "not reached"]);
+  });
+
+  it("still fills the feed age and premium when an earlier check failed", () => {
+    const answer = 13_600_000_000n;
+    const updatedAt = SAT - 3600;
+    const twap8 = answer + 34_000_000n;
+    const v = judgeToken(reading({ feed: { answer, updatedAt: BigInt(updatedAt) }, twap8 }), { timestamp: SAT, session: closed });
+    expect(v.mandate).toBe("MARKET_CLOSED");
+    expect(v.feedAgeSec).toBe(SAT - updatedAt);
+    expect(v.premiumBps).toBe(((twap8 - answer) * 10_000n) / answer);
+  });
+
+  it("shows ANTc failing row 1 and the market run in rows 2-7", () => {
+    const v = judgeToken(reading({ symbol: "ANTc" }), { timestamp: FRI, session: open });
+    const market = judgeToken(reading(), { timestamp: FRI, session: open });
+    expect(v.checks[0]?.mark).toBe("FAIL");
+    expect(v.checks.slice(1, 7).map((c) => c.mark)).toEqual(market.checks.slice(1, 7).map((c) => c.mark));
+    expect(v.mandate).toBe("TOKEN_NOT_ALLOWED");
+    expect(v.market).toBe("OK");
+  });
+
+  it("floors the hours, so a cooldown about to end does not read as its full length", () => {
+    const v = judgeToken(reading({ effectiveAt: BigInt(FRI - m.multiplierCooldownSec + 1) }), { timestamp: FRI, session: open });
+    const h = Math.floor(((m.multiplierCooldownSec - 1) * 10) / 3600) / 10;
+    expect(v.market).toBe("MULTIPLIER_COOLDOWN");
+    expect(v.checks[5]?.detail).toBe(`changed ${h} h ago, cooldown ${m.multiplierCooldownSec / 3600} h`);
+  });
+});
+
 describe("the session at the block", () => {
+  const address = "0x00000000000000000000000000000000000000ca";
+  const THANKS = Date.UTC(2026, 10, 26, 15, 0) / 1000;
+  const BEFORE = Date.UTC(2026, 10, 23, 13, 0) / 1000;
+  const AFTER = Date.UTC(2026, 10, 23, 22, 0) / 1000;
+  const EARLY = Date.UTC(2026, 10, 27, 19, 0) / 1000;
+
+  it("words every kind of closed day", () => {
+    const d = (timestamp: number) => sessionAt({ timestamp, calendar: { source: "repo" } }).detail;
+    expect(d(THANKS)).toBe("Thanksgiving · NYSE closed");
+    expect(d(BEFORE)).toBe("08:00 ET · opens 09:30");
+    expect(d(AFTER)).toBe("17:00 ET · closed at 16:00");
+    expect(d(EARLY)).toBe("14:00 ET · early close 13:00");
+  });
+
+  it("pins the four onchain cases", () => {
+    const on = (timestamp: number, open: boolean | null) => sessionAt({ timestamp, calendar: { source: "onchain", address, open } });
+    expect(on(FRI, null)).toEqual({ open: false, source: "onchain", detail: "MarketCalendar unreadable · counted closed" });
+    expect(on(FRI, true)).toEqual({ open: true, source: "onchain", detail: "Friday · open until 16:00 ET" });
+    expect(on(SAT, false)).toEqual({ open: false, source: "onchain", detail: "Saturday · NYSE closed" });
+    expect(on(SAT, true)).toEqual({ open: true, source: "onchain", detail: "MarketCalendar: open" });
+    expect(on(FRI, false)).toEqual({ open: false, source: "onchain", detail: "MarketCalendar: closed" });
+  });
+
   it("uses the repo calendar until MarketCalendar is deployed", () => {
     expect(sessionAt({ timestamp: SAT, calendar: { source: "repo" } })).toEqual({ open: false, source: "repo", detail: "Saturday · NYSE closed" });
     expect(sessionAt({ timestamp: FRI, calendar: { source: "repo" } })).toMatchObject({ open: true, detail: "Friday · open until 16:00 ET" });
@@ -115,6 +172,19 @@ describe("the headline", () => {
     const text = headlineText(headline(basket({})));
     expect(text).toBe("An agent under Maat's default mandate would pass the market checks for NVDAc, GOOGLc and AAPLc. The vault's own checks are not run here.");
     expect(text.toLowerCase()).not.toContain("safe");
+  });
+
+  it("joins several refusals with a semicolon and names who passes", () => {
+    const h = headline(basket({ AAPLc: "PREMIUM_TOO_HIGH", GOOGLc: "FEED_STALE" } as never));
+    expect(headlineText(h)).toBe(
+      "An agent under Maat's default mandate would REFUSE GOOGLc: Price feed out of date (FEED_STALE); AAPLc: Pool price too far from oracle (PREMIUM_TOO_HIGH). Market checks pass for NVDAc.",
+    );
+  });
+
+  it("drops the passing sentence when all three are refused for different reasons", () => {
+    const h = headline(basket({ NVDAc: "MARKET_CLOSED", GOOGLc: "FEED_STALE", AAPLc: "PREMIUM_TOO_HIGH" } as never));
+    expect(h.kind).toBe("mixed");
+    expect(headlineText(h)).not.toContain("Market checks pass");
   });
 
   it("ignores tokens outside the basket", () => {
