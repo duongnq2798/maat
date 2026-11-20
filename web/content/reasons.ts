@@ -87,7 +87,7 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   PREMIUM_TOO_HIGH: "The pool price is too far above or below Chainlink.",
   SIZE_LIMIT: "Over the per-trade cap or the daily cap.",
   CONCENTRATION: "The buy would push one stock past its maximum weight, or its weight can't be measured.",
-  PAYEE_NOT_ALLOWED: "Payments go only to payees the owner listed through the timelock.",
+  PAYEE_NOT_ALLOWED: "Payments go only to payees on the vault's allowlist.",
   INSUFFICIENT_BALANCE: "Not enough funds for the amount, or an amount of zero.",
   SWAP_FAILED: "The swap reverted, for example on slippage past the limit.",
   TRANSFER_FAILED: "A token transfer or approval failed.",
