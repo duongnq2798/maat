@@ -120,7 +120,10 @@ The CI figures are from push run 44553264467 on `3778fea`, the run read for this
 offline suites. The two fork suites need a Base archive RPC, so they run by hand and are as fresh as the last
 hand run. Since `4492eed`, no file in `contracts/src`, `contracts/script` or `agent/src` has changed
 (`git diff --stat 4492eed 3778fea` over those folders is empty); one fork test file has a 2-line change.
-No figure here is rounded.
+Two such files have changed since `3778fea`: `contracts/src/MarketCalendar.sol` preloads the 2027 NYSE holidays
+and the 2027-11-26 early close, and `contracts/script/MaatConfig.sol` sets the 25 h staleness and 150 bps
+slippage defaults. The fork figures above were recorded at `4492eed`, before both changes. No figure here is
+rounded.
 
 ## Deployments and traction
 
@@ -278,7 +281,7 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 
 | Component | Status | Where |
 | --- | --- | --- |
-| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
+| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (230 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
 | `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027) | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
@@ -287,7 +290,7 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests, 259 Playwright tests) | [`web/`](web) |
+| Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,546 unit tests, 266 Playwright tests) | [`web/`](web) |
 | Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Guard Service HTTP API, MCP server, Bankr Skill | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
@@ -508,8 +511,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  42 passed (42)
-         Tests  1494 passed (1494)
+    Test Files  44 passed (44)
+         Tests  1546 passed (1546)
    ...
    out/ is ready to deploy (landing and 49 docs pages checked)
    search index: … bytes gzipped, budget 760000
