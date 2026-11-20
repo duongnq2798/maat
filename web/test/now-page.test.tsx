@@ -13,31 +13,27 @@ import { formatInt } from "@/content/format";
 import { REASON_LABEL, type ReasonCode, reasonText } from "@/content/reasons";
 import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from "@/lib/live/abi";
 import { formatAge, formatDateUtc, formatMultiplier, formatUsd8 } from "@/lib/live/format";
-import { REFRESH_MS } from "@/lib/live/freshness";
+import { HEAD_MAX_LAG_SEC, REFRESH_MS } from "@/lib/live/freshness";
 import { LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { decodeSnapshot } from "@/lib/live/snapshot";
-import { headline, headlineText, judgeToken, sessionAt } from "@/lib/live/verdict";
+import { headline, headlineText, judgeToken, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
+import { SITE } from "@/lib/site";
 import fixture from "./fixtures/live-aggregate3.json";
+import { failSlot, passingBasket, roundData, SLOTS, type Slot, slotIndex } from "./helpers/live";
 
 const BLOCK = BigInt(fixture.expected.blockNumber); // 60,013,066
 const TS = Number(fixture.expected.timestamp); // Fri 2026-11-20 16:43:08 UTC, 11:43 ET: in session
+const SAT = Date.UTC(2026, 10, 21, 15, 0, 0) / 1000; // Sat 2026-11-21 15:00 UTC, 10:00 ET: closed
 const MANDATE = FACTS.mandate.value;
-/** The five calls per token in the multicall, after the block number and the timestamp: observe is the fifth. */
-const PER_TOKEN = 5;
-const OBSERVE = 4;
 /** SNDKc's effectiveAt in the fixture: its 8x multiplier took effect then (2026-11-20 05:00 UTC). */
 const SNDK_EFFECTIVE_AT = 1_795_150_800;
 
-/** The recorded answer, with the block number and timestamp words replaced and, if asked, one pool's observe failed. */
-function results(opts: { timestamp?: number; block?: bigint; failObserve?: string } = {}): CallResult[] {
+/** The recorded answer, with the block number and timestamp words replaced and, if asked, one token's call failed. */
+function results(opts: { timestamp?: number; block?: bigint; fail?: { symbol: string; slot: Slot } } = {}): CallResult[] {
   const r = decodeAggregate3(fixture.response as Hex);
   r[0] = { success: true, returnData: `0x${word(opts.block ?? BLOCK)}` };
   r[1] = { success: true, returnData: `0x${word(BigInt(opts.timestamp ?? TS))}` };
-  if (opts.failObserve !== undefined) {
-    const i = NAV_TOKENS.findIndex((t) => t.symbol === opts.failObserve);
-    r[2 + i * PER_TOKEN + OBSERVE] = { success: false, returnData: "0x" };
-  }
-  return r;
+  return opts.fail === undefined ? r : failSlot(r, opts.fail.symbol, opts.fail.slot);
 }
 
 /** What the mandate says about that answer, from FACTS: the board must say the same. */
@@ -95,8 +91,8 @@ describe("the /now page", () => {
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Maat home" })).toHaveAttribute("href", "/");
     expect(within(nav).getByRole("link", { name: "How Maat decides" })).toHaveAttribute("href", "/#how");
-    expect(within(nav).getByRole("link", { name: "Docs" })).toHaveAttribute("href", "/docs");
-    expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", "https://github.com/duongnq2798/maat");
+    expect(within(nav).getByRole("link", { name: "Docs" })).toHaveAttribute("href", SITE.docsUrl);
+    expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
     expect([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href"))).toEqual(["#main"]);
   });
 
@@ -189,10 +185,18 @@ describe("the /now page", () => {
       expect(method()).toHaveTextContent(call);
     }
     expect(method()).toHaveTextContent(`observe([${MANDATE.twapWindowSec}, 0])`);
-    expect(method()).toHaveTextContent(`${2 + PER_TOKEN * NAV_TOKENS.length} calls in one request`);
+    expect(method()).toHaveTextContent(`${2 + SLOTS.length * NAV_TOKENS.length} calls in one request`);
     expect(method()).toHaveTextContent("web/content/calendar.ts");
     expect([...method().querySelectorAll("[data-endpoint]")].map((li) => li.textContent)).toEqual([...LIVE_RPCS]);
     expect(method()).toHaveTextContent("nothing is signed");
+  });
+
+  it("gives the method section the id the verdict line links its vault checks not run to", () => {
+    const c = setup();
+    const section = c.querySelector<HTMLElement>("section#method")!;
+    expect(section).not.toBeNull();
+    expect(section).toBe(method());
+    expect(section).toHaveAttribute("aria-labelledby", "method-title");
   });
 
   it("holds no chain value in its static HTML, and never says safe", () => {
@@ -356,7 +360,7 @@ describe("the /now board", () => {
   });
 
   it("says could not read for a pool whose observe failed, and shows the verdict that implies", async () => {
-    const r = results({ failObserve: "NVDAc" });
+    const r = results({ fail: { symbol: "NVDAc", slot: "observe" } });
     await mount(r);
     const nvda = expected(r).verdicts.find((v) => v.symbol === "NVDAc")!;
     for (const el of values("NVDAc", "twap")) expect(el.textContent).toBe("could not read");
@@ -367,6 +371,100 @@ describe("the /now board", () => {
     expect(nvda.market).toBe("BAD_PRICE");
     // The other pools still answered.
     for (const el of values("GOOGLc", "twap")) expect(el.textContent).not.toBe("could not read");
+  });
+
+  /** The cells a failed call leaves unread: the premium needs both the feed and the pool. */
+  const UNREAD_BY_SLOT: Record<Slot, readonly string[]> = {
+    isPaused: ["paused"],
+    uiMultiplier: ["multiplier"],
+    effectiveAt: ["effectiveAt"],
+    latestRoundData: ["feedAge", "nav", "premium"],
+    observe: ["twap", "premium"],
+  };
+  const READ_COLS = ["feedAge", "nav", "twap", "premium", "paused", "multiplier", "effectiveAt"] as const;
+
+  it.each(SLOTS)("says could not read where a failed %s call leaves a value unread, and shows the verdicts judgeToken gives", async (slot) => {
+    // From a basket that passes every market check, so the failed call is the only thing that can change NVDAc's verdict.
+    const r = failSlot(passingBasket(results()), "NVDAc", slot);
+    await mount(r);
+    const e = expected(r);
+    const nvda = e.verdicts.find((v) => v.symbol === "NVDAc")!;
+    for (const col of READ_COLS) {
+      const unread = UNREAD_BY_SLOT[slot].includes(col);
+      for (const el of values("NVDAc", col)) expect(el.textContent === "could not read", `${slot} → ${col}`).toBe(unread);
+    }
+    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate, "mandate");
+    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market, "market");
+    expect(verdictSentence()).toBe(headlineText(e.headline));
+    // Only NVDAc's call failed: the other tokens still show what they read.
+    for (const col of READ_COLS) for (const el of values("GOOGLc", col)) expect(el.textContent).not.toBe("could not read");
+  });
+
+  it.each([
+    ["answered zero", 0n, "both"],
+    ["was updated after the block", "future", "feedAge"],
+  ] as const)("says no valid price when a feed %s, and shows the verdicts judgeToken gives", async (_, answer, unpriced) => {
+    const base = passingBasket(results());
+    const nvda8 = decodeSnapshot(base, MANDATE.twapWindowSec).tokens.find((t) => t.symbol === "NVDAc")!.twap8!;
+    const r = [...base];
+    r[slotIndex("NVDAc", "latestRoundData")] = {
+      success: true,
+      returnData: answer === "future" ? roundData(nvda8, BigInt(TS + 60)) : roundData(answer, BigInt(TS - 10)),
+    };
+    await mount(r);
+    const nvda = expected(r).verdicts.find((v) => v.symbol === "NVDAc")!;
+    expect(nvda.feedAgeSec).toBeNull();
+    for (const el of values("NVDAc", "feedAge")) expect(el.textContent).toBe("no valid price");
+    for (const el of values("NVDAc", "nav")) expect(el.textContent).toBe(formatUsd8(answer === "future" ? nvda8 : answer));
+    for (const el of values("NVDAc", "premium")) {
+      if (unpriced === "both") expect(el.textContent).toBe("no valid price");
+      else expect(el).toHaveTextContent(`${nvda.premiumBps} bps`);
+    }
+    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate, "mandate");
+    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market, "market");
+    expect(nvda.market).toBe("BAD_PRICE");
+  });
+
+  it("links vault checks not run to the method when the default mandate refuses no basket token", async () => {
+    const r = passingBasket(results());
+    await mount(r);
+    const e = expected(r);
+    expect(e.headline.kind).toBe("pass-all");
+    const line = board().querySelector<HTMLElement>("[data-verdict-line]")!;
+    expect(line).toHaveAttribute("data-verdict-line", "pass-all");
+    const link = within(line).getByRole("link", { name: VAULT_NOT_RUN });
+    expect(link).toHaveAttribute("href", "#method");
+    // The link is inside the sentence: it reads as headlineText, and the announcement stays plain text.
+    expect(verdictSentence()).toBe(headlineText(e.headline));
+    expect(screen.getByRole("status").textContent).toBe(`Live. ${headlineText(e.headline)}`);
+    expect(screen.getByRole("status").querySelector("a")).toBeNull();
+  });
+
+  it.each([
+    ["mixed", () => failSlot(passingBasket(results()), "NVDAc", "observe"), TS],
+    ["refuse-all", () => passingBasket(results({ timestamp: SAT })), SAT],
+  ] as const)("does not link vault checks not run when the headline is %s", async (kind, make, at) => {
+    const r = make();
+    await mount(r, at + 14);
+    expect(expected(r).headline.kind).toBe(kind);
+    expect(board().querySelector("[data-verdict-line]")).toHaveAttribute("data-verdict-line", kind);
+    expect(board().querySelector("[data-verdict-line] a")).toBeNull();
+    expect(screen.queryByRole("link", { name: VAULT_NOT_RUN })).toBeNull();
+  });
+
+  it("says NOT LIVE when the RPC's latest block is far behind the visitor's clock, and mutes the rows", async () => {
+    const lag = HEAD_MAX_LAG_SEC + 180;
+    await mount(results(), TS + lag);
+    expect(board()).toHaveAttribute("data-now-board", "behind");
+    expect(screen.getByText("NOT LIVE")).toBeInTheDocument();
+    expect(screen.queryByText("LIVE")).toBeNull();
+    expect(board()).toHaveTextContent(`the RPC's latest block 60,013,066 is ${formatAge(lag)} behind your clock`);
+    expect(board().querySelector("[data-verdict-line]")).toHaveAttribute("data-tone", "muted");
+    expect(document.querySelector("[data-now-rows]")).toHaveAttribute("data-tone", "muted");
+    expect(screen.getByRole("status").textContent).toBe(`Not live. ${headlineText(expected(results()).headline)}`);
+    // The values read are still shown, muted, not replaced by dashes.
+    for (const el of values("AAPLc", "nav")) expect(el.textContent).toBe(formatUsd8(expected(results()).tokens.find((t) => t.symbol === "AAPLc")!.feed!.answer));
+    neverSafe();
   });
 
   it("puts the table in a scroll region a keyboard can reach, with a caption, and the cards beside it for phones", async () => {

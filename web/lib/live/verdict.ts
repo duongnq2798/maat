@@ -201,13 +201,15 @@ export function headline(verdicts: readonly TokenVerdict[]): Headline {
 }
 
 const LEAD = "An agent under Maat's default mandate would";
+/** Ends the headline when nothing is refused; the strip and /now link these words to the method (spec 4). */
+export const VAULT_NOT_RUN = "vault checks not run";
 
 export function headlineText(h: Headline): string {
   switch (h.kind) {
     case "refuse-all":
       return `${LEAD} REFUSE: ${reasonText(h.reason)}`;
     case "pass-all":
-      return `${LEAD} pass the market checks for ${andList(h.passed)}. The vault's own checks are not run here.`;
+      return `${LEAD} pass the market checks for ${andList(h.passed)}; ${VAULT_NOT_RUN}.`;
     case "mixed": {
       const refused = h.refused.map((x) => `${x.symbol}: ${reasonText(x.reason)}`).join("; ");
       const tail = h.passed.length > 0 ? ` Market checks pass for ${andList(h.passed)}.` : "";

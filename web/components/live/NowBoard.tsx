@@ -14,7 +14,7 @@ import type { LiveSnapshot, TokenReading } from "@/lib/live/snapshot";
 import { DEFAULT_LIMITS, type TokenVerdict } from "@/lib/live/verdict";
 import { BlockLink, FAILED, LiveAnnouncer, LivePill, NotLiveWhy, READING, ReadButton, Sep, type ShownState, useRetry } from "./LiveStatus";
 import { useLiveSnapshot } from "./useLiveSnapshot";
-import { VerdictLine, type VerdictTone } from "./VerdictLine";
+import { TONE, VerdictLine, type VerdictTone } from "./VerdictLine";
 
 const NONE = "—";
 const UNREAD = "could not read";
@@ -139,12 +139,6 @@ function Status({ state, refreshing, onRetry, onRefresh }: StatusProps) {
   );
 }
 
-/** Muted text for a reading that is not live, the reason tags' labels included. */
-const TONE: Record<VerdictTone, string> = {
-  ink: "text-ink",
-  muted: "text-ink-2 [&_[data-reason-tag]>span]:text-ink-2",
-};
-
 function Table({ rows }: { rows: Record<Col, ReactNode>[] }) {
   return (
     <div
@@ -250,7 +244,7 @@ export function NowBoard({ reader }: { reader?: LiveReader }) {
         <Status state={state} refreshing={refreshing} onRetry={onRetry} onRefresh={onRefresh} />
         {shown ? (
           <p className="m-0 text-[17px] leading-7">
-            <VerdictLine headline={shown.reading.headline} tone={tone} />
+            <VerdictLine headline={shown.reading.headline} tone={tone} methodHref="#method" />
           </p>
         ) : null}
         <noscript>

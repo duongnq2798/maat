@@ -170,7 +170,7 @@ describe("the headline", () => {
 
   it("never says safe when nothing is refused", () => {
     const text = headlineText(headline(basket({})));
-    expect(text).toBe("An agent under Maat's default mandate would pass the market checks for NVDAc, GOOGLc and AAPLc. The vault's own checks are not run here.");
+    expect(text).toBe("An agent under Maat's default mandate would pass the market checks for NVDAc, GOOGLc and AAPLc; vault checks not run.");
     expect(text.toLowerCase()).not.toContain("safe");
   });
 

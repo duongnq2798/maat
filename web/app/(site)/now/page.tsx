@@ -276,8 +276,8 @@ function Method() {
 
             <Part title="The endpoints">
               <p className="m-0">
-                Two keyless public RPCs, tried in order; the status line names the one that answered. No key and no
-                environment variable is read, so nothing private can reach your browser.
+                The keyless public RPCs below, tried in order; the status line names the one that answered. No key and
+                no environment variable is read, so nothing private can reach your browser.
               </p>
               <ol className="m-0 flex flex-col gap-1 pl-5">
                 {LIVE_RPCS.map((url) => (

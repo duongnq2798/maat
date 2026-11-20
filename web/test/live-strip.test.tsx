@@ -10,8 +10,9 @@ import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from 
 import { HEAD_MAX_LAG_SEC, LIVE_MAX_AGE_MS, REFRESH_MS } from "@/lib/live/freshness";
 import { LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { decodeSnapshot } from "@/lib/live/snapshot";
-import { headline, headlineText, judgeToken, sessionAt } from "@/lib/live/verdict";
+import { headline, headlineText, judgeToken, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
 import fixture from "./fixtures/live-aggregate3.json";
+import { failSlot, passingBasket } from "./helpers/live";
 
 const BLOCK = BigInt(fixture.expected.blockNumber); // 60,013,066
 const FRI = Number(fixture.expected.timestamp); // Fri 2026-11-20 16:43:08 UTC, 11:43 ET: in session
@@ -25,15 +26,18 @@ function results(timestamp: number, block = BLOCK): CallResult[] {
   return r;
 }
 
+type Edit = (r: CallResult[]) => CallResult[];
+
 /** What the mandate says about that answer, from FACTS: the strip must say the same. */
-function expected(timestamp: number) {
-  const s = decodeSnapshot(results(timestamp), FACTS.mandate.value.twapWindowSec);
+function expected(timestamp: number, edit: Edit = (r) => r) {
+  const s = decodeSnapshot(edit(results(timestamp)), FACTS.mandate.value.twapWindowSec);
   const session = sessionAt({ timestamp: s.timestamp, calendar: { source: "repo" } });
   const verdicts = s.tokens.map((t) => judgeToken(t, { timestamp: s.timestamp, session }));
   return { headline: headline(verdicts), verdicts };
 }
 
-type Answer = { timestamp: number; block?: bigint } | "down" | "hang";
+/** The recorded answer at `timestamp`, changed by `edit` if given; or no answer at all. */
+type Answer = { timestamp: number; block?: bigint; edit?: Edit } | "down" | "hang";
 
 /**
  * A reader that answers like Base: the recorded multicall, and a deployed MarketCalendar (if any) like the repo calendar.
@@ -50,7 +54,8 @@ function fakeReader(first: Answer) {
     if (tx.to.toLowerCase() !== MULTICALL3.toLowerCase()) {
       return { data: `0x${word(regularSession(a.timestamp).open ? 1n : 0n)}`, endpoint: LIVE_RPCS[0]! };
     }
-    return { data: encodeAggregate3Result(results(a.timestamp, a.block)), endpoint: LIVE_RPCS[0]! };
+    const r = results(a.timestamp, a.block);
+    return { data: encodeAggregate3Result(a.edit ? a.edit(r) : r), endpoint: LIVE_RPCS[0]! };
   });
   const reader: LiveReader = { call };
   return {
@@ -159,6 +164,32 @@ describe("the live strip", () => {
     const allPass = basket.every((v) => v.mandate === "OK");
     expect(strip()).toHaveTextContent(allPass ? "would pass the market checks for NVDAc, GOOGLc and AAPLc" : "would REFUSE");
     neverSafe();
+  });
+
+  it("links vault checks not run to the method on /now when the default mandate refuses no basket token", async () => {
+    await mount({ timestamp: FRI, edit: passingBasket }, FRI + 14);
+    const { headline: h } = expected(FRI, passingBasket);
+    expect(h.kind).toBe("pass-all");
+    const line = strip().querySelector<HTMLElement>("[data-verdict-line]")!;
+    expect(line).toHaveAttribute("data-verdict-line", "pass-all");
+    const link = screen.getByRole("link", { name: VAULT_NOT_RUN });
+    expect(line).toContainElement(link);
+    expect(link).toHaveAttribute("href", "/now#method");
+    // The link is inside the sentence: it reads as headlineText, and the announcement stays plain text.
+    expect(verdictSentence()).toBe(headlineText(h));
+    expect(screen.getByRole("status").textContent).toBe(`Live. ${headlineText(h)}`);
+    expect(screen.getByRole("status").querySelector("a")).toBeNull();
+  });
+
+  it.each([
+    ["mixed", FRI, ((r) => failSlot(passingBasket(r), "NVDAc", "observe")) as Edit],
+    ["refuse-all", SAT, undefined],
+  ] as const)("does not link vault checks not run when the headline is %s", async (kind, at, edit) => {
+    await mount({ timestamp: at, edit }, at + 14);
+    expect(expected(at, edit).headline.kind).toBe(kind);
+    expect(strip().querySelector("[data-verdict-line]")).toHaveAttribute("data-verdict-line", kind);
+    expect(strip().querySelector("[data-verdict-line] a")).toBeNull();
+    expect(screen.queryByRole("link", { name: VAULT_NOT_RUN })).toBeNull();
   });
 
   it("says NOT LIVE when a refresh fails after a good reading, and keeps the old verdict in muted text", async () => {

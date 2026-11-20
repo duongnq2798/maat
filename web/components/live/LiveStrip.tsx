@@ -47,7 +47,7 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
           <Sep />
           <span>{session.detail}</span>
           <Sep mark="—" />
-          <VerdictLine headline={headline} tone="ink" />
+          <VerdictLine headline={headline} tone="ink" methodHref="/now#method" />
           <Sep />
           <NowLink />
         </p>
@@ -59,7 +59,7 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
         <p className="m-0">
           <LivePill live={false} /> <NotLiveWhy state={state} />
           <Sep mark="—" />
-          <VerdictLine headline={state.reading.headline} tone="muted" />
+          <VerdictLine headline={state.reading.headline} tone="muted" methodHref="/now#method" />
           <Sep />
           <NowLink />
         </p>
