@@ -129,7 +129,7 @@ Only transactions whose calldata ends with this suffix carry the code. The deplo
 3. Check the tools: use Foundry 1.8.4 or newer (`forge --version`; CI pins 1.9.0) and run every `forge` command from `contracts/`, where `foundry.toml` sets `hardfork = "base:Cobalt"`. The B20 stocks are precompiles and the vault's constructor reads them, so the deploy needs that setting. If `contracts/lib/forge-std` is empty, run `git submodule update --init` at the repository root.
 4. Put enough ETH on Base in the wallet for 4 contract deployments and a few calls. The simulation in step 4 prints the estimated gas.
 
-## 4. Dry run, then check the addresses
+## 4. Dry run, then check the addresses (owner)
 
 Simulate with the real `.env`: no `--broadcast`, no key.
 
@@ -174,9 +174,9 @@ cast call "$CALENDAR" "owner()(address)" --rpc-url "$BASE_RPC_URL"
 cast call "$VAULT" "mandate()((uint8,uint16,uint16,uint32,uint32,uint32,uint128,uint128,address,address,address,uint64,uint64,uint32))" --rpc-url "$BASE_RPC_URL"
 ```
 
-The owners, the executor and the payees must be your addresses. In the `mandate()` tuple, the third value is `maxSlippageBps` and must be `150`, and the fourth is `maxStaleness` and must be `90000` (25 hours).
+Both `owner()` calls and `executor()` must print your wallet address. `payees()` must print `[<your wallet>]`, or `[<your wallet>, <the second payee you set>]` if you set `MAAT_EXPENSE_PAYEE_2`. In the `mandate()` tuple, the third value is `maxSlippageBps` and must be `150`, and the fourth is `maxStaleness` and must be `90000` (25 hours).
 
-## 6. Fund and approve
+## 6. Fund and approve (owner)
 
 Fund with `approve` and then `fund(amount)`, never a plain USDC transfer: `notifyRevenue()` would count a direct transfer as revenue. Amounts are USDC units (6 decimals): `20000000` is 20 USDC, `100000000` is 100 USDC. Use the same amount in both calls.
 
@@ -189,14 +189,14 @@ cast call "$VAULT" "recordedUsdc()(uint256)" --rpc-url "$BASE_RPC_URL"   # the a
 
 Fund at least 20 USDC. Monday's 5 USD BUY must stay within the 40% weight cap (`maxWeightBps: 4000` in `MaatConfig.basket`), and 5 USD is 25% of a vault that holds 20 USDC.
 
-## 7. First Decision while NYSE is closed
+## 7. First Decision while NYSE is closed (owner)
 
-Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor, so it sends the intent. Use the shell from step 6, where `VAULT` and `BASE_RPC_URL` are set; in a new shell, run `set -a; source contracts/.env; set +a` from the repository root and set `VAULT` again.
+Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor, so it sends the intent. Use the shell from step 6: it is still in `contracts/` (step 4 went there), with `VAULT` and `BASE_RPC_URL` set. In a new shell, run `set -a; source contracts/.env; set +a` from the repository root and set `VAULT` again.
 
-1. Build the intent offline with [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts). It makes no network call, reads no `.env`, holds no key and sends nothing. From the repository root:
+1. Build the intent offline with [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts). It makes no network call, reads no `.env`, holds no key and sends nothing. The `cd` below works from `contracts/` and from the repository root:
 
    ```bash
-   cd agent
+   cd "$(git rev-parse --show-toplevel)/agent"
    npm ci
    node --import tsx scripts/first-decision.ts --vault "$VAULT" --token NVDAc --usd 5 --salt sat-1 --builder-code <your code>
    ```
@@ -230,7 +230,7 @@ Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor,
 
    The vault's own event list is at `https://basescan.org/address/<vault address>`.
 
-## 8. Monday 2026-11-23, at or after 14:30 UTC
+## 8. Monday 2026-11-23, at or after 14:30 UTC (owner)
 
 Send the same intent with a new salt, so a new id. Run it from `agent/`, in a shell where `VAULT` and `RPC` are set as in step 7:
 
@@ -252,9 +252,13 @@ node --import tsx scripts/first-decision.ts --vault "$VAULT" --token NVDAc --usd
 
 If `execute` returns `allowed=false` anyway (for example `SWAP_FAILED`, which a preview cannot predict), that id is used up. Preview again and send with a new salt.
 
-## 9. Hand over to the agent
+## 9. Hand over to the agent (owner)
 
-Follow [`agent/README.md`](../agent/README.md#live-run-owner-only), "Live run (owner only)". In short, and only as that page says:
+Follow [`agent/README.md`](../agent/README.md#live-run-owner-only), "Live run (owner only)".
+
+Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `BASE_RPC_URL` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` never replaces a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`.
+
+In short, and only as that page says:
 
 1. Set up CDP and run `scripts/cdp-setup.ts` once, as the README shows. It prints the CDP executor address.
 2. Point the vault at that address ([`README.md`](README.md#switch-the-executor-to-the-cdp-server-wallet-owner-only), "Switch the executor to the CDP Server Wallet"):
