@@ -236,11 +236,11 @@ cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"      # must prin
 cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"   # must print your wallet address
 ```
 
-1. Build the intent offline with [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts). It makes no network call, reads no `.env`, holds no key and sends nothing. The `cd` below works from `contracts/` and from the repository root:
+1. Build the intent offline with [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts). It makes no network call, reads no `.env`, holds no key and sends nothing. The `cd` below works from `contracts/` and from the repository root. This shell exported `BASE_RPC_URL` and `ETHERSCAN_API_KEY` when it sourced `contracts/.env`, and `npm ci` runs the install scripts of the packages it installs, so `env -u` keeps both values out of them:
 
    ```bash
    cd "$(git rev-parse --show-toplevel)/agent"
-   npm ci
+   env -u BASE_RPC_URL -u ETHERSCAN_API_KEY npm ci
    node --import tsx scripts/first-decision.ts --vault "$VAULT" --token NVDAc --usd 5 --salt sat-1 --builder-code <your code>
    ```
 
@@ -302,7 +302,7 @@ If `execute` returns `allowed=false` anyway (for example `SWAP_FAILED`, which a 
 
 Follow [`agent/README.md`](../agent/README.md#live-run-owner-only), "Live run (owner only)".
 
-Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `RPC` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` never replaces a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`. Item 2 still runs after that, because it reads `RPC`, not `BASE_RPC_URL`: step 7 set `RPC` after `set +a`, so it is not exported, the `unset` leaves it, and the agent never sees it. If `test -n "$RPC" && echo set || echo empty` prints `empty`, set it again by hand (`RPC=<your Base mainnet RPC URL>`, without `export`); the check does not print the URL.
+Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `RPC` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` never replaces a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`. Item 2 still runs after that, because it reads `RPC`, not `BASE_RPC_URL`: step 7 set `RPC` after `set +a`, so it is not exported, the `unset` leaves it, and the agent never sees it. If `test -n "$RPC" && echo set || echo empty` prints `empty`, set it again with `read -rs RPC`: paste the URL and press Enter. `read -s` echoes nothing, the URL does not go into the shell history as a typed `RPC=...` line would, and `read` does not export it. The check does not print the URL either.
 
 In short, and only as that page says:
 
