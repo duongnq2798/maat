@@ -359,3 +359,9 @@ Fill this in as you go. Leave a cell empty until you have the real value.
 | First agent transaction (`--once`) | | | |
 
 Then put the four contract addresses and deploy transactions in the table at the top of [`README.md`](README.md), on a branch. The docs site generates `web/content/generated/deployments.json` from that table, and `web/test/docs-gen.test.ts` fails until it is regenerated, so run `npm run docs:gen` in `web/` and commit that file in the same branch.
+
+Once a Base mainnet row has an address, `web/test/docs-content.test.ts` fails too, on purpose: its launch list names every line of a docs page, and of `web/lib/docs/abi.ts`, that still says nothing is deployed. Before you open the pull request, in the same branch:
+
+1. Run `npm test` in `web/` and rewrite each line the failing launch-list test names, until it passes.
+2. Update the root [`README.md`](../README.md), which that test does not read: the status badge under the title, the Status box, the "What is not done yet" bullet, the Deployments and traction table (each `Not deployed` row) and its `Mainnet Decision events` bullet, and the Status table.
+3. Look for the same claim anywhere else, for example with `git grep -n -i -e "not deployed" -e "nothing is deployed" -e "not on mainnet"` from the repository root: the launch list does not read the landing page's components either.
