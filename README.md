@@ -51,7 +51,7 @@
   against the real Claude API or CDP, no audit; x402 and the rest are planned (see the box above).
 - **Evidence.** On a local fork of Base mainnet at block 53,551,627 (Thursday 2026-11-05, 10:30 ET), the agent,
   with a scripted proposer, bought $20 of NVDAc (allowed, 758,192 gas). With the clock moved to Saturday, a $10
-  GOOGLc buy was refused with `MARKET_CLOSED` and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
+  GOOGLc buy was refused as market closed (`MARKET_CLOSED`) and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
 - **Try it.** [Make the default mandate say no](https://maatonbase.xyz/#try) in a browser, or
   [evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes) offline, with no keys.
 - **Demo video.** Not published yet (as of 2026-11-19).
@@ -79,11 +79,11 @@
    [`/llms-full.txt`](https://maatonbase.xyz/llms-full.txt) holds all of them.
 
 <p align="center">
-  <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused, SIZE_LIMIT."></a>
-  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20 allowed, gas 758,192; SUPPLY NVDAc $15 allowed, 286,707; BORROW USDC $5 allowed, 484,173; BUY GOOGLc $10 on Sat 7 Nov refused with MARKET_CLOSED, 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
+  <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused: Over the size limit (SIZE_LIMIT)."></a>
+  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20, Allowed · All checks passed (OK), gas 758,192; SUPPLY NVDAc $15, allowed, 286,707; BORROW USDC $5, allowed, 484,173; BUY GOOGLc $10 on Sat 7 Nov, Refused · Market closed (MARKET_CLOSED), 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
 </p>
 
-Left: the simulator refusing a $51 buy with `SIZE_LIMIT`. Right: the fork ledger.
+Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Right: the fork ledger.
 
 ## By track: Agentic Stock Finance
 
