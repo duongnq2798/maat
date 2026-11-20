@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { collectErrors, measureFit } from "./helpers";
 
@@ -134,4 +135,36 @@ test("reduced motion shows the final state at once", async ({ page }) => {
   );
   expect(opacities).toHaveLength(10);
   expect(opacities.every((o) => o === "1")).toBe(true);
+});
+
+// The same check as e2e/docs-a11y.spec.ts, on the landing. The landing has one theme (no dark variant), so it runs
+// once. Its default state holds every ReasonTag tone: the hero's refused verdict on ink and the simulator's allowed
+// verdict on accent (verdict), the problem cards (refuse) and the Refusals list (neutral); and the ledger's code tags
+// (`text-ink-2` on white, components/LedgerTable.tsx).
+test("the landing has no serious or critical axe violations", async ({ page }) => {
+  // Reduced motion shows the hero's intro in its final state at once, so axe never measures a row mid-fade.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/", { waitUntil: "networkidle" });
+  await page.evaluate(() => document.fonts.ready);
+  // Hydrated: Post on X carries the absolute share link only once the simulator has read the page's address.
+  await expect(page.locator("#try").getByRole("link", { name: "Post on X" })).toHaveAttribute("href", /&url=/);
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  const blocking = violations
+    .filter((v) => v.impact === "serious" || v.impact === "critical")
+    .map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }));
+  expect(blocking).toEqual([]);
+});
+
+// Review Focus 1: on a phone, the longest labels ("Pool price too far from oracle", "Price feed out of date") wrap
+// inside the Refusals items, the ledger cell and the simulator verdict, and the page never scrolls sideways.
+test("the landing does not scroll sideways at 375 px", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  await page.evaluate(() => document.fonts.ready);
+  const { scrollWidth, innerWidth } = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    innerWidth: window.innerWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(innerWidth);
 });

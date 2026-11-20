@@ -46,10 +46,11 @@ export function TryIt() {
               <strong className="font-medium text-ink">{n.title}.</strong> {n.body}
             </p>
           ))}
+          {/* Medium weight: inside ink-2 text the accent colour alone does not set a link apart (axe link-in-text-block). */}
           <p className="m-0">
             <strong className="font-medium text-ink">Source of truth.</strong> The contracts decide, not this page. Read{" "}
-            <a href={repoFileUrl("contracts/src/MarketCalendar.sol")}>MarketCalendar.sol</a> and{" "}
-            <a href={repoFileUrl("contracts/src/MandateVault.sol")}>MandateVault.sol</a>.
+            <a className="font-medium" href={repoFileUrl("contracts/src/MarketCalendar.sol")}>MarketCalendar.sol</a> and{" "}
+            <a className="font-medium" href={repoFileUrl("contracts/src/MandateVault.sol")}>MandateVault.sol</a>.
           </p>
         </div>
       </div>
