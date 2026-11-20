@@ -994,8 +994,8 @@ function reading(over: Partial<TokenReading> = {}): TokenReading {
     paused: false,
     uiMultiplier: 1_000_537_939_576_369_481n,
     effectiveAt: 0n,
-    feed: { answer: 13_607_516_085n, updatedAt: BigInt(FRI - 102) },
-    twap8: 13_607_516_085n + 13_607_516_085n / 400n, // 25 bps over
+    feed: { answer: 13_600_000_000n, updatedAt: BigInt(FRI - 102) },
+    twap8: 13_600_000_000n + 34_000_000n, // exactly 25 bps over
     ...over,
   };
 }
@@ -1236,13 +1236,13 @@ git commit -F <msg-file>   # feat(web): a live line under the landing H1 that re
 - Test: `web/test/now-page.test.tsx`, `web/test/simulator.test.tsx` (new cases), `web/test/check-out.test.ts` (new case)
 
 **Interfaces:**
-- Consumes: everything in `lib/live/`, `useLiveSnapshot`, `VerdictLine`, `NAV_TOKENS`, `FACTS`, `Nav`, `Footer`, `SectionHeading`.
+- Consumes: everything in `lib/live/`, `useLiveSnapshot`, `VerdictLine`, `NAV_TOKENS`, `FACTS`, `Mark`, `SITE`, `Footer`, `SectionHeading`.
 - Produces: route `/now` (static export `out/now.html`), `checkNowPage(html: string): string[]` in `lib/check-out.ts`.
 
 Page (`app/(site)/now/page.tsx`, a server component):
 - `export const metadata`: title "Right now on Base · Maat" (follow `SITE.name`), description "What an agent under Maat's default mandate would do right now with the 13 B20 tokens that have a NAV, read from Base mainnet in your browser." (50-160 characters), `alternates.canonical: "/now"`, `openGraph` with `url: "/now"` and the landing's OG image object (copy the `ogImage` object from `app/(site)/layout.tsx`; PR #15 moves it to `lib/og-image.ts` later — do not create that file here).
-- Layout: skip link, `<Nav />`, `<main id="main">` with an `h1` "Right now on Base", a lead "Read from Base mainnet in your browser, one block at a time. Nothing is signed, and this site has no server.", then `<NowBoard />`, then a server-rendered section `h2` "How this page reads Base" (spec 6.2 last bullet; list the calls of spec 3.1, the check order table of spec 4 with each threshold's value and `FACTS.mandate.source`, the calendar source, the endpoints `LIVE_RPCS`, and the token list with Basescan links for token, feed and pool), then `<Footer />`.
-- The Nav's in-page links (`#how`, …) point at the landing; on `/now` they must point at `/#how` etc. Change `Nav` to take an optional `base` prop (`"" | "/"`, default `""`) and prefix hrefs with it; the landing passes nothing.
+- Layout: skip link, a small header (below), `<main id="main">` with an `h1` "Right now on Base", a lead "Read from Base mainnet in your browser, one block at a time. Nothing is signed, and this site has no server.", then `<NowBoard />`, then a server-rendered section `h2` "How this page reads Base" (spec 6.2 last bullet; list the calls of spec 3.1, the check order table of spec 4 with each threshold's value and `FACTS.mandate.source`, the calendar source, the endpoints `LIVE_RPCS`, and the token list with Basescan links for token, feed and pool), then `<Footer />`.
+- Do not use or edit `components/sections/Nav.tsx` (its links are in-page anchors of the landing, and another open PR edits it). `/now` renders its own small header in `page.tsx`: `<nav aria-label="Main">` with the `Mark` and "maat" linking `/`, then links "How Maat decides" (`/#how`), "Docs" (`SITE.docsUrl`) and "View on GitHub" (`SITE.repoUrl`), with the same classes as `Nav.tsx` (`wrap`, `navlink`, `pill-dark`).
 
 `NowBoard` (client):
 - Status line: LIVE / NOT LIVE pill as in the strip, block (Basescan link), block time UTC and ET, session detail and its source ("repo calendar, web/content/calendar.ts" or "MarketCalendar at {address}"), "Read from {endpoint}", a "Refresh" button.
@@ -1268,7 +1268,7 @@ Simulator note (`components/Simulator.tsx`):
 Run: `cd web && npm test -- test/now-page.test.tsx test/simulator.test.tsx test/check-out.test.ts`
 Expected: FAIL on the new cases only.
 
-- [ ] **Step 3: Implement page, board, Nav prop, sitemap, simulator note, `checkNowPage` (wire it into `scripts/check-out.ts` for `out/now.html`)**
+- [ ] **Step 3: Implement page (with its header), board, sitemap, simulator note, `checkNowPage` (wire it into `scripts/check-out.ts` for `out/now.html`)**
 
 - [ ] **Step 4: Run everything**
 
@@ -1278,7 +1278,7 @@ Expected: all vitest files pass; `check:out` ready. `test/readme.test.ts` or doc
 - [ ] **Step 5: Commit**
 
 ```bash
-git add -- "web/app/(site)/now/page.tsx" web/components/live/NowBoard.tsx web/components/sections/Nav.tsx web/app/sitemap.ts web/lib/check-out.ts web/scripts/check-out.ts web/components/Simulator.tsx web/test/now-page.test.tsx web/test/simulator.test.tsx web/test/check-out.test.ts
+git add -- "web/app/(site)/now/page.tsx" web/components/live/NowBoard.tsx web/app/sitemap.ts web/lib/check-out.ts web/scripts/check-out.ts web/components/Simulator.tsx web/test/now-page.test.tsx web/test/simulator.test.tsx web/test/check-out.test.ts
 git commit -F <msg-file>   # feat(web): /now reads the 13 B20s with a NAV live, and the simulator's Now names its fork values
 ```
 
