@@ -128,9 +128,14 @@ describe("the session at the block", () => {
   it("words every kind of closed day", () => {
     const d = (timestamp: number) => sessionAt({ timestamp, calendar: { source: "repo" } }).detail;
     expect(d(THANKS)).toBe("Thanksgiving · NYSE closed");
-    expect(d(BEFORE)).toBe("08:00 ET · opens 09:30");
-    expect(d(AFTER)).toBe("17:00 ET · closed at 16:00");
-    expect(d(EARLY)).toBe("14:00 ET · early close 13:00");
+    expect(d(BEFORE)).toBe("Monday · opens 09:30 ET");
+    expect(d(AFTER)).toBe("Monday · closed at 16:00 ET");
+    expect(d(EARLY)).toBe("Friday · early close 13:00 ET");
+  });
+
+  it("never repeats the block's ET clock, which the strip prints beside it", () => {
+    const d = (timestamp: number) => sessionAt({ timestamp, calendar: { source: "repo" } }).detail;
+    for (const ts of [BEFORE, AFTER, EARLY, THANKS]) expect(d(ts)).not.toMatch(/^\d{2}:\d{2} ET/);
   });
 
   it("pins the four onchain cases", () => {
