@@ -103,9 +103,12 @@ most 32 characters with no underscore.
   `font-mono text-[11px]`. `layout` is `stacked` (label over code, as `components/sections/Mandate.tsx` puts `label`
   over `k`) or `inline` (code after the label on one line). `tone` is one of:
   - `verdict`: on the ink or accent verdict box, white text, the code at the opacity the box's small labels already use;
-  - `refuse`: on the refuse tint;
-  - `accent`: on the accent tint (the ledger's allowed badge);
+  - `refuse`: in the refuse colour, on the refuse tint or on white;
   - `neutral`: the code in `text-ink-2`.
+
+  The landing ledger does not use `ReasonTag`: its badge already holds the label, so the code sits beside the badge
+  as a plain `<code>` in `text-ink-2`. (Amended 2026-11-20 with the PR 1 plan, which dropped an `accent` tone that no
+  surface used.)
 
   Each pair keeps a contrast of at least 4.5:1, checked by an axe run on `/` added to `e2e/smoke.spec.ts`. The code
   stays in the accessible text; nothing is `aria-hidden`.
