@@ -16,8 +16,9 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 | `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict) and every docs page ([what it checks](#what-checkout-checks)) |
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
+| `npm run rationales` | `npm run rationales -- <journal.jsonl>` rewrites `content/generated/rationales.json`, the rationale text the mainnet ledger checks against each `rationaleHash` ([Mainnet ledger](#mainnet-ledger)) |
 | `npm run docs:gen` | rewrites the reference data in `content/generated/` from the contracts, the agent and the deployments table ([Docs content](#docs-content)) |
-| `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
+| `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs, `e2e/ledger.spec.ts` for `/ledger` against a fake Base RPC. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
 
 Keep Next's anonymous telemetry off when you build:
 
@@ -145,15 +146,23 @@ A component that wraps Markdown text, such as `<Callout>`, stays out of `DATA_CO
 
 It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
 
-- The files a deploy needs, among them `index.html`, `404.html`, `docs.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
+- The files a deploy needs, among them `index.html`, `404.html`, `docs.html`, `ledger.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
 - The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
 - Every docs page: `lang`, a title that ends in "· Maat Docs" (the docs home is "Maat Docs"), a description of 50 to 160 characters, an absolute canonical URL and `og:image`, scripts only from `/_next/`, no Google Fonts, no block element inside a paragraph, and links that lead to a heading of the page, an exported docs page or a file in `out/`.
 - Each docs page's link preview image: a PNG of the size its tags give, named by both `og:image` and `twitter:image`.
 - Each docs page's Markdown copy: no component tag left in place of its text, the index note first, and the status label, review date and Source of truth files of its page.
 - `llms.txt`, `llms-full.txt` and `sitemap.xml` list every docs page, and `llms.txt` gives the status under its summary and links each page's Markdown copy.
 - Each ABI under `out/data/abi/` holds the committed ABI.
+- `out/ledger.html`: the waiting state while the deployments table has no vault and not after, a canonical URL ending in `/ledger`, a target for each `#` link, scripts only from `/_next/`, and a `sitemap.xml` entry.
 - The search index stays within the gzipped budget in `lib/check-out.ts`, and every result opens an exported page and heading.
 - On CI or Vercel only: no exported file links an `http://localhost` URL (see below).
+
+### Mainnet ledger
+
+`/ledger` has no server. The static HTML follows the deployments table the build read: the waiting state while the Base mainnet `MandateVault` row has no address, a connecting line once it has one. In the browser the page fetches `/data/deployments.json` (written from that table by `npm run docs:gen` and the build), and once it names a vault it reads Base directly through `lib/chain/`: a check that the address is a `MandateVault`, the treasury in one multicall at the latest block, the vault's logs from its deploy block (the table's Tx cell; without one, `SCAN_FLOOR_BLOCK` in `lib/chain/config.ts`) in chunks, newest first, and the block times and gas of new decisions. What it read is cached in `localStorage`, below a reorg margin.
+
+- RPCs: `DEFAULT_RPCS` in `lib/chain/rpc.ts`, keyless and open to any origin. `NEXT_PUBLIC_BASE_RPC_URL`, if set at build time to an `https:` URL, is tried first; it ships to every visitor, so never put a private key or a paid key there.
+- Rationale text: `/data/rationales.json`, from `content/generated/rationales.json`. To refresh it, run `npm run rationales -- <path to the agent's journal.jsonl>` and commit the file. The page shows a text only when its hash matches the one in the `Decision` event.
 
 ### Site URL
 

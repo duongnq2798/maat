@@ -4,11 +4,12 @@ description: What is built and fork-tested today, what is next before mainnet, a
 type: overview
 audience: [newcomer, evaluator, builder]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-20
 sources:
   - README.md
   - deployments/README.md
   - docs/superpowers/specs/2026-11-07-maat-web-design.md
+  - docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md
   - docs/superpowers/specs/2026-11-06-mandate-treasury-design.md
 next: [security/not-claimed, guides/deploy-your-own-vault]
 ---
@@ -40,7 +41,7 @@ This table follows the Status section of the README, without the test counts. Th
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-transaction reconcile | Built and tested, with fork integration tests. The Claude proposer is tested against a fake client, and the fork run uses a scripted proposer and a local sender. No output from the real Claude API is committed yet | [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent) |
 | ERC-8021 Builder Code on every agent transaction | Built and tested, including in the fork run. No real code is registered yet | [`agent/src/exec/builderCode.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/builderCode.ts) |
 | [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the [executor](/docs/help/glossary#executor), with an account policy | Built, and tested against a fake CDP client only. Never run against the real CDP | [`agent/src/exec/cdpSender.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpPolicy.ts) |
-| The landing page and this docs center. The landing page has the [interactive decision engine](/), the [labeled fork ledger](/#ledger) and a [simulator](/#try) of the default mandate, which runs in the browser and is a simulation, not the contract | Online at maatonbase.xyz, a static export of `main` with no wallet, no RPC calls, no analytics and no cookies. Built and tested | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
+| The landing page, the mainnet ledger and this docs center. The landing page has the [interactive decision engine](/), the [labeled fork ledger](/#ledger) and a [simulator](/#try) of the default mandate, which runs in the browser and is a simulation, not the contract. The [mainnet ledger](/ledger) waits for the deploy; once `deployments/README.md` records the vault, it reads the vault's `Decision` events, treasury and mandate from Base in the visitor's browser, and shows a rationale's text only with a check of its hash | Online at maatonbase.xyz, a static export of `main` with no wallet, no analytics and no cookies. No page calls an RPC until the vault is recorded; then the ledger page calls a public Base RPC from the browser. Built and tested, the ledger against a fake Base RPC | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
 
 There is no third-party audit. Treat the contracts as unaudited. [What Maat does not claim](/docs/security/not-claimed) lists the known limits.
 
@@ -62,9 +63,9 @@ Until the owner deploys, no page in these docs is labeled live, and the site's l
 
 <Callout type="note" title="Planned">
 
-None of this is on `main`. Each item links the spec section it is sketched in and names the dependencies that spec states. W2 and W3 are the next two stages of the website, as the web design spec lays them out.
+None of this is on `main`. Each item links the spec section it is sketched in and names the dependencies that spec states. The first item finishes the website's W2 stage; W3 is the stage after it, as the web design spec lays them out.
 
-1. **A mainnet ledger, a dashboard and a Base App mini-app manifest (W2).** The ledger would read `Decision` events from the mainnet vault and link each row to Basescan. Where the operator exports the agent's [journal](/docs/help/glossary#journal), it would show the [rationale](/docs/help/glossary#rationale) text, with a "hash verified" badge only when `keccak256` of the text equals the `rationaleHash` onchain. It needs the mainnet deploy first. Sketched in [the web design spec, section 10](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-web-design.md#10-web-roadmap-after-w1-each-part-has-its-own-spec).
+1. **A rationale store the agent writes as it runs (W2 follow-up).** The [mainnet ledger](/ledger) reads [rationale](/docs/help/glossary#rationale) text from a file the operator exports from the agent's [journal](/docs/help/glossary#journal) and commits, so new text appears only after the site is rebuilt. The plan is a database table the agent writes each rationale to and the page reads through the same interface; the page still shows the text only when `keccak256` of it equals the `rationaleHash` onchain. The Base App mini-app manifest of the first W2 sketch is dropped: the ledger is read-only and needs no wallet. Sketched in [the W2 ledger spec, section 10](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md#10-follow-ups-separate-tasks).
 2. **An [x402](/docs/help/glossary#x402) Guard Service.** Other agents would pay <Fact name="x402Price" /> per "is this trade safe now?" check, and that USDC would fund the treasury loop. It is not on `main`; [pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds it. The design pays the vault's address, so it needs a deployed vault. The spec leaves open whether the CDP x402 facilitator can pay a contract directly; if it cannot, the payment goes to the agent wallet, which forwards it to the vault. Sketched in [the treasury design spec, section 3.4](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md#34-guard-service-typescript-viem).
 3. **A Guard Service HTTP API, an MCP server and a Bankr Skill** that expose the same check. The spec names two MCP tools, `market_status` and `check_trade`, and calls the MCP server and the Bankr Skill stretch goals. The Guard Service and its HTTP API are part of pull request #2; the MCP server and the Bankr Skill are not. Sketched in [the treasury design spec, section 3.4](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md#34-guard-service-typescript-viem).
 4. **`MandateFactory`.** Any agent would deploy its own vault with its own mandate. It is a stretch goal. The sketch deploys each vault as an EIP-1167 clone, which does not fit the current `MandateVault`: it sets its owner, USDC and policy registry as immutables in its constructor and has no initializer. Sketched in [the treasury design spec, section 3.7](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md#37-mandatefactory-stretch-week-3).

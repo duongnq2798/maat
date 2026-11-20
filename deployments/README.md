@@ -72,6 +72,8 @@ set -a; source .env; set +a
 forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
 ```
 
+Then fill the table at the top of this file with each contract's address, deploy transaction and date, and in `web/` run `npm run docs:gen` and commit what it rewrites. The docs and the website's `/ledger` page read the vault from that table: the page starts reading the vault's events at the block of the `MandateVault` deploy transaction, so fill its Tx cell too.
+
 ## Smoke test (owner only)
 
 Put **$20 USDC** into the vault with `approve` + `fund` (this does not count as revenue), then send one BUY $5 NVDAc intent. Do this only during US market hours, 9:30-16:00 ET. In UTC, the hours depend on whether the US is on standard time or daylight saving time:
