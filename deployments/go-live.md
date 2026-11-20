@@ -168,7 +168,7 @@ The signatures are those of `contracts/src/interfaces/IB20Asset.sol`: `isPaused(
 | `policyId` for `keccak256("TRANSFER_EXECUTOR_POLICY")` (line 29), the policy of the executor leg | A number. `0` means always allow: the vault then asks the registry nothing (`GuardLib.sol` line 165), so skip the third call | An error, or an empty line: the vault answers `POLICY_BLOCKED` (`GuardLib.sol` lines 171-173) |
 | `isAuthorized` with that number and your wallet | `true` | `false`, or an error: on every BUY and SELL the vault checks `tx.origin` against this policy (`GuardLib.sol` lines 151 and 155), so it answers `POLICY_BLOCKED` |
 
-On a stop, do not broadcast; find out why first. The vault also checks the pool (as sender and executor) and the vault itself (as receiver) on a BUY (`GuardLib.sol` lines 150-151). The vault has no address before step 5, so the step 7 preview covers those legs. After step 9 the CDP executor sends `execute`, so run the third call again with its address in place of `$MAAT_EXECUTOR`.
+On a stop, do not broadcast; find out why first. The vault also checks the pool (as sender and executor) and the vault itself (as receiver) on a BUY (`GuardLib.sol` lines 150-151). The vault has no address before step 5, so the step 7 preview covers those legs. After step 9 the CDP executor sends `execute`, so before its `setExecutor` there, run the third call again with the CDP address in place of `$MAAT_EXECUTOR`, and with `--rpc-url "$RPC"` if that shell unset `BASE_RPC_URL` (in a new shell, set `REGISTRY` and `POLICY` again as above first).
 
 ## 5. Broadcast with --verify (owner)
 
