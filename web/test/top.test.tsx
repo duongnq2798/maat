@@ -29,13 +29,21 @@ describe("nav", () => {
       ["How it works", "#how"],
       ["Refusals", "#reasons"],
       ["Try it", "#try"],
-      ["Ledger", "#ledger"],
+      ["Ledger", "/ledger"],
       ["Mandate", "#mandate"],
       ["Docs", SITE.docsUrl],
       ["View on GitHub ↗", SITE.repoUrl],
     ]);
     expect(within(nav).getByRole("link", { name: "Maat home" })).toBeInTheDocument();
     expect(nav.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("points its section links at the landing from any other page", () => {
+    render(<Nav onLanding={false} />);
+    const links = within(screen.getByRole("navigation", { name: "Main" }))
+      .getAllByRole("link")
+      .map((a) => a.getAttribute("href"));
+    expect(links).toEqual(["/", "/#how", "/#reasons", "/#try", "/ledger", "/#mandate", SITE.docsUrl, SITE.repoUrl]);
   });
 });
 

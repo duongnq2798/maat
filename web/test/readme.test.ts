@@ -83,9 +83,12 @@ describe("web/README.md", () => {
     expect(values("status")).toEqual([...STATUSES]);
   });
 
-  it("names the files npm run docs:gen writes, and no other generated file", () => {
-    const written = [...readRepo("web/scripts/docs-gen.ts").matchAll(/\$\{OUT\}([\w.-]+\.json)/g)].map((m) => `content/generated/${m[1]}`);
-    expect(written.length).toBeGreaterThan(0);
+  it("names the files npm run docs:gen and npm run rationales write, and no other generated file", () => {
+    const docsGen = [...readRepo("web/scripts/docs-gen.ts").matchAll(/\$\{OUT\}([\w.-]+\.json)/g)].map((m) => `content/generated/${m[1]}`);
+    const rationales = [...readRepo("web/scripts/rationales.ts").matchAll(/new URL\("\.\.\/(content\/generated\/[\w.-]+\.json)"/g)].map((m) => m[1]!);
+    expect(docsGen.length).toBeGreaterThan(0);
+    expect(rationales).toEqual(["content/generated/rationales.json"]);
+    const written = [...docsGen, ...rationales];
     const named = [...new Set(codes(webReadme).filter((c) => c.startsWith("content/generated/") && c.endsWith(".json")))];
     expect(named.sort()).toEqual([...written].sort());
   });

@@ -4,7 +4,7 @@ description: Read a vault's Decision events with cast, decode them as the agent 
 type: guide
 audience: [watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-20
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -29,6 +29,8 @@ Every [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/g
 No Maat vault is deployed, so there are no mainnet `Decision` events to read, and the commands below that need the vault's address take it from `VAULT`, which [step 1](#read-the-events-with-cast) sets to the placeholder `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault, and the Maat team has not run them. It has not run the `jq` line in [step 5](#match-a-decision-to-the-journal) either. The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
 
 </Callout>
+
+The site's [mainnet ledger](/ledger) does this reading for you in the browser. Once `deployments/README.md` records a vault, it reads the vault's events from its deploy block, decodes them with the vault's ABI, checks each exported rationale against its `rationaleHash`, and reads balances, prices and the health factor at the latest block. Until then it shows the fork run. The steps below are for checking it yourself, or for building on the events.
 
 ## Before you start
 

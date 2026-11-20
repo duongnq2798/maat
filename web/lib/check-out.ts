@@ -240,6 +240,27 @@ export function checkAbiFiles(expected: Readonly<Record<string, unknown>>, read:
   return problems;
 }
 
+/** Each generated data file in out/ (keyed by its path, such as data/deployments.json), parsed, equals its source. */
+export function checkDataFiles(expected: Readonly<Record<string, unknown>>, read: (path: string) => string | undefined): string[] {
+  const problems: string[] = [];
+  for (const [path, data] of Object.entries(expected)) {
+    const text = read(path);
+    if (text === undefined) {
+      problems.push(`missing out/${path}`);
+      continue;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      problems.push(`out/${path} is not JSON`);
+      continue;
+    }
+    if (!isDeepStrictEqual(json, data)) problems.push(`out/${path} is not its generated source (run npm run docs:gen and build again)`);
+  }
+  return problems;
+}
+
 type Env = Record<string, string | undefined>;
 
 /** Whether this run checks an export that is about to ship: on CI, or in a Vercel build. */
@@ -321,5 +342,30 @@ export function checkMarkdownCopies(text: string, path?: string): string[] {
     if (inFence) return;
     for (const [, name] of line.matchAll(DATA_TAG)) problems.push(`${where}line ${i + 1}: <${name}> was left in the Markdown instead of its text`);
   });
+  return problems;
+}
+
+/**
+ * Problems with out/ledger.html: its static state matches the build's deployments table (the waiting view while no
+ * vault is recorded, a connecting line once one is), it names its canonical URL, its in-page links have targets, it
+ * loads no third-party script, and the sitemap lists it.
+ */
+export function checkLedgerPage(opts: { html: string; vaultRecorded: boolean; sitemap: string; url: string }): string[] {
+  const { html, vaultRecorded, sitemap, url } = opts;
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(problem);
+  };
+  const waiting = html.includes("Waiting for the mainnet deploy");
+  if (vaultRecorded) need(!waiting, "out/ledger.html shows the waiting state, but a vault is recorded");
+  else need(waiting, "out/ledger.html does not show the waiting state, but no vault is recorded");
+  need(/<link rel="canonical" href="[^"]*\/ledger"/.test(html), "out/ledger.html has no canonical URL ending in /ledger");
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `out/ledger.html: link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `out/ledger.html: third-party script ${src}`);
+  }
+  need(sitemap.includes(`<loc>${url}</loc>`), `out/sitemap.xml does not list ${url}`);
   return problems;
 }

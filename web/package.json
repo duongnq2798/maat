@@ -14,6 +14,7 @@
     "brand": "tsx scripts/brand.ts",
     "check:out": "tsx scripts/check-out.ts",
     "docs:gen": "tsx scripts/docs-gen.ts",
+    "rationales": "tsx scripts/rationales.ts",
     "verify": "npm run typecheck && npm test && npm run build && npm run check:out",
     "e2e": "playwright test"
   },
@@ -25,6 +26,7 @@
     "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "viem": "2.57.16",
     "zbsearch": "4.0.1",
     "zod": "4.6.7"
   },

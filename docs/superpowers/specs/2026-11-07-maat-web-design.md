@@ -314,6 +314,8 @@ The repo is currently private. Vercel can deploy from a private repo. When movin
 
 ## 10. Web roadmap after W1 (each part has its own spec)
 
+> **Update 2026-11-20:** W2 has its own spec, [`2026-11-20-maat-web-w2-ledger-design.md`](2026-11-20-maat-web-w2-ledger-design.md). Two changes from the sketch below: the read path stays client-side (the visitor's browser calls a public Base RPC, so `output: "export"` stays and no RPC key exists), and the Base App mini-app manifest is dropped.
+
 - **W2: Live ledger & dashboard** (after the mainnet deploy, alongside or after Plan 3):
   - `getDecisions()` reads the `Decision` event from the mainnet vault using viem on the server side. The RPC key stays on the server only and never appears in the bundle or the repo. At that point `output: "export"` is dropped.
   - Each row has a Basescan link.
