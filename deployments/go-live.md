@@ -126,7 +126,7 @@ Only transactions whose calldata ends with this suffix carry the code. The deplo
 
    Never commit `contracts/.env`; `.gitignore` already lists it.
 
-3. Check the tools: use Foundry 1.8.4 or newer (`forge --version`; CI pins 1.9.0) and run every `forge` command from `contracts/`, where `foundry.toml` sets `hardfork = "base:Cobalt"`. The B20 stocks are precompiles and the vault's constructor reads them, so the deploy needs that setting. If `contracts/lib/forge-std` is empty, run `git submodule update --init` at the repository root.
+3. Check the tools: use Foundry 1.8.4 or newer (`forge --version`; CI pins 1.9.0; [`README.md`](README.md#foundry), "Foundry") and run every `forge` command from `contracts/`, where `foundry.toml` sets `hardfork = "base:Cobalt"`. The B20 stocks are precompiles and the vault's constructor reads them, so the deploy needs that setting. If `contracts/lib/forge-std` is empty, run `git submodule update --init` at the repository root.
 4. Put enough ETH on Base in the wallet for 4 contract deployments and a few calls. The simulation in step 4 prints the estimated gas.
 
 ## 4. Dry run, then check the addresses (owner)
