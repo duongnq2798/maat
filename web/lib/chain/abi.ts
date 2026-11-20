@@ -1,5 +1,6 @@
 import type { Abi } from "viem";
-import abis from "@/content/generated/abi.json";
+// The import attribute lets Node load this module as ESM too (the e2e fake RPC decodes calls with these ABIs).
+import abis from "@/content/generated/abi.json" with { type: "json" };
 
 /** MandateVault and ICreditAdapter as the docs publish them (content/generated/abi.json, from agent/src/abi/generated.ts). */
 export const vaultAbi = abis.MandateVault as Abi;
