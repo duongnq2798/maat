@@ -4,17 +4,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { size } from "viem";
 import { describe, expect, it } from "vitest";
-import { addressOf } from "../src/addresses.js";
+import { addressOf, USDC } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
 import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
 import { Journal } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
-import { FixedProposer, type Proposer } from "../src/llm/proposer.js";
+import { FixedProposer, type Proposer, type ProposerInput } from "../src/llm/proposer.js";
 import type { Batch } from "../src/llm/schema.js";
 import { PENDING_WINDOW_BLOCKS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
 import type { OnchainIntent } from "../src/types.js";
-import { EXECUTOR, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
+import { CREDIT, EXECUTOR, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
 import { FakeReceipts } from "./fakes/fakeReceipts.js";
 import { FakeSender } from "./fakes/fakeSender.js";
 
@@ -141,6 +141,89 @@ describe("runOnce", () => {
     await runOnce(t.deps);
     expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["syncMultiplier", "execute"]);
     expect(codesIn(t.inner.sent[0]!.data)).toEqual(["bc_maattest"]);
+  });
+
+  it("records new USDC as revenue with notifyRevenue before trading", async () => {
+    const t = await setup({ batch: BUY20, scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    t.receipts.revenue = 30_000_000n;
+    await runOnce(t.deps);
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["notifyRevenue", "execute"]);
+    expect(codesIn(t.inner.sent[0]!.data)).toEqual(["bc_maattest"]);
+    const row = (await t.journal.read()).find((e) => e.kind === "housekeeping");
+    expect(row).toMatchObject({ call: "notifyRevenue", amount: "30000000", txHash: `0x${"1".padStart(64, "0")}` });
+    expect(t.store.txCount(DAY)).toBe(2);
+  });
+
+  it("keeps the revenue the keeper recorded visible to policy and the prompt", async () => {
+    let seen: ProposerInput | undefined;
+    const proposer: Proposer = { propose: async (i) => ((seen = i), { ok: true, summary: "hold", proposals: [], costUsd6: 0n, model: "fake" }) };
+    const scene = standardScene().set(USDC, "balanceOf", 130_000_000n).set(CREDIT, "debt", 5_000_000n);
+    const t = await setup({ scene, proposer });
+    t.receipts.revenue = 30_000_000n;
+    // Like the contract: once notifyRevenue is mined, recordedUsdc equals the balance, so a raw re-read shows no new revenue.
+    scene.set(VAULT, "recordedUsdc", () => (t.receipts.calls().some((c) => c.functionName === "notifyRevenue") ? 130_000_000n : 100_000_000n));
+    await runOnce(t.deps);
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["notifyRevenue"]);
+    expect(seen!.state.recordedUsdc).toBe(130_000_000n);
+    expect(seen!.state.newRevenue).toBe(30_000_000n);
+    expect(seen!.policy.suggestions).toContainEqual(expect.objectContaining({ action: "REPAY", symbol: "USDC", amountUsd6: 5_000_000n }));
+  });
+
+  it("leaves revenue below the threshold for later", async () => {
+    const t = await setup({ scene: standardScene().set(USDC, "balanceOf", 100_049_999n) });
+    expect((await runOnce(t.deps)).sent).toEqual([]);
+    const t2 = await setup({ scene: standardScene().set(USDC, "balanceOf", 100_049_999n) });
+    t2.deps.revenueMinUsd6 = 49_999n;
+    expect((await runOnce(t2.deps)).sent).toHaveLength(1);
+  });
+
+  it("journals revenue in dry-run without sending", async () => {
+    const t = await setup({ mode: "dry-run", scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    await runOnce(t.deps);
+    expect(t.inner.sent).toEqual([]);
+    expect((await t.journal.read()).find((e) => e.kind === "housekeeping")).toMatchObject({ call: "notifyRevenue", amount: "30000000", note: "dry-run" });
+  });
+
+  it("keeps half the daily tx cap for trades and bills: the keeper skips at half the cap", async () => {
+    const t = await setup({ batch: BUY20, maxTxPerDay: 4, scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    t.store.recordTx(DAY);
+    t.store.recordTx(DAY); // 2 of 4 used: the keeper may not take the second half
+    t.receipts.revenue = 30_000_000n;
+    const r = await runOnce(t.deps);
+    expect(r.status).toBe("done");
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["execute"]);
+    expect(t.store.txCount(DAY)).toBe(3);
+    const rows = await t.journal.read();
+    expect(rows.filter((e) => e.kind === "housekeeping")).toEqual([
+      expect.objectContaining({ call: "notifyRevenue", amount: "30000000", note: "skipped: half the daily tx cap is kept for trades and bills" }),
+    ]);
+    expect(rows.find((e) => e.kind === "intent")).toMatchObject({ gate: "execute" });
+  });
+
+  it("lets the keeper send while less than half the daily tx cap is used", async () => {
+    const t = await setup({ batch: BUY20, maxTxPerDay: 4, scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    t.store.recordTx(DAY); // 1 of 4 used
+    t.receipts.revenue = 30_000_000n;
+    const r = await runOnce(t.deps);
+    expect(r.status).toBe("done");
+    expect(t.receipts.calls().map((c) => c.functionName)).toEqual(["notifyRevenue", "execute"]);
+    expect(t.store.txCount(DAY)).toBe(3);
+  });
+
+  it("does not run the keeper when there is no new revenue, even with a zero threshold", async () => {
+    for (const mode of ["live", "dry-run"] as const) {
+      const t = await setup({ mode });
+      t.deps.revenueMinUsd6 = 0n;
+      expect((await runOnce(t.deps)).sent).toEqual([]);
+      expect((await t.journal.read()).filter((e) => e.kind === "housekeeping")).toEqual([]);
+    }
+  });
+
+  it("does not halt when someone else recorded the revenue first", async () => {
+    const t = await setup({ scene: standardScene().set(USDC, "balanceOf", 130_000_000n) });
+    const r = await runOnce(t.deps); // receipts.revenue stays null: the receipt carries no RevenueReceived
+    expect(r.status).toBe("done");
+    expect((await t.journal.read()).find((e) => e.kind === "housekeeping")).toMatchObject({ amount: "0", note: "already recorded by another caller" });
   });
 
   it("skips housekeeping for a token whose lastMultiplier is unreadable", async () => {

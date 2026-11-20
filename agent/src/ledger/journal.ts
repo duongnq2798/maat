@@ -14,6 +14,8 @@ export type JournalEntry =
   | { kind: "reconcile"; runId: string; intentId: Hex; action: string; txHash?: Hex; outcome: "applied" | "pending" | "dropped"; decision?: Decision; note?: string }
   | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
   | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
+  /** amount: USDC (6 decimals) the vault recorded as revenue; on a dry run, what it would record. */
+  | { kind: "housekeeping"; runId: string; call: "notifyRevenue"; amount: bigint; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
   | { kind: "error"; runId: string; message: string };
 

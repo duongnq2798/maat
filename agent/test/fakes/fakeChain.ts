@@ -93,3 +93,24 @@ export function standardScene(): FakeChain {
   });
   return f;
 }
+
+export const POOL: Address = "0x8888888888888888888888888888888888888888";
+/** TWAP tick -6932 with the stock as token1 against 6-decimal USDC: 1.0001^6932 ~= 2, so about $200. */
+export const TWAP_TICK = -6932;
+export const DEX_PRICE8 = 20_000_363_238n;
+
+/** standardScene plus the reads the Guard Service makes: NVDAc's feed sits at the pool's TWAP price (0 bps premium). */
+export function marketScene(): FakeChain {
+  const f = standardScene();
+  const nvda = BASKET[0]!.address;
+  f.set(VAULT, "multiplierChangedAt", 0n)
+    .set(nvda, "isPaused", false)
+    .set(nvda, "effectiveAt", 0n)
+    .set(nvda, "policyId", 0n)
+    .set(nvda, "balanceOf", (a) => (getAddress(a[0] as Address) === getAddress(POOL) ? 5_000_000_000n : 0n)) // 50 NVDAc
+    .set(USDC, "balanceOf", (a) => (getAddress(a[0] as Address) === getAddress(POOL) ? 10_000_000_000n : 100_000_000n)) // $10k in the pool
+    .set(POOL, "token0", USDC)
+    .set(POOL, "observe", [[0n, BigInt(TWAP_TICK) * 1800n], [0n, 0n]])
+    .set(FEEDS[0]!, "latestRoundData", [1n, DEX_PRICE8, 0n, f.block.timestamp - 30n, 1n]);
+  return f;
+}

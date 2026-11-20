@@ -14,7 +14,7 @@ import {
 import { mandateVaultAbi } from "../abi/index.js";
 import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
-import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
+import { encodeExecute, encodeNotifyRevenue, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
 import { SendRefused, type GuardedSender } from "../exec/sender.js";
 import { buildIntent, type Proposal } from "../intent.js";
 import type { Journal } from "../ledger/journal.js";
@@ -31,6 +31,8 @@ export const BILL_MIN_USD6 = 100_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
 /** A pending send with no onchain trace is given up after this many blocks (controller ruling: 300, ~10 min on Base). */
 export const PENDING_WINDOW_BLOCKS = 300n;
+/** Default for RunDeps.revenueMinUsd6: below $0.05 of new USDC, recording it costs more gas than it is worth. */
+export const REVENUE_MIN_USD6 = 50_000n;
 
 export interface RunDeps {
   vault: Address;
@@ -48,6 +50,8 @@ export interface RunDeps {
   store: Store;
   journal: Pick<Journal, "append">;
   policy?: PolicyParams;
+  /** New USDC (x402 payments, creator fees) at or above this is recorded with notifyRevenue. */
+  revenueMinUsd6?: bigint;
   runId?: string;
 }
 
@@ -79,6 +83,12 @@ function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | u
 function multiplierSynced(receipt: TransactionReceipt, vault: Address, token: Address): boolean {
   const logs = parseEventLogs({ abi: mandateVaultAbi, eventName: "MultiplierChangeDetected", logs: receipt.logs });
   return logs.some((x) => getAddress(x.address) === getAddress(vault) && getAddress(x.args.token) === getAddress(token));
+}
+
+/** What notifyRevenue recorded. 0 when another caller recorded it first (anyone may call notifyRevenue). */
+function revenueIn(receipt: TransactionReceipt, vault: Address): bigint {
+  const logs = parseEventLogs({ abi: mandateVaultAbi, eventName: "RevenueReceived", logs: receipt.logs });
+  return logs.filter((x) => getAddress(x.address) === getAddress(vault)).reduce((sum, x) => sum + x.args.amount, 0n);
 }
 
 export async function runOnce(d: RunDeps): Promise<RunReport> {
@@ -217,11 +227,44 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, txHash: hash, gas, gasUsed: r.gasUsed });
       if (!multiplierSynced(r, d.vault, t.address)) throw new Halt(`syncMultiplier ${t.address}: no MultiplierChangeDetected in ${hash}`);
     }
+
+    // Housekeeping: record inbound USDC (x402 payments to the vault) as revenue, so it shows without waiting for a trade.
+    let revenueRecorded = 0n;
+    if (s.newRevenue > 0n && s.newRevenue >= (d.revenueMinUsd6 ?? REVENUE_MIN_USD6)) {
+      if (!sender) {
+        await j.append({ kind: "housekeeping", runId, call: "notifyRevenue", amount: s.newRevenue, note: "dry-run" });
+      } else if (d.store.txCount(day) * 2 >= d.maxTxPerDay) {
+        // The lowest-priority tx: unrecorded USDC still reaches policy and the prompt through newRevenue, so it never halts the round or takes the second half of the daily cap.
+        await j.append({ kind: "housekeeping", runId, call: "notifyRevenue", amount: s.newRevenue, note: "skipped: half the daily tx cap is kept for trades and bills" });
+      } else {
+        const data = encodeNotifyRevenue();
+        const gas = await gasFor("notifyRevenue", data);
+        d.store.recordTx(day);
+        const hash = await sender.send({ to: d.vault, data, idempotencyKey: `revenue:${runId}`, gas });
+        report.sent.push(hash);
+        const r = await receiptOf(hash);
+        if (r.status !== "success") throw new Halt(`tx ${hash} reverted`);
+        const amount = revenueIn(r, d.vault);
+        revenueRecorded = amount;
+        await j.append({
+          kind: "housekeeping",
+          runId,
+          call: "notifyRevenue",
+          amount,
+          txHash: hash,
+          gas,
+          gasUsed: r.gasUsed,
+          ...(amount === 0n ? { note: "already recorded by another caller" } : {}),
+        });
+      }
+    }
     let dirty = report.sent.length > 0;
     if (dirty) {
       s = await reread();
       dirty = false;
     }
+    // The keeper just moved this USDC into recordedUsdc; policy (REPAY) and the prompt still treat it as this round's new revenue.
+    if (revenueRecorded > 0n) s = { ...s, newRevenue: s.newRevenue + revenueRecorded };
 
     const unpaid = d.store.unpaidUsd6();
     const policy = evaluatePolicy(

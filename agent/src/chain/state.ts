@@ -53,14 +53,14 @@ export interface VaultState {
   equityUsd6: bigint;
 }
 
-type Result = { status: "success"; result: unknown } | { status: "failure"; error: unknown };
+export type Result = { status: "success"; result: unknown } | { status: "failure"; error: unknown };
 
-function must<T>(r: Result | undefined, what: string): T {
+export function must<T>(r: Result | undefined, what: string): T {
   if (!r || r.status !== "success") throw new StateUnavailable(`vault read failed: ${what}`, { cause: r && "error" in r ? r.error : undefined });
   return r.result as T;
 }
 
-function opt<T>(r: Result | undefined): T | null {
+export function opt<T>(r: Result | undefined): T | null {
   return r && r.status === "success" ? (r.result as T) : null;
 }
 

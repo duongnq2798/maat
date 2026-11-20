@@ -15,6 +15,7 @@ describe("loadConfig", () => {
     expect(c.loopModel).toBe("claude-sonnet-5-5");
     expect(c.maxTxPerDay).toBe(40);
     expect(c.defaultDailyComputeUsd).toBe(0.5);
+    expect(c.revenueMinUsd).toBe(0.05);
     expect(c.dataDir).toBe("./data");
     expect(c.vault).toBe("0x1111111111111111111111111111111111111111");
   });

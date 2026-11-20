@@ -46,7 +46,7 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 - `GuardedSender` sends only `execute`, `syncMultiplier` and `notifyRevenue` to the vault, and always attaches the Builder Code. The CDP policy adds one more layer of blocking.
 - `MAAT_MAX_TX_PER_DAY` (default 40) stops gas from being burned on a repeating error.
 - If the RPC fails, that cycle does nothing. If a tx fails or reverts, the cycle stops immediately.
-- Every tx has an explicit gas limit: `min(3,000,000, max(floor, estimate × 1.3))`. The floor is 2,500,000 for `execute` and 300,000 for `syncMultiplier`. The agent does not use `eth_estimateGas` directly, because the vault swallows inner errors (swap, transfer, credit), so the estimate can be too low and the vault would record `SWAP_FAILED`. If the estimate fails, the cycle stops.
+- Every tx has an explicit gas limit: `min(3,000,000, max(floor, estimate × 1.3))`. The floor is 2,500,000 for `execute`, 300,000 for `syncMultiplier` and 100,000 for `notifyRevenue`. The agent does not use `eth_estimateGas` directly, because the vault swallows inner errors (swap, transfer, credit), so the estimate can be too low and the vault would record `SWAP_FAILED`. If the estimate fails, the cycle stops.
 - Every `execute` is recorded in `pending` in `data/state.json` before it is sent. The next cycle reconciles against `usedIntent(id)` before doing anything else, so even a lost receipt cannot cause a bill to be paid twice.
 - If the preview reports OK but the vault refuses, or the receipt has no `Decision`, the agent records `mismatch` and stops the cycle.
 - Each `data/` directory allows only one agent process at a time (the `agent.lock` file). The agent takes the lock before it opens the Store or connects to CDP. A lock file that is empty or corrupt but newer than 60 seconds is treated as held.
@@ -62,6 +62,34 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
    No manual fix is needed.
 3. `halted` because of `mismatch` or a missing `Decision`: read the tx on Basescan before you run again. If a `pending` entry keeps halting the cycle, remove it from `data/state.json` only when you are sure that tx can no longer take effect.
 4. Emergency stop (the owner signs it): call `setPaused(true)` on the vault, or `setExecutor(owner)` to take back the executor role.
+
+## Guard Service
+
+A read-only HTTP service for the market checks GuardLib makes, for other agents and for the dashboard. It never signs. It refuses to start when `CDP_WALLET_SECRET` is in its env.
+
+```bash
+cp .env.guard.example .env.guard   # then fill in the vault, executor, RPC and the CDP API key (not the wallet secret)
+npm run guard
+```
+
+| Endpoint | Price | Returns |
+|---|---|---|
+| `GET /health` | free | `{ "ok": true }` |
+| `GET /state/:token` | free | Chainlink price and age; 30-minute Aerodrome TWAP; premium (bps); multiplier (current, last seen by the vault, `changedAt`, `effectiveAt`, pending); paused; policy ids; session; pool reserves; Coinbase NAV |
+| `POST /preview` | free | `previewIntent` from the executor: `{ reason, allowed, block }`. Body: `{ action, token, amount, minOut?, payee? }` (amounts are integer strings in raw units) |
+| `GET /check?token&side&sizeUSD` | 0.01 USDC on Base (x402) | the market verdict in GuardLib order (`reason`, `ok`), plus `sizeShareBps`, `policyRestricted`, `multiplierPending` |
+
+How the endpoints behave:
+- For `/state` and `/check`, `token` is a basket symbol (NVDAc, GOOGLc, AAPLc, any case) or address, and any other token gets 404. For `/preview`, `token` is an address (USDC for BORROW, REPAY and PAY_EXPENSE; the stock token for BUY, SELL, SUPPLY and WITHDRAW_COLLATERAL), and the vault's own answer says whether it is allowed.
+- Each IP gets 60 requests per minute on each of `/state`, `/preview` and `/check`. State and previews are cached for 15 s, and the Coinbase list for 60 s.
+- If the RPC is down, `/state`, `/preview` and `/check` answer 503 `{"reason":"UNKNOWN"}`, and `/check` does not charge.
+- If Coinbase is down, `nav` is `null` and everything else still answers.
+- A bad `/check` query gets 400 before any payment request.
+- An unexpected error returns 500 `{"error":"INTERNAL"}` and is never charged. Only the first line of its message is logged.
+
+x402 payments go straight to the vault (`payTo` = `MAAT_VAULT`; the S4 fallback overrides it with `GUARD_PAY_TO`). The agent records them as revenue: once at least `MAAT_REVENUE_MIN_USD` (default 0.05) of new USDC has arrived, its next live round sends `notifyRevenue()` and journals `call: "notifyRevenue"`. A dry-run round only journals it, and a live round skips it (journaling the skip) once half of `MAAT_MAX_TX_PER_DAY` is used, so revenue recording never crowds out trades and bills.
+
+The public deploy is the Fly app `maat-guard` (`fly.guard.toml`), built from the same image as the agent. The owner runbook is in `deployments/README.md` → "Guard Service and S4 (owner only)".
 
 ## Data
 
@@ -83,6 +111,8 @@ The fork test needs:
 - Port 8547 is free. The test runs only against a local anvil (`127.0.0.1`).
 - About 3–5 minutes on a public RPC, because the first swap on a cold fork is very slow. Set `MAAT_GAS_LOG=<file path>` to write the gas limit and `gasUsed` of each tx to a JSON file.
 - The committed log: `test/integration/fork-gas.json`; the website keeps a copy of its gas numbers in `web/content/facts.ts`, and `web/test/facts.test.ts` checks that the two match. Across 2 runs on 2026-11-07, `gasUsed` for SUPPLY, BORROW and the refusal log was identical, while BUY came out at 754,854 and then 758,192. If you overwrite this file, you must update `web/content/facts.ts` to match, because the parity test will fail.
+
+The integration run also includes `test/integration/guard.fork.test.ts` on port 8548. It covers guard/vault parity on the same block, and an x402 payment settled into the vault, then recorded by `notifyRevenue` and spent by `PAY_EXPENSE`. On a Base fork every anvil dev account has EIP-7702 code, so the test clears the buyer's code (fork only).
 
 ## Known issue: npm audit
 
