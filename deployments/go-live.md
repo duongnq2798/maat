@@ -99,7 +99,7 @@ Work in the checkout you will deploy from.
 
 1. Register the project at https://dashboard.base.org, then open **Settings** → **Project Settings** → **Builder Code**, the path Base's [Builder Codes page](https://docs.base.org/base-chain/quickstart/builder-codes) gives ([`agent/README.md`](../agent/README.md#live-run-owner-only), step 1, covers the same registration).
 2. Write the code down exactly as shown. It must match `^[a-z0-9_]{1,32}$` (`BUILDER_CODE_RE` in `agent/src/exec/builderCode.ts`); the tools here refuse any other code.
-3. Use the code as it is, never a hex form copied from a web page: `first-decision.ts` and the agent encode it themselves with `Attribution.toDataSuffix` from `ox/erc8021`, the ERC-8021 schema-0 suffix.
+3. Use the code as it is, never a hex form copied from a web page: `first-decision.ts` and the agent encode it themselves with `Attribution.toDataSuffix` from `ox/erc8021`, the ERC-8021 schema-0 suffix. `first-decision.ts` refuses a hex form (`0x` followed by hex digits only).
 
 Only transactions whose calldata ends with this suffix carry the code. The deploy, `approve`, `fund` and `setExecutor` do not; the two first-decision sends and every agent transaction do.
 
@@ -214,7 +214,12 @@ Fund at least 20 USDC. Monday's 5 USD BUY must stay within the 40% weight cap (`
 
 ## 7. First Decision while NYSE is closed (owner)
 
-Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor, so it sends the intent. Use the shell from step 6: it is still in `contracts/` (step 4 went there), with `VAULT` and `BASE_RPC_URL` set. In a new shell, run `set -a; source contracts/.env; set +a` from the repository root and set `VAULT` again.
+Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor, so it sends the intent. Use the shell from step 6: it is still in `contracts/` (step 4 went there), with `VAULT` and `BASE_RPC_URL` set. In a new shell, run `set -a; source contracts/.env; set +a` from the repository root, set `VAULT` again to the `MandateVault` address in step 10, and read it back before anything else:
+
+```bash
+cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"      # must print your wallet address
+cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"   # must print your wallet address
+```
 
 1. Build the intent offline with [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts). It makes no network call, reads no `.env`, holds no key and sends nothing. The `cd` below works from `contracts/` and from the repository root:
 
@@ -241,6 +246,7 @@ Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor,
 
    - **a.** `cast decode-calldata ...`: offline; the decoded tuple must match the printed intent.
    - **b.** `EXECUTOR=$(cast call ...)`, then `cast call "$VAULT" --data <preview calldata> --from "$EXECUTOR" ...` and `cast to-dec` on its output. It must print `6` (`MARKET_CLOSED`). The call is read-only and free; it runs from the executor because the vault's transfer-policy check reads `tx.origin`.
+   - **Before c, check the Builder Code and the vault.** The tool's `Builder Code` and `Codes in calldata` lines must show your code exactly as Base Dashboard shows it (**Settings** → **Project Settings** → **Builder Code**, step 2). The `execute` calldata must end with the suffix on the `Builder Code` line, whose last 16 bytes are `80218021802180218021802180218021`. The tool's `VAULT=` line must be the `MandateVault` address in step 10. If any of these differs, do not send: the suffix would credit another code, or the send would go to another address, and the vault's first `Decision` cannot be redone.
    - **c.** `cast send "$VAULT" --data <execute calldata> --gas-limit 2500000 --account <your-keystore> ...`, with `maat-owner` as the keystore. Keep the gas limit: it is the agent's `execute` floor (`EXECUTE_GAS_FLOOR` in `agent/src/exec/calls.ts`), because a plain estimate can starve the vault's inner swap.
    - **d.** `cast receipt <tx hash> ...` and `cast decode-event --sig "Decision(...)" <data>` on the log whose topic 1 is the intent id. It prints the action, the amount, `allowed`, the reason and the rationale hash.
 
@@ -257,13 +263,13 @@ Do this any time on Saturday or Sunday (UTC). Your wallet is still the executor,
 
 ## 8. Monday 2026-11-23, at or after 14:30 UTC (owner)
 
-Send the same intent with a new salt, so a new id. Run it from `agent/`, in a shell where `VAULT` and `RPC` are set as in step 7:
+Send the same intent with a new salt, so a new id. Run it from `agent/`, in a shell where `VAULT` and `RPC` are set as in step 7 (in a new shell, follow step 7's new-shell steps first, the two read-backs included):
 
 ```bash
 node --import tsx scripts/first-decision.ts --vault "$VAULT" --token NVDAc --usd 5 --salt mon-1 --builder-code <your code>
 ```
 
-1. Run template **b** first. Send only when it prints `0` (`OK`). If it prints:
+1. Run templates **a** and **b**, then the Builder Code and vault check of step 7 (item 2). Send only when **b** prints `0` (`OK`) and the check passes. If **b** prints:
    - `10` (`PREMIUM_TOO_HIGH`): the 30-minute TWAP still differs from the oracle by more than `maxPremiumBps`. [`README.md`](README.md#default-mandate) (Default mandate) records that, in simulated BUYs with this mandate, most NVDAc refusals left were of this kind, in the first 45 minutes after the open. Wait and preview again.
    - `7` (`FEED_STALE`): the Chainlink answer is older than `maxStaleness`. Wait for a feed update and preview again.
    - `14` (`INSUFFICIENT_BALANCE`): the vault holds less than 5 USDC (step 6).
