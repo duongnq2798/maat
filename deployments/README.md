@@ -64,7 +64,7 @@ The dry-run files (`contracts/broadcast/*/*/dry-run/`) are already in `.gitignor
 - [ ] `MAAT_DEPLOYER` is **exactly the address of the `--account` wallet** used to broadcast. The script precomputes the vault address from this wallet's nonce. If it is the wrong wallet, or the wallet sends another transaction between the simulation and the broadcast, the script can stop with `vault address mismatch` or a nonce error. `vault address mismatch` happens in the simulation step, before any transaction is sent, so no gas is lost: just simulate again. A nonce error during the broadcast (because the deployer wallet sent another transaction in between) can leave the calendar, the swap adapter and `AaveV4CreditAdapter` deployed but unused; in that case, redeploy from scratch.
 - [ ] `MAAT_OWNER` is correct character for character. The owner is **immutable** on `MandateVault` and `MarketCalendar`: a mistyped address means **permanent loss of control** (you cannot withdraw funds or change the mandate). Check again with the `owner (immutable)` line in the output of the simulation step with the real `.env` ("Deploy mainnet" section), not the dry-run that uses placeholder addresses.
 - [ ] `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` and, if set, `MAAT_EXPENSE_PAYEE_2` are the correct addresses (they can be changed later, but a payee change must go through the 24h timelock).
-- [ ] `--verify` needs `ETHERSCAN_API_KEY` in `contracts/.env` (an Etherscan v2 key works for Basescan). If the deploy finishes but verification fails, do not redeploy; run `forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify`.
+- [ ] `--verify` needs `ETHERSCAN_API_KEY` in `contracts/.env` (an Etherscan v2 key works for Basescan). If the deploy finishes but verification fails, do not redeploy; run `forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify --slow`.
 - [ ] Fund the vault with `approve` and then `fund(amount)`. Do **not** transfer USDC straight into the vault: `notifyRevenue()` would record a direct transfer as revenue (`RevenueReceived`).
 - [ ] To change the configuration later: `queueMandate` / `queueTokenConfig` / `queuePayee` (a public event with all parameters), wait 24h, then `apply*` within the 7 days after that; past that deadline the change expires (`ChangeExpired`) and must be queued again.
 
@@ -95,8 +95,10 @@ Broadcast only when both conditions hold. If the simulation stops at `vault addr
 
 ```bash
 set -a; source .env; set +a
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify --slow
 ```
+
+`--slow` sends the four deploy transactions one at a time, each only after the previous one is confirmed and succeeded, as in go-live.md step 5.
 
 ## Smoke test (owner only)
 
@@ -152,10 +154,10 @@ If the Aave spoke's views start to revert: the adapter cannot be removed (`apply
 
 ## Switch the executor to the CDP Server Wallet (owner only)
 
-Do this after running `agent/scripts/cdp-setup.ts`, which prints the executor address:
+Do this after running `agent/scripts/cdp-setup.ts`, which prints the executor address. These lines read `BASE_RPC_URL`, so run them in a shell that has it set. In go-live.md step 9 the shell may have unset it; there, use go-live.md step 9, item 2, which reads `RPC` instead.
 
 ```bash
-export EXECUTOR=<CDP executor address>
+EXECUTOR=<CDP executor address>
 cast send "$VAULT" "setExecutor(address)" "$EXECUTOR" --rpc-url "$BASE_RPC_URL" --account maat-owner
 cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"   # must print $EXECUTOR
 ```

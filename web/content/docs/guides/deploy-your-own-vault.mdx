@@ -264,13 +264,13 @@ This signs and sends the deploy transactions from your wallet and costs gas. The
 
 ```bash title="contracts/"
 set -a; source .env; set +a
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify --slow
 ```
 
-If the deploy finishes but verification fails, do not redeploy. Run this instead:
+`--slow` sends the four deploy transactions one at a time, each only after the previous one is confirmed and succeeded. If the deploy finishes but verification fails, do not redeploy. Run this instead:
 
 ```bash title="contracts/"
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify --slow
 ```
 
 </Callout>
