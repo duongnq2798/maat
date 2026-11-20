@@ -28,11 +28,13 @@ sources:
   - agent/src/refusals.ts
   - agent/scripts/cdp-setup.ts
   - agent/scripts/smoke-claude.ts
+  - agent/scripts/first-decision.ts
   - agent/test/builderCode.test.ts
   - contracts/src/MandateVault.sol
   - contracts/src/Types.sol
   - contracts/src/adapters/AaveV4CreditAdapter.sol
   - deployments/README.md
+  - deployments/go-live.md
 next: [reference/agent-configuration, guides/watch-decisions-onchain]
 ---
 
@@ -195,7 +197,7 @@ Register the project at [dashboard.base.org](https://dashboard.base.org), go to 
 ^[a-z0-9_]{1,32}$
 ```
 
-In live mode the agent turns the code into an ERC-8021 suffix and appends it to the calldata of every transaction it sends. The owner's own transactions do not carry it. No real code is registered yet.
+In live mode the agent turns the code into an ERC-8021 suffix and appends it to the calldata of every transaction it sends. The owner's own transactions, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. No real code is registered yet.
 
 </Step>
 
