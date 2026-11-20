@@ -24,6 +24,9 @@ const GOOD = [
   `<meta name="twitter:site" content="${SITE.xHandle}"/>`,
   '<script src="/_next/static/chunks/main.js" async=""></script>',
   "</head><body>",
+  "<h1>The AI agent that knows when not to trade.</h1>",
+  '<div data-live-strip="reading" class="l"><span role="status" aria-live="polite" class="sr-only">Reading Base mainnet…</span>',
+  '<p class="m-0">Reading Base mainnet…</p><noscript><p class="m-0">The live line needs JavaScript.</p></noscript></div>',
   '<a href="#ledger">Open the ledger</a>',
   '<button type="button" aria-pressed="true" class="c">Sat 7 Nov</button>',
   '<div role="status" aria-live="polite" aria-atomic="true" class="s">',
@@ -47,13 +50,25 @@ describe("checkExport", () => {
     ["Google Fonts", GOOD.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), /Google Fonts/],
     ["Saturday not pressed", GOOD.replace('aria-pressed="true"', 'aria-pressed="false"'), /Sat 7 Nov/],
     ["the wrong verdict in the live region", GOOD.replace('data-verdict="refused"', 'data-verdict="allowed"'), /verdict/],
-    ["a verdict outside the live region", GOOD.replace('role="status"', 'role="none"'), /verdict/],
+    // The decision engine's region, not the live strip's hidden status line, which comes first in the page.
+    ["a verdict outside the live region", GOOD.replace('<div role="status"', '<div role="none"'), /verdict/],
     ["a wrong title", GOOD.replace(SITE.title, "Maat"), /title/],
     ["no simulator section", GOOD.replace('id="try"', 'id="trial"'), /#try is missing/],
     [
       "the wrong simulator verdict",
       GOOD.replace('data-verdict="allowed" data-reason="OK"', 'data-verdict="refused" data-reason="OK"'),
       /simulator's default verdict/,
+    ],
+    ["no live strip reading state", GOOD.replaceAll("Reading Base mainnet…", ""), /live strip's reading state/],
+    [
+      "a baked LIVE pill",
+      GOOD.replace("</h1>", '</h1><span class="p"><span aria-hidden="true"></span>LIVE</span>'),
+      /LIVE pill/,
+    ],
+    [
+      "a baked block link",
+      GOOD.replace("</h1>", '</h1><a href="https://basescan.org/block/60013066">Base block 60,013,066</a>'),
+      /links a Base block/,
     ],
   ])("flags %s", (_name, html, problem) => {
     expect(checkExport(html).join("\n")).toMatch(problem);
