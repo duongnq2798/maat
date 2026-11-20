@@ -1,7 +1,8 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LiveStrip } from "@/components/live/LiveStrip";
+import { useLiveSnapshot } from "@/components/live/useLiveSnapshot";
 import { type Hex, MULTICALL3 } from "@/content/b20-nav";
 import { regularSession } from "@/content/calendar";
 import { FACTS } from "@/content/facts";
@@ -382,5 +383,65 @@ describe("the live strip", () => {
     // The visible strip is not a live region: the hidden line is the only one.
     expect(strip().closest("[aria-live]")).toBeNull();
     expect(strip().querySelectorAll("[aria-live]")).toHaveLength(1);
+  });
+});
+
+describe("a page that wakes up", () => {
+  /**
+   * The visitor's two clocks, moved by hand: they jump while no timer runs, as when a phone suspends the tab or the
+   * browser keeps the page in its back/forward cache.
+   */
+  function sleepyClocks(wallSec: number) {
+    const c = { mono: 1_000_000, wall: wallSec };
+    return {
+      nowMs: () => c.mono,
+      wallSec: () => c.wall,
+      sleep: (sec: number) => {
+        c.mono += sec * 1000;
+        c.wall += sec;
+      },
+    };
+  }
+
+  /** The hook with a live weekend reading, then asleep for 10 min with the next read held. */
+  async function asleep() {
+    const clock = sleepyClocks(SAT + 14);
+    const fake = fakeReader({ timestamp: SAT });
+    const hook = renderHook(() => useLiveSnapshot({ reader: fake.reader, nowMs: clock.nowMs, wallSec: clock.wallSec }));
+    await advance(0);
+    expect(hook.result.current.state.status).toBe("live");
+    fake.hold();
+    clock.sleep(600);
+    return { hook, fake };
+  }
+
+  it("calls the old reading stale as soon as the tab is visible again, before the read it starts has answered", async () => {
+    const { hook, fake } = await asleep();
+    visibility = "hidden";
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    visibility = "visible";
+    act(() => void document.dispatchEvent(new Event("visibilitychange")));
+    // The read has started and is held: only the clocks can have changed the state.
+    expect(fake.call).toHaveBeenCalledTimes(2);
+    const state = hook.result.current.state;
+    expect(state.status).toBe("stale");
+    expect(state.status === "stale" && state.ageMs).toBe(600_000);
+    // The answer at the new head makes it live again.
+    fake.release({ timestamp: SAT + 600 });
+    await advance(0);
+    expect(hook.result.current.state.status).toBe("live");
+  });
+
+  it("calls the old reading stale as soon as the page is shown from the back/forward cache, and reads again", async () => {
+    const { hook, fake } = await asleep();
+    // The tab never reported itself hidden: only pageshow says the page is back.
+    act(() => void window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true })));
+    expect(fake.call).toHaveBeenCalledTimes(2);
+    const state = hook.result.current.state;
+    expect(state.status).toBe("stale");
+    expect(state.status === "stale" && state.ageMs).toBe(600_000);
+    fake.release({ timestamp: SAT + 600 });
+    await advance(0);
+    expect(hook.result.current.state.status).toBe("live");
   });
 });

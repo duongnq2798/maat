@@ -40,7 +40,8 @@ function judge(snapshot: LiveSnapshot, at: { nowMs: number; wallSec: number }): 
 /**
  * Base mainnet, read in the browser. Nothing runs during the server render: the static HTML and the first client render
  * are the reading state. After mount it reads once, then every `refreshMs` while the tab is visible; a tab that comes
- * back after more than `refreshMs` reads at once. One read at a time. A failed read keeps the last good reading, which
+ * back after more than `refreshMs` reads at once. A tab or page that comes back looks at the clocks at once, so a reading
+ * that aged while it slept is not shown as live while the new read runs. One read at a time. A failed read keeps the last good reading, which
  * `classify` then marks as not live. `refresh` reads now (a Retry or Refresh button), and `refreshing` stays true until
  * that read settles, while the state stays as it was; `endpoints` are the keyless RPCs the default reader tries, in order.
  */
@@ -106,17 +107,26 @@ export function useLiveSnapshot(opts: LiveSnapshotOptions = {}): {
       }
     };
 
-    const onVisibility = () => {
-      if (document.visibilityState !== "visible" || inflight) return;
+    // Look at the clocks again, so the age and the stale state move on without a new read.
+    const restamp = () => {
+      const at = { nowMs: now(), wallSec: wall() };
+      setSeen((s) => (s.last === undefined ? s : { ...s, ...at }));
+    };
+
+    // The tab is visible again, or the page is back from the back/forward cache (pageshow, which some browsers send
+    // without a visibilitychange). The timers did not run while it slept, so the clocks are read at once: an old reading
+    // never shows as live, even for the 5 s until the next tick.
+    const onShow = () => {
+      if (document.visibilityState !== "visible") return;
+      restamp();
+      if (inflight) return;
       // A pending timer still reads on time; one that fired while hidden left none, so read now.
       if (timer === undefined || now() - lastAttemptAt >= refreshMs) void read();
     };
 
-    const tick = setInterval(() => {
-      const at = { nowMs: now(), wallSec: wall() };
-      setSeen((s) => (s.last === undefined ? s : { ...s, ...at }));
-    }, RECLASSIFY_MS);
-    document.addEventListener("visibilitychange", onVisibility);
+    const tick = setInterval(restamp, RECLASSIFY_MS);
+    document.addEventListener("visibilitychange", onShow);
+    window.addEventListener("pageshow", onShow);
     readNow.current = () => void read();
     void read();
 
@@ -125,7 +135,8 @@ export function useLiveSnapshot(opts: LiveSnapshotOptions = {}): {
       readNow.current = null;
       clearTimeout(timer);
       clearInterval(tick);
-      document.removeEventListener("visibilitychange", onVisibility);
+      document.removeEventListener("visibilitychange", onShow);
+      window.removeEventListener("pageshow", onShow);
     };
   }, [refreshMs]);
 
