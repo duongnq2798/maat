@@ -149,6 +149,27 @@ Read the output and check, character by character against the address `cast wall
 
 The simulation must finish with no `vault address mismatch`. From now until the broadcast ends, send no other transaction from the deployer wallet: the script computes the vault address from its nonce.
 
+Then, still before step 5 and in the same shell, run three read-only checks on NVDAc (owner-run). They are `cast call`s: they sign nothing, send nothing and cost nothing. They repeat two checks the vault runs before its market-hours check (`GuardLib.checkMarket`, `contracts/src/GuardLib.sol` lines 46-48). If either fails, Saturday's intent comes back `TOKEN_PAUSED` (4) or `POLICY_BLOCKED` (5) instead of `MARKET_CLOSED` (6), and Monday's BUY is refused the same way.
+
+```bash
+NVDAC=0xb20000000000000000000078ee7ce2fE4908108C
+REGISTRY=0x8453000000000000000000000000000000000002
+cast call "$NVDAC" "isPaused(uint8)(bool)" 0 --rpc-url "$BASE_RPC_URL"
+POLICY=$(cast call "$NVDAC" "policyId(bytes32)(uint64)" "$(cast keccak TRANSFER_EXECUTOR_POLICY)" --rpc-url "$BASE_RPC_URL" | cut -d' ' -f1)
+echo "$POLICY"
+cast call "$REGISTRY" "isAuthorized(uint64,address)(bool)" "$POLICY" "$MAAT_EXECUTOR" --rpc-url "$BASE_RPC_URL"
+```
+
+The signatures are those of `contracts/src/interfaces/IB20Asset.sol`: `isPaused(uint8)` (line 12), `policyId(bytes32)` (line 13) and `isAuthorized(uint64,address)` (line 20). The registry address is `POLICY_REGISTRY` (line 25, and `script/BaseAddresses.sol` line 7). `MAAT_EXECUTOR` is your wallet here: it sends `execute` in steps 7 and 8, so it is the `tx.origin` the vault checks.
+
+| Call | Go on when it prints | Stop when it prints |
+|---|---|---|
+| `isPaused` with `0` (`FEATURE_TRANSFER`, line 26; `GuardLib.tokenPaused` passes it, `GuardLib.sol` line 66) | `false` | `true`, or an error: the vault counts a paused token, and a read that reverts, as `TOKEN_PAUSED` (`GuardLib.sol` lines 64-71) |
+| `policyId` for `keccak256("TRANSFER_EXECUTOR_POLICY")` (line 29), the policy of the executor leg | A number. `0` means always allow: the vault then asks the registry nothing (`GuardLib.sol` line 165), so skip the third call | An error, or an empty line: the vault answers `POLICY_BLOCKED` (`GuardLib.sol` lines 171-173) |
+| `isAuthorized` with that number and your wallet | `true` | `false`, or an error: on every BUY and SELL the vault checks `tx.origin` against this policy (`GuardLib.sol` lines 151 and 155), so it answers `POLICY_BLOCKED` |
+
+On a stop, do not broadcast; find out why first. The vault also checks the pool (as sender and executor) and the vault itself (as receiver) on a BUY (`GuardLib.sol` lines 150-151). The vault has no address before step 5, so the step 7 preview covers those legs. After step 9 the CDP executor sends `execute`, so run the third call again with its address in place of `$MAAT_EXECUTOR`.
+
 ## 5. Broadcast with --verify (owner)
 
 ```bash
