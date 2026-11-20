@@ -97,7 +97,7 @@ Work in the checkout you will deploy from.
 
 ## 2. Builder Code and Base Dashboard (owner)
 
-1. Register the project at https://dashboard.base.org, then open **Settings** → **Project Settings** → **Builder Code**, the path Base's [Builder Codes page](https://docs.base.org/base-chain/quickstart/builder-codes) gives ([`agent/README.md`](../agent/README.md#live-run-owner-only), step 1, covers the same registration).
+1. Register the project at https://dashboard.base.org, then open **Settings** → **Project Settings** → **Builder Code**, the path Base's [Builder Codes page](https://docs.base.org/base-chain/quickstart/builder-codes) gives ([`agent/README.md`](../agent/README.md#live-run-owner-only), step 1, covers the same registration, but names the menu path as Settings → Builder Code; use the path above).
 2. Write the code down exactly as shown. It must match `^[a-z0-9_]{1,32}$` (`BUILDER_CODE_RE` in `agent/src/exec/builderCode.ts`); the tools here refuse any other code.
 3. Use the code as it is, never a hex form copied from a web page: `first-decision.ts` and the agent encode it themselves with `Attribution.toDataSuffix` from `ox/erc8021`, the ERC-8021 schema-0 suffix. `first-decision.ts` refuses a hex form (`0x` followed by hex digits only).
 
@@ -249,7 +249,7 @@ cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"   # must prin
    It prints the intent, the `previewIntent` calldata, the `execute` calldata with your Builder Code suffix appended, and OWNER-RUN command templates. The intent is the one the agent builds for a BUY (`buildIntent` in `agent/src/intent.ts`), with:
 
    - `id` = the agent's `intentId("first-decision:<salt>", 0)`. The vault accepts each id once; a reused id makes `execute` revert with `IntentAlreadyUsed`, so every send needs a new salt.
-   - `amount` = the dollars in USDC units (`5000000` for 5 USD).
+   - `amount` = the dollars in USDC units (`5000000` for 5 USD). The agent caps a BUY at the vault's USDC balance (`agent/src/intent.ts`); the tool reads no balance and does not cap it, so a larger BUY gets `INSUFFICIENT_BALANCE` (14).
    - `minOut` = `0`, as the agent sends it. The tool reads no price and needs none: for a BUY the vault swaps with the larger of `intent.minOut` and its own oracle floor, `expectedOut x (10000 - maxSlippageBps) / 10000` from the Chainlink price (`MandateVault._perform`). A floor set offline could only be stale.
    - `rationaleHash` = keccak256 of the rationale text it prints. Keep that text in step 10: the chain stores only its hash.
 
@@ -304,7 +304,7 @@ If `execute` returns `allowed=false` anyway (for example `SWAP_FAILED`, which a 
 
 Follow [`agent/README.md`](../agent/README.md#live-run-owner-only), "Live run (owner only)".
 
-Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `RPC` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` never replaces a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`. Item 2 still runs after that, because it reads `RPC`, not `BASE_RPC_URL`: step 7 set `RPC` after `set +a`, so it is not exported, the `unset` leaves it, and the agent never sees it. If `test -n "$RPC" && echo set || echo empty` prints `empty`, set it again with `read -rs RPC`: paste the URL and press Enter. `read -s` echoes nothing, the URL does not go into the shell history as a typed `RPC=...` line would, and `read` does not export it. The check does not print the URL either.
+Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `RPC` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` (`cdp-setup.ts` runs with it) and `--env-file-if-exists` (`npm run agent` runs with it) never replace a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`. Item 2 still runs after that, because it reads `RPC`, not `BASE_RPC_URL`: step 7 set `RPC` after `set +a`, so it is not exported, the `unset` leaves it, and the agent never sees it. If `test -n "$RPC" && echo set || echo empty` prints `empty`, set it again with `read -rs RPC`: paste the URL and press Enter. `read -s` echoes nothing, the URL does not go into the shell history as a typed `RPC=...` line would, and `read` does not export it. The check does not print the URL either.
 
 In short, and only as that page says:
 
@@ -319,9 +319,9 @@ In short, and only as that page says:
 
    `setExecutor` takes effect at once, with no timelock (`MandateVault.sol`, lines 139-143). From then on your wallet can no longer call `execute` (it reverts with `NotExecutor`), so `first-decision.ts` sends stop working for you. To take the role back, call `setExecutor` with your own address.
 3. Send a little ETH on Base to the executor for gas (the README says about 0.002 ETH).
-4. In `agent/.env` (from `agent/.env.example`), set the settings the README lists, with `MAAT_EXECUTOR` set to the CDP address and `MAAT_MODE=live`. Run `npm run agent -- --once` and check its transaction on Basescan: the input data must end with your Builder Code. Then run `npm run agent` to keep it going. Every round calls Claude, a paid API, in dry-run and live mode alike.
+4. In `agent/.env` (from `agent/.env.example`), set the settings the README lists, with `MAAT_EXECUTOR` set to the CDP address and `MAAT_MODE=live`. Run `npm run agent -- --once` and check its transaction on Basescan: the input data must end with your Builder Code. Then run `npm run agent` to keep it going. Every round that reaches a proposal calls Claude, a paid API, in dry-run and live mode alike.
 
-The agent pays one address only, its own `MAAT_EXPENSE_PAYEE` setting. It must be a payee the vault allowlisted at deploy (`MAAT_EXPENSE_PAYEE` or `MAAT_EXPENSE_PAYEE_2`); any other address gets `PAYEE_NOT_ALLOWED`.
+The agent pays one address only, its own `MAAT_EXPENSE_PAYEE` setting. It must be on the vault's payee allowlist: `MAAT_EXPENSE_PAYEE` or `MAAT_EXPENSE_PAYEE_2` at deploy, or a payee added later with `queuePayee` and `applyPayee`. Any other address gets `PAYEE_NOT_ALLOWED`.
 
 ## 10. Record
 
