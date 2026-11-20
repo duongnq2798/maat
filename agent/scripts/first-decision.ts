@@ -22,14 +22,14 @@
 import { realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { encodeFunctionData, getAbiItem, getAddress, isAddress, isHex, size, toEventSelector, zeroAddress, type Address, type Hex } from "viem";
+import { encodeFunctionData, getAbiItem, getAddress, isAddress, isHex, parseUnits, size, toEventSelector, zeroAddress, type Address, type Hex } from "viem";
 import { mandateVaultAbi } from "../src/abi/index.js";
 import { BASKET, type TokenSymbol } from "../src/addresses.js";
 import { BUILDER_CODE_RE, builderSuffix, withSuffix } from "../src/exec/builderCode.js";
 import { EXECUTE_GAS_FLOOR, encodeExecute } from "../src/exec/calls.js";
 import { intentId, rationaleHash } from "../src/intent.js";
 import { actionId, REASONS, type OnchainIntent } from "../src/types.js";
-import { usdToUsdc6 } from "../src/units.js";
+import { USDC_DECIMALS } from "../src/units.js";
 
 export const RUN_ID_PREFIX = "first-decision:";
 export const DEFAULT_USD = "5";
@@ -73,7 +73,8 @@ export class InputError extends Error {
   }
 }
 
-const USD_RE = /^\d+(\.\d{1,6})?$/;
+/** At most 9 digits before the point and 6 after: the text is parsed as written, never through a JS number. */
+const USD_RE = /^\d{1,9}(\.\d{1,6})?$/;
 const ZERO_ID: Hex = `0x${"00".repeat(32)}`;
 
 export function buildFirstDecision(input: FirstDecisionInput): FirstDecision {
@@ -93,8 +94,10 @@ export function buildFirstDecision(input: FirstDecisionInput): FirstDecision {
   if (!listed) throw new InputError(`--token ${input.token} is not in the basket; use ${BASKET.map((t) => t.symbol).join(", ")}`);
 
   const usd = input.usd ?? DEFAULT_USD;
-  if (!USD_RE.test(usd)) throw new InputError(`--usd ${usd} is not a plain dollar amount with at most 6 decimals, such as 5 or 5.25`);
-  const amount = usdToUsdc6(Number(usd));
+  if (!USD_RE.test(usd)) {
+    throw new InputError(`--usd ${usd} is not a plain dollar amount with at most 9 digits before the point and 6 after, such as 5 or 5.25`);
+  }
+  const amount = parseUnits(usd, USDC_DECIMALS);
   if (amount <= 0n) throw new InputError(`--usd ${usd} must be more than 0`);
 
   if ((input.id === undefined) === (input.salt === undefined)) throw new InputError("give exactly one of --id and --salt");

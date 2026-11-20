@@ -112,6 +112,11 @@ describe("first-decision inputs", () => {
     expect(build({ usd: "0.000001" }).intent.amount).toBe(1n);
   });
 
+  it("encodes the amount exactly as typed, up to 9 digits before the point", () => {
+    expect(build({ usd: "999999999.999999" }).intent.amount).toBe(999_999_999_999_999n);
+    expect(build({ usd: "123456789.123457" }).intent.amount).toBe(123_456_789_123_457n);
+  });
+
   it("checksums the vault address", () => {
     expect(build({ vault: "0xb20000000000000000000078ee7ce2fe4908108c" }).vault).toBe("0xb20000000000000000000078ee7ce2fE4908108C");
   });
@@ -125,7 +130,8 @@ describe("first-decision inputs", () => {
     expect(() => build({ token })).toThrow(/--token .* is not in the basket/);
   });
 
-  it.each(["0", "0.0", "0.000000", "-5", "abc", "1e3", "5.1234567", " 5", ""])("rejects the amount %j", (usd) => {
+  const badUsd = ["0", "0.0", "0.000000", "-5", "abc", "1e3", "5.1234567", " 5", "", "1000000000", "98765432109.123456", "123456789012345678901234"];
+  it.each(badUsd)("rejects the amount %j", (usd) => {
     expect(() => build({ usd })).toThrow(InputError);
     expect(() => build({ usd })).toThrow(/--usd/);
   });
@@ -216,6 +222,7 @@ describe("first-decision command line", () => {
     expect(run(ARGV.slice(2)).code).toBe(1);
     expect(run(ARGV.slice(2)).err).toMatch(/missing --vault/);
     expect(run([...ARGV, "--usd", "0"]).code).toBe(1);
+    expect(run([...ARGV, "--usd", "123456789012345678901234"])).toMatchObject({ code: 1, err: expect.stringMatching(/^first-decision: --usd /) });
     expect(run([...ARGV, "--bogus"]).code).toBe(2);
     expect(run(["--help"])).toMatchObject({ code: 0, err: "" });
   });
