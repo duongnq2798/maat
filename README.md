@@ -694,7 +694,8 @@ contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork ba
     lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
     interfaces/            B20, Aave V4, Chainlink and pool interfaces
   script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
-  test/                    9 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
+  test/                    11 unit suites, invariant/ (the invariant suite and its handlers), vectors/ (calendar
+                           vectors), mocks/, utils/ fixtures, fork/ (7 fork test files)
 agent/                     TypeScript agent runtime
   src/                     chain/ (state reader, preview), llm/ (Claude proposer, prompt, schema),
                            exec/ (Builder Code, gas, GuardedSender, CDP), loop/ (round, scheduler, lock), ledger/
