@@ -278,38 +278,50 @@ test("the simulator's Now chip says the fork rows are not now, and links /now", 
 });
 
 // Spec 5: the strip reserves its height, so the landing does not move when the reading arrives. The fake holds the
-// answer until the lead paragraph has been measured in the reading state.
-for (const { width, height } of [
-  { width: 375, height: 812 },
-  { width: 1280, height: 800 },
-]) {
-  test(`the landing does not move when a weekend reading arrives, at ${width} × ${height}`, async ({ page }) => {
-    const errors = collectErrors(page);
-    await page.setViewportSize({ width, height });
-    // Reduced motion shows the hero's intro in its final state at once, so nothing but the strip can move the lead.
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await clockAfter(page, WEEKEND_TS);
-    const rpc = await routeLiveRpc(page, "weekend", { hold: true });
-    await page.goto("/");
-    await page.evaluate(() => document.fonts.ready);
+// answer until the lead paragraph has been measured in the reading state. The weekend line is the shortest common one;
+// the in-session line, which passes the market checks for the three basket tokens, is the tallest common one.
+for (const { scenario, name, blockTs, kind } of [
+  { scenario: "weekend", name: "a weekend", blockTs: WEEKEND_TS, kind: "refuse-all" },
+  { scenario: "session", name: "an in-session", blockTs: SESSION_TS, kind: "pass-all" },
+] as const) {
+  for (const { width, height } of [
+    { width: 375, height: 812 },
+    { width: 1280, height: 800 },
+  ]) {
+    test(`the landing does not move when ${name} reading arrives, at ${width} × ${height}`, async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.setViewportSize({ width, height });
+      // Reduced motion shows the hero's intro in its final state at once, so nothing but the strip can move the lead.
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await clockAfter(page, blockTs);
+      const rpc = await routeLiveRpc(page, scenario, { hold: true });
+      await page.goto("/");
+      await page.evaluate(() => document.fonts.ready);
 
-    const s = strip(page);
-    const lead = page.locator("#top [data-live-strip] + p");
-    await expect(lead).toHaveText(SITE.description);
-    const top = () => lead.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+      const s = strip(page);
+      const lead = page.locator("#top [data-live-strip] + p");
+      await expect(lead).toHaveText(SITE.description);
+      const top = () => lead.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
 
-    await expect(s).toHaveAttribute("data-live-strip", "reading");
-    await expect(s).toContainText("Reading Base mainnet…");
-    // The read is in flight: the fake holds it.
-    await expect.poll(() => rpc.calls()).toBe(1);
-    const reading = await top();
+      await expect(s).toHaveAttribute("data-live-strip", "reading");
+      await expect(s).toContainText("Reading Base mainnet…");
+      // The read is in flight: the fake holds it.
+      await expect.poll(() => rpc.calls()).toBe(1);
+      const reading = await top();
 
-    rpc.release();
-    await expect(s).toHaveAttribute("data-live-strip", "live");
-    await expect(s.getByText("LIVE", { exact: true })).toBeVisible();
-    const live = await top();
-    test.info().annotations.push({ type: "lead paragraph top", description: `reading ${reading} px, live ${live} px` });
-    expect(Math.abs(live - reading)).toBeLessThanOrEqual(1);
-    expect(errors).toEqual([]);
-  });
+      rpc.release();
+      await expect(s).toHaveAttribute("data-live-strip", "live");
+      await expect(s.getByText("LIVE", { exact: true })).toBeVisible();
+      await expect(s.locator("[data-verdict-line]")).toHaveAttribute("data-verdict-line", kind);
+      const live = await top();
+      const line = await s.locator(":scope > p").evaluate((el) => el.getBoundingClientRect().height);
+      const box = await s.evaluate((el) => el.getBoundingClientRect().height);
+      test.info().annotations.push({
+        type: "lead paragraph top",
+        description: `reading ${reading} px, live ${live} px; the live line ${line} px in the strip's ${box} px`,
+      });
+      expect(Math.abs(live - reading)).toBeLessThanOrEqual(1);
+      expect(errors).toEqual([]);
+    });
+  }
 }

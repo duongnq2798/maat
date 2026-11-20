@@ -113,14 +113,18 @@ export async function routeLiveRpc(page: Page, scenario: Scenario, opts: { hold?
     const data = tx?.data ?? "";
     const multicall = rpc.method === "eth_call" && to === MULTICALL3.toLowerCase() && data.startsWith(SELECTORS.aggregate3);
     if (multicall) count++;
+    const held = gate !== undefined;
     if (gate) await gate;
+    // A held request may have been given up by the page (its 8 s timeout) or closed with it before release(): its
+    // answer then has nowhere to go, and fulfilling it fails. That failure is expected, so it is dropped.
+    const fulfill = (response: Parameters<Route["fulfill"]>[0]) => (held ? route.fulfill(response).catch(() => {}) : route.fulfill(response));
     const s = current;
     if (s === "down") {
-      await route.fulfill({ status: 503, headers: CORS, contentType: "text/plain", body: "Service Unavailable" });
+      await fulfill({ status: 503, headers: CORS, contentType: "text/plain", body: "Service Unavailable" });
       return;
     }
     const reply = (body: { result: Hex } | { error: { code: number; message: string } }) =>
-      route.fulfill({ status: 200, headers: CORS, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, ...body }) });
+      fulfill({ status: 200, headers: CORS, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, ...body }) });
     if (rpc.method !== "eth_call") {
       await reply({ error: { code: -32601, message: `the fake RPC answers eth_call only, not ${rpc.method}` } });
     } else if (multicall) {
