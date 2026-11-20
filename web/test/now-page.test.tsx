@@ -242,9 +242,12 @@ function verdictSentence(): string {
   return copy.textContent ?? "";
 }
 
-/** A verdict cell: the code, and the words a reader sees for it. */
-function expectVerdict(el: HTMLElement, code: ReasonCode, column: "mandate" | "market") {
-  if (code === "OK" && column === "mandate") {
+/**
+ * A verdict cell: the code, and the words a reader sees for it. A pass in either column reads "Market checks pass",
+ * never REASON_LABEL.OK ("All checks passed"): checks 3, 8 and 9 need a vault and are not run here.
+ */
+function expectVerdict(el: HTMLElement, code: ReasonCode) {
+  if (code === "OK") {
     expect(reasonOf(el)).toBeNull();
     expect(el.textContent).toBe("Market checks pass");
     return;
@@ -332,10 +335,30 @@ describe("the /now board", () => {
       for (const el of values(t.symbol, "effectiveAt")) {
         expect(el.textContent).toBe(r.effectiveAt === 0n ? "none" : formatDateUtc(Number(r.effectiveAt)));
       }
-      for (const el of values(t.symbol, "mandate")) expectVerdict(el, v.mandate, "mandate");
-      for (const el of values(t.symbol, "market")) expectVerdict(el, v.market, "market");
+      for (const el of values(t.symbol, "mandate")) expectVerdict(el, v.mandate);
+      for (const el of values(t.symbol, "market")) expectVerdict(el, v.market);
     });
     neverSafe();
+  });
+
+  it("never says All checks passed: a pass in either column reads Market checks pass, since checks 3, 8 and 9 are not run", async () => {
+    const r = passingBasket(results());
+    await mount(r);
+    const e = expected(r);
+    // The reading passes the market checks for most tokens and the default mandate for the basket: both columns pass.
+    expect(e.verdicts.filter((v) => v.market === "OK").length).toBeGreaterThan(0);
+    expect(e.verdicts.filter((v) => v.mandate === "OK").length).toBeGreaterThan(0);
+    for (const v of e.verdicts) {
+      for (const col of ["mandate", "market"] as const) {
+        if (v[col] !== "OK") continue;
+        for (const el of values(v.symbol, col)) {
+          expect(el.textContent, `${v.symbol} ${col}`).toBe("Market checks pass");
+          expect(reasonOf(el)).toBeNull();
+        }
+      }
+    }
+    expect(board().textContent).not.toContain(REASON_LABEL.OK);
+    expect(board().querySelector('[data-reason-tag="OK"]')).toBeNull();
   });
 
   it("refuses ANTc as not allowed by the default mandate, and still shows what the market checks say", async () => {
@@ -347,7 +370,7 @@ describe("the /now board", () => {
       expect(el).toHaveTextContent("Token not allowed");
       expect(el).toHaveTextContent("TOKEN_NOT_ALLOWED");
     }
-    for (const el of values("ANTc", "market")) expectVerdict(el, ant.market, "market");
+    for (const el of values("ANTc", "market")) expectVerdict(el, ant.market);
   });
 
   it("holds SNDKc in the multiplier cooldown while its last change is within multiplierCooldownSec", async () => {
@@ -355,7 +378,7 @@ describe("the /now board", () => {
     const sndk = expected(results()).verdicts.find((v) => v.symbol === "SNDKc")!;
     const cooling = TS < SNDK_EFFECTIVE_AT + MANDATE.multiplierCooldownSec;
     expect(sndk.market).toBe(cooling ? "MULTIPLIER_COOLDOWN" : "OK");
-    for (const el of values("SNDKc", "market")) expectVerdict(el, sndk.market, "market");
+    for (const el of values("SNDKc", "market")) expectVerdict(el, sndk.market);
     for (const el of values("SNDKc", "effectiveAt")) expect(el.textContent).toBe(formatDateUtc(SNDK_EFFECTIVE_AT));
   });
 
@@ -365,8 +388,8 @@ describe("the /now board", () => {
     const nvda = expected(r).verdicts.find((v) => v.symbol === "NVDAc")!;
     for (const el of values("NVDAc", "twap")) expect(el.textContent).toBe("could not read");
     for (const el of values("NVDAc", "premium")) expect(el.textContent).toBe("could not read");
-    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate, "mandate");
-    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market, "market");
+    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate);
+    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market);
     // In session, with a fresh feed and an unchanged multiplier, the missing TWAP is the first failure.
     expect(nvda.market).toBe("BAD_PRICE");
     // The other pools still answered.
@@ -393,8 +416,8 @@ describe("the /now board", () => {
       const unread = UNREAD_BY_SLOT[slot].includes(col);
       for (const el of values("NVDAc", col)) expect(el.textContent === "could not read", `${slot} → ${col}`).toBe(unread);
     }
-    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate, "mandate");
-    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market, "market");
+    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate);
+    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market);
     expect(verdictSentence()).toBe(headlineText(e.headline));
     // Only NVDAc's call failed: the other tokens still show what they read.
     for (const col of READ_COLS) for (const el of values("GOOGLc", col)) expect(el.textContent).not.toBe("could not read");
@@ -420,8 +443,8 @@ describe("the /now board", () => {
       if (unpriced === "both") expect(el.textContent).toBe("no valid price");
       else expect(el).toHaveTextContent(`${nvda.premiumBps} bps`);
     }
-    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate, "mandate");
-    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market, "market");
+    for (const el of values("NVDAc", "mandate")) expectVerdict(el, nvda.mandate);
+    for (const el of values("NVDAc", "market")) expectVerdict(el, nvda.market);
     expect(nvda.market).toBe("BAD_PRICE");
   });
 

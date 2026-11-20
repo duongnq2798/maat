@@ -5,7 +5,7 @@ import { LiveStrip } from "@/components/live/LiveStrip";
 import { type Hex, MULTICALL3 } from "@/content/b20-nav";
 import { regularSession } from "@/content/calendar";
 import { FACTS } from "@/content/facts";
-import { type ReasonCode, reasonText } from "@/content/reasons";
+import { REASON_LABEL, type ReasonCode, reasonText } from "@/content/reasons";
 import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from "@/lib/live/abi";
 import { HEAD_MAX_LAG_SEC, LIVE_MAX_AGE_MS, REFRESH_MS } from "@/lib/live/freshness";
 import { LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
@@ -179,6 +179,8 @@ describe("the live strip", () => {
     expect(verdictSentence()).toBe(headlineText(h));
     expect(screen.getByRole("status").textContent).toBe(`Live. ${headlineText(h)}`);
     expect(screen.getByRole("status").querySelector("a")).toBeNull();
+    // A pass never claims every check: checks 3, 8 and 9 need a vault.
+    expect(strip()).not.toHaveTextContent(REASON_LABEL.OK);
   });
 
   it.each([

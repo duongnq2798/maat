@@ -50,10 +50,13 @@ function Limit({ value, max }: { value: string; max: string }) {
   );
 }
 
-/** The default mandate never says "All checks passed": checks 3, 8 and 9 need a vault and are not run here. */
-function Verdict({ code, column }: { code: ReasonCode; column: "mandate" | "market" }) {
-  if (code === "OK" && column === "mandate") return <>Market checks pass</>;
-  return <ReasonTag code={code} tone={code === "OK" ? "neutral" : "refuse"} layout="inline" />;
+/**
+ * A pass never says "All checks passed" (REASON_LABEL.OK), in either column: checks 3, 8 and 9 need a vault and are
+ * not run here. A refusal shows its label and code.
+ */
+function Verdict({ code }: { code: ReasonCode }) {
+  if (code === "OK") return <>Market checks pass</>;
+  return <ReasonTag code={code} tone="refuse" layout="inline" />;
 }
 
 /** One token's cells: a dash for each until a reading arrives, then the values read and the two verdicts. */
@@ -79,8 +82,8 @@ function cells(r: TokenReading | undefined, v: TokenVerdict | undefined): Record
     paused: r.paused === null ? UNREAD : r.paused ? "yes" : "no",
     multiplier: r.uiMultiplier === null ? UNREAD : formatMultiplier(r.uiMultiplier),
     effectiveAt: r.effectiveAt === null ? UNREAD : r.effectiveAt === 0n ? "none" : formatDateUtc(Number(r.effectiveAt)),
-    mandate: <Verdict code={v.mandate} column="mandate" />,
-    market: <Verdict code={v.market} column="market" />,
+    mandate: <Verdict code={v.mandate} />,
+    market: <Verdict code={v.market} />,
   };
 }
 
