@@ -314,7 +314,7 @@ The smoke tests need a weekday session (this BUY and the [credit smoke test](#ru
 
 <Callout type="warning" title="Owner only">
 
-The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. The lines are adapted from deployments/README.md: the `--gas-limit` flag is added here. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
+The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. These lines carry no Builder Code. deployments/README.md sends the smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, which appends one. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
 
 ```bash
 cast call "$VAULT" "previewIntent((bytes32,uint8,address,uint256,uint256,address,bytes32))(uint8)" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL"
@@ -345,7 +345,7 @@ For `maat-smoke-1`, `allowed` must be `true` and `reason` must be `0`. For `maat
 
 <Callout type="note" title="Preview from the executor">
 
-The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The runbook's `cast call` sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
+The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The `cast call` above sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
 
 </Callout>
 

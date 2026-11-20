@@ -1,5 +1,7 @@
 # Deployments
 
+To deploy, fund and send the first intents on Base mainnet, follow the owner's runbook, [`go-live.md`](go-live.md). It puts the sections below in order and adds the read-only checks and the first-decision steps; this file keeps the reference and the record table.
+
 | Network | Contract | Address | Tx | Date |
 |---|---|---|---|---|
 | Base mainnet | MarketCalendar | | | |
@@ -98,25 +100,27 @@ forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner 
 
 ## Smoke test (owner only)
 
-Put **$20 USDC** into the vault with `approve` + `fund` (this does not count as revenue), then send one BUY $5 NVDAc intent. Do this only during US market hours, 9:30-16:00 ET. In UTC, the hours depend on whether the US is on standard time or daylight saving time:
+The smoke test is two $5 NVDAc BUY intents: one on a weekend, which the vault must refuse with `reason=6` (`MARKET_CLOSED`), and one in session, which it must allow. Send them **only** as [`go-live.md`](go-live.md) step 7 (weekend) and step 8 (in session) say, with the `execute` calldata that [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts) builds offline. That calldata ends with your Builder Code, each salt gives a new intent id, and the tool prints the `previewIntent` check to run before each send. This file gives no `cast send "$VAULT" "execute(...)"` command for them: a plain one carries no Builder Code, and the vault's first `Decision` cannot be redone.
 
-- EST (UTC-5, from the first Sunday of November to the second Sunday of March, i.e. 2026-11-01 to 2027-03-14): **14:30-21:00 UTC**.
-- EDT (UTC-4, the rest of the year, from 2027-03-14): **13:30-20:00 UTC**.
+Fund the vault first with `approve` + `fund`, **$20 USDC** or more (this does not count as revenue), as in go-live.md step 6:
 
 ```bash
 VAULT=0x...   # address of the MandateVault just deployed
 USDC=0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913
 cast send "$USDC" "approve(address,uint256)" "$VAULT" 20000000 --rpc-url "$BASE_RPC_URL" --account maat-owner
 cast send "$VAULT" "fund(uint256)" 20000000 --rpc-url "$BASE_RPC_URL" --account maat-owner
-cast call "$VAULT" "previewIntent((bytes32,uint8,address,uint256,uint256,address,bytes32))(uint8)" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL"
-cast send "$VAULT" "execute((bytes32,uint8,address,uint256,uint256,address,bytes32))" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL" --account maat-owner
 ```
 
-Expected: `previewIntent` returns `0` (OK). The `execute` transaction has a `Decision` log with `allowed=true`. Send one more new intent (id `maat-smoke-2`) on a weekend: the log must show `reason=6` (MARKET_CLOSED). Fill in the addresses and tx hashes in the table above.
+The in-session intent needs US market hours, 9:30-16:00 ET. In UTC, the hours depend on whether the US is on standard time or daylight saving time:
+
+- EST (UTC-5, from the first Sunday of November to the second Sunday of March, i.e. 2026-11-01 to 2027-03-14): **14:30-21:00 UTC**.
+- EDT (UTC-4, the rest of the year, from 2027-03-14): **13:30-20:00 UTC**.
+
+Expected: on the weekend, `previewIntent` returns `6` and the `execute` transaction has a `Decision` log with `allowed=false` and `reason=6` (`MARKET_CLOSED`); in session, `previewIntent` returns `0` (OK) and the `Decision` log has `allowed=true`. Fill in the addresses and tx hashes in the table above.
 
 ## Credit smoke test (owner only, after the BUY smoke test)
 
-Run it during session hours, after the vault already holds NVDAc from the BUY smoke test. Action codes: SUPPLY = 2, WITHDRAW_COLLATERAL = 3, BORROW = 4, REPAY = 5. New reasons: CREDIT_FAILED = 17, HEALTH_FACTOR_LOW = 18, DERISK_WINDOW = 19.
+Run it during session hours, after the vault already holds NVDAc from the in-session BUY of the smoke test (go-live.md step 8). Action codes: SUPPLY = 2, WITHDRAW_COLLATERAL = 3, BORROW = 4, REPAY = 5. New reasons: CREDIT_FAILED = 17, HEALTH_FACTOR_LOW = 18, DERISK_WINDOW = 19.
 
 ```bash
 NVDAC=0xb20000000000000000000078ee7ce2fE4908108C
