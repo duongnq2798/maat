@@ -5,7 +5,7 @@ import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
 import type { CheckMark } from "@/content/engine";
 import { FACTS } from "@/content/facts";
-import { clockLabel, dayLabel } from "@/content/format";
+import { clockLabel, dayLabel, formatInt } from "@/content/format";
 import { REASON_MEANING, reasonText } from "@/content/reasons";
 import {
   AMOUNT_CHIPS_USD,
@@ -70,9 +70,11 @@ interface RowProps {
   mark: CheckMark;
   check: string;
   fixed?: boolean;
+  /** Under Now, a fixed row's tag says it holds a fork value, not one read now. */
+  forkTag?: "fork" | "fork value";
 }
 
-function Row({ n, label, detail, mark, check, fixed = false }: RowProps) {
+function Row({ n, label, detail, mark, check, fixed = false, forkTag = "fork" }: RowProps) {
   return (
     <li
       data-check={check}
@@ -89,8 +91,8 @@ function Row({ n, label, detail, mark, check, fixed = false }: RowProps) {
         <span className={`text-sm font-medium ${mark === "SKIP" ? "text-ink-2" : ""}`}>
           {label}
           {fixed ? (
-            <span className="ml-2 rounded border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-2">
-              fork
+            <span data-fork-tag className="ml-2 rounded border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-2">
+              {forkTag}
             </span>
           ) : null}
         </span>
@@ -144,6 +146,8 @@ export function Simulator() {
   const full = s.tape.length >= MAX_TAPE;
   const session = sessionWindow(s.etDay);
   const dayInvalid = dayDraft !== undefined && dayDraft !== isoOfDay(s.etDay);
+  // The Now chip is the selected moment: the clock sets the time, while the rows tagged fork keep the fork's values.
+  const atNow = now !== undefined && s.etDay === now.etDay && s.intent.minute === now.minute;
 
   // A new link ends the copy state, and the notice that went with it.
   useEffect(() => {
@@ -257,10 +261,7 @@ export function Simulator() {
               </Chip>
             ))}
             {now ? (
-              <Chip
-                on={s.etDay === now.etDay && s.intent.minute === now.minute}
-                onClick={goNow}
-              >
+              <Chip on={atNow} onClick={goNow}>
                 Now
               </Chip>
             ) : null}
@@ -351,10 +352,22 @@ export function Simulator() {
                 mark={c.mark}
                 check={String(i + 1)}
                 fixed={c.fixed}
+                forkTag={atNow ? "fork value" : "fork"}
               />
             </Fragment>
           ))}
         </ol>
+
+        {atNow ? (
+          <p className="m-0 mx-5 mb-3 text-[13px] leading-normal text-ink-2">
+            Now sets the time only. The rows tagged fork value hold Base block {formatInt(FACTS.forkBlock.value)} (
+            {dayLabel(FACTS.forkDay.value)}, {FACTS.forkTimeEt.value} ET), not now.{" "}
+            <a href="/now" className="font-medium">
+              Read the live values on Right now on Base
+            </a>
+            .
+          </p>
+        ) : null}
 
         {/* The live region itself never remounts; only its text changes. */}
         <div role="status" aria-live="polite" aria-atomic="true" className="mx-3 mb-3">
