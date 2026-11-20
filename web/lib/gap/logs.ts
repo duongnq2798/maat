@@ -45,8 +45,13 @@ function readCache(file: string, withAddress: boolean): Row[] | null {
 function writeCache(file: string, rows: Row[]): void {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(rows));
-  fs.renameSync(tmp, file);
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(rows));
+    fs.renameSync(tmp, file);
+  } catch (e) {
+    fs.rmSync(tmp, { force: true });
+    throw e;
+  }
 }
 
 export function createLogSource(reader: LogReader, opts: { cacheDir: string | null; headBlock: number }) {
@@ -64,7 +69,14 @@ export function createLogSource(reader: LogReader, opts: { cacheDir: string | nu
         const logs = await reader.getLogs({ address: addresses.length === 1 ? addresses[0]! : addresses, topic0, from: spanFrom, to: spanTo });
         span = (kind === "swap" ? logs.map(decodeSwap).sort(byPosition).map((s) => ({ block: s.block, logIndex: s.logIndex, ts: s.ts, tx: s.tx, v: toHex(s.sqrtPriceX96) }))
           : logs.map(decodeAnswerUpdated).sort(byPosition).map((u) => ({ block: u.block, logIndex: u.logIndex, ts: u.ts, tx: u.tx, v: toHex(u.answer), address: u.address })));
-        if (file) writeCache(file, span);
+        if (file) {
+          try {
+            writeCache(file, span);
+          } catch (e) {
+            // The cache only saves time: a failed write must not discard rows already read.
+            console.warn(`gap cache: could not write ${file}: ${e instanceof Error ? e.message : String(e)}`);
+          }
+        }
       }
       for (const r of span) if (r.block >= from && r.block <= to) out.push(r);
     }

@@ -2,7 +2,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, type RawLog } from "@/lib/gap/decode";
 import { createLogSource } from "@/lib/gap/logs";
 import { SPAN, type LogReader } from "@/lib/gap/rpc";
@@ -115,5 +115,41 @@ describe("createLogSource", () => {
     const { r } = reader([]);
     await createLogSource(r, { cacheDir: dir, headBlock: head }).updates(["0xa", "0xb"], 0, 10);
     expect(fs.readdirSync(dir)).toEqual([`answer-0xa_0xb-0-${SPAN - 1}.json`]);
+  });
+
+  it("caches a span ending exactly 1,000 blocks below the head and not one block closer", async () => {
+    const at = { r: reader([]).r };
+    await createLogSource(at.r, { cacheDir: dir, headBlock: SPAN - 1 + 1000 }).swaps("0xpool", 0, 10);
+    expect(fs.readdirSync(dir)).toEqual([`swap-0xpool-0-${SPAN - 1}.json`]);
+    fs.rmSync(dir, { recursive: true, force: true });
+    fs.mkdirSync(dir);
+    await createLogSource(at.r, { cacheDir: dir, headBlock: SPAN - 1 + 999 }).swaps("0xpool", 0, 10);
+    expect(fs.readdirSync(dir)).toEqual([]);
+  });
+
+  it("returns the rows and leaves no temp file when the cache write fails", async () => {
+    const blocker = path.join(dir, "blocker");
+    fs.writeFileSync(blocker, "x");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { r } = reader([swapLog(100, 0, 5n)]);
+      const out = await createLogSource(r, { cacheDir: path.join(blocker, "sub"), headBlock: head }).swaps("0xpool", 0, 1000);
+      expect(out.map((s) => s.sqrtPriceX96)).toEqual([5n]);
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0]![0])).toContain(`swap-0xpool-0-${SPAN - 1}.json`);
+      // a write that fails after the directory exists leaves no .tmp behind
+      const real = fs.renameSync;
+      const ren = vi.spyOn(fs, "renameSync").mockImplementation(() => {
+        throw new Error("disk full");
+      });
+      const out2 = await createLogSource(r, { cacheDir: dir, headBlock: head }).swaps("0xpool", 0, 1000);
+      ren.mockRestore();
+      expect(real).toBe(fs.renameSync);
+      expect(out2.length).toBe(1);
+      expect(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
+      expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
   });
 });

@@ -83,7 +83,7 @@ describe("getLogs", () => {
 
 describe("rpc errors", () => {
   it("throws RpcRefused on HTTP errors, JSON-RPC errors, bad bodies and timeouts", async () => {
-    const cases: Script[] = [() => new Response("x", { status: 503 }), () => new Error("boom"), () => new Response("<html>")];
+    const cases: Script[] = [() => new Response("x", { status: 503 }), () => new Error("boom"), () => new Response("<html>"), () => new Response("null"), () => new Response("3")];
     for (const s of cases) {
       const { f } = fake(s);
       await expect(createLogReader({ fetch: f, sleep: noSleep }).call("0xaa", "0x00")).rejects.toMatchObject({ name: "RpcRefused" });
@@ -129,5 +129,25 @@ describe("blocks", () => {
     const { f, calls } = fake(() => "0x1234");
     expect(await createLogReader({ fetch: f, sleep: noSleep }).call("0xaa", "0xdead")).toBe("0x1234");
     expect(calls[0]!.params).toEqual([{ to: "0xaa", data: "0xdead" }, "latest"]);
+  });
+});
+
+describe("single-shot reads retry", () => {
+  it("one refusal then success gives the answer; three refusals throw", async () => {
+    const sleeps: number[] = [];
+    const sleep = async (ms: number) => void sleeps.push(ms);
+    const flaky = fake((_r, n) => (n === 1 ? new Error("busy") : "0x77"));
+    expect(await createLogReader({ fetch: flaky.f, sleep }).call("0xaa", "0x00")).toBe("0x77");
+    expect(flaky.calls.length).toBe(2);
+    expect(sleeps).toEqual([1000]);
+
+    sleeps.length = 0;
+    const dead = fake(() => new Error("busy"));
+    await expect(createLogReader({ fetch: dead.f, sleep }).head()).rejects.toMatchObject({ name: "RpcRefused" });
+    expect(dead.calls.length).toBe(3);
+    expect(sleeps).toEqual([1000, 2000]);
+
+    const ts = fake((req, n) => (n === 1 ? new Error("busy") : req.method === "eth_getBlockByNumber" ? { timestamp: "0x10" } : null));
+    expect(await createLogReader({ fetch: ts.f, sleep }).blockTs(5)).toBe(16);
   });
 });

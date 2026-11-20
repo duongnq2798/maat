@@ -70,8 +70,21 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
     } catch {
       throw new RpcRefused(method, "the body is not JSON");
     }
+    if (typeof json !== "object" || json === null) throw new RpcRefused(method, "the body is not a JSON-RPC object");
     if (json.error) throw new RpcRefused(method, json.error.message ?? "JSON-RPC error");
     return json.result;
+  }
+
+  /** The single-shot reads get the same three tries as a span, so one transient refusal does not fail a whole run. */
+  async function retried<T>(fn: () => Promise<T>): Promise<T> {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        return await fn();
+      } catch (e) {
+        if (attempt >= 3) throw e;
+        await sleep(1000 * attempt);
+      }
+    }
   }
 
   async function logsOnce(address: string | readonly string[], topic0: string, from: number, to: number): Promise<RawLog[]> {
@@ -97,13 +110,13 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
   }
 
   async function blockTs(n: number): Promise<number> {
-    const b = (await rpc("eth_getBlockByNumber", [hex(n), false])) as { timestamp?: string } | null;
+    const b = (await retried(() => rpc("eth_getBlockByNumber", [hex(n), false]))) as { timestamp?: string } | null;
     if (!b || typeof b.timestamp !== "string") throw new RpcRefused("eth_getBlockByNumber", `no block ${n}`);
     return Number(BigInt(b.timestamp));
   }
 
   async function head(): Promise<{ block: number; ts: number }> {
-    const n = await rpc("eth_blockNumber", []);
+    const n = await retried(() => rpc("eth_blockNumber", []));
     if (typeof n !== "string") throw new RpcRefused("eth_blockNumber", "the result is not hex");
     const block = Number(BigInt(n));
     return { block, ts: await blockTs(block) };
@@ -136,7 +149,7 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
       return lo;
     },
     async call(to, data) {
-      const r = await rpc("eth_call", [{ to, data }, "latest"]);
+      const r = await retried(() => rpc("eth_call", [{ to, data }, "latest"]));
       if (typeof r !== "string") throw new RpcRefused("eth_call", "the result is not hex");
       return r;
     },
