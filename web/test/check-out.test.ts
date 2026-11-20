@@ -8,6 +8,7 @@ import {
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
+  checkNowPage,
   checkOgImage,
   checkSearchIndex,
   SEARCH_INDEX_GZIP_BUDGET,
@@ -24,6 +25,9 @@ const GOOD = [
   `<meta name="twitter:site" content="${SITE.xHandle}"/>`,
   '<script src="/_next/static/chunks/main.js" async=""></script>',
   "</head><body>",
+  "<h1>The AI agent that knows when not to trade.</h1>",
+  '<div data-live-strip="reading" class="l"><span role="status" aria-live="polite" class="sr-only">Reading Base mainnet…</span>',
+  '<p class="m-0">Reading Base mainnet…</p><noscript><p class="m-0">The live line needs JavaScript.</p></noscript></div>',
   '<a href="#ledger">Open the ledger</a>',
   '<button type="button" aria-pressed="true" class="c">Sat 7 Nov</button>',
   '<div role="status" aria-live="polite" aria-atomic="true" class="s">',
@@ -47,7 +51,8 @@ describe("checkExport", () => {
     ["Google Fonts", GOOD.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), /Google Fonts/],
     ["Saturday not pressed", GOOD.replace('aria-pressed="true"', 'aria-pressed="false"'), /Sat 7 Nov/],
     ["the wrong verdict in the live region", GOOD.replace('data-verdict="refused"', 'data-verdict="allowed"'), /verdict/],
-    ["a verdict outside the live region", GOOD.replace('role="status"', 'role="none"'), /verdict/],
+    // The decision engine's region, not the live strip's hidden status line, which comes first in the page.
+    ["a verdict outside the live region", GOOD.replace('<div role="status"', '<div role="none"'), /verdict/],
     ["a wrong title", GOOD.replace(SITE.title, "Maat"), /title/],
     ["no simulator section", GOOD.replace('id="try"', 'id="trial"'), /#try is missing/],
     [
@@ -55,8 +60,76 @@ describe("checkExport", () => {
       GOOD.replace('data-verdict="allowed" data-reason="OK"', 'data-verdict="refused" data-reason="OK"'),
       /simulator's default verdict/,
     ],
+    ["no live strip reading state", GOOD.replaceAll("Reading Base mainnet…", ""), /live strip's reading state/],
+    [
+      "a baked LIVE pill",
+      GOOD.replace("</h1>", '</h1><span class="p"><span aria-hidden="true"></span>LIVE</span>'),
+      /LIVE pill/,
+    ],
+    [
+      "a baked block link",
+      GOOD.replace("</h1>", '</h1><a href="https://basescan.org/block/60013066">Base block 60,013,066</a>'),
+      /links a Base block/,
+    ],
+    [
+      "a baked live verdict",
+      GOOD.replace("</h1>", '</h1><span data-verdict-line="refuse-all">An agent under Maat&#x27;s default mandate would REFUSE</span>'),
+      /holds a verdict line/,
+    ],
   ])("flags %s", (_name, html, problem) => {
     expect(checkExport(html).join("\n")).toMatch(problem);
+  });
+});
+
+const NOW = [
+  '<!DOCTYPE html><html lang="en" class="f"><head>',
+  `<title>Right now on Base · ${SITE.name}</title>`,
+  '<meta name="description" content="What an agent under Maat&#x27;s default mandate would do right now with the 13 B20 tokens that have a NAV, read from Base mainnet in your browser."/>',
+  '<link rel="canonical" href="https://maat.example/now"/>',
+  '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
+  '<script src="/_next/static/chunks/main.js" async=""></script>',
+  '</head><body><a href="#main" class="skip-link">Skip to content</a>',
+  '<main id="main"><h1 class="m-0 text-ink">Right now on Base</h1>',
+  '<div data-now-board="reading" class="b"><span role="status" aria-live="polite" class="sr-only">Reading Base mainnet…</span>',
+  '<p class="m-0">Reading Base mainnet…</p></div>',
+  '<a href="https://basescan.org/address/0xcA11bde05977b3631167028862bE2a173976CA11">0xcA11bde05977b3631167028862bE2a173976CA11</a>',
+  "</main></body></html>",
+].join("");
+
+describe("checkNowPage", () => {
+  it("accepts a /now page that is ready to ship", () => {
+    expect(checkNowPage(NOW)).toEqual([]);
+  });
+
+  it.each([
+    ["a missing lang", NOW.replace(' lang="en"', ""), /lang="en"/],
+    ["a wrong title", NOW.replace(`Right now on Base · ${SITE.name}`, SITE.title), /title/],
+    ["a short meta description", NOW.replace(/content="What an agent[^"]*"/, 'content="Too short."'), /10 characters/],
+    ["a missing canonical /now", NOW.replace('<link rel="canonical" href="https://maat.example/now"/>', ""), /canonical/],
+    ["the landing's canonical", NOW.replace("https://maat.example/now", "https://maat.example/"), /canonical/],
+    ["a relative canonical", NOW.replace("https://maat.example/now", "/now"), /canonical/],
+    ["a relative og:image", NOW.replace("https://maat.example/opengraph-image.png", "/opengraph-image.png"), /og:image/],
+    ["a missing h1", NOW.replace('<h1 class="m-0 text-ink">Right now on Base</h1>', ""), /h1/],
+    ["another h1", NOW.replace(">Right now on Base</h1>", ">Now</h1>"), /h1/],
+    ["no reading state", NOW.replaceAll("Reading Base mainnet…", ""), /reading state/],
+    [
+      "a baked block number",
+      NOW.replace("</h1>", '</h1><a href="https://basescan.org/block/60013066">Base block 60,013,066</a>'),
+      /links a Base block/,
+    ],
+    ["a baked LIVE pill", NOW.replace("</h1>", '</h1><span class="p"><span aria-hidden="true"></span>LIVE</span>'), /LIVE pill/],
+    ["a baked verdict", NOW.replace("</h1>", '</h1><span data-verdict-line="refuse-all">An agent…</span>'), /verdict/],
+    ["a link without a target", NOW.replace('href="#main"', 'href="#nowhere"'), /#nowhere/],
+    ["a third-party script", NOW.replace("/_next/static/chunks/main.js", "https://cdn.example/x.js"), /third-party script/],
+    ["Google Fonts", NOW.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), /Google Fonts/],
+  ])("flags %s", (_name, html, problem) => {
+    expect(checkNowPage(html).join("\n")).toMatch(problem);
+  });
+
+  it("names out/now.html in every problem", () => {
+    const problems = checkNowPage("<html></html>");
+    expect(problems.length).toBeGreaterThan(0);
+    for (const p of problems) expect(p).toMatch(/^out\/now\.html: /);
   });
 });
 
