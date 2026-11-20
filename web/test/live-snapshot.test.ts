@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MULTICALL3, NAV_TOKENS } from "@/content/b20-nav";
 import { decodeAggregate3, encodeAggregate3, encodeAggregate3Result, encodeCall, SELECTORS, word } from "@/lib/live/abi";
-import { type LiveReader, RpcError } from "@/lib/live/rpc";
+import { createReader, LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { buildCalls, calendarAddress, decodeSnapshot, readSnapshot } from "@/lib/live/snapshot";
 import fixture from "./fixtures/live-aggregate3.json";
 
@@ -74,13 +74,48 @@ describe("one reading of Base", () => {
       .mockResolvedValueOnce({ data: `0x${word(0n)}`, endpoint: "https://base-rpc.publicnode.com" });
     const s = await readSnapshot({ call }, { twapWindowSec: fixture.twapWindowSec, calendar: cal });
     expect(s.calendar).toEqual({ source: "onchain", address: cal, open: false });
-    expect(call.mock.calls[1]).toEqual([{ to: cal, data: encodeCall(SELECTORS.isOpen, BigInt(fixture.expected.timestamp), 0n) }, BigInt(fixture.expected.blockNumber)]);
+    expect(call.mock.calls[1]!.slice(0, 2)).toEqual([{ to: cal, data: encodeCall(SELECTORS.isOpen, BigInt(fixture.expected.timestamp), 0n) }, BigInt(fixture.expected.blockNumber)]);
   });
 
   it("sends its multicall to Multicall3 at latest", async () => {
     const reader = recorded();
     await readSnapshot(reader, { twapWindowSec: fixture.twapWindowSec, calendar: null });
-    expect(reader.call).toHaveBeenCalledWith({ to: MULTICALL3, data: encodeAggregate3(buildCalls(fixture.twapWindowSec)) }, "latest");
+    expect(vi.mocked(reader.call).mock.calls[0]!.slice(0, 2)).toEqual([{ to: MULTICALL3, data: encodeAggregate3(buildCalls(fixture.twapWindowSec)) }, "latest"]);
+  });
+
+  /** A fetch for createReader: each endpoint answers the multicall and isOpen as `answer` says, by URL and method. */
+  function fakeFetch(answer: (url: string, call: "multicall" | "isOpen") => Response) {
+    return vi.fn(async (url: string, init: RequestInit) => {
+      const data = String(JSON.parse(String(init.body)).params[0].data);
+      return answer(url, data.startsWith(SELECTORS.aggregate3) ? "multicall" : "isOpen");
+    });
+  }
+  const result = (r: string) => new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: r }), { status: 200 });
+
+  it("takes the reading from the next endpoint when the first answers a multicall cut short", async () => {
+    const f = fakeFetch((url) => result(url === LIVE_RPCS[0] ? fixture.response.slice(0, 1_000) : fixture.response));
+    const s = await readSnapshot(createReader({ fetch: f as unknown as typeof fetch }), { twapWindowSec: fixture.twapWindowSec, calendar: null });
+    expect(s.endpoint).toBe(LIVE_RPCS[1]);
+    expect(s.block).toBe(BigInt(fixture.expected.blockNumber));
+    expect(s.tokens).toHaveLength(NAV_TOKENS.length);
+  });
+
+  it("takes the reading from the next endpoint when the first answers a multicall with the wrong number of results", async () => {
+    const short = encodeAggregate3Result(decodeAggregate3(fixture.response as `0x${string}`).slice(0, 2));
+    const f = fakeFetch((url) => result(url === LIVE_RPCS[0] ? short : fixture.response));
+    const s = await readSnapshot(createReader({ fetch: f as unknown as typeof fetch }), { twapWindowSec: fixture.twapWindowSec, calendar: null });
+    expect(s.endpoint).toBe(LIVE_RPCS[1]);
+  });
+
+  it("asks a deployed MarketCalendar first at the endpoint that answered the multicall, then the others", async () => {
+    const cal = "0x00000000000000000000000000000000000000ca" as const;
+    const f = fakeFetch((url, call) =>
+      url === LIVE_RPCS[0] ? new Response("busy", { status: 503 }) : result(call === "multicall" ? fixture.response : `0x${word(1n)}`),
+    );
+    const s = await readSnapshot(createReader({ fetch: f as unknown as typeof fetch }), { twapWindowSec: fixture.twapWindowSec, calendar: cal });
+    expect(s.endpoint).toBe(LIVE_RPCS[1]);
+    expect(s.calendar).toEqual({ source: "onchain", address: cal, open: true });
+    expect(f.mock.calls.map(([url]) => url)).toEqual([LIVE_RPCS[0], LIVE_RPCS[1], LIVE_RPCS[1]]);
   });
 
   it("decodes a synthetic answer built with the result encoder", () => {

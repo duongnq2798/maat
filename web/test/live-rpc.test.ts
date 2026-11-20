@@ -77,4 +77,46 @@ describe("the keyless live reader", () => {
       { endpoint: LIVE_RPCS[1], message: "over rate limit" },
     ]);
   });
+
+  /** Throws for the answer 0xbad0, as a decoder does for a body it cannot read. */
+  const validate = (data: string) => {
+    if (data === "0xbad0") throw new Error("aggregate3 result is cut short at offset 3");
+  };
+
+  it("counts an answer that does not decode as that endpoint's failure, and tries the next", async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok("0xbad0")).mockResolvedValueOnce(ok("0x11"));
+    const r = await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, "latest", { validate });
+    expect(r).toEqual({ data: "0x11", endpoint: LIVE_RPCS[1] });
+  });
+
+  it("reports each answer that did not decode as a bad answer, apart from an endpoint that gave none", async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok("0xbad0")).mockResolvedValueOnce(new Response("busy", { status: 503 }));
+    const err = await createReader({ fetch: f as unknown as typeof fetch })
+      .call({ to: "0x01", data: "0x02" }, "latest", { validate })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(RpcError);
+    expect((err as RpcError).failures).toEqual([
+      { endpoint: LIVE_RPCS[0], message: "the answer did not decode: aggregate3 result is cut short at offset 3", badAnswer: true },
+      { endpoint: LIVE_RPCS[1], message: "HTTP 503" },
+    ]);
+  });
+
+  it("marks a result that is not hex, or empty, as a bad answer", async () => {
+    const f = vi.fn().mockResolvedValueOnce(ok("nope")).mockResolvedValueOnce(ok("0x"));
+    const err = await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, "latest").catch((e: unknown) => e);
+    expect((err as RpcError).failures.map((x) => x.badAnswer)).toEqual([true, true]);
+  });
+
+  it("tries first the endpoint it is asked to, then the rest in order", async () => {
+    const f = vi.fn().mockResolvedValueOnce(new Response("busy", { status: 503 })).mockResolvedValueOnce(ok("0x11"));
+    const r = await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, 1n, { first: LIVE_RPCS[1] });
+    expect(f.mock.calls.map(([url]) => url)).toEqual([LIVE_RPCS[1], LIVE_RPCS[0]]);
+    expect(r).toEqual({ data: "0x11", endpoint: LIVE_RPCS[0] });
+  });
+
+  it("keeps its own order when asked to start at an endpoint it does not have", async () => {
+    const f = vi.fn(async () => ok("0x11"));
+    await createReader({ fetch: f as unknown as typeof fetch }).call({ to: "0x01", data: "0x02" }, 1n, { first: "https://elsewhere.example" });
+    expect((f.mock.calls as unknown as [string][]).map(([url]) => url)).toEqual([LIVE_RPCS[0]]);
+  });
 });

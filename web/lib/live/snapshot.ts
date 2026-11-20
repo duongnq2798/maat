@@ -75,15 +75,29 @@ export function calendarAddress(rows: readonly { network: string; contract: stri
   return /^0x[0-9a-fA-F]{40}$/.test(a) ? (a as Hex) : null;
 }
 
+/** isOpen's answer, or a throw when it is not a bool word, so the reader tries the next endpoint. */
+function decodeOpen(data: Hex): boolean {
+  const open = decodeBool({ success: true, returnData: data });
+  if (open === null) throw new Error("isOpen gave no bool");
+  return open;
+}
+
+/**
+ * One reading: the multicall at latest, then a deployed MarketCalendar's isOpen at the same block. An answer that does
+ * not decode counts as that endpoint's failure, so the reader tries the next one; the calendar call starts at the
+ * endpoint that answered the multicall.
+ */
 export async function readSnapshot(reader: LiveReader, opts: { twapWindowSec?: number; calendar?: Hex | null } = {}): Promise<LiveSnapshot> {
   const window = opts.twapWindowSec ?? FACTS.mandate.value.twapWindowSec;
   const calendar = opts.calendar === undefined ? calendarAddress() : opts.calendar;
-  const { data, endpoint } = await reader.call({ to: MULTICALL3, data: encodeAggregate3(buildCalls(window)) }, "latest");
-  const s = decodeSnapshot(decodeAggregate3(data), window);
+  const decode = (data: Hex) => decodeSnapshot(decodeAggregate3(data), window);
+  const { data, endpoint } = await reader.call({ to: MULTICALL3, data: encodeAggregate3(buildCalls(window)) }, "latest", { validate: decode });
+  const s = decode(data);
   if (calendar === null) return { ...s, endpoint, calendar: { source: "repo" } };
   try {
-    const open = await reader.call({ to: calendar, data: encodeCall(SELECTORS.isOpen, BigInt(s.timestamp), REGULAR) }, s.block);
-    return { ...s, endpoint, calendar: { source: "onchain", address: calendar, open: decodeBool({ success: true, returnData: open.data }) } };
+    const isOpen = { to: calendar, data: encodeCall(SELECTORS.isOpen, BigInt(s.timestamp), REGULAR) };
+    const open = await reader.call(isOpen, s.block, { validate: decodeOpen, first: endpoint });
+    return { ...s, endpoint, calendar: { source: "onchain", address: calendar, open: decodeOpen(open.data) } };
   } catch {
     // A failed calendar call must not discard the token readings; the caller counts open: null as closed.
     return { ...s, endpoint, calendar: { source: "onchain", address: calendar, open: null } };
