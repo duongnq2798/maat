@@ -112,6 +112,8 @@ Only transactions whose calldata ends with this suffix carry the code. The deplo
    cast wallet address --account maat-owner
    ```
 
+   On Windows, in Git Bash's own window (mintty), these prompts and the password prompt of every later `--account` command may hang or fail, because mintty is not a Windows console. A prompt that fails signs and sends nothing. If one does, run that command again as `winpty cast ...` or `winpty forge ...` (Git for Windows includes `winpty`), or run it from Windows Terminal. Never put `winpty` inside `$(...)`.
+
 2. In `contracts/`, create `.env` from `.env.example` if it does not exist (`cp .env.example .env`), then set:
 
    | Variable | Value |
