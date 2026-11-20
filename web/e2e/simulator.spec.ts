@@ -1,8 +1,15 @@
 import { expect, type Page, test } from "@playwright/test";
+import { routeLiveRpc } from "./fake-live-rpc";
 import { collectErrors, measureFit } from "./helpers";
 
 // The date field's segment order depends on the locale.
 test.use({ locale: "en-US" });
+
+// The live strip on the same page reads Base mainnet from the browser. Both RPC hosts answer from the recorded weekend
+// reading of e2e/fake-live-rpc.ts, so no test here touches the network; e2e/live.spec.ts tests the strip itself.
+test.beforeEach(async ({ page }) => {
+  await routeLiveRpc(page, "weekend");
+});
 
 function sim(page: Page) {
   const root = page.locator("#try");

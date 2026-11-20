@@ -5,7 +5,7 @@
    A new landing folder under components/ must be added here. */
 @source "./(site)";
 @source "../components/*.tsx";
-@source "../components/{charts,sections,ui}";
+@source "../components/{charts,live,sections,ui}";
 @source "../content/*.ts";
 @source "../lib/site.ts";
 

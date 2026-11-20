@@ -1,6 +1,13 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
+import { routeLiveRpc } from "./fake-live-rpc";
 import { collectErrors, contentRight, lineCount, measureFit, rightEdge } from "./helpers";
+
+// The live strip under the H1 reads Base mainnet from the browser. Both RPC hosts answer from the recorded weekend
+// reading of e2e/fake-live-rpc.ts, so no test here touches the network; e2e/live.spec.ts tests the strip itself.
+test.beforeEach(async ({ page }) => {
+  await routeLiveRpc(page, "weekend");
+});
 
 // 1024: the narrowest width that keeps the hero in two columns, so the engine card shares its row.
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
@@ -27,7 +34,7 @@ for (const width of WIDTHS) {
     const thu = page.locator("#top").getByRole("button", { name: "Thu 5 Nov · 10:30" });
     await thu.click();
     await expect(thu).toHaveAttribute("aria-pressed", "true");
-    await expect(page.locator("#top").getByRole("status").locator("> div")).toHaveAttribute("data-verdict", "allowed");
+    await expect(page.locator("#top").getByRole("status").locator("> [data-verdict]")).toHaveAttribute("data-verdict", "allowed");
     await expect(page.locator("#top").getByText("$20 ≤ $50 · $100/day")).toBeVisible();
     // Wait for the intro animations to end; the live dot loops forever, so it is skipped.
     await page.waitForFunction(() =>
@@ -47,7 +54,8 @@ for (const width of WIDTHS) {
 test("the moment toggle works by mouse and keyboard", async ({ page }) => {
   await page.goto("/");
   const hero = page.locator("#top");
-  const verdict = hero.getByRole("status");
+  // The decision engine's live region, the one that holds the verdict: the live strip above it has a status of its own.
+  const verdict = hero.getByRole("status").filter({ has: page.locator("[data-verdict]") });
   const thu = hero.getByRole("button", { name: "Thu 5 Nov · 10:30" });
   const sat = hero.getByRole("button", { name: "Sat 7 Nov" });
   await expect(verdict).toContainText("Refused");
