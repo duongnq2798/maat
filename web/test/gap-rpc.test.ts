@@ -120,22 +120,72 @@ describe("blocks", () => {
     expect(await r.head()).toEqual({ block: 1000, ts: 1200 });
   });
 
-  it("blockAt never asks for a block older than the endpoint serves", async () => {
-    // 2-second blocks, head 60_000_000; the endpoint refuses (as publicnode does) any block more than 4,000,000 behind.
-    const head = 60_000_000;
-    const headTs = 1_800_000_000;
-    const asked: number[] = [];
-    const { f } = fake((req) => {
-      if (req.method === "eth_blockNumber") return `0x${head.toString(16)}`;
-      const n = Number(req.params[0]);
-      asked.push(n);
-      if (n < head - 4_000_000) return new Error("Archive requests require a personal token");
-      return { timestamp: `0x${(headTs - (head - n) * 2).toString(16)}` };
+  describe("blockAt on Base's real shape", () => {
+    // 2 s blocks from the endpoint's floor to ERA, then 0.2 s blocks (5 per whole second); the endpoint refuses below FLOOR.
+    const FLOOR = 51_000_000;
+    const ERA = 53_556_000;
+    const HEAD = 60_094_127;
+    const T_FLOOR = 1_788_789_347;
+    const tsOf = (n: number) => (n <= ERA ? T_FLOOR + (n - FLOOR) * 2 : T_FLOOR + (ERA - FLOOR) * 2 + Math.floor((n - ERA) / 5));
+    const firstAtOrAfter = (ts: number) => {
+      let lo = FLOOR;
+      let hi = HEAD;
+      while (lo < hi) {
+        const mid = Math.floor((lo + hi) / 2);
+        if (tsOf(mid) >= ts) hi = mid;
+        else lo = mid + 1;
+      }
+      return lo;
+    };
+    const setup = () => {
+      const asked: number[] = [];
+      const { f } = fake((req) => {
+        if (req.method === "eth_blockNumber") return `0x${HEAD.toString(16)}`;
+        const n = Number(req.params[0]);
+        if (n > HEAD) throw new Error(`asked above the head: ${n}`);
+        asked.push(n);
+        if (n < FLOOR) return new Response(JSON.stringify({ error: { code: -32602, message: "Archive requests require a personal token" } }), { status: 403 });
+        return { timestamp: `0x${tsOf(n).toString(16)}` };
+      });
+      return { asked, r: createLogReader({ fetch: f, sleep: noSleep }) };
+    };
+    /** Distinct headers read per call, the head included: measured 7 to 28 (a handful of interpolation steps; near the floor a bisection of refused probes). Each refused header is asked 3 times by the reader. */
+    const MAX_HEADERS = 30;
+
+    const targets: [string, number][] = [
+      ["just above the floor", T_FLOOR + 1],
+      ["early in the 2 s era", T_FLOOR + 100_001],
+      ["a week before 2026-11-06", 1_793_000_000],
+      ["the era change", T_FLOOR + (ERA - FLOOR) * 2],
+      ["just after the era change", T_FLOOR + (ERA - FLOOR) * 2 + 1],
+      ["a second shared by 5 blocks", tsOf(57_113_037)],
+      ["the next such second", tsOf(58_002_228) + 1],
+      ["the head's own timestamp", tsOf(HEAD)],
+    ];
+    for (const [name, target] of targets) {
+      it(`finds the exact block ${name}`, async () => {
+        const { asked, r } = setup();
+        const got = await r.blockAt(target);
+        expect(got).toBe(firstAtOrAfter(target));
+        expect(asked.includes(got)).toBe(true);
+        expect(asked.includes(got - 1) || got === FLOOR).toBe(true);
+        expect(new Set(asked).size).toBeLessThanOrEqual(MAX_HEADERS);
+      });
+    }
+
+    it("never asks for a header above the head or returns an unverified end, over many targets", async () => {
+      for (let i = 0; i < 60; i++) {
+        const target = T_FLOOR + 1 + Math.floor(((tsOf(HEAD) - T_FLOOR - 1) * i) / 59);
+        const { asked, r } = setup();
+        expect(await r.blockAt(target)).toBe(firstAtOrAfter(target));
+        expect(new Set(asked).size).toBeLessThanOrEqual(MAX_HEADERS);
+      }
     });
-    const r = createLogReader({ fetch: f, sleep: noSleep });
-    expect(await r.blockAt(headTs - 3_000_000 * 2 + 1)).toBe(head - 3_000_000 + 1);
-    expect(await r.blockAt(headTs - 3_000_000 * 2)).toBe(head - 3_000_000);
-    expect(Math.min(...asked)).toBeGreaterThanOrEqual(head - 4_000_000);
+
+    it("throws for a target older than the endpoint's floor, naming the block", async () => {
+      const { r } = setup();
+      await expect(r.blockAt(T_FLOOR - 1)).rejects.toThrow(/block 50999999 is below what the endpoint serves/);
+    });
   });
 
   it("blockAt throws for a timestamp after the head", async () => {

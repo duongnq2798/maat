@@ -1,6 +1,10 @@
 import type { RawLog } from "./decode";
 
-/** The one keyless endpoint the index reads. Free; about 5 blocks per second on Base; no environment variable is read. */
+/**
+ * The one keyless endpoint the index reads. Free; no environment variable is read. It serves headers and logs from block
+ * 51,000,000 only (2026-09-07); older blocks answer 403. Base made a block every 2 s until about block 53,556,000 (about
+ * 2026-11-05) and every 0.2 s (5 per second, whole-second timestamps) after.
+ */
 export const GAP_RPC = "https://base-rpc.publicnode.com";
 /** The most blocks one eth_getLogs call may cover on that endpoint. */
 export const SPAN = 50_000;
@@ -139,41 +143,50 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
     async blockAt(ts) {
       const h = await head();
       if (ts > h.ts) throw new Error(`timestamp ${ts} is after the head (block ${h.block}, ${h.ts})`);
-      // The endpoint refuses old blocks without a token, so a search from block 0 fails. Base makes a block about every
-      // 2 s: start from that estimate, widen to a bracket by doubling, then bisect inside it.
-      const guess = Math.min(h.block, Math.max(0, h.block - Math.round((h.ts - ts) / 2)));
-      let lo = 0;
-      let hi = h.block;
-      let step = 1_000;
-      if ((await blockTs(guess)) >= ts) {
-        hi = guess;
-        while (hi > 0) {
-          const probe = Math.max(0, hi - step);
-          if ((await blockTs(probe)) < ts) {
-            lo = probe + 1;
-            break;
-          }
-          hi = probe;
-          step *= 2;
+      // The first block whose timestamp is at least `ts`. `hi` always has a read timestamp >= ts. `lo` is a block below
+      // the answer: its timestamp was read (< ts), or null when the endpoint refused it (below its served range).
+      let hi = { block: h.block, ts: h.ts };
+      let lo: { block: number; ts: number | null } | null = null;
+      let prevHi: { block: number; ts: number } | null = null;
+      let width = Infinity;
+      let bisectNext = false;
+      const readTs = async (n: number): Promise<number | null> => {
+        try {
+          return await blockTs(n);
+        } catch (e) {
+          if (e instanceof RpcRefused) return null;
+          throw e;
         }
-      } else {
-        lo = guess + 1;
-        while (lo < h.block) {
-          const probe = Math.min(h.block, lo + step);
-          if ((await blockTs(probe)) >= ts) {
-            hi = probe;
-            break;
-          }
-          lo = probe + 1;
-          step *= 2;
+      };
+      while (true) {
+        if (lo && hi.block === lo.block + 1) {
+          if (lo.ts === null) throw new Error(`block ${lo.block} is below what the endpoint serves, so the first block at or after ${ts} cannot be verified`);
+          return hi.block;
         }
+        if (!lo && hi.block === 0) return 0;
+        const floor = lo ? lo.block + 1 : 0;
+        let probe: number;
+        if (!prevHi && !lo) {
+          probe = hi.block - 100_000; // a second point to measure the chain's own rate
+        } else if (lo && lo.ts !== null && !bisectNext) {
+          // between two read points: interpolate their timestamps
+          probe = lo.block + Math.floor(((ts - lo.ts) / (hi.ts - lo.ts)) * (hi.block - lo.block));
+        } else if (!lo && prevHi && prevHi.ts > hi.ts) {
+          probe = hi.block - Math.ceil(((hi.ts - ts) * (prevHi.block - hi.block)) / (prevHi.ts - hi.ts)); // extrapolate the same rate
+        } else {
+          probe = Math.floor((floor + hi.block) / 2);
+        }
+        probe = Math.min(hi.block - 1, Math.max(floor, probe));
+        const t = await readTs(probe);
+        if (t === null) lo = { block: probe, ts: null };
+        else if (t >= ts) {
+          prevHi = hi;
+          hi = { block: probe, ts: t };
+        } else lo = { block: probe, ts: t };
+        const nowWidth = lo ? hi.block - lo.block : Infinity;
+        bisectNext = nowWidth > width / 2;
+        width = nowWidth;
       }
-      while (lo < hi) {
-        const mid = Math.floor((lo + hi) / 2);
-        if ((await blockTs(mid)) >= ts) hi = mid;
-        else lo = mid + 1;
-      }
-      return lo;
     },
     async call(to, data) {
       const r = await retried(() => rpc("eth_call", [{ to, data }, "latest"]));
