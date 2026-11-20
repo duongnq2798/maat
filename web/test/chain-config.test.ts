@@ -1,3 +1,4 @@
+// @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { deploymentConfig, deploymentsFile, SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
 import { docsData } from "@/lib/docs/generated";
