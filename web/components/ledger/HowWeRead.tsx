@@ -1,5 +1,5 @@
 import { FACTS } from "@/content/facts";
-import { DEFAULT_RPCS } from "@/lib/chain/rpc";
+import { rpcUrls } from "@/lib/chain/rpc";
 import { repoFileUrl } from "@/lib/site";
 import { hostOf } from "./format";
 
@@ -16,15 +16,15 @@ export function HowWeRead() {
         </div>
         <ol className="m-0 flex list-decimal [&_a]:underline [&_a]:underline-offset-2 flex-col gap-4 pl-5 text-[15px] leading-relaxed text-ink-body">
           <li>
-            Your browser asks a public Base RPC ({DEFAULT_RPCS.map(hostOf).join(", falling back to ")}) for the vault&apos;s
+            Your browser asks a public Base RPC ({rpcUrls().map(hostOf).join(", falling back to ")}) for the vault&apos;s
             logs since its deploy block and decodes them with the vault&apos;s own{" "}
             <a href="/data/abi/MandateVault.json">ABI</a>. The address comes from the{" "}
             <a href={repoFileUrl("deployments/README.md")}>deployments table</a>, served at{" "}
             <a href="/data/deployments.json">/data/deployments.json</a>.
           </li>
           <li>
-            Balances, prices, the mandate and the health factor come from one multicall at the latest block. A read that
-            fails is shown as unavailable, never as zero.
+            Balances, prices, the mandate and the health factor come from a few multicalls, all at the latest block. A
+            read that fails is shown as unavailable, never as zero.
           </li>
           <li>
             What it has read stays in this browser&apos;s storage, so a return visit only reads new blocks. The newest

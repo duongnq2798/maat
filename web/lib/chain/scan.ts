@@ -22,7 +22,8 @@ export function planChunks(from: bigint, to: bigint, span: bigint): BlockRange[]
   return out;
 }
 
-const RANGE_ERROR = /block range|ranges? over|limited to|max(?:imum)? (?:block )?range/i;
+// "limited to" only with a block count and "range" after it: "limited to 25 per second" is a rate limit.
+const RANGE_ERROR = /block range|ranges? over|limited to (?:a )?[\d,\s-]+(?:blocks? )?range|max(?:imum)? (?:block )?range/i;
 
 /** True when an RPC refused an eth_getLogs call for spanning too many blocks (the message varies by provider). */
 export function isRangeError(e: unknown, depth = 0): boolean {

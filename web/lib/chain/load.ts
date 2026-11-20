@@ -67,6 +67,8 @@ export interface LedgerSnapshot {
   decisions: MainnetDecision[];
   summary: Summary;
   rationales: Map<Hex, string>;
+  /** "checking" until the rationale source has been asked, "unavailable" when asking it failed. */
+  rationaleState: "checking" | "read" | "unavailable";
   scan: ScanState;
   /** Milliseconds, from `now`. */
   updatedAt: number;
@@ -159,6 +161,7 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
     (treasury?.tokens ?? []).flatMap((t) => (t.decimals.ok ? [[t.address.toLowerCase(), t.decimals.value] as const] : [])),
   );
   let rationales = new Map<Hex, string>();
+  let rationaleState: LedgerSnapshot["rationaleState"] = "checking";
 
   const snapshot = (): LedgerSnapshot => {
     const events = decodeVaultLogs([...logs.values()]);
@@ -170,6 +173,7 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
       decisions: toMainnetDecisions(events, { blockTimes, gasUsed, decimals, usdc }),
       summary: summarize(events, { blockTimes, usdc, nowSec: Math.floor(now() / 1000) }),
       rationales,
+      rationaleState,
       scan: scanState(floor, head, covered),
       updatedAt: now(),
     };
@@ -219,8 +223,10 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
 
   try {
     rationales = await rationaleSource.lookup(decisionEvents.map((e) => e.intentId));
+    rationaleState = "read";
   } catch {
     rationales = new Map();
+    rationaleState = "unavailable";
   }
 
   const result = snapshot();

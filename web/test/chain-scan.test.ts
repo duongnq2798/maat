@@ -34,6 +34,7 @@ describe("isRangeError", () => {
 
   it("is false for a rate limit or a network error", () => {
     expect(isRangeError(new Error("request limit reached"))).toBe(false);
+    expect(isRangeError(new Error("Requests are limited to 25 per second"))).toBe(false);
     expect(isRangeError(new TypeError("Failed to fetch"))).toBe(false);
   });
 });

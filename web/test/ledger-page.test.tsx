@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { keccak256, toBytes, type Hex } from "viem";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import LedgerPage from "@/app/(site)/ledger/page";
+import { HowWeRead } from "@/components/ledger/HowWeRead";
 import { LedgerApp } from "@/components/ledger/LedgerApp";
 import { Ledger } from "@/components/sections/Ledger";
 import type { LedgerState } from "@/components/ledger/useLedger";
@@ -195,6 +196,19 @@ describe("/ledger reading mainnet", () => {
     expect(screen.getByText(VERIFIED_TEXT)).toBeInTheDocument();
   });
 
+  it("does not call a rationale unexported while it is still being checked, or when the text could not be read", () => {
+    hook.state = { ...mainnet(), snapshot: { ...snapshot, rationales: new Map(), rationaleState: "checking" }, loading: true } as LedgerState;
+    const { unmount } = render(<LedgerApp initial="loading" />);
+    expect(screen.getAllByText("Checking rationale…")).toHaveLength(3);
+    expect(screen.queryByText("Rationale not exported yet")).toBeNull();
+    unmount();
+
+    hook.state = { ...mainnet(), snapshot: { ...snapshot, rationales: new Map(), rationaleState: "unavailable" } } as LedgerState;
+    render(<LedgerApp initial="loading" />);
+    expect(screen.getAllByText("Rationale text unavailable")).toHaveLength(3);
+    expect(screen.queryByText("Rationale not exported yet")).toBeNull();
+  });
+
   it("filters the timeline to the refusal reason picked in the chart", () => {
     render(<LedgerApp initial="loading" />);
     const list = () => within(screen.getByRole("list", { name: "Mainnet decisions" })).getAllByRole("listitem");
@@ -251,5 +265,19 @@ describe("the landing's ledger section", () => {
   it("links to the mainnet ledger page", () => {
     render(<Ledger />);
     expect(screen.getByRole("link", { name: "Open the mainnet ledger" })).toHaveAttribute("href", "/ledger");
+  });
+});
+
+describe("how the page reads Base", () => {
+  it("names the RPCs the page tries, NEXT_PUBLIC_BASE_RPC_URL first, and does not claim a single multicall", () => {
+    vi.stubEnv("NEXT_PUBLIC_BASE_RPC_URL", "https://rpc.example/some-key");
+    try {
+      const { container } = render(<HowWeRead />);
+      expect(container).toHaveTextContent("rpc.example, falling back to base-rpc.publicnode.com, falling back to mainnet.base.org");
+      expect(container.textContent).not.toMatch(/one multicall/);
+      expect(container.textContent).not.toContain("some-key");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 });

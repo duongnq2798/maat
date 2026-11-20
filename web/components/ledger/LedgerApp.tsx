@@ -103,6 +103,7 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
           <DecisionTimeline
             decisions={snapshot.decisions}
             rationales={snapshot.rationales}
+            rationaleState={snapshot.rationaleState}
             reason={reason}
             onReason={setReason}
             scanning={state.mode === "mainnet" && state.loading && !snapshot.scan.done}

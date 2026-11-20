@@ -6,6 +6,7 @@ import { formatInt } from "@/content/format";
 import type { RefusalCode } from "@/content/reasons";
 import { basescanTx } from "@/lib/chain/basescan";
 import type { MainnetDecision } from "@/lib/chain/ledger";
+import type { LedgerSnapshot } from "@/lib/chain/load";
 import { verifyRationale, type RationaleCheck } from "@/lib/chain/rationale";
 import { reasonDisplay } from "@/lib/chain/reason";
 
@@ -30,9 +31,23 @@ const BADGE: Record<RationaleCheck, { text: string; className: string; title: st
   },
 };
 
-function Row({ d, text }: { d: MainnetDecision; text: string | undefined }) {
+/** Shown instead of "not exported" while that cannot be known yet. */
+const NOT_READ: Record<"checking" | "unavailable", { text: string; className: string; title: string }> = {
+  checking: {
+    text: "Checking rationale…",
+    className: "bg-surface-soft text-ink-2",
+    title: "The exported rationale text is looked up once the vault's history has been read.",
+  },
+  unavailable: {
+    text: "Rationale text unavailable",
+    className: "bg-surface-soft text-ink-2",
+    title: "The exported rationale text could not be read this time; the hash onchain still commits to its text.",
+  },
+};
+
+function Row({ d, text, rationaleState }: { d: MainnetDecision; text: string | undefined; rationaleState: LedgerSnapshot["rationaleState"] }) {
   const check = verifyRationale(text, d.rationaleHash);
-  const badge = BADGE[check];
+  const badge = check === "missing" && rationaleState !== "read" ? NOT_READ[rationaleState] : BADGE[check];
   const reason = d.allowed ? null : reasonDisplay(d.reason);
   return (
     <li className="grid gap-x-6 gap-y-2 border-b border-line-soft px-5 py-4 md:grid-cols-[150px_minmax(0,1fr)_auto]">
@@ -75,12 +90,14 @@ function Row({ d, text }: { d: MainnetDecision; text: string | undefined }) {
 export function DecisionTimeline({
   decisions,
   rationales,
+  rationaleState,
   reason,
   onReason,
   scanning,
 }: {
   decisions: readonly MainnetDecision[];
   rationales: ReadonlyMap<Hex, string>;
+  rationaleState: LedgerSnapshot["rationaleState"];
   reason: RefusalCode | null;
   onReason: (code: RefusalCode | null) => void;
   scanning: boolean;
@@ -126,7 +143,7 @@ export function DecisionTimeline({
         ) : (
           <ol aria-label="Mainnet decisions" className="m-0 list-none p-0">
             {rows.slice(0, shown).map((d) => (
-              <Row key={d.key} d={d} text={rationales.get(d.intentId)} />
+              <Row key={d.key} d={d} text={rationales.get(d.intentId)} rationaleState={rationaleState} />
             ))}
           </ol>
         )}

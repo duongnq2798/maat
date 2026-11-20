@@ -122,6 +122,20 @@ describe("loadLedger", () => {
     expect(seen[0]!.scan.done).toBe(false);
   });
 
+  it("marks rationales as still being checked until it has looked them up", async () => {
+    const seen: LedgerSnapshot[] = [];
+    const s = await load(chain(), memoryStorage(), { onProgress: (p) => seen.push(p) });
+    expect(seen.map((p) => p.rationaleState)).toEqual(seen.map(() => "checking"));
+    expect(s.rationaleState).toBe("read");
+  });
+
+  it("says the rationales could not be read when the lookup fails, not that none were exported", async () => {
+    const failing: RationaleSource = { name: "down", lookup: async () => Promise.reject(new Error("404")) };
+    const s = await load(chain(), memoryStorage(), { rationaleSource: failing });
+    expect(s.rationaleState).toBe("unavailable");
+    expect(s.rationales.size).toBe(0);
+  });
+
   it("drops a cache that claims blocks above the head", async () => {
     const storage = memoryStorage();
     storage.setItem(
