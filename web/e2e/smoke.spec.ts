@@ -105,6 +105,24 @@ test("the ledger filters", async ({ page }) => {
   await expect(rows).toHaveCount(3);
 });
 
+test("the Refusals section fills only the recorded refusal's label in red", async ({ page }) => {
+  await page.goto("/");
+  const hot = page.locator('#reasons li[data-hot] [data-reason-tag="MARKET_CLOSED"]');
+  const label = hot.locator("> :first-child");
+  await expect(label).toHaveText("Market closed");
+  // --color-refuse #C2410C, white text on it.
+  await expect(label).toHaveCSS("background-color", "rgb(194, 65, 12)");
+  await expect(label).toHaveCSS("color", "rgb(255, 255, 255)");
+  // The code beside it stays a muted tag: --color-ink-2 #5A6170, nothing filled.
+  await expect(hot.locator("> :last-child")).toHaveCSS("color", "rgb(90, 97, 112)");
+  await expect(hot.locator("> :last-child")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // Any other refusal's label has no fill.
+  await expect(page.locator('#reasons li[data-code="FEED_STALE"] [data-reason-tag] > :first-child')).toHaveCSS(
+    "background-color",
+    "rgba(0, 0, 0, 0)",
+  );
+});
+
 test("reduced motion shows the final state at once", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
