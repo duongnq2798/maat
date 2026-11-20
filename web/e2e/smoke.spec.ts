@@ -50,16 +50,47 @@ test("the moment toggle works by mouse and keyboard", async ({ page }) => {
   const thu = hero.getByRole("button", { name: "Thu 5 Nov · 10:30" });
   const sat = hero.getByRole("button", { name: "Sat 7 Nov" });
   await expect(verdict).toContainText("Refused");
+  await expect(verdict).toContainText("Market closed");
   await expect(verdict).toContainText("MARKET_CLOSED");
 
   await thu.click();
   await expect(verdict).toContainText("Allowed");
+  await expect(verdict).toContainText("All checks passed");
   await expect(thu).toHaveAttribute("aria-pressed", "true");
 
   await sat.focus();
   await page.keyboard.press("Enter");
   await expect(verdict).toContainText("Refused");
   await expect(sat).toHaveAttribute("aria-pressed", "true");
+});
+
+test("the hero verdict reads the plain label over its code, right-aligned above the outcome line", async ({ page }) => {
+  // Reduced motion shows the verdict at its final size at once, so its lines are measured unscaled.
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.goto("/");
+  const hero = page.locator("#top");
+  const tag = hero.locator('[role="status"] [data-reason-tag]');
+  // Where the text of each line ends: the tag's label, its code, then the outcome line under the tag.
+  const expectOneRightEdge = async () => {
+    const edges = await tag.evaluate((el) =>
+      [...el.children, el.nextElementSibling].map((line) => {
+        const range = document.createRange();
+        range.selectNodeContents(line!);
+        return Math.round(range.getBoundingClientRect().right);
+      }),
+    );
+    expect(edges).toHaveLength(3);
+    expect(Math.max(...edges) - Math.min(...edges)).toBeLessThanOrEqual(1);
+  };
+
+  await expect(tag).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
+  await expect(tag).toHaveText(/^Market closed\s*MARKET_CLOSED$/);
+  await expectOneRightEdge();
+
+  await hero.getByRole("button", { name: "Thu 5 Nov · 10:30" }).click();
+  await expect(tag).toHaveAttribute("data-reason-tag", "OK");
+  await expect(tag).toHaveText(/^All checks passed\s*OK$/);
+  await expectOneRightEdge();
 });
 
 test("the ledger filters", async ({ page }) => {
