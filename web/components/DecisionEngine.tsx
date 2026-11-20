@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { ReasonTag } from "@/components/ui/ReasonTag";
 import { type CheckMark, MOMENT_ORDER, type MomentId, MOMENTS } from "@/content/engine";
 import { FACTS } from "@/content/facts";
 import { formatInt } from "@/content/format";
@@ -94,8 +95,8 @@ export function DecisionEngine() {
             <span className="font-mono text-[11px] opacity-80">VAULT DECISION</span>
             <span className="text-[26px] font-semibold tracking-[-0.03em]">{moment.allowed ? "Allowed" : "Refused"}</span>
           </div>
-          <div className="flex flex-col gap-0.5 text-right">
-            <span className="font-mono text-[13px] font-semibold">{moment.reason}</span>
+          <div className="ml-auto flex flex-col gap-1.5 text-right">
+            <ReasonTag code={moment.reason} tone="verdict" layout="stacked" />
             <span className="font-mono text-[11px] opacity-80">{moment.outcome}</span>
           </div>
         </div>

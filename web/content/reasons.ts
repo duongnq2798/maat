@@ -44,6 +44,35 @@ export const REASON_GROUPS: readonly ReasonGroup[] = [
 /** The refusal the fork run recorded; the Refusals section highlights it. */
 export const HIGHLIGHT_REASON: RefusalCode = "MARKET_CLOSED";
 
+/** One short plain label per code, shown before the code wherever a person reads a decision (spec 2026-11-20 section 3). */
+export const REASON_LABEL: Readonly<Record<ReasonCode, string>> = {
+  OK: "All checks passed",
+  VAULT_PAUSED: "Vault paused",
+  ACTION_NOT_SUPPORTED: "Credit not enabled",
+  TOKEN_NOT_ALLOWED: "Token not allowed",
+  TOKEN_PAUSED: "Token paused",
+  POLICY_BLOCKED: "Blocked by token policy",
+  MARKET_CLOSED: "Market closed",
+  FEED_STALE: "Price feed out of date",
+  BAD_PRICE: "Bad price data",
+  MULTIPLIER_COOLDOWN: "Corporate action cooldown",
+  PREMIUM_TOO_HIGH: "Pool price too far from oracle",
+  SIZE_LIMIT: "Over the size limit",
+  CONCENTRATION: "Too much in one stock",
+  PAYEE_NOT_ALLOWED: "Payee not approved",
+  INSUFFICIENT_BALANCE: "Not enough funds",
+  SWAP_FAILED: "Swap failed",
+  TRANSFER_FAILED: "Transfer failed",
+  CREDIT_FAILED: "Aave call failed",
+  HEALTH_FACTOR_LOW: "Health factor too low",
+  DERISK_WINDOW: "Pre-pause safety margin",
+};
+
+/** The plain-text form for places that can't hold markup: "Market closed (MARKET_CLOSED)". */
+export function reasonText(code: ReasonCode): string {
+  return `${REASON_LABEL[code]} (${code})`;
+}
+
 /** One plain-English line per refusal, written from where the contracts return it (contracts/src). */
 export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   VAULT_PAUSED: "The owner paused the vault. Only repaying debt still goes through.",
@@ -57,7 +86,7 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   MULTIPLIER_COOLDOWN: "The token's multiplier changed recently, as after a split, or can't be read.",
   PREMIUM_TOO_HIGH: "The pool price is too far above or below Chainlink.",
   SIZE_LIMIT: "Over the per-trade cap or the daily cap.",
-  CONCENTRATION: "The buy would push one stock past its maximum weight.",
+  CONCENTRATION: "The buy would push one stock past its maximum weight, or its weight can't be measured.",
   PAYEE_NOT_ALLOWED: "Payments go only to payees the owner listed through the timelock.",
   INSUFFICIENT_BALANCE: "Not enough funds for the amount, or an amount of zero.",
   SWAP_FAILED: "The swap reverted, for example on slippage past the limit.",

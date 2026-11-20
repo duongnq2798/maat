@@ -110,7 +110,7 @@ When the code gains something public, its reference page needs an entry, or a te
 | an event | reference/events | `<EventEntry contract="<Contract>" name="<Event>" />`; the events of `IMandateVaultEvents` go under `MandateVault` |
 | an error | reference/errors | `<ErrorEntry contract="<Contract>" name="<Error>" />` |
 | an enum or struct in `contracts/src/Types.sol` | reference/types | `<TypeEntry name="<Name>" />` |
-| a member of `Reason` | concepts/refusal-codes | a `### <CODE>` heading under its group's heading, with its Id line, and the code in `REASONS`, in the enum's order, and in `REASON_GROUPS` in `content/reasons.ts` (`test/refusal-codes.test.ts`, `test/facts.test.ts`) |
+| a member of `Reason` | concepts/refusal-codes | a `### <CODE>` heading under its group's heading, with its Id line, and the code in `REASONS`, in the enum's order, in `REASON_GROUPS`, and in `REASON_LABEL` with a plain label of at most 32 characters and no underscore, in `content/reasons.ts` (`test/refusal-codes.test.ts`, `test/facts.test.ts`, `test/reason-label.test.ts`) |
 | a setting in `agent/.env.example` | reference/agent-configuration | a `### <NAME>` heading with `<EnvVar name="<NAME>" />` directly under it |
 | a script in `agent/package.json` | reference/agent-scripts | a `### <name>` heading with `<ScriptEntry name="<name>" />` directly under it |
 | a `.ts` file in `agent/scripts` | reference/agent-scripts | a `### <file>` heading with `<ScriptFile name="<file>" />` directly under it |
@@ -191,4 +191,4 @@ It checks the `out/` the last build left and does not build, so run it after `np
 | `brand/out/x-avatar.png`, `x-banner.png` | X profile photo and header |
 | `brand/out/favicon-32.png`, `icon-512.png`, `apple-icon-180.png` | icons (also copied into `app/`) |
 
-The geometry lives in `brand/mark.ts`. Change it there and run `npm run brand`. A test fails if the committed SVGs no longer match.
+The geometry lives in `brand/mark.ts`. Change it there and run `npm run brand`. A test fails if the committed SVGs no longer match. The OG image, its alt text and the X banner also show the Market closed label from `REASON_LABEL` in `content/reasons.ts`: after changing it, run `npm run brand` and commit the PNGs and `app/opengraph-image.alt.txt`.

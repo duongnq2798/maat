@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import { ACTIONS, decisionLabel, gasLabel, getDecisions, intentLabel } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
+import { REASON_LABEL, REASONS } from "@/content/reasons";
 import { enumMembers, readRepo } from "./helpers/solidity";
 
 describe("decision rows", () => {
@@ -27,13 +28,13 @@ describe("decision rows", () => {
     for (const r of getDecisions()) expect(sent).toContain(`${r.action} ${r.symbol} ${r.amountUsd}`);
   });
 
-  it("formats like the comp", () => {
+  it("formats each row as the ledger shows it", () => {
     const rows = getDecisions();
     expect(rows.map((r) => [r.timeLabel, intentLabel(r), decisionLabel(r), gasLabel(r)])).toEqual([
-      ["Thu 5 Nov 10:30", "BUY NVDAc · $20", "ALLOWED · OK", "758,192"],
-      ["Thu 5 Nov 10:30", "SUPPLY NVDAc · $15", "ALLOWED · OK", "286,707"],
-      ["Thu 5 Nov 10:30", "BORROW USDC · $5", "ALLOWED · OK", "484,173"],
-      ["Sat 7 Nov", "BUY GOOGLc · $10", "REFUSED · MARKET_CLOSED", "111,116"],
+      ["Thu 5 Nov 10:30", "BUY NVDAc · $20", "Allowed · All checks passed", "758,192"],
+      ["Thu 5 Nov 10:30", "SUPPLY NVDAc · $15", "Allowed · All checks passed", "286,707"],
+      ["Thu 5 Nov 10:30", "BORROW USDC · $5", "Allowed · All checks passed", "484,173"],
+      ["Sat 7 Nov", "BUY GOOGLc · $10", "Refused · Market closed", "111,116"],
     ]);
     expect(rows.map((r) => r.note)).toEqual([
       "NVDAc under its 23.3% target weight.",
@@ -41,6 +42,16 @@ describe("decision rows", () => {
       "Compute runway, health factor above 2.0.",
       "Weekend. Refused and logged once.",
     ]);
+  });
+
+  it("labels a decision with its verdict and the plain label of its reason, never the bare code", () => {
+    const row = getDecisions()[0]!;
+    expect(decisionLabel({ ...row, allowed: true, reason: "OK" })).toBe(`Allowed · ${REASON_LABEL.OK}`);
+    for (const code of REASONS) {
+      const label = decisionLabel({ ...row, allowed: false, reason: code });
+      expect(label).toBe(`Refused · ${REASON_LABEL[code]}`);
+      expect(label).not.toContain(code);
+    }
   });
 
   it("hands out copies", () => {

@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: MARKET_CLOSED. Tested on a local fork of Base mainnet; not deployed to mainnet." width="100%">
+<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: Market closed (MARKET_CLOSED). Tested on a local fork of Base mainnet; not deployed to mainnet." width="100%">
 
 # Maat
 
@@ -51,7 +51,7 @@
   against the real Claude API or CDP, no audit; x402 and the rest are planned (see the box above).
 - **Evidence.** On a local fork of Base mainnet at block 53,551,627 (Thursday 2026-11-05, 10:30 ET), the agent,
   with a scripted proposer, bought $20 of NVDAc (allowed, 758,192 gas). With the clock moved to Saturday, a $10
-  GOOGLc buy was refused with `MARKET_CLOSED` and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
+  GOOGLc buy was refused as market closed (`MARKET_CLOSED`) and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
 - **Try it.** [Make the default mandate say no](https://maatonbase.xyz/#try) in a browser, or
   [evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes) offline, with no keys.
 - **Demo video.** Not published yet (as of 2026-11-19).
@@ -79,11 +79,11 @@
    [`/llms-full.txt`](https://maatonbase.xyz/llms-full.txt) holds all of them.
 
 <p align="center">
-  <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused, SIZE_LIMIT."></a>
-  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20 allowed, gas 758,192; SUPPLY NVDAc $15 allowed, 286,707; BORROW USDC $5 allowed, 484,173; BUY GOOGLc $10 on Sat 7 Nov refused with MARKET_CLOSED, 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
+  <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused: Over the size limit (SIZE_LIMIT)."></a>
+  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20, Allowed · All checks passed (OK), gas 758,192; SUPPLY NVDAc $15, Allowed · All checks passed (OK), 286,707; BORROW USDC $5, Allowed · All checks passed (OK), 484,173; BUY GOOGLc $10 on Sat 7 Nov, Refused · Market closed (MARKET_CLOSED), 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
 </p>
 
-Left: the simulator refusing a $51 buy with `SIZE_LIMIT`. Right: the fork ledger.
+Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Right: the fork ledger.
 
 ## By track: Agentic Stock Finance
 
@@ -691,6 +691,7 @@ SECURITY.md                how to report a security problem privately
 | [Docs center spec](docs/superpowers/specs/2026-11-07-maat-docs-center-design.md) | The readers of `/docs`, its honesty rules, pages, content model and quality gates |
 | [Simulator spec](docs/superpowers/specs/2026-11-08-mandate-simulator-design.md) | The landing page's "Try to make it say no" section: a browser simulation of the default mandate's BUY checks over one day, and its parity tests |
 | [CI spec](docs/superpowers/specs/2026-11-18-maat-ci-design.md) | The one CI workflow: its jobs and hardening, the secret scan, the counts in each run's summary, `SECURITY.md`, Dependabot and the pre-flip scan |
+| [Readable refusals spec](docs/superpowers/specs/2026-11-20-readable-refusals-design.md) | Plain labels beside the vault's refusal codes on the landing, the simulator, the social images and the docs, and a week map of when the market session check passes |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
 | [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, the agent loop and its Base fork test |
@@ -698,6 +699,7 @@ SECURITY.md                how to report a security problem privately
 | [Plan: docs center](docs/superpowers/plans/2026-11-07-maat-docs-center.md) | `/docs` inside the website: Fumadocs, the generated reference data, the pages and their gates |
 | [Plan: simulator](docs/superpowers/plans/2026-11-08-mandate-simulator.md) | The calendar and BUY-check ports in `web/content`, the Simulator component, the Try it section and their tests |
 | [Plan: CI](docs/superpowers/plans/2026-11-18-maat-ci.md) | The counting script and its tests, the gitleaks config, the workflow, `SECURITY.md`, Dependabot, and the README and docs text that says what CI runs |
+| [Plan: readable refusals, PR 1](docs/superpowers/plans/2026-11-20-readable-refusals-pr1.md) | The label map and `ReasonTag`, and plain labels on the landing, the simulator, the docs fork ledger and the social images |
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |

@@ -23,11 +23,13 @@ describe("DecisionEngine", () => {
     expect(ui.sat()).toHaveAttribute("aria-pressed", "true");
     expect(ui.thu()).toHaveAttribute("aria-pressed", "false");
     expect(ui.marks()).toEqual(["PASS", "PASS", "PASS", "FAIL", "SKIP", "SKIP", "SKIP", "SKIP", "SKIP"]);
-    expect(ui.verdict()).toHaveTextContent("Refused");
-    expect(ui.verdict()).toHaveTextContent("MARKET_CLOSED");
-    expect(ui.verdict()).toHaveTextContent("Decision logged · gas 111,116");
+    // The live region reads, in order: the decision, the plain label, its code, then the outcome (spec 2026-11-20 section 5).
+    expect(ui.verdict()).toHaveTextContent(/^VAULT DECISION\s*Refused\s*Market closed\s*MARKET_CLOSED\s*Decision logged · gas 111,116$/);
+    expect(ui.verdict().querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-verdict", "refused");
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-reason", "MARKET_CLOSED");
+    // lib/check-out.ts finds this verdict in the exported HTML by this markup: data-verdict, then data-reason, on the first child.
+    expect(ui.verdict().outerHTML).toMatch(/role="status"[^>]*><div[^>]*\sdata-verdict="refused"[^>]*\sdata-reason="MARKET_CLOSED"/);
     expect(screen.getByText("replay · Base fork · block 53,551,627")).toBeInTheDocument();
     expect(screen.getByText("INTENT · SCRIPTED FORK RUN")).toBeInTheDocument();
   });
@@ -38,8 +40,8 @@ describe("DecisionEngine", () => {
     expect(ui.thu()).toHaveAttribute("aria-pressed", "true");
     expect(ui.sat()).toHaveAttribute("aria-pressed", "false");
     expect(ui.marks()).toEqual(Array(9).fill("PASS"));
-    expect(ui.verdict()).toHaveTextContent("Allowed");
-    expect(ui.verdict()).toHaveTextContent("Swap executed · gas 758,192");
+    expect(ui.verdict()).toHaveTextContent(/^VAULT DECISION\s*Allowed\s*All checks passed\s*OK\s*Swap executed · gas 758,192$/);
+    expect(ui.verdict().querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "OK");
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-verdict", "allowed");
   });
 
