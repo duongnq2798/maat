@@ -89,11 +89,19 @@ Work in the checkout you will deploy from.
 2. Check the two settings that follow the flip: a ruleset on `main` (it requires the `summary` check and blocks force pushes and deletions) and private vulnerability reporting.
 
    ```bash
-   gh api "repos/{owner}/{repo}/rulesets" --jq '.[] | "\(.name) \(.enforcement)"'
+   gh api "repos/{owner}/{repo}/rulesets" --jq '.[] | "\(.id) \(.name) \(.enforcement)"'
    gh api "repos/{owner}/{repo}/private-vulnerability-reporting" --jq .enabled
    ```
 
-   The first must list an `active` ruleset; the second must print `true`. Otherwise add the ruleset in Settings → Rules → Rulesets and enable private reporting in Settings → Code security.
+   The first must list an `active` ruleset; the second must print `true`. Then read that ruleset's rules, with the id the first command printed:
+
+   ```bash
+   gh api "repos/{owner}/{repo}/rulesets/<id>" --jq '.conditions.ref_name.include[]'
+   gh api "repos/{owner}/{repo}/rulesets/<id>" --jq '.rules[].type'
+   gh api "repos/{owner}/{repo}/rulesets/<id>" --jq '.rules[] | select(.type == "required_status_checks") | .parameters.required_status_checks[].context'
+   ```
+
+   The first must print `~DEFAULT_BRANCH` or `refs/heads/main`. The second must print `deletion`, `non_fast_forward` and `required_status_checks`, in any order. The third must print `summary`. Otherwise add or fix the ruleset in Settings → Rules → Rulesets, and enable private reporting in Settings → Code security.
 
 ## 2. Builder Code and Base Dashboard (owner)
 
