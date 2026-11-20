@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { classify, type LiveState, type Reading, REFRESH_MS } from "@/lib/live/freshness";
-import { createReader, LIVE_RPCS, type LiveReader } from "@/lib/live/rpc";
+import { createReader, LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { type LiveSnapshot, readSnapshot } from "@/lib/live/snapshot";
 import { headline, judgeToken, sessionAt } from "@/lib/live/verdict";
 
@@ -97,6 +97,9 @@ export function useLiveSnapshot(opts: LiveSnapshotOptions = {}): {
         const at = { nowMs: now(), wallSec: wall() };
         if (!disposed) setSeen({ last: judge(snapshot, at), failed: false, refreshing: false, ...at });
       } catch (e) {
+        // An RPC that did not answer is said on the page, and the browser logs the failed request. An answer that did
+        // not decode, or a throw in the verdict, is said nowhere else: one warning tells a developer why.
+        if (!(e instanceof RpcError) || e.failures.some((f) => f.badAnswer)) console.warn("live: the reading failed:", e);
         const error = e instanceof Error ? e.message : String(e);
         // Clocks are read here, not in the updater, which React may call twice.
         const at = { nowMs: now(), wallSec: wall() };

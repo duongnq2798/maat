@@ -37,8 +37,12 @@ function expected(timestamp: number, edit: Edit = (r) => r) {
   return { headline: headline(verdicts), verdicts };
 }
 
-/** The recorded answer at `timestamp`, changed by `edit` if given; or no answer at all. */
-type Answer = { timestamp: number; block?: bigint; edit?: Edit } | "down" | "hang";
+/**
+ * The recorded answer at `timestamp`, changed by `edit` if given; or no answer at all ("down", "hang"); or answers no
+ * endpoint could decode ("bad", as the reader reports them); or a body that does not decode handed on as if it did
+ * ("garbled").
+ */
+type Answer = { timestamp: number; block?: bigint; edit?: Edit } | "down" | "hang" | "bad" | "garbled";
 
 const isMulticall = (tx: { to: Hex }) => tx.to.toLowerCase() === MULTICALL3.toLowerCase();
 
@@ -55,6 +59,10 @@ function fakeReader(first: Answer) {
     const a = answer;
     if (a === "down") throw new RpcError(LIVE_RPCS.map((endpoint) => ({ endpoint, message: "HTTP 503" })));
     if (a === "hang") return new Promise(() => {});
+    if (a === "bad") {
+      throw new RpcError(LIVE_RPCS.map((endpoint) => ({ endpoint, message: "the answer did not decode: cut short", badAnswer: true as const })));
+    }
+    if (a === "garbled") return { data: "0x1234", endpoint: LIVE_RPCS[0]! };
     if (!isMulticall(tx)) {
       return { data: `0x${word(regularSession(a.timestamp).open ? 1n : 0n)}`, endpoint: LIVE_RPCS[0]! };
     }
@@ -387,6 +395,37 @@ describe("the live strip", () => {
     // The visible strip is not a live region: the hidden line is the only one.
     expect(strip().closest("[aria-live]")).toBeNull();
     expect(strip().querySelectorAll("[aria-live]")).toHaveLength(1);
+  });
+});
+
+describe("why a read failed, for a developer", () => {
+  const quiet = () => vi.spyOn(console, "warn").mockImplementation(() => {});
+  afterEach(() => vi.restoreAllMocks());
+
+  it.each(["garbled", "bad"] as const)("warns once in the console when the answer is %s, and shows the error state", async (answer) => {
+    const warn = quiet();
+    await mount(answer, SAT + 14);
+    expect(strip()).toHaveAttribute("data-live-strip", "error");
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toMatch(/^live: /);
+    expect(warn.mock.calls[0]![1]).toBeInstanceOf(Error);
+  });
+
+  it("warns when a refresh after a good reading does not decode, and the strip goes stale", async () => {
+    const warn = quiet();
+    const fake = await mount({ timestamp: SAT }, SAT + 14);
+    expect(warn).not.toHaveBeenCalled();
+    fake.set("garbled");
+    await advance(REFRESH_MS);
+    expect(strip()).toHaveAttribute("data-live-strip", "stale");
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays quiet when the RPCs did not answer: the page says so, and the browser logs each failed request", async () => {
+    const warn = quiet();
+    await mount("down", SAT + 14);
+    expect(strip()).toHaveAttribute("data-live-strip", "error");
+    expect(warn).not.toHaveBeenCalled();
   });
 });
 
