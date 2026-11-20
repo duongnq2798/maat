@@ -142,8 +142,11 @@ a 100 bps slippage limit. No figure here is rounded.
 - **Builder Code.** The ERC-8021 suffix is built and tested. No code is registered yet.
 - **Executor.** Not yet handed to the CDP Server Wallet; the runbook starts with the owner's own wallet.
 - **Mainnet `Decision` events.** 0.
-- **How a deploy happens.** Only the owner deploys, from their own wallet, with the checklist, commands, $20
-  smoke test, unwind procedure and executor handover in [`deployments/README.md`](deployments/README.md).
+- **How a deploy happens.** Only the owner deploys, from their own wallet, following the go-live runbook
+  [`deployments/go-live.md`](deployments/go-live.md): deploy, fund, the first `Decision` events (a weekend BUY
+  the vault must refuse, then one in session it must allow) and the executor handover, in order.
+  [`deployments/README.md`](deployments/README.md) keeps the reference it draws on (the checklist, commands,
+  smoke tests, unwind procedure and executor switch) and the address table.
 
 ## The problem
 
@@ -710,7 +713,8 @@ agent/                     TypeScript agent runtime
   scripts/                 cdp-setup.ts (owner, once), first-decision.ts (owner, offline intent builder),
                            gen-abis.ts, smoke-claude.ts (paid API)
 web/                       Next.js landing page, docs center, brand assets, parity tests, Playwright e2e
-deployments/               mainnet deploy runbook and the (empty) address table
+deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
+                           (empty) address table
 docs/superpowers/          design specs and implementation plans
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately
@@ -738,7 +742,8 @@ SECURITY.md                how to report a security problem privately
 | [Plan: readable refusals, PR 1](docs/superpowers/plans/2026-11-20-readable-refusals-pr1.md) | The label map and `ReasonTag`, and plain labels on the landing, the simulator, the docs fork ledger and the social images |
 | [Plan: live strip](docs/superpowers/plans/2026-11-20-maat-web-live-strip.md) | The token list, ABI codec, price port, reader, verdict, freshness hook, the strip, `/now`, the simulator's Now note and their tests |
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
-| [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
+| [`deployments/go-live.md`](deployments/go-live.md) | The owner's go-live runbook: deploy, fund, the first-decision BUY intents built by `agent/scripts/first-decision.ts`, and the executor handover to the CDP Server Wallet |
+| [`deployments/README.md`](deployments/README.md) | The mainnet deploy reference (environment, dry run, checklist, smoke tests, unwind, executor switch) and the address table |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
 | [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
 

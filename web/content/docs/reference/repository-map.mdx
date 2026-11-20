@@ -22,6 +22,7 @@ sources:
   - web/content/decisions.ts
   - web/test/docs-content.test.ts
   - deployments/README.md
+  - deployments/go-live.md
 next: [get-started/how-a-decision-is-made, guides/run-the-tests]
 ---
 
@@ -34,7 +35,7 @@ This page maps the [Maat repository](https://github.com/duongnq2798/maat) folder
 | [`contracts/`](https://github.com/duongnq2798/maat/tree/main/contracts) | The Foundry project: the [vault](/docs/help/glossary#vault), its calendar, libraries and adapters, the deploy script and the Solidity tests | [Security model](/docs/security/model) |
 | [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent) | The TypeScript agent: its source, its unit and fork tests, and its scripts | [How a decision is made](/docs/get-started/how-a-decision-is-made) |
 | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) | The website: the landing page and this docs center, built as a static Next.js export, with their tests | [Parity tests: the site and these docs](/docs/security/testing#parity-tests-the-site-and-these-docs) |
-| [`deployments/`](https://github.com/duongnq2798/maat/tree/main/deployments) | The mainnet deploy runbook, and the table of deployed addresses, which is empty because nothing is deployed | [Deploy your own vault](/docs/guides/deploy-your-own-vault) |
+| [`deployments/`](https://github.com/duongnq2798/maat/tree/main/deployments) | `go-live.md`, the [owner](/docs/help/glossary#owner)'s go-live runbook, which takes the vault from the deploy and funding through its first `Decision` events to the handover to the agent; and `README.md`, the deploy reference it draws on and the table of deployed addresses, which is empty because nothing is deployed | [Deploy your own vault](/docs/guides/deploy-your-own-vault) |
 | [`docs/`](https://github.com/duongnq2798/maat/tree/main/docs) | The design specs and the implementation plans that each part of Maat was built from, in `docs/superpowers`, and the README's screenshots, in `docs/assets/readme` | [Changelog](/docs/help/changelog), which links each milestone's spec or plan |
 | [`.github/`](https://github.com/duongnq2798/maat/tree/main/.github) | The CI workflow `workflows/ci.yml`, which runs the offline suites, the secret scan and a lint of the workflow on every pull request and every push to `main`; `scripts/ci-counts.mjs`, which writes the counts each runner reports into the run's summary, with its tests; and `dependabot.yml`, which proposes updates to the pinned actions once a month | [Run the tests](/docs/guides/run-the-tests) |
 
@@ -79,7 +80,7 @@ The TypeScript agent, its tests and its scripts. Run the npm commands in `agent/
 | [`agent/src/abi/`](https://github.com/duongnq2798/maat/tree/main/agent/src/abi) | The contract ABIs the agent calls the chain with, generated from the compiled contracts | [`npm run gen:abi`](/docs/reference/agent-scripts#genabi) |
 | [`agent/test/`](https://github.com/duongnq2798/maat/tree/main/agent/test) | The unit tests, which run against fakes of the chain, Claude and the CDP wallet. `fakes/` holds the fake chain, receipts and sender | [Agent unit tests](/docs/guides/run-the-tests#agent-unit-tests) |
 | [`agent/test/integration/`](https://github.com/duongnq2798/maat/tree/main/agent/test/integration) | The agent's fork test. It starts the Base build of Anvil on a mainnet fork, deploys the contracts there and runs agent rounds against them, with fixed proposals in place of Claude. `fork-gas.json` is the committed gas log | [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) |
-| [`agent/scripts/`](https://github.com/duongnq2798/maat/tree/main/agent/scripts) | `cdp-setup.ts`, which the [owner](/docs/help/glossary#owner) runs once to create the executor account and its policy; `first-decision.ts`, which builds one `BUY` intent offline for the owner to send; `gen-abis.ts`, behind `npm run gen:abi`; and `smoke-claude.ts`, which makes one paid Claude call | [Script files](/docs/reference/agent-scripts#script-files) |
+| [`agent/scripts/`](https://github.com/duongnq2798/maat/tree/main/agent/scripts) | `cdp-setup.ts`, which the owner runs once to create the executor account and its policy; `first-decision.ts`, which builds one `BUY` intent offline for the owner to send; `gen-abis.ts`, behind `npm run gen:abi`; and `smoke-claude.ts`, which makes one paid Claude call | [Script files](/docs/reference/agent-scripts#script-files) |
 
 ## Website
 
