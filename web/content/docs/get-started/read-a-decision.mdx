@@ -4,7 +4,7 @@ description: What each field of a Decision event means, how to read a refusal, a
 type: concept
 audience: [watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-20
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -23,8 +23,8 @@ A [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/gloss
 
 Each row of the ledger is one `Decision`: the vault's verdict on one [intent](/docs/help/glossary#intent) that was sent to it. Read its Decision column first:
 
-- **`ALLOWED · OK`.** The intent passed every check for its [action](/docs/help/glossary#action), and the action ran.
-- **`REFUSED · <reason>`.** The vault said no, or the action failed inside it. The intent moved no funds, and the [reason](/docs/help/glossary#reason) is on the public record. [Reading a refusal](#reading-a-refusal) explains the reasons.
+- **Allowed · All checks passed (`OK`).** The intent passed every check for its [action](/docs/help/glossary#action), and the action ran.
+- **Refused, then the reason.** For example, Refused · Market closed (`MARKET_CLOSED`): a plain label, then the reason's code. The vault said no, or the action failed inside it. The intent moved no funds, and the [reason](/docs/help/glossary#reason) is on the public record. [Reading a refusal](#reading-a-refusal) explains the reasons.
 - **Allowed does not mean a good trade.** It only means the intent stayed inside the [mandate](/docs/help/glossary#mandate).
 
 The ledger holds only the intents that were sent. The agent is built to [preview](/docs/help/glossary#preview) each intent first and to send a refusal only for some reasons, at most once per reason per UTC day, and in a [dry run](/docs/help/glossary#dry-run), the default, it sends nothing ([How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts)). A quiet ledger therefore does not mean the agent did nothing. The fork run's four rows are under [From a ledger row to its reasoning](#from-a-ledger-row-to-its-reasoning).
@@ -89,7 +89,7 @@ Each column comes from the event or from the transaction around it:
 | --- | --- |
 | Time (ET) | New York time of the round. The daily limits count UTC days ([Reading a refusal](#reading-a-refusal)). |
 | Intent | The `action`, the symbol of the `token`, and a dollar amount. The event's `amount` is in raw units ([The dollar value](#what-a-decision-does-not-tell-you)). For the fork rows, the dollar amount is the one the scripted proposal asked for, written into the site's data by hand. |
-| Decision | `allowed` and `reason`, with the reason by name. |
+| Decision | `allowed` as Allowed or Refused, then `reason` as a plain label followed by its code, the name the `Reason` enum gives it. |
 | Gas | The gas the transaction used. It is on the transaction receipt, not in the event. |
 | Note | A short comment written for the site. It is not onchain, and it is not the rationale. |
 
@@ -117,8 +117,8 @@ The fork rows have no mainnet transaction, because they ran on a local fork and 
 
 Two rows of the ledger above, read the same way:
 
-- **The first row (BUY [NVDAc](/docs/help/glossary#b20), ALLOWED · OK).** The log has `allowed = true` and `reason = 0`. Its journal line would carry `preview: "OK"` and `gate: "execute"`.
-- **The last row (BUY GOOGLc, REFUSED · MARKET_CLOSED).** The log has `allowed = false` and `reason = 6`. Its journal line would carry `preview: "MARKET_CLOSED"` and `gate: "log-refusal"`: the agent sent the refusal on purpose, to put it onchain.
+- **The first row, BUY [NVDAc](/docs/help/glossary#b20): Allowed · All checks passed (`OK`).** The log has `allowed = true` and `reason = 0`. Its journal line would carry `preview: "OK"` and `gate: "execute"`.
+- **The last row, BUY GOOGLc: Refused · Market closed (`MARKET_CLOSED`).** The log has `allowed = false` and `reason = 6`. Its journal line would carry `preview: "MARKET_CLOSED"` and `gate: "log-refusal"`: the agent sent the refusal on purpose, to put it onchain.
 
 ## What a decision does not tell you
 

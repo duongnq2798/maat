@@ -292,7 +292,7 @@ const forkLedgerText: Render = () => {
   return blocks(
     mdTable(
       ["Time (ET)", "Intent", "Decision", "Gas", "Note"],
-      t.rows.map((r) => [r.time, r.intent, code(r.decision), r.gas, r.note ?? ""]),
+      t.rows.map((r) => [r.time, r.intent, `${r.decision} (${code(r.code)})`, r.gas, r.note ?? ""]),
     ),
     t.caption,
   );

@@ -26,6 +26,7 @@ test("a visitor makes it say no, by mouse and keyboard", async ({ page }) => {
 
   await ui.button("Sat 7 Nov").click();
   await expect(ui.verdict).toHaveAttribute("data-reason", "MARKET_CLOSED");
+  await expect(ui.verdict.locator('[data-reason-tag="MARKET_CLOSED"]')).toContainText("Market closed");
   await expect(ui.checks.nth(3)).toHaveAttribute("data-mark", "FAIL");
 
   await ui.button("Thu 5 Nov · 10:30").click();
@@ -34,7 +35,12 @@ test("a visitor makes it say no, by mouse and keyboard", async ({ page }) => {
   await expect(ui.verdict).toHaveAttribute("data-reason", "CONCENTRATION");
   await ui.button("Execute").click();
   await expect(ui.tape).toHaveCount(2);
-  await expect(ui.tape.nth(1)).toContainText("Refused · CONCENTRATION");
+  await expect(ui.tape.nth(1)).toContainText("Refused · Too much in one stock");
+  await expect(ui.tape.nth(1).locator('[data-reason-tag="CONCENTRATION"]')).toContainText("CONCENTRATION");
+  // The label and the code are separate boxes, so the rendered text breaks between them; textContent has no break.
+  expect(await ui.tape.nth(1).locator('[data-reason-tag="CONCENTRATION"]').innerText()).toMatch(
+    /^Too much in one stock\s+CONCENTRATION$/,
+  );
 
   // One minute per arrow key: 15:59 is in session, 16:00 is not.
   await ui.button("Reset day").click();
@@ -56,7 +62,9 @@ test("a share link reproduces its refusal, and a broken one falls back", async (
   await expect(ui.verdict).toHaveAttribute("data-reason", "MARKET_CLOSED");
   await expect(ui.checks.nth(3)).toContainText("Thanksgiving · NYSE closed");
   const post = new URL((await ui.root.getByRole("link", { name: "Post on X" }).getAttribute("href")) ?? "");
-  expect(post.searchParams.get("text")).toBe("I tried to buy $10 of GOOGLc on Thu 26 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED.");
+  expect(post.searchParams.get("text")).toBe(
+    "I tried to buy $10 of GOOGLc on Thu 26 Nov at 10:30 ET. Maat's simulator said no: Market closed (MARKET_CLOSED).",
+  );
   expect(post.searchParams.get("url")).toBe(`${new URL(page.url()).origin}/?day=2026-11-26&at=1030&buy=GOOGLc-10#try`);
 
   await page.goto("/?day=1999-01-01&at=9999&buy=TSLA-x&tape=junk#try");
@@ -104,14 +112,34 @@ for (const width of [360, 1024]) {
     // The longest Execute notice: the longest token label, amount and reason that go together.
     await ui.button("Other token").click();
     await ui.button("Execute").click();
-    await expect(ui.root.getByText("Executed 10:30 BUY Other token · $999,999,999.99: Refused · TOKEN_NOT_ALLOWED")).toBeVisible();
+    await expect(
+      ui.root.getByText("Executed 10:30 BUY Other token · $999,999,999.99: Refused · Token not allowed (TOKEN_NOT_ALLOWED)"),
+    ).toBeVisible();
     fit = await measureFit(page);
     expect(fit.overflow).toBeLessThanOrEqual(0);
     expect(fit.clipped).toEqual([]);
 
     await ui.button("Copy link").click();
     await expect(ui.root.getByRole("textbox", { name: "Copy this link:" })).toBeVisible();
-    await expect(ui.tape.first()).toContainText("Refused · TOKEN_NOT_ALLOWED");
+    await expect(ui.tape.first()).toContainText("Refused · Token not allowed");
+    // "Refused ·" stays whole on the label's line: when the row runs out of room, the code wraps under the label. Line
+    // tops come from a Range over the text: "Refused · " can be a bare text node, which has no box of its own.
+    const prefix = await ui.tape
+      .first()
+      .locator("> span:last-child")
+      .evaluate((el) => {
+        const tops = (node: Node) => {
+          const range = document.createRange();
+          range.selectNodeContents(node);
+          return [...range.getClientRects()].map((r) => Math.round(r.top));
+        };
+        const own = tops(el.firstChild!);
+        const label = tops(el.querySelector("[data-reason-tag] > :first-child")!);
+        return { lines: new Set(own).size, offset: Math.abs(own[0]! - label[0]!) };
+      });
+    expect(prefix.lines).toBe(1);
+    expect(prefix.offset).toBeLessThanOrEqual(1);
+    await expect(ui.tape.first().locator('[data-reason-tag="TOKEN_NOT_ALLOWED"]')).toContainText("TOKEN_NOT_ALLOWED");
     fit = await measureFit(page);
     expect(fit.overflow).toBeLessThanOrEqual(0);
     expect(fit.clipped).toEqual([]);

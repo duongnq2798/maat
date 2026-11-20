@@ -2,9 +2,10 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { SatoriNode } from "satori";
 import { beforeAll, describe, expect, it } from "vitest";
 import { MARK, PALETTE } from "@/brand/mark";
-import { type BrandFile, pngSize, renderBrand } from "@/brand/render";
+import { type BrandFile, ogSvg, pngSize, renderBrand, xBannerSvg } from "@/brand/render";
 
 const WEB = fileURLToPath(new URL("../", import.meta.url));
 let files: BrandFile[] = [];
@@ -13,6 +14,19 @@ const file = (path: string) => {
   if (!f) throw new Error(`not rendered: ${path}`);
   return f;
 };
+
+/** Draws an image with satori's node callback and returns a finder for the box of each text it drew. */
+async function drawnText(draw: (onNode: (node: SatoriNode) => void) => Promise<string>) {
+  const boxes: { text: string; left: number; top: number; right: number; bottom: number }[] = [];
+  await draw((n) => {
+    if (n.textContent) boxes.push({ text: n.textContent, left: n.left, top: n.top, right: n.left + n.width, bottom: n.top + n.height });
+  });
+  return (text: string) => {
+    const box = boxes.find((b) => b.text === text);
+    if (!box) throw new Error(`not drawn: "${text}"; drawn: ${boxes.map((b) => `"${b.text}"`).join(", ")}`);
+    return box;
+  };
+}
 
 beforeAll(async () => {
   files = await renderBrand();
@@ -54,9 +68,33 @@ describe("brand assets (spec §6)", () => {
   it("the committed OG alt text has no trailing newline", () => {
     // Reads the file on disk: the in-memory string cannot catch a newline added when it was written.
     expect(readFileSync(join(WEB, "app/opengraph-image.alt.txt"), "utf8")).toBe(
-      "Maat: the AI agent that knows when not to trade. The market session check fails, and the vault refuses with MARKET_CLOSED.",
+      "Maat: the AI agent that knows when not to trade. The market session check fails, and the vault refuses: Market closed (MARKET_CLOSED).",
     );
   });
+
+  it("the OG card's verdict names the refusal in plain words, with its code small under it", async () => {
+    const at = await drawnText((onNode) => ogSvg(onNode));
+    const refused = at("Refused");
+    const label = at("Market closed");
+    const code = at("MARKET_CLOSED");
+    expect(label.left, "the label sits right of Refused").toBeGreaterThan(refused.right);
+    // Og(): the card's right edge is 72 px from the image's.
+    expect(label.right, "the label stays inside the card").toBeLessThanOrEqual(1200 - 72);
+    expect(code.top, "the code sits under the label").toBeGreaterThanOrEqual(label.bottom);
+    expect(code.right, "the code lines up with the label's right edge").toBe(label.right);
+    expect(code.bottom - code.top, "the code is smaller than the label").toBeLessThan(label.bottom - label.top);
+  }, 30_000);
+
+  it("the X banner's failing badge names the refusal in plain words, with its code small beside it", async () => {
+    const at = await drawnText((onNode) => xBannerSvg(onNode));
+    const label = at("FAIL · Market closed");
+    const code = at("MARKET_CLOSED");
+    expect(code.left, "the code sits right of the label").toBeGreaterThan(label.right);
+    expect(code.bottom - code.top, "the code is smaller than the label").toBeLessThan(label.bottom - label.top);
+    // Banner(): the content starts at x = 560, clear of the avatar, and keeps 96 px from the right edge.
+    expect(label.left).toBeGreaterThanOrEqual(560);
+    expect(code.right).toBeLessThanOrEqual(1500 - 96);
+  }, 30_000);
 
   it("committed SVGs and alt text match a fresh render (run npm run brand after changing the mark)", () => {
     for (const p of [
