@@ -153,13 +153,15 @@ The simulation must finish with no `vault address mismatch`. From now until the 
 
 ```bash
 set -a; source .env; set +a
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify --slow
 ```
+
+`--slow` sends the four deploy transactions one at a time: Foundry's help says it "Makes sure a transaction is sent, only after its previous one has been confirmed and succeeded." Without it they go out back to back.
 
 If the deploy finishes but verification fails, do not redeploy:
 
 ```bash
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify --slow
 ```
 
 Copy the four addresses from the output into the table in step 10; the deploy transactions are in `contracts/broadcast/Deploy.s.sol/8453/run-*.json`. Then read the vault back:
