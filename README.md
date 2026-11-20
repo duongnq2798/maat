@@ -501,8 +501,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  24 passed (24)
-         Tests  167 passed (167)
+    Test Files  25 passed (25)
+         Tests  213 passed (213)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -520,7 +520,7 @@ it has not been re-timed.
 
    ```text
     Test Files  44 passed (44)
-         Tests  1547 passed (1547)
+         Tests  1549 passed (1549)
    ...
    out/ is ready to deploy (landing and 49 docs pages checked)
    search index: … bytes gzipped, budget 850000
