@@ -35,7 +35,7 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
 | `npm run gen:abi` | Rewrites the generated ABI file | The compiled contracts | None |
 | `cdp-setup.ts` | [Owner](/docs/help/glossary#owner) only. Creates the [executor](/docs/help/glossary#executor) account and its policy | The three CDP credentials | Coinbase CDP |
-| `first-decision.ts` | For the owner. Builds one `BUY` [intent](/docs/help/glossary#intent) offline and prints its calldata and `cast` commands | A vault address and a Builder Code | None |
+| `first-decision.ts` | For the owner. Builds one `BUY` [intent](/docs/help/glossary#intent) offline and prints its calldata and `cast` commands | A vault address, a basket token, a salt or an id, and a Builder Code | None |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
 
