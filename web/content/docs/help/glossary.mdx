@@ -111,7 +111,7 @@ A listed stock whose `allowed` flag is false while its feed or pool is still set
 
 ### Fail closed
 
-Treating a read that reverts as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed, pool [TWAP](/docs/help/glossary#twap) and Aave reads all work this way. It does not cover return data that fails to decode, or a few calls that run after a read returns: those revert `execute` instead ([Fail closed](/docs/security/model#fail-closed)). See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
+Treating a read that reverts as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed, pool [TWAP](/docs/help/glossary#twap) and Aave reads all work this way. It does not cover return data that does not fit the read's ABI, a revert in a read that no `try` guards, such as a token's `balanceOf`, or a few calls that run after a read returns: those are not caught and revert `execute` instead ([Fail closed](/docs/security/model#fail-closed) lists them). See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
 
 ### Feed edge
 

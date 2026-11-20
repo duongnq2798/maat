@@ -180,25 +180,25 @@ describe("Simulator", () => {
     expect(ui.reason()).toBe("MARKET_CLOSED");
     expect(screen.getByText("Thursday · Thanksgiving, closed all day")).toBeInTheDocument();
     // A typed date outside the window stays in the field as a draft, with a hint; the day does not move.
-    fireEvent.change(dayInput, { target: { value: "2027-02-01" } });
-    expect(dayInput).toHaveValue("2027-02-01");
-    expect(screen.getByText("Pick a date from Thu 5 Nov to Fri 1 Jan.")).toBeInTheDocument();
+    fireEvent.change(dayInput, { target: { value: "2028-01-03" } });
+    expect(dayInput).toHaveValue("2028-01-03");
+    expect(screen.getByText("Pick a date from Thu 5 Nov 2026 to Fri 24 Dec 2027.")).toBeInTheDocument();
     expect(dayInput).toHaveAttribute("aria-invalid", "true");
     expect(ui.reason()).toBe("MARKET_CLOSED");
     expect(screen.getByText("Thursday · Thanksgiving, closed all day")).toBeInTheDocument();
     fireEvent.blur(dayInput);
     expect(dayInput).toHaveValue("2026-11-26");
-    expect(screen.queryByText("Pick a date from Thu 5 Nov to Fri 1 Jan.")).toBeNull();
+    expect(screen.queryByText("Pick a date from Thu 5 Nov 2026 to Fri 24 Dec 2027.")).toBeNull();
     expect(dayInput).not.toHaveAttribute("aria-invalid");
   });
 
   it("shows a preset's day in the field after an out-of-window draft", async () => {
     const ui = setup();
     const dayInput = screen.getByLabelText("Day");
-    fireEvent.change(dayInput, { target: { value: "2027-02-01" } });
+    fireEvent.change(dayInput, { target: { value: "2028-01-03" } });
     await ui.user.click(ui.button("Sat 7 Nov"));
     expect(dayInput).toHaveValue("2026-11-07");
-    expect(screen.queryByText("Pick a date from Thu 5 Nov to Fri 1 Jan.")).toBeNull();
+    expect(screen.queryByText("Pick a date from Thu 5 Nov 2026 to Fri 24 Dec 2027.")).toBeNull();
   });
 
   it("opens a share link on its own scenario, recomputing every verdict", () => {
@@ -265,7 +265,7 @@ describe("Simulator", () => {
     vi.setSystemTime(new Date("2026-11-07T20:00:00Z"));
     const ui = setup();
     const now = await screen.findByRole("button", { name: "Now" });
-    vi.setSystemTime(new Date("2027-03-01T15:00:00Z"));
+    vi.setSystemTime(new Date("2028-01-03T15:00:00Z"));
     await ui.user.click(now);
     expect(screen.queryByRole("button", { name: "Now" })).toBeNull();
     expect(screen.getByText("10:30 ET")).toBeInTheDocument();
@@ -274,7 +274,7 @@ describe("Simulator", () => {
 
   it("hides Now outside the dates the calendar lists", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
-    vi.setSystemTime(new Date("2027-03-01T15:00:00Z"));
+    vi.setSystemTime(new Date("2028-01-03T15:00:00Z"));
     setup();
     expect(screen.queryByRole("button", { name: "Now" })).toBeNull();
   });

@@ -98,7 +98,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 cast call "$VAULT" "usedIntent(bytes32)(bool)" "$INTENT_ID" --rpc-url "$BASE_RPC_URL"
 ```
 
-An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts (`NotExecutor` or `IntentAlreadyUsed`) emits nothing.
+An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts emits nothing: a call from another address (`NotExecutor`), a used id (`IntentAlreadyUsed`), or a failure of a dependency that the vault does not catch, which [Fail closed](/docs/security/model#fail-closed) lists.
 
 </Step>
 

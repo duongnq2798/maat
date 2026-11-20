@@ -55,7 +55,7 @@ describe("simulator: one BUY against the default mandate", () => {
       ["PASS", "transfers active"],
       ["PASS", "authorized"],
       ["PASS", "Thursday · open until 16:00"],
-      ["PASS", "14s ≤ 3600s"],
+      ["PASS", "14s ≤ 90000s"],
       ["PASS", "no change 24h"],
       ["PASS", "53 ≤ 100 bps"],
       ["PASS", "$20 ≤ $50 · $20 of $100 today"],
@@ -104,10 +104,10 @@ describe("simulator: one BUY against the default mandate", () => {
   });
 
   it("shows the feed age only for the feed it was measured on", () => {
-    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 3600s");
+    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 90000s");
     for (const token of ["GOOGLc", "AAPLc"] as const) {
       const check = evaluate(on(THU), buy(token, 10)).checks[4];
-      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 3600s", "PASS", true]);
+      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 90000s", "PASS", true]);
     }
   });
 

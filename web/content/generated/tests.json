@@ -298,6 +298,12 @@
     "test_rejectsTokenNotInPool": 41,
     "test_rejectsCallbackOutsideSwap": 47
   },
+  "contracts/test/Deploy.t.sol": {
+    "test_expensePayees_onePayee": 22,
+    "test_expensePayees_twoPayees": 28,
+    "test_expensePayees_secondEqualToFirstReverts": 42,
+    "test_expensePayees_secondUnsetGivesOnePayee": 47
+  },
   "contracts/test/GuardLib.t.sol": {
     "test_okReturnsOraclePrice": 99,
     "test_paused": 105,
@@ -491,16 +497,42 @@
     "test_fullyDelistedCollateralComesHomeWithoutDebt": 547,
     "test_fullyDelistedCollateralBlocksBorrowing": 554
   },
+  "contracts/test/MandateVaultMalformed.t.sol": {
+    "test_feedReturningTooLittleDataRevertsExecute": 18,
+    "test_tokenReturningTooLittleDataRevertsExecute": 28,
+    "test_adapterViewReturningTooLittleDataRevertsExecute": 34,
+    "test_revertingUsdcBalanceOfRevertsExecute": 40,
+    "test_revertingStockDecimalsRevertsExecute": 48,
+    "test_revertingPoolToken0RevertsExecute": 53,
+    "test_poolAnswerTooShortForTheTwapRevertsExecute": 59,
+    "test_poolTickOutsideTickMathRangeRevertsExecute": 69
+  },
   "contracts/test/MarketCalendar.t.sol": {
-    "test_daysFromCivil": 32,
-    "test_civilFromDaysRoundTrip": 38,
-    "test_weekdayAndNthSunday": 49,
-    "test_dstBoundaries": 55,
-    "test_regularSession": 62,
-    "test_feed245Session": 71,
-    "test_holidaysAndEarlyClose": 81,
-    "test_ownerCanOnlyMakeItStricter": 88,
-    "test_constructorRejectsZeroOwner": 103
+    "test_daysFromCivil": 46,
+    "test_civilFromDaysRoundTrip": 52,
+    "test_weekdayAndNthSunday": 63,
+    "test_dstBoundaries": 69,
+    "test_regularSession": 76,
+    "test_feed245Session": 85,
+    "test_holidaysAndEarlyClose": 95,
+    "test_mlkDay2027IsClosed": 102,
+    "test_washingtonsBirthday2027IsClosed": 107,
+    "test_goodFriday2027IsClosed": 112,
+    "test_memorialDay2027IsClosed": 117,
+    "test_juneteenthObserved2027IsClosed": 122,
+    "test_independenceDayObserved2027IsClosed": 127,
+    "test_laborDay2027IsClosed": 132,
+    "test_thanksgiving2027IsClosed": 137,
+    "test_christmasObserved2027IsClosed": 142,
+    "test_dayAfterThanksgiving2027ClosesEarly": 147,
+    "test_ownerCanOnlyMakeItStricter": 152,
+    "test_constructorRejectsZeroOwner": 167
+  },
+  "contracts/test/MarketCalendarVectors.t.sol": {
+    "test_etOffsetMatchesEveryDstTransitionFrom2007To2100": 51,
+    "test_preloadedClosuresMatchTheNyseVectors": 64,
+    "test_noOtherClosureIsPreloaded": 81,
+    "test_isOpenAtFixedEtTimesOnEachClosureDate": 103
   },
   "contracts/test/PriceLib.t.sol": {
     "test_priceFromSqrt_stockIsToken1": 32,

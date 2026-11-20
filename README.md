@@ -118,9 +118,14 @@ Bankr is a partner of this track. Nothing is built for it yet; a Bankr Skill is 
 
 The CI figures are from push run 44553264467 on `3778fea`, the run read for this README. CI runs only the
 offline suites. The two fork suites need a Base archive RPC, so they run by hand and are as fresh as the last
-hand run. Since `4492eed`, no file in `contracts/src`, `contracts/script` or `agent/src` has changed
-(`git diff --stat 4492eed 3778fea` over those folders is empty); one fork test file has a 2-line change.
-No figure here is rounded.
+hand run. Between `4492eed` and `3778fea`, no file in `contracts/src`, `contracts/script` or `agent/src`
+changed (`git diff --stat 4492eed 3778fea` over those folders is empty), and one fork test file had a 2-line
+change. Since `3778fea`, `contracts/src/MarketCalendar.sol` preloads the 2027 NYSE holidays and the 2027-11-26
+early close, `contracts/script/MaatConfig.sol` sets the 25 h staleness and 150 bps slippage defaults, and the
+agent fork test's `deploy.ts` uses those two values. `contracts/script/Deploy.s.sol` can also allowlist an
+optional second expense payee, and the fork test `DeployFork.t.sol` pins it to unset. The fork figures
+above were recorded at `4492eed`, before these changes; the agent fork run's vault had a 3600 s staleness and
+a 100 bps slippage limit. No figure here is rounded.
 
 ## Deployments and traction
 
@@ -207,6 +212,19 @@ through a 24-hour timelock. The default mandate ([`MaatConfig.defaultMandate`](c
 allows $50 per trade and $100 per UTC day, and no stock above 40% of net equity after a buy
 ([every value](https://maatonbase.xyz/docs/reference/default-parameters)).
 
+Its feed-staleness limit, `maxStaleness`, is 90000 s (25 hours: the feeds' 24 h heartbeat plus 1 h), and its
+slippage limit, `maxSlippageBps`, is 150 (a swap must return at least 98.5% of the oracle-implied amount). Both
+come from Base mainnet, read-only, over the 10 NYSE sessions of Nov 2-6 and Nov 9-13, 2026. The B20 equity feeds
+update on a 0.5% price move or a 24 h heartbeat: in session they were older than one hour for 45.9% of the time
+on AAPL, 37.6% on GOOGL and 9.8% on NVDA, and never older than 24 h. The worst BUY cost against the oracle (pool
+spot price plus fee, every 15 minutes) was 121 bps on NVDAc, p99 109 bps, so 150 bps costs at most $0.75 on a
+$50 trade. Simulated $50 BUYs passed 81% / 60% / 53% of the time (NVDAc / GOOGLc / AAPLc) with the old limits
+(3600 s staleness, 100 bps slippage) and 93% / 98% / 99% with these. Most NVDAc refusals left are
+`PREMIUM_TOO_HIGH` in the first 45 minutes after the open, while the 30-minute TWAP still reflects the overnight
+price. A dead feed is still caught. For `BUY` and `SELL` the premium check is the guard against a frozen price;
+`BORROW` and `WITHDRAW_COLLATERAL` against debt have no premium check and rely on the 25 h limit alone. The
+measurement script and its data are not in the repository, so these figures cannot be re-run from it.
+
 ## What the model decides, and what code enforces
 
 | Step | Who decides | Bound | Where |
@@ -235,7 +253,7 @@ Code: [`MandateVault._check`](contracts/src/MandateVault.sol#L257-L282) and
 | 1 | Token is in the mandate. `BUY` needs an allowed token; `SELL` also works for exit-only tokens, so a delisted stock can still be sold | `TOKEN_NOT_ALLOWED` | [`MandateVault.sol#L266`](contracts/src/MandateVault.sol#L266) | `test_exitOnlyTokenCanBeSoldNotBought` |
 | 2 | Token transfers are not paused; a reverting read counts as paused | `TOKEN_PAUSED` | [`GuardLib.tokenPaused`](contracts/src/GuardLib.sol#L65) | `test_refusesPausedToken` |
 | 3 | Every leg of the transfer passes the B20 policy registry (sender, receiver, executor, including `tx.origin`) | `POLICY_BLOCKED` | [`GuardLib.transferPathAuthorized`](contracts/src/GuardLib.sol#L145) | `test_refusesWhenPolicyBlocksVault` |
-| 4 | Market open for the mandate's session (`REGULAR`: NYSE 09:30 to 16:00 ET with holidays and early closes) | `MARKET_CLOSED` | [`GuardLib.marketOpen`](contracts/src/GuardLib.sol#L74), [`MarketCalendar.isOpen`](contracts/src/MarketCalendar.sol#L63) | `test_refusalIsLoggedNotReverted`, `test_thanksgivingIsMarketClosedAtVaultLevel` |
+| 4 | Market open for the mandate's session (`REGULAR`: NYSE 09:30 to 16:00 ET with holidays and early closes) | `MARKET_CLOSED` | [`GuardLib.marketOpen`](contracts/src/GuardLib.sol#L74), [`MarketCalendar.isOpen`](contracts/src/MarketCalendar.sol#L74) | `test_refusalIsLoggedNotReverted`, `test_thanksgivingIsMarketClosedAtVaultLevel` |
 | 5 | Oracle answer is positive and not older than `maxStaleness` | `FEED_STALE`, `BAD_PRICE` | [`PriceLib.readFeed`](contracts/src/lib/PriceLib.sol), [`GuardLib.sol#L50-L52`](contracts/src/GuardLib.sol#L50-L52) | `test_refusesStaleFeed` |
 | 6 | No multiplier change: unchanged since the last snapshot, outside the cooldown, nothing scheduled | `MULTIPLIER_COOLDOWN` | [`GuardLib.multiplierBlocked`](contracts/src/GuardLib.sol#L118) | `test_multiplierChangeStartsCooldown`, `test_pendingMultiplierBlocks` |
 | 7 | Pool TWAP is within `maxPremiumBps` of the oracle | `PREMIUM_TOO_HIGH`, `BAD_PRICE` | [`PriceLib.premiumBps`](contracts/src/lib/PriceLib.sol), [`GuardLib.sol#L58-L60`](contracts/src/GuardLib.sol#L58-L60) | `test_refusesPremium` |
@@ -262,12 +280,15 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 
 **Online**: served in public (the website only). **Built and tested**: on `main`, with passing tests.
 **Built**: on `main`, tested only as noted. **Planned**: not on `main`. **Not deployed**: no address on any network.
+The test counts in the table are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467)
+on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `4492eed`, 2026-11-07, as in
+[Tested, in numbers](#tested-in-numbers). Later commits add tests, so a suite run on this tree can report more.
 
 | Component | Status | Where |
 | --- | --- | --- |
 | `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
 | `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
-| `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 3 holidays and 2 early closes up to 2027-01-01 | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
+| `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027) | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
 | `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop) | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
 | Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner has not broadcast it yet | [`contracts/script`](contracts/script) |
@@ -300,7 +321,7 @@ and calls `withdraw` (reverts `NotOwner`); the vault keeps all 200 USDC. Gaps: [
 | Layer | What it enforces | Where |
 | --- | --- | --- |
 | **The executor's only power is `execute`** | Apart from `execute`, every function that moves funds or changes a rule is owner-only, and the owner is immutable. `notifyRevenue` and `syncMultiplier` are open to anyone and only record state | [`MandateVault.sol`](contracts/src/MandateVault.sol), `test_executorCannotUseOwnerFunctions` |
-| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert. That assumes no revert from plain ERC-20 `balanceOf` and `decimals` reads, or from the pool's `token0()` and the tick math that run after a TWAP `observe` returns, outside its `catch` | `test_refusalIsLoggedNotReverted` |
+| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert. A dependency can still make `execute` revert in a few ways the vault does not catch: return data that does not fit the ABI, a revert in a read that no `try` guards (such as an ERC-20 `balanceOf` or `decimals`, or the pool's `token0()` after a TWAP `observe` returns, outside its `catch`), and a pool answer the TWAP's tick math cannot use | `test_refusalIsLoggedNotReverted`, [`MandateVaultMalformed.t.sol`](contracts/test/MandateVaultMalformed.t.sol) |
 | **Fail closed** | A reverting pause, policy, calendar, multiplier, feed or Aave read counts as unsafe. The feed case is in [`PriceLib.readFeed`](contracts/src/lib/PriceLib.sol#L13-L20), and no contract test makes the feed's `latestRoundData` revert | `test_reverting*FailsClosed` in [`GuardLib.t.sol`](contracts/test/GuardLib.t.sol), `test_unreadableCollateralFailsConcentrationClosed` |
 | **24-hour timelock** | Mandate, token and payee changes are queued, then applied with the exact queued values from 24 hours after queueing until 7 days after that, or cancelled | `test_mandateChangeNeedsTimelock`, `test_appliedParamsMustMatchQueued`, `test_expiredChangeReverts` |
 | **Owner escape hatches** | `setPaused` (instant; `REPAY` still works), `setExecutor` (instant key rotation), `withdraw` (only to the owner) | `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` |
@@ -399,7 +420,7 @@ Each common way to bound a trading agent leaves a gap that Maat's vault closes:
 | --- | --- | --- | --- |
 | A spending cap on the agent's wallet | Too much, too often | Whether NYSE is open, the feed is alive or a split is pending | Checks 4 to 7 run in the vault, beside the caps |
 | A market-hours or price check inside the agent | Bad moments, while the agent's code is honest | A bug, a wrong clock or a stolen host skips it | The vault runs checks 4 to 7 on every `BUY` and `SELL`, and the market-hours check on every borrow, whoever holds the key; on the fork it refuses a real-weekend buy (`test_weekendBuyIsRefusedInBothModes`) |
-| An offchain market-hours API | Weekend and holiday trades | Nothing onchain checks its answer | `MarketCalendar` computes the NYSE session and DST onchain, and stores holidays and early closes onchain (preloaded up to 2027-01-01) |
+| An offchain market-hours API | Weekend and holiday trades | Nothing onchain checks its answer | `MarketCalendar` computes the NYSE session and DST onchain, and stores holidays and early closes onchain (preloaded up to 2027-12-24) |
 | An account policy on the signing wallet | Calls to the wrong contract, value transfers | Market state: it sees calldata, not prices | Maat uses one too, behind the vault's checks |
 | Reverting on a failed check | The trade | The record: a revert leaves none | A typed `Decision` event for each refused `execute` |
 
@@ -459,14 +480,15 @@ it has not been re-timed.
    `reason: 6` is `MARKET_CLOSED` in [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the
    vault still holds its 200 USDC, and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list,
+   and the invariant suite, which takes most of the run's time):
 
    ```bash
    forge test --no-match-path "test/fork/*"
    ```
 
    ```text
-   Ran 8 test suites in …: 220 tests passed, 0 failed, 0 skipped (220 total tests)
+   Ran 12 test suites in …: 247 tests passed, 0 failed, 0 skipped (247 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -484,7 +506,9 @@ it has not been re-timed.
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
-   fork-run gas log, so a number on the page that drifts from the code fails here.
+   fork-run gas log, so a number on the page that drifts from the code fails here. The exception is the decision
+   engine's feed-freshness limit, the recorded fork run's own `maxStaleness` (3600 s, from `deploy.ts` at
+   `4492eed`), which no test compares with that file, because the web job's CI checkout has no history.
 
    ```bash
    cd ../web
@@ -495,11 +519,11 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  42 passed (42)
-         Tests  1494 passed (1494)
+    Test Files  44 passed (44)
+         Tests  1547 passed (1547)
    ...
    out/ is ready to deploy (landing and 49 docs pages checked)
-   search index: … bytes gzipped, budget 760000
+   search index: … bytes gzipped, budget 850000
    ```
 
    The same site is live at [maatonbase.xyz](https://maatonbase.xyz); `npm run dev` serves it on
@@ -535,7 +559,9 @@ Ran 7 test suites in …: 14 tests passed, 0 failed, 0 skipped (14 total tests)
 | Web, end to end | `npm run e2e` (after `npm run build`) | 259 | `npx playwright install chromium` |
 
 The counts are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) on
-`main` (`3778fea`, 2026-11-19), except the two marked by hand, recorded at `4492eed`, 2026-11-07. Per-suite
+`main` (`3778fea`, 2026-11-19), except the two marked by hand, recorded at `4492eed`, 2026-11-07. Commits
+after `3778fea` add tests, so a command run on this tree can report more than its row; the expected output in
+steps 3 to 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) is what this tree prints. Per-suite
 detail: [Run the tests](https://maatonbase.xyz/docs/guides/run-the-tests).
 
 Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` and `web/`, `npm run verify` in
@@ -557,11 +583,13 @@ need an archive RPC and run by hand. Lighthouse, a browser audit of the producti
 - **Not on mainnet yet.** All execution evidence is from a local fork, with a scripted proposer; the real
   Claude API and the CDP wallet have been tested only against fakes. The Base App mini-app, x402 revenue and
   the live dashboard do not exist yet.
-- **The calendar must be maintained.** It ships with Thanksgiving 2026, Christmas 2026 and New Year 2027,
-  plus early closes on 2026-11-27 and 2026-12-24. Later holidays need `addHoliday` from the calendar owner.
-  If one is missed, only the price checks are left to stop a trade that day: the feed-staleness check, once
-  the last answer is older than `maxStaleness`, and the premium check, if the pool drifts. `FEED_24_5` mode
-  ignores early closes.
+- **The calendar must be maintained.** It ships with Thanksgiving and Christmas 2026 and every NYSE
+  holiday of 2027 (New Year to Christmas observed on 2027-12-24), plus early closes on 2026-11-27, 2026-12-24
+  and 2027-11-26. Later holidays need `addHoliday` from the calendar owner. If one is missed, only the price
+  checks are left to stop a trade that day: the feed-staleness check, once the last answer is older than
+  `maxStaleness` (25 hours by default), and the premium check, if the pool drifts. With the 25 h default the
+  staleness limit may not trip during the holiday at all, and a borrow or a withdrawal against debt has no
+  premium check. `FEED_24_5` mode ignores early closes.
 - **The feed is assumed to include the multiplier.** The vault treats each Chainlink equity answer as the
   price of one raw token with the B20 multiplier applied. That matched Coinbase's NAV price when checked, with
   the multiplier close to 1 ([Plan 1](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)); it
@@ -668,7 +696,8 @@ contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork ba
     lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
     interfaces/            B20, Aave V4, Chainlink and pool interfaces
   script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
-  test/                    8 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
+  test/                    11 unit suites, invariant/ (the invariant suite and its handlers), vectors/ (calendar
+                           vectors), mocks/, utils/ fixtures, fork/ (7 fork test files)
 agent/                     TypeScript agent runtime
   src/                     chain/ (state reader, preview), llm/ (Claude proposer, prompt, schema),
                            exec/ (Builder Code, gas, GuardedSender, CDP), loop/ (round, scheduler, lock), ledger/

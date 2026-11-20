@@ -7,6 +7,9 @@ contract MockERC20 {
     mapping(address => uint256) public balanceOf;
     mapping(address => mapping(address => uint256)) public allowance;
 
+    /// @dev Lets the invariant handlers see where each transfer goes (test/invariant/VaultHandler.sol).
+    event Transfer(address indexed from, address indexed to, uint256 amount);
+
     constructor(string memory symbol_, uint8 decimals_) {
         symbol = symbol_;
         decimals = decimals_;
@@ -24,6 +27,7 @@ contract MockERC20 {
     function transfer(address to, uint256 amount) external returns (bool) {
         balanceOf[msg.sender] -= amount;
         balanceOf[to] += amount;
+        emit Transfer(msg.sender, to, amount);
         return true;
     }
 
@@ -31,6 +35,7 @@ contract MockERC20 {
         allowance[from][msg.sender] -= amount;
         balanceOf[from] -= amount;
         balanceOf[to] += amount;
+        emit Transfer(from, to, amount);
         return true;
     }
 }

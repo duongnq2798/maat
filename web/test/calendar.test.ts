@@ -84,8 +84,17 @@ describe("calendar port: parity with MarketCalendar.sol", () => {
       for (const [, ts, h] of vectors) expect(etOffsetSeconds(Number(ts)), ts).toBe(Number(h) * 3600);
     });
 
-    // Only the tests that use the constructor's calendar: test_ownerCanOnlyMakeItStricter adds a holiday mid-test.
-    it.each(["test_regularSession", "test_holidaysAndEarlyClose"])("isOpen(ts, REGULAR) in %s", (name) => {
+    // Every test that asks the constructor's calendar for REGULAR, except test_ownerCanOnlyMakeItStricter, which
+    // adds a holiday mid-test.
+    const ctorTests = [...foundry.matchAll(/function (test_\w+)\(\)/g)]
+      .map((m) => m[1] ?? "")
+      .filter((name) => name !== "test_ownerCanOnlyMakeItStricter" && /cal\.isOpen\(\w+, SessionMode\.REGULAR\)/.test(testBody(name)));
+
+    it("finds the tests with isOpen vectors", () => {
+      expect(ctorTests).toEqual(expect.arrayContaining(["test_regularSession", "test_holidaysAndEarlyClose"]));
+    });
+
+    it.each(ctorTests)("isOpen(ts, REGULAR) in %s", (name) => {
       const vectors = [...testBody(name).matchAll(/assert(True|False)\(cal\.isOpen\((\w+), SessionMode\.REGULAR\)\)/g)];
       expect(vectors.length).toBeGreaterThan(0);
       for (const [, want, ts] of vectors) expect(regularSession(stamp(ts)).open, ts).toBe(want === "True");
@@ -125,7 +134,7 @@ describe("calendar port", () => {
   });
 
   it("offers the fork day through the last date the calendar lists", () => {
-    expect([isoOfDay(WINDOW.first), isoOfDay(WINDOW.last)]).toEqual([FACTS.forkDay.value, "2027-01-01"]);
+    expect([isoOfDay(WINDOW.first), isoOfDay(WINDOW.last)]).toEqual([FACTS.forkDay.value, "2027-12-24"]);
   });
 
   it("says why the market is closed, checking in the contract's order", () => {

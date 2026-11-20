@@ -7,17 +7,41 @@
 | Base mainnet | AaveV4CreditAdapter | | | |
 | Base mainnet | MandateVault | | | |
 
-Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet.
+Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet, plus an optional second payee.
+
+## Environment
+
+`Deploy.s.sol` reads these from the environment (`contracts/.env.example` lists them):
+
+| Variable | Required | What it is |
+|---|---|---|
+| `MAAT_DEPLOYER` | Yes | The address of the `--account` wallet that signs the broadcast. The script precomputes the vault address from its nonce. |
+| `MAAT_OWNER` | Yes | Owner of the vault and the calendar. **Immutable.** |
+| `MAAT_EXECUTOR` | Yes | The only address the vault accepts `execute` from. The owner can change it at once with `setExecutor`. |
+| `MAAT_EXPENSE_PAYEE` | Yes | The first payee: an address `PAY_EXPENSE` may pay. |
+| `MAAT_EXPENSE_PAYEE_2` | No | A second payee, allowlisted in the same deploy. Unset or the zero address means none. The script stops if it equals `MAAT_EXPENSE_PAYEE`. |
+
+Set `MAAT_EXPENSE_PAYEE_2` when you already know a second address the vault should be able to pay, for example an agent's Bankr wallet: it is allowlisted at construction, where adding it later takes `queuePayee` and the 24h timelock. The agent pays one address only: its own `MAAT_EXPENSE_PAYEE` setting (`agent/src/config.ts`), which it reads at startup and puts in the `payee` field of every `PAY_EXPENSE` intent (`agent/src/intent.ts`). It never reads the vault's list, so with two payees allowlisted, moving the agent to the other one is a settings change and a restart, with no timelock.
 
 ## Default mandate
 
 `MaatConfig.defaultMandate` uses `maxPremiumBps = 100` (not 50): the premium of TWAP(1800s) against Chainlink, measured in session at `BLOCK_SESSION`, is 53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc.
 
+It uses `maxSlippageBps = 150` and `maxStaleness = 90000` (25 hours), measured on Base mainnet (read-only RPC) over the 10 NYSE sessions of Nov 2-6 and Nov 9-13, 2026. The measurement script and its data are not in the repository, so these figures cannot be re-run from it:
+
+- `maxStaleness` is the feeds' 24h heartbeat plus 1h. The Chainlink B20 equity feeds update on a 0.5% price move or every 24h, so in session the latest answer was older than 1h for 45.9% of the time on AAPL, 37.6% on GOOGL and 9.8% on NVDA, and never older than 24h. A dead feed is still caught. For BUY and SELL the TWAP-vs-oracle premium check is the guard against a frozen price; BORROW and WITHDRAW_COLLATERAL against debt have no premium check and rely on the 25h limit alone.
+- `maxSlippageBps`: the worst BUY cost against the oracle (pool spot price plus fee, sampled every 15 minutes in session) was 121 bps on NVDAc, p99 109 bps. At 150 bps a $50 trade loses at most $0.75 to slippage.
+- Simulated $50 BUYs passed 81% (NVDAc), 60% (GOOGLc) and 53% (AAPLc) of the time with the old limits (`maxStaleness = 3600`, `maxSlippageBps = 100`), and 93%, 98% and 99% with these values. Most NVDAc refusals left are `PREMIUM_TOO_HIGH` in the first 45 minutes after the open, when the 30-minute TWAP still reflects the overnight price.
+
 Credit (Aave V4 MAG7 Spoke): `minHealthFactor = 1.5`, `targetHealthFactor = 2.0` (buffer included), `deriskWindow = 8h` (from 12:00 ET on Friday until 20:00 ET, when the feed stops; for a REGULAR session this is 12:00–16:00). The window also applies to the last session before a day off: Monday–Thursday when the next day is a holiday in `MarketCalendar`, for example Thursday 2026-12-24 (early close at 13:00, so the in-session window is 12:00–13:00) and Thursday 2026-12-31, which come before two holidays that fall on Fridays; also Wednesday 2026-11-25, before Thanksgiving. Borrowing is allowed only when the market is open and the HF after the borrow is ≥ 1.5 (≥ 2.0 inside the window). Repay and adding collateral are allowed even when the market is closed. When the vault is paused with `setPaused(true)`, REPAY still runs so that debt can always be reduced; SUPPLY, BORROW, WITHDRAW_COLLATERAL (along with BUY, SELL, PAY_EXPENSE) are refused with `VAULT_PAUSED`.
+
+## Foundry
+
+The B20 stocks are precompiles, and the `MandateVault` constructor reads `uiMultiplier()` from each basket token, so the dry-run, the simulation and the broadcast below all need a Foundry that runs the B20 precompile. Foundry 1.8.4 or newer does when it runs in `contracts/`, where `foundry.toml` sets `hardfork = "base:Cobalt"`: the contract fork test `test_deployWiresEverything` runs this script on a Base fork that way (the README's runs used 1.9.0). Upstream Anvil 1.9 does not, because it reverts on `uiMultiplier()`, so do not point the script at a local upstream Anvil node. A local node must be Base's build, `base-anvil` v1.5.1, described in [`agent/README.md`](../agent/README.md#test).
 
 ## Dry-run (no broadcast, no key needed)
 
-Run it in `contracts/`. It uses placeholder addresses, for simulation only. The contract addresses printed here will be **different** on mainnet, and the four lines `deployer`, `owner`, `executor`, `expense payee` are only placeholder addresses, not your real addresses:
+Run it in `contracts/`. It uses placeholder addresses, for simulation only. The contract addresses printed here will be **different** on mainnet, and the four lines `deployer`, `owner`, `executor`, `expense payee` are only placeholder addresses, not your real addresses (`expense payee 2` comes from your `.env`, and prints `none` when it is unset or zero):
 
 ```bash
 set -a; source .env; set +a
@@ -28,7 +52,7 @@ MAAT_EXPENSE_PAYEE=0x0000000000000000000000000000000000000003 \
 forge script script/Deploy.s.sol --fork-url "$BASE_RPC_URL"
 ```
 
-The script prints `deployer`, `owner`, `executor` and `expense payee` before the contract addresses. To check the real addresses, use the simulation step with the real `.env` in the "Deploy mainnet" section below, not this dry-run.
+The script prints `deployer`, `owner`, `executor`, `expense payee` and `expense payee 2` before the contract addresses. To check the real addresses, use the simulation step with the real `.env` in the "Deploy mainnet" section below, not this dry-run.
 
 The dry-run files (`contracts/broadcast/*/*/dry-run/`) are already in `.gitignore`. Whether to commit the file from the real run (`contracts/broadcast/Deploy.s.sol/8453/run-*.json`, which contains the txs and the deployer address, but no key) is the owner's decision.
 
@@ -37,7 +61,7 @@ The dry-run files (`contracts/broadcast/*/*/dry-run/`) are already in `.gitignor
 - [ ] The deployer wallet has enough **ETH on Base** to pay gas (4 contracts). See the total estimated gas at the end of the dry-run output; fund extra, because gas prices change.
 - [ ] `MAAT_DEPLOYER` is **exactly the address of the `--account` wallet** used to broadcast. The script precomputes the vault address from this wallet's nonce. If it is the wrong wallet, or the wallet sends another transaction between the simulation and the broadcast, the script can stop with `vault address mismatch` or a nonce error. `vault address mismatch` happens in the simulation step, before any transaction is sent, so no gas is lost: just simulate again. A nonce error during the broadcast (because the deployer wallet sent another transaction in between) can leave the calendar, the swap adapter and `AaveV4CreditAdapter` deployed but unused; in that case, redeploy from scratch.
 - [ ] `MAAT_OWNER` is correct character for character. The owner is **immutable** on `MandateVault` and `MarketCalendar`: a mistyped address means **permanent loss of control** (you cannot withdraw funds or change the mandate). Check again with the `owner (immutable)` line in the output of the simulation step with the real `.env` ("Deploy mainnet" section), not the dry-run that uses placeholder addresses.
-- [ ] `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` are the correct addresses (they can be changed later, but a payee change must go through the 24h timelock).
+- [ ] `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` and, if set, `MAAT_EXPENSE_PAYEE_2` are the correct addresses (they can be changed later, but a payee change must go through the 24h timelock).
 - [ ] `--verify` needs `ETHERSCAN_API_KEY` in `contracts/.env` (an Etherscan v2 key works for Basescan). If the deploy finishes but verification fails, do not redeploy; run `forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify`.
 - [ ] Fund the vault with `approve` and then `fund(amount)`. Do **not** transfer USDC straight into the vault: `notifyRevenue()` would record a direct transfer as revenue (`RevenueReceived`).
 - [ ] To change the configuration later: `queueMandate` / `queueTokenConfig` / `queuePayee` (a public event with all parameters), wait 24h, then `apply*` within the 7 days after that; past that deadline the change expires (`ChangeExpired`) and must be queued again.
@@ -51,7 +75,7 @@ cast wallet import maat-owner --interactive
 cast wallet address --account maat-owner
 ```
 
-The second command only prints the wallet's address (it signs nothing and sends nothing). Edit `contracts/.env`: set `MAAT_DEPLOYER` to the address just printed; set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address. Add `ETHERSCAN_API_KEY` (an Etherscan v2 key works for Basescan).
+The second command only prints the wallet's address (it signs nothing and sends nothing). Edit `contracts/.env`: set `MAAT_DEPLOYER` to the address just printed; set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address; leave `MAAT_EXPENSE_PAYEE_2` at the zero address unless you want a second payee (see "Environment"). Add `ETHERSCAN_API_KEY` (an Etherscan v2 key works for Basescan).
 
 Before broadcasting, simulate again with the real `.env`: no environment variable overrides, no `--broadcast`, no key needed:
 
@@ -62,7 +86,7 @@ forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL"
 
 Read the output and check it yourself:
 
-- The `deployer`, `owner (immutable)`, `executor` and `expense payee` lines match your wallet address character for character (the owner is immutable; a wrong one means permanent loss of control).
+- The `deployer`, `owner (immutable)`, `executor` and `expense payee` lines match your wallet address character for character (the owner is immutable; a wrong one means permanent loss of control), and `expense payee 2` shows `none` or the second payee you set.
 - The simulation finishes, with no `vault address mismatch`.
 
 Broadcast only when both conditions hold. If the simulation stops at `vault address mismatch` or a nonce error, fix the cause (use the right wallet, send no other transaction from the deployer wallet) and simulate again; no transaction has been sent at this step.

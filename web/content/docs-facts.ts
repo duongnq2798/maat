@@ -18,7 +18,7 @@ export const DOCS_FACTS = {
   ),
   earlyCloseMin: fact(780, "contracts/src/MarketCalendar.sol constructor: _setEarlyClose(..., 780), a 13:00 ET close"),
   calendarPreload: fact(
-    { holidays: 3, earlyCloses: 2 },
+    { holidays: 12, earlyCloses: 3 },
     "contracts/src/MarketCalendar.sol constructor: _addHoliday and _setEarlyClose calls",
   ),
   etOffsetHours: fact(
