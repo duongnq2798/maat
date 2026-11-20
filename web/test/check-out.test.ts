@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkAbiFiles,
+  checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
@@ -345,6 +346,23 @@ describe("checkAbiFiles", () => {
     ["another ABI", () => good.replace("execute", "executeAll"), "out/data/abi/MandateVault.json is not the committed ABI (run npm run docs:gen and build again)"],
   ])("flags %s", (_name, read, problem) => {
     expect(checkAbiFiles(expected, read)).toEqual([problem]);
+  });
+});
+
+describe("checkDataFiles", () => {
+  const expected = { "data/deployments.json": { network: "Base mainnet", vault: null } };
+  const good = `${JSON.stringify(expected["data/deployments.json"], null, 2)}\n`;
+
+  it("accepts each data file as its route writes it", () => {
+    expect(checkDataFiles(expected, (path) => (path === "data/deployments.json" ? good : undefined))).toEqual([]);
+  });
+
+  it.each([
+    ["a missing file", () => undefined, "missing out/data/deployments.json"],
+    ["a file that is not JSON", () => "{", "out/data/deployments.json is not JSON"],
+    ["other data", () => good.replace("null", '"0x1"'), "out/data/deployments.json is not its generated source (run npm run docs:gen and build again)"],
+  ])("flags %s", (_name, read, problem) => {
+    expect(checkDataFiles(expected, read)).toEqual([problem]);
   });
 });
 

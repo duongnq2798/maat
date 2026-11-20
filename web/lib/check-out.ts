@@ -240,6 +240,27 @@ export function checkAbiFiles(expected: Readonly<Record<string, unknown>>, read:
   return problems;
 }
 
+/** Each generated data file in out/ (keyed by its path, such as data/deployments.json), parsed, equals its source. */
+export function checkDataFiles(expected: Readonly<Record<string, unknown>>, read: (path: string) => string | undefined): string[] {
+  const problems: string[] = [];
+  for (const [path, data] of Object.entries(expected)) {
+    const text = read(path);
+    if (text === undefined) {
+      problems.push(`missing out/${path}`);
+      continue;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      problems.push(`out/${path} is not JSON`);
+      continue;
+    }
+    if (!isDeepStrictEqual(json, data)) problems.push(`out/${path} is not its generated source (run npm run docs:gen and build again)`);
+  }
+  return problems;
+}
+
 type Env = Record<string, string | undefined>;
 
 /** Whether this run checks an export that is about to ship: on CI, or in a Vercel build. */

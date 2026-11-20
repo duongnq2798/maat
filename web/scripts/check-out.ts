@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   checkAbiFiles,
+  checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
@@ -17,7 +18,9 @@ import {
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
 } from "../lib/check-out";
+import { deploymentsFile } from "../lib/chain/config";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
+import { docsData } from "../lib/docs/generated";
 import { siteUrl } from "../lib/site";
 
 const OUT = fileURLToPath(new URL("../out/", import.meta.url));
@@ -92,6 +95,13 @@ if (INDEXES.every((f) => existsSync(join(OUT, f)))) {
 // The ABIs at /data/abi/*.json, each as its route writes it from content/generated/abi.json.
 problems.push(
   ...checkAbiFiles(Object.fromEntries(ABI_NAMES.map((name) => [name, abiFile(name)])), (path) =>
+    isFile(join(OUT, path)) ? read(path) : undefined,
+  ),
+);
+
+// The ledger page's data, each as its route writes it from the generated sources.
+problems.push(
+  ...checkDataFiles({ "data/deployments.json": deploymentsFile(docsData.deployments) }, (path) =>
     isFile(join(OUT, path)) ? read(path) : undefined,
   ),
 );
