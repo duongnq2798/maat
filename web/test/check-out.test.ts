@@ -71,6 +71,11 @@ describe("checkExport", () => {
       GOOD.replace("</h1>", '</h1><a href="https://basescan.org/block/60013066">Base block 60,013,066</a>'),
       /links a Base block/,
     ],
+    [
+      "a baked live verdict",
+      GOOD.replace("</h1>", '</h1><span data-verdict-line="refuse-all">An agent under Maat&#x27;s default mandate would REFUSE</span>'),
+      /holds a verdict line/,
+    ],
   ])("flags %s", (_name, html, problem) => {
     expect(checkExport(html).join("\n")).toMatch(problem);
   });

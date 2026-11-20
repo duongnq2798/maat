@@ -47,10 +47,12 @@ export function checkExport(html: string): string[] {
     `the simulator's default verdict (${simVerdict} · ${sim.reason}) is not in the exported HTML`,
   );
 
-  // The live strip reads Base in the browser: the export holds its reading state and never a chain value or a live pill.
+  // The live strip reads Base in the browser: the export holds its reading state and never a chain value, a live pill or a
+  // verdict.
   need(html.includes("Reading Base mainnet"), "the live strip's reading state is not in the exported HTML");
   need(!html.includes(">LIVE<"), "the exported HTML shows a LIVE pill, so a reading was baked into the page");
   need(!html.includes("basescan.org/block/"), "the exported HTML links a Base block, so a reading was baked into the page");
+  need(!html.includes("data-verdict-line"), "the exported HTML holds a verdict line, so a reading was baked into the page");
 
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
     need(html.includes(` id="${id}"`), `link #${id} has no target`);
