@@ -118,12 +118,13 @@ Bankr is a partner of this track. Nothing is built for it yet; a Bankr Skill is 
 
 The CI figures are from push run 44553264467 on `3778fea`, the run read for this README. CI runs only the
 offline suites. The two fork suites need a Base archive RPC, so they run by hand and are as fresh as the last
-hand run. Since `4492eed`, no file in `contracts/src`, `contracts/script` or `agent/src` has changed
-(`git diff --stat 4492eed 3778fea` over those folders is empty); one fork test file has a 2-line change.
-Two such files have changed since `3778fea`: `contracts/src/MarketCalendar.sol` preloads the 2027 NYSE holidays
-and the 2027-11-26 early close, and `contracts/script/MaatConfig.sol` sets the 25 h staleness and 150 bps
-slippage defaults. The fork figures above were recorded at `4492eed`, before both changes. No figure here is
-rounded.
+hand run. Between `4492eed` and `3778fea`, no file in `contracts/src`, `contracts/script` or `agent/src`
+changed (`git diff --stat 4492eed 3778fea` over those folders is empty), and one fork test file had a 2-line
+change. Since `3778fea`, `contracts/src/MarketCalendar.sol` preloads the 2027 NYSE holidays and the 2027-11-26
+early close, `contracts/script/MaatConfig.sol` sets the 25 h staleness and 150 bps slippage defaults, and the
+agent fork test's `deploy.ts` uses those two values. The fork figures above were recorded at `4492eed`, before
+these changes; the agent fork run's vault had a 3600 s staleness and a 100 bps slippage limit. No figure here
+is rounded.
 
 ## Deployments and traction
 
