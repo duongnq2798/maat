@@ -151,6 +151,28 @@ describe("scanLogs", () => {
     expect(out.logs).toEqual([100_000n, 0n]);
   });
 
+  it("stops taking chunks once maxFailed chunks have failed, so a dead RPC is not hammered", async () => {
+    let calls = 0;
+    const out = await scanLogs({
+      from: 0n,
+      to: 999_999n,
+      concurrency: 1,
+      maxFailed: 2,
+      getLogs: async () => {
+        calls += 1;
+        throw new TypeError("Failed to fetch");
+      },
+    });
+    expect(out.failed).toHaveLength(2);
+    expect(out.stopped).toBe(true);
+    expect(calls).toBe(4);
+    expect(out.scanned).toBeNull();
+  });
+
+  it("is not stopped when it finishes", async () => {
+    expect((await scanLogs({ from: 0n, to: 9n, getLogs: async () => [] })).stopped).toBe(false);
+  });
+
   it("stops on abort and makes no new call", async () => {
     const controller = new AbortController();
     let calls = 0;

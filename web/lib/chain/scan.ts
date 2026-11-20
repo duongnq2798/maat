@@ -41,6 +41,8 @@ export interface ScanOptions<L> {
   getLogs: (range: BlockRange) => Promise<L[]>;
   onChunk?: (chunk: BlockRange & { logs: L[] }) => void;
   signal?: AbortSignal;
+  /** Stop taking new chunks once this many have failed (default: never). */
+  maxFailed?: number;
 }
 
 export interface ScanResult<L> {
@@ -50,6 +52,8 @@ export interface ScanResult<L> {
   scanned: BlockRange | null;
   /** Ranges given up on: a non-range error twice, or a range error at the minimum span. */
   failed: BlockRange[];
+  /** True when the scan stopped early because `maxFailed` chunks failed. */
+  stopped: boolean;
 }
 
 const aborted = () => new DOMException("The log scan was aborted.", "AbortError");
@@ -64,10 +68,12 @@ export async function scanLogs<L>(opts: ScanOptions<L>): Promise<ScanResult<L>> 
   const queue = planChunks(from, to, opts.span ?? LOG_CHUNK).map((range) => ({ range, retried: false }));
   const done: (BlockRange & { logs: L[] })[] = [];
   const failed: BlockRange[] = [];
+  const maxFailed = opts.maxFailed ?? Number.POSITIVE_INFINITY;
 
   const worker = async () => {
     for (;;) {
       if (signal?.aborted) throw aborted();
+      if (failed.length >= maxFailed) return;
       const job = queue.shift();
       if (!job) return;
       try {
@@ -104,5 +110,6 @@ export async function scanLogs<L>(opts: ScanOptions<L>): Promise<ScanResult<L>> 
     logs: done.flatMap((c) => c.logs),
     scanned: low <= to ? { from: low, to } : null,
     failed,
+    stopped: failed.length >= maxFailed && queue.length > 0,
   };
 }
