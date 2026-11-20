@@ -1,10 +1,10 @@
 ---
 title: "Quickstart: verify Maat in five minutes"
-description: Clone the repo and run the refusal test, the contract suites, the agent tests and the site build offline. No wallet, RPC or API key.
+description: Clone the repo, watch the vault refuse a Saturday buy, run the contract unit, agent and website tests, and build the site. No wallet, RPC URL or API key.
 type: guide
 audience: [developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - contracts/test/MandateVault.t.sol
@@ -21,7 +21,7 @@ Not a developer? [What is Maat](/docs/get-started/what-is-maat) explains the ide
 
 ## Prerequisites
 
-Time: about five minutes on a fresh clone. Most of it goes to compiling the contracts and to the two `npm ci` runs.
+Time: about 4 minutes on a fresh clone. The five steps were timed by hand on 2026-11-07 at commit `4492eed`, on Windows 10. Most of it went to compiling the contracts and to the two `npm ci` runs. That was before the docs center, and the steps have not been re-timed.
 
 | Tool | Version | Why |
 | --- | --- | --- |
@@ -92,7 +92,7 @@ Your full trace shows two things that the ellipses hide here. First, an `emit De
 
 ### Run every contract unit test
 
-This covers the vault, the guards, the calendar, the price math and both adapters, and it also runs the [invariant suite](/docs/security/testing#invariant-tests), which takes most of the run's time, about 30 to 40 seconds. Run it in the same `contracts` folder.
+This covers the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list, and it also runs the [invariant suite](/docs/security/testing#invariant-tests), which takes most of the run's time, about 30 to 40 seconds. Run it in the same `contracts` folder.
 
 ```bash title="contracts/"
 forge test --no-match-path "test/fork/*"
@@ -131,7 +131,7 @@ Expected output, from README.md, How to evaluate Maat in 5 minutes, with the cou
 
 ### Run the website's tests and build it
 
-The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if it types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
+The website tests read the Solidity sources and the committed fork-run gas log, so most numbers on a page fail here if they drift from the code. The same tests check these docs: a page fails if its text outside the frontmatter, code and the attributes of component tags types out by hand a fact, one of the named values the docs render with `<Fact>`, that contains three or more digits in a row (dates aside), a dollar amount or a [bps](/docs/help/glossary#basis-point-bps) value; most facts are checked against the contracts, the agent or the fork-run gas log; and every code excerpt is compared with the lines it quotes.
 
 ```bash
 cd ../web
@@ -160,15 +160,17 @@ out/ is ready to deploy (landing and … docs pages checked)
 
 - Every Foundry suite reports `0 failed`. Vitest prints only `passed` counts when all tests pass, and a `failed` count appears next to them when one does not.
 - The refusal trace from step 2 shows `allowed: false, reason: 6`.
-- The last line of the website check starts with `out/ is ready to deploy`.
+- The website check prints a line that starts with `out/ is ready to deploy`, then the size of the search index.
 
 To check one claim at a time, [How it is tested](/docs/security/testing) names the test behind each guarantee and shows how to run it alone. For a contract test, that is the same `--match-test` filter as step 2.
 
 If something else shows up, [Troubleshooting](/docs/help/troubleshooting) lists symptoms, causes and fixes.
 
+To find your way around the code, the [Repository map](/docs/reference/repository-map) says what each main folder holds and which docs page to read before you open it.
+
 ## Optional: the fork tests
 
-The contract [fork tests](/docs/help/glossary#fork-test) run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. No archive RPC of your own? `contracts/.env.example` lists a public Base endpoint that served archive state when it was tested on 2026-11-06. Export that URL as `BASE_RPC_URL`, and if it answers with HTTP 429, use a free key from an RPC provider instead. Nothing is broadcast: Foundry forks the chain locally. Run these commands from the repository root. Step 5 ended in `web/`, so go back with `cd ..` first.
+The contract [fork tests](/docs/help/glossary#fork-test) run the real B20 tokens, feeds, pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned mainnet blocks. They need a Base archive RPC, which you pass as `<BASE_RPC_URL>`. No archive RPC of your own? `contracts/.env.example` lists a public Base endpoint that served archive state when it was tested on 2026-11-06. Export that URL as `BASE_RPC_URL`, and if it answers with HTTP 429, use a free key from an RPC provider instead. Nothing is broadcast: Foundry forks the chain locally. Run these commands from the repository root. Step 5 ended in `web/`, so go back with `cd ..` first.
 
 ```bash
 cd contracts

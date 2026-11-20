@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { docsData } from "@/lib/docs/generated";
-import { accessLabel, errorSignature, eventSignature, findItem, functionSignature } from "@/lib/docs/signatures";
+import { accessLabel, errorSignature, eventSignature, findItem, functionSignature, functionSignatureParts, typeHref } from "@/lib/docs/signatures";
 import type { SolFunction, SolSurface } from "@/lib/docs/sol-surface";
 
 const s = docsData.surface;
@@ -27,6 +27,16 @@ describe("signatures from the generated surface", () => {
     );
   });
 
+  it("splits a signature into parts that join to it, each type a part of its own that links only for a Types.sol type", () => {
+    const parts = functionSignatureParts(findItem(s, "MandateVault", "functions", "queueTokenConfig"));
+    expect(parts.map((p) => p.text).join("")).toBe(functionSignature(findItem(s, "MandateVault", "functions", "queueTokenConfig")));
+    const types = parts.filter((p) => p.type).map((p) => p.text);
+    expect(types).toEqual(["address", "TokenConfig", "bytes32"]);
+    expect(types.map((t) => typeHref(s, t))).toEqual([null, "/docs/reference/types#tokenconfig", null]);
+    expect(typeHref(s, "SessionMode")).toBe("/docs/reference/types#sessionmode");
+    expect(typeHref(s, "IERC20Minimal")).toBeNull();
+  });
+
   it("labels access and names a missing item", () => {
     expect(accessLabel("owner")).toBe("Owner only");
     expect(accessLabel("activePool")).toBe("Active pool only");
@@ -45,6 +55,7 @@ describe("signatures from the generated surface", () => {
       mutability: "nonpayable",
       access: "anyone",
       notice: "",
+      selector: "0x00000000",
     };
     const twice: SolSurface = {
       contracts: [{ name: "C", kind: "contract", file: "contracts/src/C.sol", notice: "", functions: [fn, { ...fn, params: [{ type: "uint256", name: "a" }] }], events: [], errors: [] }],

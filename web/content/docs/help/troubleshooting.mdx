@@ -1,10 +1,10 @@
 ---
 title: Troubleshooting
-description: "Fixes for problems that happened while building and testing Maat: line endings, Foundry versions, fork RPCs, submodules and gas."
+description: "Fixes for problems that happened while building and testing Maat, and where to look when the agent prints an error or a Decision looks wrong."
 type: help
 audience: [developer, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - README.md
   - agent/README.md
@@ -18,7 +18,7 @@ sources:
 next: [guides/run-the-tests, help/faq]
 ---
 
-Every problem on this page comes from the repository's own record: the README, the plans, the agent's runbook, a fix in the git history, or a message that the test code prints. Each one has the same four parts: what you see, why it happens, how to fix it and how to confirm the fix. Nothing is deployed and the agent has not run live, so these are setup and test problems on a developer machine, not problems of a running system.
+Every problem on this page comes from the repository's own record: the README, the plans, the agent's runbook, a fix in the git history, or a message that the test code prints. Each one has the same four parts: what you see, why it happens, how to fix it and how to confirm the fix. Nothing is deployed, and the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer and a local sender, so these are setup and test problems on a developer machine, not problems of a running system.
 
 Where the repository holds the exact text of a message, this page quotes it. Where it does not, the page describes the symptom and says so, instead of making up a message. The shorter lists of common mistakes in the [Quickstart](/docs/get-started/quickstart#common-mistakes), [Run the tests](/docs/guides/run-the-tests#common-mistakes) and [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#common-mistakes) cover the same ground, and this page goes deeper on them.
 
@@ -26,11 +26,20 @@ Where the repository holds the exact text of a message, this page quotes it. Whe
 | --- | --- |
 | A clone on Windows fails while it fetches submodules | [A recursive clone fails on Windows](/docs/help/troubleshooting#a-recursive-clone-fails-on-windows) |
 | `npm test` in `agent/` fails two enum parity tests on a Windows checkout | [Windows line endings break two agent tests](/docs/help/troubleshooting#windows-line-endings-break-two-agent-tests) |
-| A test that calls a B20 token fails on an old Foundry | [Foundry is too old for the B20 hardfork](/docs/help/troubleshooting#foundry-is-too-old-for-the-b20-hardfork) |
+| A test that calls a [B20](/docs/help/glossary#b20) token fails on an old Foundry | [Foundry is too old for the B20 hardfork](/docs/help/troubleshooting#foundry-is-too-old-for-the-b20-hardfork) |
 | A fork suite is skipped, cannot read old state or gets an HTTP 429 | [A fork test is skipped or cannot read old state](/docs/help/troubleshooting#a-fork-test-is-skipped-or-cannot-read-old-state) |
-| The agent's fork test cannot start a node or deploy the vault | [The agent fork test fails on the wrong Anvil](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil) |
+| The agent's [fork test](/docs/help/glossary#fork-test) cannot start a node or deploy the [vault](/docs/help/glossary#vault) | [The agent fork test fails on the wrong Anvil](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil) |
 | The agent's fork test prints nothing for minutes | [The agent fork test looks stuck](/docs/help/troubleshooting#the-agent-fork-test-looks-stuck) |
 | A transaction records `SWAP_FAILED` for a swap that works with more gas | [A swap is recorded as SWAP_FAILED on a low gas limit](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit) |
+
+The table below leads to other pages. The messages the agent prints come from its code and unit tests, and none has been seen in a live run, so they are listed in [Agent scripts](/docs/reference/agent-scripts#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run), not here. The other rows are about reading a vault's events, and lead to the answers in [Watch decisions onchain](/docs/guides/watch-decisions-onchain), the [FAQ](/docs/help/faq#watching-the-agent) and the guides. No Maat vault is deployed, so these rows are pointers, not problems that happened.
+
+| What you see | Where it is answered |
+| --- | --- |
+| The agent stopped or printed an error | [Messages the agent prints](/docs/reference/agent-scripts#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run), in Agent scripts |
+| The `amount` of a [Decision](/docs/help/glossary#decision) looks far too large | [Common mistakes](/docs/guides/watch-decisions-onchain#common-mistakes), in Watch decisions onchain |
+| No `Decision` for a proposal, or none for hours | [Why is there no Decision for every proposal?](/docs/help/faq#why-is-there-no-decision-for-every-proposal), in the FAQ, then the daily transaction cap in [Limits that protect the run](/docs/guides/run-the-agent#limits-that-protect-the-run) and a paused vault in [Pause and unpause](/docs/guides/pause-withdraw-recover#pause-and-unpause) |
+| An [intent](/docs/help/glossary#intent) id from the agent's [journal](/docs/help/glossary#journal) has no `Decision` | [Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent), in Watch decisions onchain |
 
 ## A recursive clone fails on Windows
 
@@ -46,7 +55,7 @@ cd maat
 git submodule update --init
 ```
 
-**Check the fix.** `git submodule status` prints two lines, one for `contracts/lib/forge-std` and one for `contracts/lib/v4-core`, and neither starts with `-`, which is how Git marks a submodule that was not initialized. Then run the refusal test from step 2 of the [Quickstart](/docs/get-started/quickstart#the-five-steps). It passes when the contracts build and the output shows `[PASS] test_refusalIsLoggedNotReverted()`.
+**Check the fix.** `git submodule status` prints two lines, one for `contracts/lib/forge-std` and one for `contracts/lib/v4-core`, and neither starts with `-`, which is how Git marks a submodule that was not initialized. Then run the refusal test from [Watch the vault refuse a Saturday buy](/docs/get-started/quickstart#watch-the-vault-refuse-a-saturday-buy), step 2 of the Quickstart. It passes when the contracts build and the output shows `[PASS] test_refusalIsLoggedNotReverted()`.
 
 ## Windows line endings break two agent tests
 
@@ -68,13 +77,13 @@ In a fresh clone the output looks like this:
 i/lf    w/lf    attr/text=auto eol=lf   contracts/src/Types.sol
 ```
 
-The check that matters in both cases is `npm test` in `agent/`, which prints only `passed` counts, as in step 4 of the [Quickstart](/docs/get-started/quickstart#the-five-steps).
+The check that matters in both cases is `npm test` in `agent/`, which prints only `passed` counts, as in [Run the agent's tests](/docs/get-started/quickstart#run-the-agents-tests), step 4 of the Quickstart.
 
 ## Foundry is too old for the B20 hardfork
 
-**Symptom.** A test that calls a [B20](/docs/help/glossary#b20) token fails on a Foundry older than 1.8.4. Plan 1 names two errors to expect when a test calls a B20 token address, which starts with `0xb2000`: `EvmError: Revert` and `call to non-contract`. No output from an old Foundry is committed, so those two phrases are the plan's words, not a captured log.
+**Symptom.** A test that calls a B20 token fails on a Foundry older than 1.8.4. Plan 1 names two errors to expect when a test calls a B20 token address, which starts with `0xb2000`: `EvmError: Revert` and `call to non-contract`. No output from an old Foundry is committed, so those two phrases are the plan's words, not a captured log.
 
-**Cause.** A B20 token is a precompile. Its code on Base is only the byte `0xef`, and Foundry before 1.8.4 cannot run it ([Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` so that Foundry runs the B20 precompiles, and the README and the Quickstart name 1.8.4 or newer as the minimum. The README's numbers were measured on Foundry 1.9.0. This is about `forge`. The agent's [fork test](/docs/help/glossary#fork-test) also needs a particular build of Anvil, which has [its own section](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil).
+**Cause.** A B20 token is a [precompile](/docs/help/glossary#precompile). Its code on [Base](/docs/help/glossary#base) is only the byte `0xef`, and Foundry before 1.8.4 cannot run it ([Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md)). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` so that Foundry runs the B20 precompiles, and the README and the Quickstart name 1.8.4 or newer as the minimum. The README's numbers were measured on Foundry 1.9.0. This is about `forge`. The agent's fork test also needs a particular build of Anvil, which has [its own section](/docs/help/troubleshooting#the-agent-fork-test-fails-on-the-wrong-anvil).
 
 **Fix.** Update Foundry and read the version it reports.
 
@@ -132,12 +141,12 @@ Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tes
 
 **Cause.** Each message has its own cause.
 
-- The failed deploy: the vault reads each stock's [uiMultiplier](/docs/help/glossary#uimultiplier) when a token is configured, which happens as the vault is created. Upstream Anvil 1.9 serves a B20 token's `decimals()` but reverts on `uiMultiplier()`, so it cannot deploy the vault. Base's own build, `base-anvil`, runs the full B20 precompile. The test starts it with the `--base` flag and `FOUNDRY_BASE=true`. This is a different problem from an old `forge`: the README's contract runs used Foundry 1.9.0, and it is upstream Anvil 1.9 that cannot do this.
+- The failed deploy: the vault reads each stock's [uiMultiplier](/docs/help/glossary#uimultiplier) when a token is configured, which happens as the vault is created. Upstream Anvil 1.9 serves a B20 token's `decimals()` but [reverts](/docs/help/glossary#revert) on `uiMultiplier()`, so it cannot deploy the vault. Base's own build, `base-anvil`, runs the full B20 precompile. The test starts it with the `--base` flag and `FOUNDRY_BASE=true`. This is a different problem from an old `forge`: the README's contract runs used Foundry 1.9.0, and it is upstream Anvil 1.9 that cannot do this.
 - `could not start base-anvil`: the test starts the binary directly, without a shell. On Windows `base-anvil` is only a shell wrapper, so Node cannot start it, and the test needs the path of the real `anvil.exe`. The hint in the message also says to install the build with `base-foundryup`.
 - The early exit and the start timeout: the repository records no cause. The hint in the message is its advice.
 - The port message is a guard, not a failure of Anvil. The test refuses to attach to a node it did not start, so that it never deploys onto a chain it knows nothing about.
 
-**Fix.** Install Base's build of Anvil once.
+**Fix.** Install Base's build of Anvil once. Its installer, `base-foundryup`, comes from Base's [`base/base-anvil`](https://github.com/base/base-anvil) repository. [Install the Base build of Anvil](/docs/guides/reproduce-the-fork-run#install-the-base-build-of-anvil) shows how to get it. Then run:
 
 ```bash
 base-foundryup --install v1.5.1
@@ -157,7 +166,7 @@ For the port message, stop the node that holds port 8547 and run the test again.
 
 **Symptom.** After the node has started, `npm run test:integration` prints nothing for minutes. The agent's README says the run takes 3 to 5 minutes on a public RPC.
 
-**Cause.** The first swap on a cold fork is very slow on a public RPC. The agent's round runner waits <Fact name="receiptTimeoutSec" /> for a receipt by default, which is too short here, so the fork test passes its own, longer waits and the integration config raises Vitest's timeouts. They are long on purpose ([`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts) and [`vitest.integration.config.ts`](https://github.com/duongnq2798/maat/blob/main/agent/vitest.integration.config.ts)).
+**Cause.** The first swap on a cold fork is very slow on a public RPC. The agent's [round](/docs/help/glossary#round) runner waits <Fact name="receiptTimeoutSec" /> for a receipt by default, which is too short here, so the fork test passes its own, longer waits and the integration config raises Vitest's timeouts. They are long on purpose ([`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts) and [`vitest.integration.config.ts`](https://github.com/duongnq2798/maat/blob/main/agent/vitest.integration.config.ts)).
 
 **Fix.** Wait. Give the run the full 3 to 5 minutes before you stop it. If you stop a run and the next one reports that port 8547 already answers, stop the node that still holds the port first, as in the section above.
 
@@ -165,7 +174,7 @@ For the port message, stop the node that holds port 8547 and run the test again.
 
 ## A swap is recorded as SWAP_FAILED on a low gas limit
 
-**Symptom.** A transaction that calls `execute` is mined and does not revert, but the [Decision](/docs/help/glossary#decision) it emits has the reason `SWAP_FAILED`, for a swap that works when the transaction gets more gas. Commit `84b31d0` describes it: the estimate leaves too little gas for the calls the vault swallows, so the vault logs `SWAP_FAILED`. A `SWAP_FAILED` is therefore not always a market failure ([Gas estimation](/docs/security/not-claimed#gas-estimation)). A round of the agent that cannot estimate gas halts with a message that begins `gas estimate failed for`, followed by the function and the first line of the error. [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) says what to do about that one.
+**Symptom.** A transaction that calls `execute` is mined and does not revert, but the Decision it emits has the [reason](/docs/help/glossary#reason) `SWAP_FAILED`, for a swap that works when the transaction gets more gas. Commit `84b31d0` describes it: the estimate leaves too little gas for the calls the vault swallows, so the vault logs `SWAP_FAILED`. A `SWAP_FAILED` is therefore not always a market failure ([Gas estimation](/docs/security/not-claimed#gas-estimation)). A round of the agent that cannot estimate gas halts with a message that begins `gas estimate failed for`, followed by the function and the first line of the error. [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) says what to do about that one.
 
 **Cause.** `execute` and `syncMultiplier` swallow failures of the calls inside them. The swap is in a try/catch, token transfers go through `tryTransfer`, the credit call is a low-level call, and `uiMultiplier()` is read in a try. Because none of these fails the outer call, `eth_estimateGas` converges on a limit that starves the inner call. That is the explanation in the comment in [`agent/src/exec/calls.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/calls.ts).
 
@@ -175,10 +184,10 @@ For the port message, stop the node that holds port 8547 and run the test again.
 gas limit = min(cap, max(floor, estimate * 1.3))
 ```
 
-The floor for `execute` is <Fact name="executeGasFloor" />, there is a separate, lower floor for `syncMultiplier`, and the cap is <Fact name="maxGas" />. The vault swallows the same failures however the transaction is sent, so a hand-sent `execute` is exposed too. The repository records the problem only for the agent's own sends. The `cast send` lines for `execute` in the [deployments runbook](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) set no gas limit, so give such a transaction a limit at or above the floor. An [intent](/docs/help/glossary#intent) spends its id as soon as it reaches `execute`, even when the swap fails, so send the retry with a new intent id.
+The floor for `execute` is <Fact name="executeGasFloor" />, the floor for `syncMultiplier` is <Fact name="syncGasFloor" />, and the cap is <Fact name="maxGas" />. The vault swallows the same failures however the transaction is sent, so a hand-sent `execute` is exposed too. The repository records the problem only for the agent's own sends. The `cast send` lines for `execute` in the [deployments runbook](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) set no gas limit. Add `--gas-limit` with at least the `execute` floor to each one, as the commands in [Run the smoke test](/docs/guides/deploy-your-own-vault#run-the-smoke-test) and [Unwind the credit position](/docs/guides/pause-withdraw-recover#unwind-the-credit-position) do. An intent spends its id as soon as it reaches `execute`, even when the swap fails, so send the retry with a new intent id.
 
 **Check the fix.** The transaction's gas limit is at or above the floor and its `gasUsed` is below the limit. The fork test asserts this for every transaction it sends, and the committed fork-run gas log shows it. A retried intent no longer records `SWAP_FAILED` for a swap that the market allows. Two unit tests cover the rule: `gasLimit` in [`agent/test/calls.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/calls.test.ts), and "sends every transaction with an explicit gas limit at or above its floor" in [`agent/test/runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts).
 
 ## If your problem is not here
 
-The common mistakes in the [Quickstart](/docs/get-started/quickstart#common-mistakes), [Run the tests](/docs/guides/run-the-tests#common-mistakes) and [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#common-mistakes) cover the other slips people make. For an agent round that halted, read [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round). If you think you found a security problem, do not open a public issue: see [Report a vulnerability](/docs/security/report-a-vulnerability).
+The common mistakes in the [Quickstart](/docs/get-started/quickstart#common-mistakes), [Run the tests](/docs/guides/run-the-tests#common-mistakes) and [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#common-mistakes) cover the other slips people make. For a message the agent printed, see [Messages the agent prints](/docs/reference/agent-scripts#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run). For an agent round that halted, read [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round). If you think you found a security problem, do not open a public issue: see [Report a vulnerability](/docs/security/report-a-vulnerability).

@@ -3,6 +3,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { getDecisions, SOURCE_LABEL } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
 import { numberWord } from "@/content/format";
+import { REASON_LABEL } from "@/content/reasons";
 
 const STEPS = [
   {
@@ -34,12 +35,13 @@ const STEPS = [
 export function HowItWorks() {
   const refused = getDecisions().find((r) => !r.allowed);
   if (!refused) throw new Error("the ledger has no refusal to decode");
-  const decoded: readonly { k: string; v: string; tone?: "hot" | "muted" }[] = [
+  const decoded: readonly { k: string; v: string; tone?: "hot" | "muted"; note?: string }[] = [
     { k: "action", v: refused.action },
     { k: "token", v: refused.symbol },
     { k: "amount", v: `${refused.amountUsd.toFixed(2)} USDC` },
     { k: "allowed", v: String(refused.allowed), tone: "hot" },
-    { k: "reason", v: refused.reason, tone: "hot" },
+    // The card shows the decoded log, so the value stays the code; its plain label follows as a comment.
+    { k: "reason", v: refused.reason, tone: "hot", note: REASON_LABEL[refused.reason] },
     // Exists only once the decision is a mainnet tx (spec §3): a placeholder, never a made-up hash.
     { k: "rationaleHash", v: "[from mainnet tx]", tone: "muted" },
   ];
@@ -77,7 +79,16 @@ export function HowItWorks() {
               {decoded.map((d) => (
                 <div key={d.k} className="contents">
                   <dt className="text-ink-2">{d.k}</dt>
-                  <dd className={`m-0 [overflow-wrap:anywhere] ${d.tone ? toneClass[d.tone] : ""}`}>{d.v}</dd>
+                  <dd className={`m-0 [overflow-wrap:anywhere] ${d.tone ? toneClass[d.tone] : ""}`}>
+                    {d.v}
+                    {/* One inline block after a plain space: when the line runs out, "//" moves down with its label. */}
+                    {d.note ? (
+                      <>
+                        {" "}
+                        <span className="inline-block font-normal text-ink-2">{`// ${d.note}`}</span>
+                      </>
+                    ) : null}
+                  </dd>
                 </div>
               ))}
             </dl>

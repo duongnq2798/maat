@@ -4,13 +4,15 @@ description: Plain definitions of the terms used across the docs, from B20 and u
 type: help
 audience: [newcomer, watcher, developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - contracts/src/Types.sol
   - contracts/src/MandateVault.sol
   - agent/src/loop/runOnce.ts
   - agent/src/policy.ts
+  - agent/src/ledger/store.ts
+  - agent/test/integration/agent.fork.test.ts
 next: [get-started/what-is-maat, help/faq]
 ---
 
@@ -141,7 +143,7 @@ The agent's local, append-only log: `journal.jsonl` in its data folder (`MAAT_DA
 
 ### Live mode
 
-`MAAT_MODE=live`. The agent then also sends the intents its gate lets through, to the vault through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) from `MAAT_BUILDER_CODE` appended, which live mode requires. The send path has run on a fork with a local sender in place of CDP, and the CDP code is tested against a fake CDP client only ([Go live](/docs/guides/run-the-agent#go-live)).
+`MAAT_MODE=live`. The agent then also sends to the vault the intents its gate lets through and any `syncMultiplier` call that a changed multiplier needs, through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) from `MAAT_BUILDER_CODE` appended, which live mode requires. The send path has run on a fork with a local sender in place of CDP, for `execute` only (a fresh vault needs no `syncMultiplier`), and the CDP code is tested against a fake CDP client only ([Go live](/docs/guides/run-the-agent#go-live)).
 
 ## M
 
@@ -185,7 +187,7 @@ The gap between the pool's [TWAP](/docs/help/glossary#twap) and the oracle price
 
 ### Preview
 
-A read-only call, `previewIntent`, made with `eth_call` as the executor, that returns the verdict the vault's checks would give an [intent](/docs/help/glossary#intent) without sending a transaction. It returns the check verdict, not the execution result, so it cannot see `SWAP_FAILED` or `TRANSFER_FAILED` ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)).
+A read-only call, `previewIntent`, made with `eth_call` as the executor, that returns the verdict the vault's checks would give an [intent](/docs/help/glossary#intent) without sending a transaction. It returns the check verdict, not the execution result, so it cannot see `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or a `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit adapter's own check ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send), [Preview cannot see everything](/docs/security/not-claimed#preview-cannot-see-everything)).
 
 ## R
 
@@ -203,7 +205,7 @@ The enum in `Types.sol` that says why the vault allowed or refused an action, an
 
 ### Refusal
 
-A [Decision](/docs/help/glossary#decision) with `allowed` set to false: the vault records a [reason](/docs/help/glossary#reason) instead of reverting. Most refusals come from a failed check, while `SWAP_FAILED` and `TRANSFER_FAILED` mean the checks passed and the action then failed. See [Read a decision](/docs/get-started/read-a-decision#reading-a-refusal) and [Refusal codes](/docs/concepts/refusal-codes).
+A [Decision](/docs/help/glossary#decision) with `allowed` set to false: the vault records a [reason](/docs/help/glossary#reason) instead of reverting. Most refusals come from a failed check, while `SWAP_FAILED`, `TRANSFER_FAILED`, and a `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit call itself mean the checks passed and the action then failed. See [Read a decision](/docs/get-started/read-a-decision#reading-a-refusal) and [Refusal codes](/docs/concepts/refusal-codes).
 
 ### Revert
 
@@ -211,11 +213,11 @@ A call that fails and undoes everything it did: it emits no event, though the tr
 
 ### Round
 
-One pass of the agent's loop, `runOnce`: read the vault, settle any send left from an earlier round, ask Claude, then preview each intent and send it or only write it to the [journal](/docs/help/glossary#journal). The agent waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> otherwise. The agent's README (`agent/README.md`) calls a round a cycle ([Cadence](/docs/concepts/treasury-loop#cadence)).
+One pass of the agent's loop, `runOnce`: read the vault, settle any send left from an earlier round, send `syncMultiplier` for any listed stock that has a feed or a pool and whose multiplier differs from the vault's last snapshot (in dry run it only writes a [journal](/docs/help/glossary#journal) line), ask Claude, then preview each intent and send it or only write it to the journal. The agent waits <Fact name="loopMinutes" /> after a round that saw the market open and <Fact name="offSessionMinutes" /> otherwise. The agent's README (`agent/README.md`) calls a round a cycle ([Cadence](/docs/concepts/treasury-loop#cadence)).
 
 ### Runway
 
-The USDC the agent's policy keeps back for compute: <Fact name="runwayDays" /> of the average daily compute cost, plus any unpaid [compute bill](/docs/help/glossary#compute-bill). The average covers the days of the previous week that have a record, and before there are any it is `MAAT_DEFAULT_DAILY_COMPUTE_USD` (<Fact name="dailyComputeUsd" />). The policy does not suggest spending the runway on buys or repayments, and when the vault's USDC falls short of it by at least <Fact name="minTradeUsd" /> while collateral is supplied and the vault is not paused, it suggests a `BORROW`: a policy rule in the agent, not a vault check ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
+The USDC the agent's policy keeps back for compute: <Fact name="runwayDays" /> of the average daily compute cost over the days of the week before today that have a record, or `MAAT_DEFAULT_DAILY_COMPUTE_USD` (<Fact name="dailyComputeUsd" />) when none has. The policy does not suggest spending it, or any unpaid [compute bill](/docs/help/glossary#compute-bill), on buys or repayments. When the vault's USDC falls short of the runway plus the unpaid bill by at least <Fact name="minTradeUsd" />, the policy suggests a `BORROW`, but only while the vault is not paused, the credit position can be read and stock from the policy's basket with a valid feed price is supplied as collateral: a rule in the agent, not a vault check ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
 
 ## S
 
@@ -255,7 +257,7 @@ A number, published as a [WAD](/docs/help/glossary#wad), that a [B20](/docs/help
 
 ### Vault
 
-`MandateVault`, the contract that holds a treasury's USDC and stocks, runs the checks on every [intent](/docs/help/glossary#intent) and records each verdict as a [Decision](/docs/help/glossary#decision). The [executor](/docs/help/glossary#executor) can move funds only through `execute`, and the [owner](/docs/help/glossary#owner) can withdraw at any time. Stock supplied as collateral leaves the vault for the credit adapter's position on [Aave V4](/docs/help/glossary#aave-v4) until it is withdrawn. See [MandateVault](/docs/reference/mandate-vault).
+`MandateVault`, the contract that holds a treasury's USDC and stocks, checks each [intent](/docs/help/glossary#intent) and records each verdict as a [Decision](/docs/help/glossary#decision). The <Fact name="checksPerTrade" /> checks apply to a `BUY` or `SELL` (check 9 to a `BUY` only), and each other [action](/docs/help/glossary#action) has its own checks. The [executor](/docs/help/glossary#executor) can move funds only through `execute`, and the [owner](/docs/help/glossary#owner) can withdraw at any time. Stock supplied as collateral leaves the vault for the credit adapter's position on [Aave V4](/docs/help/glossary#aave-v4) until it is withdrawn. See [MandateVault](/docs/reference/mandate-vault).
 
 ## W
 
@@ -267,4 +269,4 @@ A fixed-point number scaled so that one whole unit is `1e18`. The `uiMultiplier`
 
 ### x402
 
-The payment method named in the design for the treasury loop's planned revenue: another agent would pay <Fact name="x402Price" /> in USDC to ask whether a trade is safe right now. It is not built, and no service in this repository takes a payment. See [Planned, not built](/docs/get-started/status#planned-not-built) and [The treasury loop](/docs/concepts/treasury-loop#planned-earning).
+The payment method named in the design for the treasury loop's planned revenue: another agent would pay <Fact name="x402Price" /> in USDC to ask whether a trade is safe right now. It is not built on `main`, and no service on `main` takes a payment. [Pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds an x402 Guard Service. See [Planned, not built](/docs/get-started/status#planned-not-built) and [The treasury loop](/docs/concepts/treasury-loop#planned-earning).

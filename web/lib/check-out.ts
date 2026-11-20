@@ -1,7 +1,9 @@
+import { isDeepStrictEqual } from "node:util";
 import { MOMENTS } from "../content/engine";
 import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
-import { markdownLines } from "./docs/markdown";
+import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
+import { OG_IMAGE_SIZE, ogImageUrl } from "./docs/og";
 import { SITE } from "./site";
 
 /** Problems with the exported landing page; an empty list means it is ready to ship. */
@@ -55,18 +57,22 @@ export function checkExport(html: string): string[] {
   return problems;
 }
 
-/** Problems with one exported docs page. `known` holds the URL path of every exported docs page (/docs, /docs/x). */
-export function checkDocsPage(html: string, path: string, known: ReadonlySet<string>): string[] {
+/**
+ * Problems with one exported docs page. `known` holds the URL path of every exported docs page (/docs, /docs/x).
+ * `exported` says whether a URL path outside /docs is a file in out/ (/, /llms.txt, /data/abi/x.json).
+ */
+export function checkDocsPage(html: string, path: string, known: ReadonlySet<string>, exported?: (path: string) => boolean): string[] {
   const problems: string[] = [];
   const need = (ok: boolean, problem: string) => {
     if (!ok) problems.push(`${path}: ${problem}`);
   };
 
   need(html.includes('<html lang="en"'), 'missing <html lang="en">');
-  // The title template of app/(docs)/layout.tsx.
+  // The title template of app/(docs)/layout.tsx; the docs home, out/docs.html, is titled with the docs center's name alone.
   const suffix = ` · ${SITE.name} Docs`;
   const title = /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? "";
-  need(title.endsWith(suffix) && title.length > suffix.length, `title "${title}" does not end with "${suffix}"`);
+  if (path === "out/docs.html") need(title === `${SITE.name} Docs`, `title "${title}" is not "${SITE.name} Docs"`);
+  else need(title.endsWith(suffix) && title.length > suffix.length, `title "${title}" does not end with "${suffix}"`);
   const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
   // An entity such as &#x27; counts as one character.
   const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;
@@ -85,6 +91,43 @@ export function checkDocsPage(html: string, path: string, known: ReadonlySet<str
   }
   for (const [, href] of html.matchAll(/<a[^>]*\shref="(\/docs[^"#?]*)/g)) {
     need(known.has(href!.replace(/(.)\/$/, "$1")), `link ${href} points to no exported docs page`);
+  }
+  // Every other link to the site itself: the landing page and the files beside the pages, such as the ABIs.
+  if (exported) {
+    for (const [, href] of html.matchAll(/<a[^>]*\shref="(\/(?!\/|docs[/"#?])[^"#?]*)/g)) {
+      need(exported(href!), `link ${href} points to no exported file`);
+    }
+  }
+  return problems;
+}
+
+/**
+ * Problems with the link preview of one exported docs page, whose URL path is `pageUrl` (/docs, /docs/x). Its og:image
+ * and twitter:image both name the page's own image (lib/docs/og.ts), so a shared link shows this page and no other, and
+ * that file is a PNG in out/ of the size the tags give. `read` returns an exported file by its path under out/, or
+ * undefined. `path` names the page in each problem.
+ */
+export function checkOgImage(html: string, pageUrl: string, path: string, read: (path: string) => Buffer | undefined): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`${path}: ${problem}`);
+  };
+  const own = ogImageUrl(pageUrl);
+  for (const [name, attribute] of [["og:image", "property"], ["twitter:image", "name"]] as const) {
+    const url = new RegExp(`<meta ${attribute}="${name}" content="([^"]+)"`).exec(html)?.[1];
+    // An absolute URL whose path is the page's own image; checkDocsPage already wants og:image absolute.
+    need(url !== undefined && /^https?:\/\/[^/]+(\/[^?#]*)/.exec(url)?.[1] === own, `${name} is ${url ?? "missing"}, not the page's own image ${own}`);
+  }
+  const { width, height } = OG_IMAGE_SIZE;
+  const tag = (name: string) => new RegExp(`<meta property="og:image:${name}" content="([^"]*)"`).exec(html)?.[1] ?? "none";
+  const said = `${tag("width")}x${tag("height")}`;
+  need(said === `${width}x${height}`, `og:image:width and og:image:height say ${said}, want ${width}x${height}`);
+  const file = read(own.slice(1));
+  if (file === undefined) need(false, `missing out${own}`);
+  else if (file.length < 24 || file.readUInt32BE(0) !== 0x89504e47 || file.readUInt32BE(4) !== 0x0d0a1a0a) need(false, `out${own} is not a PNG`);
+  else {
+    const size = `${file.readUInt32BE(16)}x${file.readUInt32BE(20)}`;
+    need(size === `${width}x${height}`, `out${own} is ${size}, want ${width}x${height}`);
   }
   return problems;
 }
@@ -107,15 +150,134 @@ export function checkLandingIsolation(html: string, read: (url: string) => strin
   return problems;
 }
 
-/** Problems with the machine-readable copies of the docs. `urls` holds the absolute URL of every exported docs page. */
-export function checkDocsIndexes(files: { llms: string; llmsFull: string; sitemap: string }, urls: readonly string[]): string[] {
+/**
+ * Problems with the machine-readable copies of the docs. `urls` holds the absolute URL of every exported docs page;
+ * `exported` says whether a URL path is a file in out/. llms.txt gives the status under its summary and links each
+ * page's Markdown copy, with the web page after it, and each of its links on the site leads to an exported file and
+ * never to a docs web page.
+ */
+export function checkDocsIndexes(
+  files: { llms: string; llmsFull: string; sitemap: string },
+  urls: readonly string[],
+  exported: (path: string) => boolean,
+): string[] {
   const problems: string[] = [];
+  if (!/^> .+\n\nStatus: \S/m.test(files.llms)) problems.push("llms.txt has no Status line under its summary");
   for (const url of urls) {
-    if (!files.llms.includes(`](${url})`)) problems.push(`llms.txt does not link ${url}`);
+    const md = new URL(markdownUrl(new URL(url).pathname), url).href;
+    if (!files.llms.includes(`](${md})`)) problems.push(`llms.txt does not link the Markdown copy ${md}`);
+    if (!files.llms.includes(`Web page: ${url}\n`)) problems.push(`llms.txt does not give the web page ${url}`);
     if (!files.llmsFull.includes(`URL: ${url}\n`)) problems.push(`llms-full.txt has no page with URL ${url}`);
     if (!files.sitemap.includes(`<loc>${url}</loc>`)) problems.push(`sitemap.xml does not list ${url}`);
   }
+  const origin = urls[0] && new URL(urls[0]).origin;
+  for (const [, link] of files.llms.matchAll(/\]\((https?:\/\/[^)\s]+)\)/g)) {
+    const target = new URL(link!);
+    if (target.origin !== origin) continue;
+    if (!exported(target.pathname)) problems.push(`llms.txt links ${link}, which is not in out/`);
+    // A tool reads the Markdown copy, not the HTML with its navigation; "Web page:" names the HTML as text, not a link.
+    if (target.pathname === "/docs" || target.pathname.startsWith("/docs/")) {
+      problems.push(`llms.txt links the web page ${link}: link its Markdown copy ${new URL(markdownUrl(target.pathname), target).href}`);
+    }
+  }
+  if (files.llmsFull.includes(INDEX_NOTE_START)) problems.push("llms-full.txt repeats the index note of the pages' own Markdown files");
   return problems;
+}
+
+/** The header line of a Markdown copy: the paragraph after its URL line. */
+const copyFrame = (md: string) => /^URL: [^\n]*\n\n([^\n]*)/m.exec(md)?.[1] ?? "";
+
+/**
+ * Problems with the Markdown copy (out/md/...md) of one exported docs page, against the page's HTML: it opens with the
+ * index note, gives the status label and review date the page's header shows and no other, and ends with the files of
+ * the page's Source of truth box, in its order. `path` names the copy in each problem.
+ */
+export function checkMarkdownCopy(html: string, md: string, path: string): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`${path} ${problem}`);
+  };
+  need(md.startsWith(INDEX_NOTE_START), "does not open with the index note");
+  const frame = copyFrame(md);
+  const label = /aria-label="Status: ([^"]+)\. What this label means"/.exec(html)?.[1];
+  if (label) need(frame.startsWith(`Status: ${label}. `), `does not say "Status: ${label}." after its URL, as its page does`);
+  else need(!frame.startsWith("Status: "), "gives a Status line, but its page shows no status label");
+  const reviewed = /Last reviewed <time dateTime="([0-9-]+)"/.exec(html)?.[1];
+  if (reviewed) need(frame.endsWith(`Last reviewed: ${reviewed}.`), `does not say "Last reviewed: ${reviewed}." after its URL, as its page does`);
+  else need(!frame.includes("Last reviewed: "), "gives a review date, but its page shows none");
+  const box = /<aside aria-labelledby="source-of-truth"[\s\S]*?<\/aside>/.exec(html)?.[0];
+  const listed = md.split("\n## Source of truth\n")[1];
+  if (box) {
+    const files = [...box.matchAll(/<a href="([^"]+\/blob\/main\/[^"]+)"/g)].map(([, href]) => `](${href})`);
+    const links = [...(listed ?? "").matchAll(/\]\([^)\s]+\)/g)].map(([link]) => link);
+    need(files.length > 0 && links.join("\n") === files.join("\n"), "does not list the page's Source of truth files");
+  } else need(listed === undefined, "lists Source of truth files, but its page has no Source of truth box");
+  return problems;
+}
+
+/**
+ * Problems with the published ABIs: each out/data/abi/<name>.json must hold the JSON its route writes from the committed
+ * copy of agent/src/abi/generated.ts. `read` returns an exported file's text by its path under out/, or undefined.
+ */
+export function checkAbiFiles(expected: Readonly<Record<string, unknown>>, read: (path: string) => string | undefined): string[] {
+  const problems: string[] = [];
+  for (const [name, file] of Object.entries(expected)) {
+    const path = `data/abi/${name}.json`;
+    const text = read(path);
+    if (text === undefined) {
+      problems.push(`missing out/${path}`);
+      continue;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      problems.push(`out/${path} is not JSON`);
+      continue;
+    }
+    if (!isDeepStrictEqual(json, file)) problems.push(`out/${path} is not the committed ABI (run npm run docs:gen and build again)`);
+  }
+  return problems;
+}
+
+type Env = Record<string, string | undefined>;
+
+/** Whether this run checks an export that is about to ship: on CI, or in a Vercel build. */
+export function shipsPublicly(env: Env = process.env): boolean {
+  return Boolean(env.CI?.trim() || env.VERCEL?.trim());
+}
+
+/** Every http://localhost URL in a text, without the punctuation that ends a sentence or closes a quote. */
+function localhostUrls(text: string): string[] {
+  return [...text.matchAll(/http:\/\/localhost[^\s"'<>()[\]`\\]*/g)].map(([url]) => url.replace(/[.,;:!?]+$/, ""));
+}
+
+/** Host names that only ever mean the machine the build ran on. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Problems with exported files that name an http://localhost URL. A build that sets neither NEXT_PUBLIC_SITE_URL nor
+ * the Vercel domain falls back to localhost (lib/site.ts), and every absolute link it writes then leads nowhere: llms.txt,
+ * the sitemap, the Markdown copies, canonical and Open Graph URLs. `allowed` holds the localhost URLs the docs write in
+ * their own text, such as the quickstart's dev server, which stay. One problem per file, with its first such URL.
+ * `site` is the site URL the export was built for (siteUrl()). On loopback it is a problem by itself: the fallback is the
+ * bare origin http://localhost:3000, the same URL the quickstart writes, so a file whose only leak is that origin, such
+ * as the landing page's canonical URL, would pass the file scan alone.
+ */
+export function checkLocalhost(files: Iterable<{ path: string; text: string }>, allowed: ReadonlySet<string>, site: URL): string[] {
+  const fix = "set NEXT_PUBLIC_SITE_URL to the public site and build again";
+  const problems: string[] = [];
+  if (LOOPBACK_HOSTS.has(site.hostname)) problems.push(`the site URL is ${site.href}: ${fix}`);
+  for (const { path, text } of files) {
+    const url = localhostUrls(text).find((u) => !allowed.has(u));
+    if (url) problems.push(`${path} links ${url}: ${fix}`);
+  }
+  return problems;
+}
+
+/** The localhost URLs that the docs pages write in their text (content/docs/**.mdx), which a public export keeps. */
+export function docsLocalhostUrls(mdx: Iterable<string>): Set<string> {
+  return new Set([...mdx].flatMap(localhostUrls));
 }
 
 /**

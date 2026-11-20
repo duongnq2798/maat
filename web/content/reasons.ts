@@ -44,6 +44,35 @@ export const REASON_GROUPS: readonly ReasonGroup[] = [
 /** The refusal the fork run recorded; the Refusals section highlights it. */
 export const HIGHLIGHT_REASON: RefusalCode = "MARKET_CLOSED";
 
+/** One short plain label per code, shown before the code wherever a person reads a decision (spec 2026-11-20 section 3). */
+export const REASON_LABEL: Readonly<Record<ReasonCode, string>> = {
+  OK: "All checks passed",
+  VAULT_PAUSED: "Vault paused",
+  ACTION_NOT_SUPPORTED: "Credit not enabled",
+  TOKEN_NOT_ALLOWED: "Token not allowed",
+  TOKEN_PAUSED: "Token paused",
+  POLICY_BLOCKED: "Blocked by token policy",
+  MARKET_CLOSED: "Market closed",
+  FEED_STALE: "Price feed out of date",
+  BAD_PRICE: "Bad price data",
+  MULTIPLIER_COOLDOWN: "Corporate action cooldown",
+  PREMIUM_TOO_HIGH: "Pool price too far from oracle",
+  SIZE_LIMIT: "Over the size limit",
+  CONCENTRATION: "Too much in one stock",
+  PAYEE_NOT_ALLOWED: "Payee not approved",
+  INSUFFICIENT_BALANCE: "Not enough funds",
+  SWAP_FAILED: "Swap failed",
+  TRANSFER_FAILED: "Transfer failed",
+  CREDIT_FAILED: "Aave call failed",
+  HEALTH_FACTOR_LOW: "Health factor too low",
+  DERISK_WINDOW: "Pre-pause safety margin",
+};
+
+/** The plain-text form for places that can't hold markup: "Market closed (MARKET_CLOSED)". */
+export function reasonText(code: ReasonCode): string {
+  return `${REASON_LABEL[code]} (${code})`;
+}
+
 /** One plain-English line per refusal, written from where the contracts return it (contracts/src). */
 export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   VAULT_PAUSED: "The owner paused the vault. Only repaying debt still goes through.",
@@ -57,8 +86,8 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   MULTIPLIER_COOLDOWN: "The token's multiplier changed recently, as after a split, or can't be read.",
   PREMIUM_TOO_HIGH: "The pool price is too far above or below Chainlink.",
   SIZE_LIMIT: "Over the per-trade cap or the daily cap.",
-  CONCENTRATION: "The buy would push one stock past its maximum weight.",
-  PAYEE_NOT_ALLOWED: "Payments go only to payees the owner listed through the timelock.",
+  CONCENTRATION: "The buy would push one stock past its maximum weight, or its weight can't be measured.",
+  PAYEE_NOT_ALLOWED: "Payments go only to payees on the vault's allowlist.",
   INSUFFICIENT_BALANCE: "Not enough funds for the amount, or an amount of zero.",
   SWAP_FAILED: "The swap reverted, for example on slippage past the limit.",
   TRANSFER_FAILED: "A token transfer or approval failed.",
@@ -68,7 +97,7 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
 };
 
 /**
- * The docs' line per refusal: REASON_MEANING with four lines widened to match the code. Meant for the docs table
+ * The docs' line per refusal: REASON_MEANING with five lines widened to match the code. Meant for the docs table
  * (components/docs/content.tsx) and its Markdown copy (lib/docs/component-text.ts); the landing's Refusals section
  * keeps REASON_MEANING.
  */
@@ -78,4 +107,5 @@ export const REASON_MEANING_DOCS: Readonly<Record<RefusalCode, string>> = {
   MARKET_CLOSED: "The market is closed for the mandate's session (a weekend, a holiday or outside its hours), or the calendar can't be read.",
   BAD_PRICE: "The Chainlink answer is zero, negative, undated or from the future, or the feed or the pool's TWAP could not be read.",
   MULTIPLIER_COOLDOWN: "The token's multiplier changed recently or has a change scheduled, as around a split, or can't be read.",
+  PAYEE_NOT_ALLOWED: "The payee is not on the allowlist, which the deploy sets and the owner changes only through the timelock.",
 };

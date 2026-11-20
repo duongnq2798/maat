@@ -85,6 +85,10 @@ export const FACTS = {
     `gasUsed per tx in agent/test/integration/fork-gas.json, written by MAAT_GAS_LOG from ${FORK_TEST} at BLOCK_SESSION (BUY varies a little between runs, the other three do not)`,
   ),
   feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (age 14 s)"),
+  forkRunMaxStalenessSec: fact(
+    3600,
+    "maxStaleness of the vault in the recorded fork run (fork-gas.json): agent/test/integration/deploy.ts at 4492eed (git show 4492eed:agent/test/integration/deploy.ts); the helper now deploys the default mandate's value",
+  ),
   loopMinutes: fact(15, "agent/src/loop/scheduler.ts IN_SESSION_MS, agent loop cadence in session"),
   rebalanceDriftPct: fact(5, "agent/src/policy.ts DEFAULT_POLICY.driftBps, rebalance past a 5-point drift"),
   targetWeightPct: fact(
@@ -111,7 +115,7 @@ export const FACTS = {
   ),
   feedEdgeMin: fact(
     1200,
-    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET",
+    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: assumes Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET (not measured in the repository)",
   ),
   calendar: fact<{ holidays: readonly Holiday[]; earlyCloses: readonly EarlyClose[] }>(
     {

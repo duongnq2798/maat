@@ -1,10 +1,10 @@
 ---
 title: Watch decisions onchain
-description: Read Decision events from a vault with cast or viem, decode the action and reason, and match them to the agent's journal.
+description: Read a vault's Decision events with cast, decode them as the agent does with viem, match them to the agent's journal, and watch the owner's actions.
 type: guide
 audience: [watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -26,7 +26,7 @@ Every [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/g
 
 <Callout type="fork" title="What has run">
 
-No Maat vault is deployed, so there are no mainnet `Decision` events to read, and every command below uses `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault, and the Maat team has not run them. It has not run the `jq` line in [step 5](#match-a-decision-to-the-journal) either. The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
+No Maat vault is deployed, so there are no mainnet `Decision` events to read, and the commands below that need the vault's address take it from `VAULT`, which [step 1](#read-the-events-with-cast) sets to the placeholder `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault, and the Maat team has not run them. It has not run the `jq` line in [step 5](#match-a-decision-to-the-journal) either. The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
 
 </Callout>
 
@@ -34,7 +34,7 @@ No Maat vault is deployed, so there are no mainnet `Decision` events to read, an
 
 | Need | Detail |
 | --- | --- |
-| A vault address | Written `<VAULT_ADDRESS>` here. The Maat team has deployed none ([Status and roadmap](/docs/get-started/status#next-mainnet)). Once an [owner](/docs/help/glossary#owner) deploys one, its address goes in the table in `deployments/README.md`. |
+| A vault address | Written `<VAULT_ADDRESS>` here. The Maat team has deployed none ([Status and roadmap](/docs/get-started/status#next-mainnet)). Once an owner deploys one, its address goes in the table in `deployments/README.md`. |
 | A Base RPC URL | Written `<BASE_RPC_URL>` here. Reading logs needs no key and no wallet. |
 | `cast` | From [Foundry](https://getfoundry.sh). The help text of `cast logs` in Foundry 1.9.0, the version checked while writing this guide, says that an event declaration with `indexed` markers decodes the matching logs in text output. |
 | The deploy block | Written `<DEPLOY_BLOCK>`. It is where to start the search. |
@@ -233,7 +233,7 @@ cast call "$VAULT" "today()(uint256)" --rpc-url "$BASE_RPC_URL"
 cast call "$VAULT" "spentOnDay(uint256)(uint256)" <DAY> --rpc-url "$BASE_RPC_URL"   # <DAY>: the number today() returns
 ```
 
-These calls read what the vault holds. Stock the vault has supplied as collateral sits in the credit adapter's [Aave V4](/docs/help/glossary#aave-v4) position, not in the vault ([The adapter holds the position](/docs/concepts/credit-and-health-factor#the-adapter-holds-the-position)), so read that amount from the adapter:
+The two `balanceOf` calls below read what the vault itself holds. Stock the vault has supplied as collateral sits in the credit adapter's [Aave V4](/docs/help/glossary#aave-v4) position, not in the vault ([The adapter holds the position](/docs/concepts/credit-and-health-factor#the-adapter-holds-the-position)), so the last three calls read the adapter's position:
 
 ```bash
 export USDC=$(cast call "$VAULT" "usdc()(address)" --rpc-url "$BASE_RPC_URL")
@@ -253,7 +253,7 @@ cast call "$ADAPTER" "healthFactor()(uint256)" --rpc-url "$BASE_RPC_URL"
 | `mandate()` | The rules in force, in the order of `MANDATE_TYPE`. The ninth field is the calendar and the eleventh is the credit adapter. A zero credit adapter means the credit actions are off. |
 | `tokens()`, `tokenConfig(token)` | Every stock the vault has listed, delisted ones included, then one stock's `allowed`, `feed`, `pool` and `maxWeightBps`. |
 | `payees()` | The [payees](/docs/help/glossary#payee) that `PAY_EXPENSE` may pay now. |
-| `today()`, `spentOnDay(day)` | The UTC day number, which is the `<DAY>` to pass to `spentOnDay`, then how much of that day's cap the buys, sells and bill payments used, in USDC units. Credit actions do not count. |
+| `today()`, `spentOnDay(day)` | The UTC day number, which is the `<DAY>` to pass to `spentOnDay`, then how much of that day's cap the buys, sells and `PAY_EXPENSE` payments (such as the agent's bill payments) used, in USDC units. Credit actions do not count. |
 | `balanceOf(vault)` | What the vault itself holds, in raw units: USDC has <Fact name="usdcDecimals" />, and a stock has its own `decimals()`. |
 | `suppliedOf(token)` | The stock supplied as collateral, in the stock's raw units. |
 | `debt()`, `healthFactor()` | The USDC owed, and the position's [health factor](/docs/help/glossary#health-factor) in [WAD](/docs/help/glossary#wad). [What to watch while it runs](/docs/guides/run-the-agent#what-to-watch-while-it-runs) explains the floor and the target. |
@@ -323,8 +323,8 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 | Event | What already changed |
 | --- | --- |
 | `PausedSet` | With `true`, every action except `REPAY` is refused with `VAULT_PAUSED`, and `REPAY` still runs its own checks ([Repay while paused](/docs/concepts/credit-and-health-factor#repay-while-paused)). The event is emitted even when the flag did not change. |
-| `ExecutorSet` | A new address can call `execute` from then on, and the old one gets `NotExecutor`. The constructor does not emit it, so read the first executor from `executor()`. |
-| `Withdrawn` | The owner took `amount` of `token`, in the token's raw units, out of the vault. `withdraw` can send only to the owner address. |
+| `ExecutorSet` | The address in the event can call `execute` until the next `ExecutorSet`, and any other address gets `NotExecutor`. It is emitted even when the address did not change. The constructor does not emit it, so read the first executor from the deploy's constructor arguments, or from `executor()` while no `ExecutorSet` has followed. |
+| `Withdrawn` | The owner took `amount` of `token`, in the token's raw units, out of the vault. `withdraw` can send only to the owner address. For a `token` that is a plain account with no code, the event is emitted although nothing moved ([Events](/docs/reference/events#withdrawn)). |
 
 Adding a holiday or an earlier close to the vault's calendar is instant too, for the calendar's owner (the vault owner in the runbook's deploy). The calendar logs it, not the vault: the calendar's address is the ninth field of `mandate()`, and [Events](/docs/reference/events#marketcalendar) lists its two events. So the timelock gives notice of a rule change, but it is not a lock on the funds: the owner can pause, rotate the executor and withdraw at once ([If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks)).
 

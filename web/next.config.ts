@@ -6,6 +6,9 @@ const config: NextConfig = {
   output: "export",
   // Two root layouts, (site) and (docs), so the 404 for unmatched URLs comes from app/global-not-found.tsx.
   experimental: { globalNotFound: true },
+  // The docs' link preview images (app/og/[...slug]/route.ts) are drawn with resvg, a native Node addon that Turbopack
+  // cannot bundle, so the build loads it from node_modules.
+  serverExternalPackages: ["@resvg/resvg-js"],
 };
 
 export default createMDX()(config);

@@ -4,7 +4,7 @@ description: What is built and fork-tested today, what is next before mainnet, a
 type: overview
 audience: [newcomer, evaluator, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - deployments/README.md
@@ -17,11 +17,11 @@ This page says what exists, what comes next and what is only an idea, so you can
 
 ## What the three labels mean
 
-Every page in these docs carries one of three labels next to its title.
+Every page in these docs, apart from the docs home and the Help pages, carries one of three labels under its title.
 
 | Label | Meaning | Today |
 | --- | --- | --- |
-| <StatusBadge status="fork-tested" /> | Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed. | Every page in these docs. |
+| <StatusBadge status="fork-tested" /> | Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed. | Every page in these docs except the docs home, which says so in its opening paragraphs, and the Help pages. |
 | <StatusBadge status="live" /> | Deployed to Base mainnet by the owner, with the addresses recorded in `deployments/README.md`. | None. No Maat contract is deployed. |
 | <StatusBadge status="planned" /> | Designed but not built. | Planned work is listed on this page, under Planned, not built. |
 
@@ -40,19 +40,21 @@ This table follows the Status section of the README, without the test counts. Th
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-transaction reconcile | Built and tested, with fork integration tests. The Claude proposer is tested against a fake client, and the fork run uses a scripted proposer and a local sender. No output from the real Claude API is committed yet | [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent) |
 | ERC-8021 Builder Code on every agent transaction | Built and tested, including in the fork run. No real code is registered yet | [`agent/src/exec/builderCode.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/builderCode.ts) |
 | [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the [executor](/docs/help/glossary#executor), with an account policy | Built, and tested against a fake CDP client only. Never run against the real CDP | [`agent/src/exec/cdpSender.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpPolicy.ts) |
-| Landing page with the [interactive decision engine](/) and the [labeled fork ledger](/#ledger) | Built and tested. A static export with no wallet, no RPC calls, no analytics and no cookies | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
+| The landing page and this docs center. The landing page has the [interactive decision engine](/), the [labeled fork ledger](/#ledger) and a [simulator](/#try) of the default mandate, which runs in the browser and is a simulation, not the contract | Online at maatonbase.xyz, a static export of `main` with no wallet, no RPC calls, no analytics and no cookies. Built and tested | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
 
 There is no third-party audit. Treat the contracts as unaudited. [What Maat does not claim](/docs/security/not-claimed) lists the known limits.
 
 ## Next: mainnet
 
+<DeploymentTable />
+
 The owner deploys by hand. Every deploy, funding and setup transaction is signed from the owner's own wallet, and no script in the repository holds a key. The checklist, in order:
 
 1. **Deploy.** Simulate with the real configuration and check the printed owner address character for character, because the owner is immutable. Then broadcast. The commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault).
 2. **Fund.** Approve the USDC, then call `fund(amount)` on the vault. Do not transfer USDC straight into it, because `notifyRevenue` would record that as revenue.
-3. **Run the owner's smoke test.** At first the owner's own wallet is the executor. While it is, the owner signs one small buy during US market hours, which must be allowed, and one buy on a weekend, which must be refused with `MARKET_CLOSED`. A credit smoke test follows the same way. The addresses and transaction hashes then go into the table in `deployments/README.md`.
+3. **Run the owner's smoke test.** At first the owner's own wallet is the executor. While it is, the owner signs one small buy during US market hours, which must be allowed, and one buy on a weekend, which must be refused with `MARKET_CLOSED` ([Run the smoke test](/docs/guides/deploy-your-own-vault#run-the-smoke-test)). A [credit smoke test](/docs/guides/deploy-your-own-vault#run-the-credit-smoke-test) follows the same way. The addresses and transaction hashes then go into the table in `deployments/README.md`, which the start of this section reads.
 4. **Hand the executor role to the CDP wallet.** The agent's `cdp-setup.ts` script creates the CDP executor account, or finds the one named by `CDP_ACCOUNT_NAME` (`maat-executor` by default), attaches its policy and prints its address. The owner then calls `setExecutor` with that address, sends <Fact name="executorGasEth" /> on Base to it for gas, and sets `MAAT_EXECUTOR` in `agent/.env`. [Run the agent](/docs/guides/run-the-agent#go-live) has the owner-only steps. After the handover the owner's own `execute` calls revert with `NotExecutor`, which is why the smoke test comes first.
-5. **Record the agent's first real `Decision`.** Live mode needs a registered Builder Code and CDP keys, which the owner sets up. Once the agent runs live, the first `Decision` it records is the first one signed through the CDP wallet.
+5. **Record the agent's first real `Decision`.** [Live mode](/docs/help/glossary#live-mode) needs a registered Builder Code and CDP keys, which the owner sets up. Once the agent runs in live mode on the mainnet vault, the first `Decision` it records is the first one signed through the CDP wallet.
 
 Until the owner deploys, no page in these docs is labeled live, and the site's ledger shows only the fork run.
 
@@ -60,20 +62,20 @@ Until the owner deploys, no page in these docs is labeled live, and the site's l
 
 <Callout type="note" title="Planned">
 
-None of this is built. Each item links the spec section it is sketched in and names the dependencies that spec states. W2 and W3 are the next two stages of the website, as the web design spec lays them out.
+None of this is on `main`. Each item links the spec section it is sketched in and names the dependencies that spec states. W2 and W3 are the next two stages of the website, as the web design spec lays them out.
 
-1. **A mainnet ledger, a dashboard and a Base App mini-app manifest (W2).** The ledger would read `Decision` events from the mainnet vault and link each row to Basescan. Where the operator exports the agent's [journal](/docs/help/glossary#journal), it would show the [rationale](/docs/help/glossary#rationale) text, with a "hash verified" badge only when `keccak256` of the text equals the `rationaleHash` onchain. It needs the mainnet deploy first. Sketched in [the web design spec, section 10](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-web-design.md).
-2. **An [x402](/docs/help/glossary#x402) Guard Service.** Other agents would pay <Fact name="x402Price" /> per "is this trade safe now?" check, and that USDC would fund the treasury loop. It is not implemented anywhere in the repository. The design pays the vault's address, so it needs a deployed vault. The spec leaves open whether the CDP x402 facilitator can pay a contract directly; if it cannot, the payment goes to the agent wallet, which forwards it to the vault. Sketched in [the treasury design spec, section 3.4](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md).
-3. **A Guard Service HTTP API, an MCP server and a Bankr Skill** that expose the same check. The spec names two MCP tools, `market_status` and `check_trade`, and calls the MCP server and the Bankr Skill stretch goals. Sketched in [the treasury design spec, section 3.4](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md).
-4. **`MandateFactory`.** Any agent would deploy its own vault with its own [mandate](/docs/help/glossary#mandate). It is a stretch goal. The sketch deploys each vault as an EIP-1167 clone, which does not fit the current `MandateVault`: it sets its owner, USDC and policy registry as immutables in its constructor and has no initializer. Sketched in [the treasury design spec, section 3.7](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md).
-5. **A daily diary and a replay page for the fork scenarios (W3).** Sketched in [the web design spec, section 10](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-web-design.md).
+1. **A mainnet ledger, a dashboard and a Base App mini-app manifest (W2).** The ledger would read `Decision` events from the mainnet vault and link each row to Basescan. Where the operator exports the agent's [journal](/docs/help/glossary#journal), it would show the [rationale](/docs/help/glossary#rationale) text, with a "hash verified" badge only when `keccak256` of the text equals the `rationaleHash` onchain. It needs the mainnet deploy first. Sketched in [the web design spec, section 10](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-web-design.md#10-web-roadmap-after-w1-each-part-has-its-own-spec).
+2. **An [x402](/docs/help/glossary#x402) Guard Service.** Other agents would pay <Fact name="x402Price" /> per "is this trade safe now?" check, and that USDC would fund the treasury loop. It is not on `main`; [pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds it. The design pays the vault's address, so it needs a deployed vault. The spec leaves open whether the CDP x402 facilitator can pay a contract directly; if it cannot, the payment goes to the agent wallet, which forwards it to the vault. Sketched in [the treasury design spec, section 3.4](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md#34-guard-service-typescript-viem).
+3. **A Guard Service HTTP API, an MCP server and a Bankr Skill** that expose the same check. The spec names two MCP tools, `market_status` and `check_trade`, and calls the MCP server and the Bankr Skill stretch goals. The Guard Service and its HTTP API are part of pull request #2; the MCP server and the Bankr Skill are not. Sketched in [the treasury design spec, section 3.4](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md#34-guard-service-typescript-viem).
+4. **`MandateFactory`.** Any agent would deploy its own vault with its own mandate. It is a stretch goal. The sketch deploys each vault as an EIP-1167 clone, which does not fit the current `MandateVault`: it sets its owner, USDC and policy registry as immutables in its constructor and has no initializer. Sketched in [the treasury design spec, section 3.7](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-06-mandate-treasury-design.md#37-mandatefactory-stretch-week-3).
+5. **A daily diary and a replay page for the fork scenarios (W3).** Sketched in [the web design spec, section 10](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-web-design.md#10-web-roadmap-after-w1-each-part-has-its-own-spec).
 
 </Callout>
 
 ## How this page stays honest
 
 - Every page sets its label in its frontmatter, and a test rejects any value other than the three above.
-- Nothing is labeled live until the owner deploys. The address table in `deployments/README.md` is empty today.
-- Distinctive numbers come from facts: a page fails a test if it types out by hand a fact that contains three or more digits in a row (dates aside), a dollar amount or a bps value. Tests check most facts against the contracts, the agent and the fork-run gas log. A few cite documents instead: the planned x402 price and the treasury size cite the treasury design spec, and the AMZNc pool liquidity cites the README and that spec. The check count cites that spec too, and its only test compares it with the site's own list of check labels, not with the contract.
+- Nothing is labeled live until the owner deploys. The start of [Next: mainnet](#next-mainnet) is read from the table in `deployments/README.md`. Once a Base mainnet row of that table has an address, a test fails and lists each line, on the docs pages and in the note of the ABI JSON files, that still says Maat has no deployment in one of the phrases it looks for.
+- A page fails a test if its text outside the frontmatter, code and the attributes of component tags types out by hand a fact, one of the named values the docs render with `<Fact>`, that contains three or more digits in a row (dates aside), a dollar amount or a [bps](/docs/help/glossary#basis-point-bps) value. Tests check most facts against the contracts, the agent and the fork-run gas log. A few cite documents instead: the planned x402 price and the treasury size cite the treasury design spec, and the AMZNc pool liquidity cites the README and that spec. The check count cites that spec too, and its only test compares it with the site's own list of check labels, not with the contract.
 - Test counts are not shown, because they go stale. The [Quickstart](/docs/get-started/quickstart) shows how to run the suites yourself.
-- The date at the top of each page, Last reviewed, says when the page was last checked against its sources.
+- The date at the top of each page except the docs home, Last reviewed, says when the page was last checked against its sources.

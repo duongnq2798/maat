@@ -24,11 +24,11 @@ contract Deploy is Script {
         address owner = vm.envAddress("MAAT_OWNER");
         address executor = vm.envAddress("MAAT_EXECUTOR");
         address payee = vm.envAddress("MAAT_EXPENSE_PAYEE");
+        address payee2 = optionalAddress("MAAT_EXPENSE_PAYEE_2"); // optional: unset or zero adds none
 
         (address[] memory toks, TokenConfig[] memory cfgs) = MaatConfig.basket();
         (address[] memory ctoks, uint256[] memory ids) = MaatConfig.creditReserves();
-        address[] memory payees = new address[](1);
-        payees[0] = payee;
+        address[] memory payees = expensePayees(payee, payee2);
 
         // The credit adapter is bound to the vault's address, so the vault must be the 4th contract created from
         // the deployer's current nonce. Send no other transaction from the deployer until this script finishes.
@@ -57,9 +57,30 @@ contract Deploy is Script {
         console2.log("owner (immutable)   ", owner);
         console2.log("executor            ", executor);
         console2.log("expense payee       ", payee);
+        console2.log("expense payee 2     ", payee2 == address(0) ? "none" : vm.toString(payee2));
         console2.log("MarketCalendar      ", address(calendar));
         console2.log("AerodromeSwapAdapter", address(swapAdapter));
         console2.log("AaveV4CreditAdapter ", address(creditAdapter));
         console2.log("MandateVault        ", address(vault));
+    }
+
+    /// @notice The address in env variable `name`, or address(0) (unset) when it is missing.
+    function optionalAddress(string memory name) internal view returns (address) {
+        return vm.envOr(name, address(0));
+    }
+
+    /// @notice The vault's starting payee list: `first`, then `second` unless it is address(0) (unset).
+    /// @dev The vault reverts on a zero payee but silently skips a repeat, so a second equal to the first is
+    /// refused here rather than deploying a one-payee list the operator did not mean.
+    function expensePayees(address first, address second) internal pure returns (address[] memory payees) {
+        if (second == address(0)) {
+            payees = new address[](1);
+            payees[0] = first;
+            return payees;
+        }
+        require(second != first, "MAAT_EXPENSE_PAYEE_2 equals MAAT_EXPENSE_PAYEE");
+        payees = new address[](2);
+        payees[0] = first;
+        payees[1] = second;
     }
 }

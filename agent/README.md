@@ -3,7 +3,7 @@
 "LLM proposes, contract decides." Each cycle, the agent does the following:
 
 1. Read the state of `MandateVault` at a fixed block.
-2. Compute the policy: an equal-weight basket of NVDAc/GOOGLc/AAPLc, keep 30% in USDC, rebalance on a ±5% drift, borrow when there is less than 7 days of compute runway, repay debt when revenue arrives.
+2. Compute the policy: an equal-weight basket of NVDAc/GOOGLc/AAPLc, keep 30% in USDC, rebalance when a stock's weight drifts more than 5 percentage points from its target, borrow when there is less than 7 days of compute runway, repay debt when revenue arrives.
 3. Ask Claude (`claude-sonnet-5-5`, structured output). Claude may only propose.
 4. Call `previewIntent` with `eth_call`, using `from = executor`.
 5. Send `execute` through the CDP Server Wallet. Every tx carries the Builder Code (ERC-8021).
@@ -34,7 +34,7 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
    node --env-file=.env --import tsx scripts/cdp-setup.ts <MAAT_VAULT>
    ```
 
-   The policy allows only txs on Base with `to` = the vault and `value` = 0. Hash signing is rejected.
+   The policy accepts sending a tx only on Base, with `to` = the vault and `value` = 0. It accepts signing a tx with `to` = the vault and `value` = 0, but that rule names no network. Raw hash signing (`signEvmHash`) is rejected. The policy has no rule for message or typed-data signing.
 4. **Point the vault at the new executor.** You sign this one yourself with the owner wallet; see `deployments/README.md`, section "Switch the executor to the CDP Server Wallet".
 5. **Fund gas:** send about 0.002 ETH on Base to the executor address. A paymaster cannot be used, because it only supports smart accounts.
 6. Set `MAAT_EXECUTOR=<executor address>` and `MAAT_MODE=live`, run `npm run agent -- --once`, then check the tx on Basescan. The input data must end with the Builder Code (`...0080218021...8021`).
@@ -82,8 +82,8 @@ The fork test needs:
 - On Windows, set `MAAT_ANVIL_BIN` to point to the real `anvil.exe` file, for example `~/.foundry/versions/base-v1.5.1/anvil.exe`, because `base-anvil` is only a shell wrapper. On macOS/Linux you can leave it unset.
 - Port 8547 is free. The test runs only against a local anvil (`127.0.0.1`).
 - About 3–5 minutes on a public RPC, because the first swap on a cold fork is very slow. Set `MAAT_GAS_LOG=<file path>` to write the gas limit and `gasUsed` of each tx to a JSON file.
-- The committed log: `test/integration/fork-gas.json`; the web page reads its gas numbers from this file. Across 2 runs on 2026-11-07, `gasUsed` for SUPPLY, BORROW and the refusal log was identical, while BUY came out at 754,854 and then 758,192. If you overwrite this file, you must update `web/content/facts.ts` to match, because the parity test will fail.
+- The committed log: `test/integration/fork-gas.json`; the website keeps a copy of its gas numbers in `web/content/facts.ts`, and `web/test/facts.test.ts` checks that the two match. Across 2 runs on 2026-11-07, `gasUsed` for SUPPLY, BORROW and the refusal log was identical, while BUY came out at 754,854 and then 758,192. If you overwrite this file, you must update `web/content/facts.ts` to match, because the parity test will fail.
 
 ## Known issue: npm audit
 
-`npm audit` reports 3 high-severity issues in zod 3 and abitype nested inside `@coinbase/cdp-sdk`. They are DoS-type issues and only touch internal data. There is no safe override yet, because cdp-sdk uses the zod 3 API; `npm audit fix --force` would downgrade cdp-sdk to 1.7.0. Upgrade when Coinbase releases a version that uses zod 4.
+As of 2026-11-19, `npm audit` reports 3 high-severity vulnerabilities, all from one zod advisory, GHSA-mrhx-c7xc-m3w5. They are in zod 3.25.76 and abitype 1.0.6, both nested inside `@coinbase/cdp-sdk` 1.61.0, and in `@coinbase/cdp-sdk` itself, which depends on them. The advisory describes a DoS-type issue (memory exhaustion while validating oversized collections). In the agent, that issue only touches internal data. There is no safe override yet, because cdp-sdk uses the zod 3 API; `npm audit fix --force` would downgrade cdp-sdk to 1.7.0. Upgrade when Coinbase releases a version that uses zod 4.

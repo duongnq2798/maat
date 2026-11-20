@@ -4,7 +4,7 @@ description: Every custom error in Maat's contracts and adapters, with its param
 type: reference
 audience: [developer, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-17
 sources:
   - contracts/src/MandateVault.sol
   - contracts/src/MarketCalendar.sol
@@ -16,7 +16,7 @@ sources:
 next: [guides/configure-a-mandate, help/troubleshooting]
 ---
 
-A custom error is a [revert](/docs/help/glossary#revert) with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the [vault](/docs/help/glossary#vault), the calendar and the two adapters, with the condition that raises it. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+A custom error is a [revert](/docs/help/glossary#revert) with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the [vault](/docs/help/glossary#vault), the calendar and the two adapters, with the condition that raises it. Each entry also gives the error's selector, the first four bytes of the keccak-256 hash of its canonical ABI signature (the name and the parameter types): the revert data starts with it, so a decoder can tell which error a revert carries. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
 
 <Callout type="note" title="A refusal is not an error">
 
@@ -240,3 +240,4 @@ The error for a token that the adapter does not support, raised by the functions
 - [Credit and the health factor](/docs/concepts/credit-and-health-factor): how the vault maps the adapter's errors.
 - [Configure a mandate](/docs/guides/configure-a-mandate): the validation errors a bad config raises.
 - [MandateVault](/docs/reference/mandate-vault) and [Adapters](/docs/reference/adapters): the functions that raise them.
+- [Troubleshooting](/docs/help/troubleshooting): fixes for problems that happened while building and testing Maat.

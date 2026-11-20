@@ -1,0 +1,34 @@
+{
+  "test/MarketCalendar.t.sol:MarketCalendarTest": {
+    "duration": "2ms 40µs 900ns",
+    "test_results": {
+      "test_daysFromCivil()": {
+        "status": "Success",
+        "reason": null,
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 4792 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "111µs 500ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      },
+      "test_weekdayAndNthSunday()": {
+        "status": "Skipped",
+        "reason": null,
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 0 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "38µs 200ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      }
+    },
+    "warnings": []
+  }
+}

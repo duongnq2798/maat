@@ -4,7 +4,7 @@ description: The calendar contract's functions, the holidays and early closes it
 type: reference
 audience: [developer, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/MarketCalendar.sol
   - contracts/src/lib/DateLib.sol
@@ -13,13 +13,15 @@ sources:
 next: [reference/events, guides/change-a-rule]
 ---
 
-`MarketCalendar` answers one question for the [vault](/docs/help/glossary#vault): is the market open at this moment? It works in New York time, applies daylight saving by rule, and ships with a few holidays and early closes. Its owner can only make it stricter, by adding a holiday or moving a close earlier. A calendar that is looser has to be a new contract, switched in through the mandate and its [timelock](/docs/help/glossary#timelock). This page lists each function and the dates the constructor ships. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+`MarketCalendar` answers one question for the [vault](/docs/help/glossary#vault): is the market open at this moment? It works in New York time, applies daylight saving by rule, and ships with a few holidays and early closes. Its owner can only make it stricter, by adding a holiday or moving a close earlier. A calendar that is looser has to be a new contract, switched in through the [mandate](/docs/help/glossary#mandate) and its [timelock](/docs/help/glossary#timelock). This page lists each function and the dates the constructor ships. Each entry also gives the function's selector, the first four bytes of the keccak-256 hash of its canonical ABI signature (the name and the parameter types, with an enum as `uint8`): the calldata of a call to the function starts with it. The contract is built and fork-tested, it has not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+
+To call or decode the calendar from code without building the repo, use its <a href="/data/abi/MarketCalendar.json">ABI (JSON)</a>: `marketCalendarAbi` from [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
 
 <FunctionIndex contract="MarketCalendar" />
 
 ## Functions
 
-The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) and [MarketCalendarVectors.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendarVectors.t.sol). In the first, `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules. One test per 2027 date, such as `test_goodFriday2027IsClosed` and `test_dayAfterThanksgiving2027ClosesEarly`, checks the shipped 2027 closures. The second checks the contract against vectors computed outside Solidity: `etOffsetSeconds` at every daylight saving change from 2007 to 2100, and `isHoliday`, `earlyCloseMin` and, at fixed New York times, `isOpen` on every shipped date, 2026-12-24's <Fact name="earlyClose" /> close included ([Calendar vectors](/docs/security/testing#calendar-vectors)).
+The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) and [MarketCalendarVectors.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendarVectors.t.sol). In the first, `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules. One test per 2027 date after New Year, such as `test_goodFriday2027IsClosed` and `test_dayAfterThanksgiving2027ClosesEarly`, checks the shipped 2027 closures. The second checks the contract against vectors computed outside Solidity: `etOffsetSeconds` at every daylight saving change from 2007 to 2100, and `isHoliday`, `earlyCloseMin` and, at fixed New York times, `isOpen` on every shipped date, 2026-12-24's <Fact name="earlyClose" /> close included ([Calendar vectors](/docs/security/testing#calendar-vectors)).
 
 ### addHoliday
 
@@ -120,6 +122,7 @@ No other date is in the contract. The owner adds later ones with `addHoliday` an
 
 - [Market hours](/docs/concepts/market-hours): how the two session modes, daylight saving, holidays and the feed edge decide a refusal.
 - [Events](/docs/reference/events#holidayadded): `HolidayAdded` and `EarlyCloseSet`.
+- [Change a rule](/docs/guides/change-a-rule#keep-the-calendar-current): the calendar owner's commands that add a holiday or set an early close.
 - [Errors](/docs/reference/errors#invalidclose): `InvalidClose`, `NotOwner` and `ZeroAddress` as the calendar raises them.
 - [Types](/docs/reference/types#sessionmode): the `SessionMode` enum.
 - [The nine checks](/docs/concepts/nine-checks): check 4 asks this calendar whether the market is open.

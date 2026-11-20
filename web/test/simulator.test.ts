@@ -256,13 +256,13 @@ describe("simulator: presets and copy", () => {
   it("writes the post for a refusal and for a yes", () => {
     const sat = { ...DEFAULT_SCENARIO, etDay: day("2026-11-07"), intent: buy("NVDAc", 50) };
     expect(postText(sat, evaluate(replay(sat.etDay, []), sat.intent))).toBe(
-      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED.",
+      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: Market closed (MARKET_CLOSED).",
     );
     expect(postText(DEFAULT_SCENARIO, { allowed: true, reason: "OK" })).toBe(
       "I asked Maat's simulator to buy $20 of NVDAc on Thu 5 Nov at 10:30 ET. All nine checks passed. Can you make it say no?",
     );
-    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toContain(
-      "$5 of a token outside the mandate",
+    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toBe(
+      "I tried to buy $5 of a token outside the mandate on Thu 5 Nov at 10:30 ET. Maat's simulator said no: Token not allowed (TOKEN_NOT_ALLOWED).",
     );
   });
 
