@@ -120,6 +120,24 @@ describe("blocks", () => {
     expect(await r.head()).toEqual({ block: 1000, ts: 1200 });
   });
 
+  it("blockAt never asks for a block older than the endpoint serves", async () => {
+    // 2-second blocks, head 60_000_000; the endpoint refuses (as publicnode does) any block more than 4,000,000 behind.
+    const head = 60_000_000;
+    const headTs = 1_800_000_000;
+    const asked: number[] = [];
+    const { f } = fake((req) => {
+      if (req.method === "eth_blockNumber") return `0x${head.toString(16)}`;
+      const n = Number(req.params[0]);
+      asked.push(n);
+      if (n < head - 4_000_000) return new Error("Archive requests require a personal token");
+      return { timestamp: `0x${(headTs - (head - n) * 2).toString(16)}` };
+    });
+    const r = createLogReader({ fetch: f, sleep: noSleep });
+    expect(await r.blockAt(headTs - 3_000_000 * 2 + 1)).toBe(head - 3_000_000 + 1);
+    expect(await r.blockAt(headTs - 3_000_000 * 2)).toBe(head - 3_000_000);
+    expect(Math.min(...asked)).toBeGreaterThanOrEqual(head - 4_000_000);
+  });
+
   it("blockAt throws for a timestamp after the head", async () => {
     const { f } = fake(chain(1000));
     await expect(createLogReader({ fetch: f, sleep: noSleep }).blockAt(1201)).rejects.toThrow(/after the head/);

@@ -139,8 +139,35 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
     async blockAt(ts) {
       const h = await head();
       if (ts > h.ts) throw new Error(`timestamp ${ts} is after the head (block ${h.block}, ${h.ts})`);
+      // The endpoint refuses old blocks without a token, so a search from block 0 fails. Base makes a block about every
+      // 2 s: start from that estimate, widen to a bracket by doubling, then bisect inside it.
+      const guess = Math.min(h.block, Math.max(0, h.block - Math.round((h.ts - ts) / 2)));
       let lo = 0;
       let hi = h.block;
+      let step = 1_000;
+      if ((await blockTs(guess)) >= ts) {
+        hi = guess;
+        while (hi > 0) {
+          const probe = Math.max(0, hi - step);
+          if ((await blockTs(probe)) < ts) {
+            lo = probe + 1;
+            break;
+          }
+          hi = probe;
+          step *= 2;
+        }
+      } else {
+        lo = guess + 1;
+        while (lo < h.block) {
+          const probe = Math.min(h.block, lo + step);
+          if ((await blockTs(probe)) >= ts) {
+            hi = probe;
+            break;
+          }
+          lo = probe + 1;
+          step *= 2;
+        }
+      }
       while (lo < hi) {
         const mid = Math.floor((lo + hi) / 2);
         if ((await blockTs(mid)) >= ts) hi = mid;
