@@ -110,7 +110,7 @@ When the code gains something public, its reference page needs an entry, or a te
 | an event | reference/events | `<EventEntry contract="<Contract>" name="<Event>" />`; the events of `IMandateVaultEvents` go under `MandateVault` |
 | an error | reference/errors | `<ErrorEntry contract="<Contract>" name="<Error>" />` |
 | an enum or struct in `contracts/src/Types.sol` | reference/types | `<TypeEntry name="<Name>" />` |
-| a member of `Reason` | concepts/refusal-codes | a `### <CODE>` heading under its group's heading, with its Id line, and the code in `REASONS`, in the enum's order, and in `REASON_GROUPS` in `content/reasons.ts` (`test/refusal-codes.test.ts`, `test/facts.test.ts`) |
+| a member of `Reason` | concepts/refusal-codes | a `### <CODE>` heading under its group's heading, with its Id line, and the code in `REASONS`, in the enum's order, in `REASON_GROUPS`, and in `REASON_LABEL` with a plain label of at most 32 characters and no underscore, in `content/reasons.ts` (`test/refusal-codes.test.ts`, `test/facts.test.ts`, `test/reason-label.test.ts`) |
 | a setting in `agent/.env.example` | reference/agent-configuration | a `### <NAME>` heading with `<EnvVar name="<NAME>" />` directly under it |
 | a script in `agent/package.json` | reference/agent-scripts | a `### <name>` heading with `<ScriptEntry name="<name>" />` directly under it |
 | a `.ts` file in `agent/scripts` | reference/agent-scripts | a `### <file>` heading with `<ScriptFile name="<file>" />` directly under it |
