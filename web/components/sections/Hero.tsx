@@ -1,4 +1,5 @@
 import { DecisionEngine } from "@/components/DecisionEngine";
+import { LiveStrip } from "@/components/live/LiveStrip";
 import { FACTS } from "@/content/facts";
 import { SITE } from "@/lib/site";
 
@@ -24,6 +25,7 @@ export function Hero() {
           <h1 className="m-0 text-[clamp(42px,6.2vw,86px)] font-semibold leading-[0.98] tracking-[-0.05em]">
             The AI agent that knows <span className="text-accent">when not to trade.</span>
           </h1>
+          <LiveStrip />
           <p className="lead max-w-[31em] text-[17px] sm:text-[20px]">{SITE.description}</p>
           <div className="flex flex-wrap gap-3">
             <a className="pill-dark" href={SITE.quickstartUrl}>

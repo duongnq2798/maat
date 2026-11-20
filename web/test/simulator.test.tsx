@@ -2,6 +2,8 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Simulator } from "@/components/Simulator";
+import { FACTS } from "@/content/facts";
+import { dayLabel, formatInt } from "@/content/format";
 
 function setup() {
   const user = userEvent.setup();
@@ -277,5 +279,53 @@ describe("Simulator", () => {
     vi.setSystemTime(new Date("2027-03-01T15:00:00Z"));
     setup();
     expect(screen.queryByRole("button", { name: "Now" })).toBeNull();
+  });
+
+  it("says, while Now is the moment, that the rows tagged fork value still hold the fork block, and links /now", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T20:00:00Z")); // Sat 15:00 ET
+    const ui = setup();
+    const forkTags = () => [...document.querySelectorAll("[data-fork-tag]")].map((t) => t.textContent);
+    const fixedRows = () => document.querySelectorAll("li[data-fixed]").length;
+    const note = () => screen.queryByText(/^Now sets the time only\./);
+    expect(note()).toBeNull();
+
+    await ui.user.click(await screen.findByRole("button", { name: "Now" }));
+    expect(ui.button("Now")).toHaveAttribute("aria-pressed", "true");
+    const shown = note();
+    if (!shown) throw new Error("no Now note");
+    expect(shown.tagName).toBe("P");
+    expect(shown).toHaveTextContent(
+      `Now sets the time only. The rows tagged fork value hold Base block ${formatInt(FACTS.forkBlock.value)} (${dayLabel(FACTS.forkDay.value)}, ${FACTS.forkTimeEt.value} ET), not now. Read the live values on Right now on Base`,
+    );
+    expect(shown).toHaveTextContent("Base block 53,551,627 (Thu 5 Nov, 10:30 ET), not now.");
+    expect(within(shown).getByRole("link", { name: "Read the live values on Right now on Base" })).toHaveAttribute("href", "/now");
+    expect(shown).not.toHaveTextContent(/safe/i);
+    // Under the checks, above the verdict box, and outside the one live region.
+    const checks = screen.getByRole("list", { name: "Simulated checks" });
+    const status = screen.getByRole("status");
+    expect(checks.compareDocumentPosition(shown) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(shown.compareDocumentPosition(status) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(status).not.toContainElement(shown);
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(fixedRows()).toBeGreaterThan(0);
+    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork value"));
+
+    await ui.user.click(ui.button("Thu 5 Nov · 10:30"));
+    expect(note()).toBeNull();
+    expect(fixedRows()).toBeGreaterThan(0);
+    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork"));
+  });
+
+  it("drops the Now note once the time moves off the clock's minute", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-07T20:00:00Z")); // Sat 15:00 ET
+    const ui = setup();
+    await ui.user.click(await screen.findByRole("button", { name: "Now" }));
+    expect(screen.getByText(/^Now sets the time only\./)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Time"), { target: { value: "901" } });
+    expect(ui.button("Now")).toHaveAttribute("aria-pressed", "false");
+    expect(screen.queryByText(/^Now sets the time only\./)).toBeNull();
+    expect([...document.querySelectorAll("[data-fork-tag]")].every((t) => t.textContent === "fork")).toBe(true);
   });
 });
