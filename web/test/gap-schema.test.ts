@@ -123,3 +123,61 @@ describe("toTokenRow", () => {
     expect(r.freeze).toBeNull();
   });
 });
+
+describe("consistency rules", () => {
+  const u = (block: number) => ({ block, logIndex: 0, ts: 150, answer: "160.00000000", tx: hash(block) });
+  const live = (over: Record<string, unknown> = {}) => ({
+    ...row("AAPLc"),
+    feedLive: true,
+    freeze: { from: u(2), to: u(8), hours: 1, returnMoveBps: 0, swapsWhileFrozen: 1, swapsRead: { from: 1, to: 9 } },
+    largestGap: { bps: 1, above: true, block: 5, logIndex: 0, ts: 150, tx: hash(5), pool: "161.00000000", held: "160.00000000" },
+    ...over,
+  });
+  const withRow = (r: unknown, w: Record<string, unknown> = {}) => file([{ ...complete([r, ...all13().slice(1)]), ...w }]);
+  const ok = (f: unknown) => EditionFileSchema.safeParse(f).success;
+
+  it("accepts the consistent baseline", () => {
+    expect(ok(withRow(live()))).toBe(true);
+  });
+  it("rejects closeTs not before openTs", () => {
+    expect(ok(file([{ status: "pending", ...base, closeTs: 200, openTs: 200 }]))).toBe(false);
+  });
+  it("rejects blocks.from after blocks.to", () => {
+    expect(ok(withRow(live(), { blocks: { from: 9, to: 1 } }))).toBe(false);
+  });
+  it("rejects swapsRead.from after swapsRead.to", () => {
+    const l = live();
+    expect(ok(withRow({ ...l, freeze: { ...l.freeze, swapsRead: { from: 9, to: 1 } } }))).toBe(false);
+  });
+  it("rejects a dead feed with a freeze", () => {
+    expect(ok(withRow(live({ feedLive: false })))).toBe(false);
+  });
+  it("rejects a largest gap outside the freeze", () => {
+    const l = live();
+    expect(ok(withRow({ ...l, largestGap: { ...l.largestGap, block: 9 } }))).toBe(false);
+    expect(ok(withRow({ ...l, largestGap: { ...l.largestGap, block: 1 } }))).toBe(false);
+  });
+  it("rejects a held price that is not the freeze's opening answer", () => {
+    const l = live();
+    expect(ok(withRow({ ...l, largestGap: { ...l.largestGap, held: "159.00000000" } }))).toBe(false);
+  });
+  it("rejects a largest gap without a freeze", () => {
+    expect(ok(withRow(live({ freeze: null })))).toBe(false);
+  });
+  it("rejects a series point outside [closeTs, openTs)", () => {
+    for (const ts of [99, 200]) {
+      expect(ok(withRow(live({ series: { pool: [[ts, "160.00000000"]], feed: [] } })))).toBe(false);
+      expect(ok(withRow(live({ series: { pool: [], feed: [[ts, "160.00000000"]] } })))).toBe(false);
+    }
+    expect(ok(withRow(live({ series: { pool: [[100, "160.00000000"]], feed: [[199, "160.00000000"]] } })))).toBe(true);
+  });
+});
+
+describe("toTokenRow refuses an incomplete freeze", () => {
+  it("throws when a freeze has no swapsWhileFrozen", () => {
+    const nav = NAV_TOKENS[0]!;
+    const up = { block: 1, logIndex: 0, ts: 1, answer: 1n, tx: hash(1), address: addr(4) };
+    const figures = { feedLive: true, freeze: { from: up, to: up, hours: 1, returnMoveBps: 0 }, swapsInWindow: 0, swapsWhileFrozen: null, largestGap: null, series: { pool: [], feed: [] } };
+    expect(() => toTokenRow(nav, { aggregator: addr(4), phase: 1 }, figures, { from: 1, to: 2 })).toThrow("swapsWhileFrozen");
+  });
+});

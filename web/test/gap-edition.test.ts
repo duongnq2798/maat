@@ -42,6 +42,7 @@ interface Ev {
 class Chain implements LogReader {
   events: Ev[] = [];
   swapReads: { from: number; to: number }[] = [];
+  headers: number[] = [];
   phases = [A1, A2];
   constructor(readonly headTs: number) {}
 
@@ -75,6 +76,7 @@ class Chain implements LogReader {
       });
   }
   async blockTs(n: number) {
+    this.headers.push(n);
     return this.ts(n);
   }
   async blockAt(ts: number) {
@@ -206,6 +208,41 @@ describe("measureEdition", () => {
     const from = chain.at(W.closeTs);
     chain.answer(from + 10, 160);
     await expect(run(chain, { windows: [W.id] }).done).rejects.toThrow("the feed has not updated since the window; run again later");
+  });
+
+  it("takes the later update on the near side and the earlier one on the far side when a span holds several", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    const from = chain.at(W.closeTs);
+    const to = chain.at(W.openTs) - 1;
+    chain.answer(from - 30_000, 148);
+    chain.answer(from - 20_000, 150); // the later one of two in the same span
+    chain.answer(to + 10_000, 155); // the earlier one of two in the same span
+    chain.answer(to + 20_000, 170);
+    const row = complete(await run(chain, { windows: [W.id] }).done).tokens[0]!;
+    expect(row.series.feed[0]).toEqual([W.closeTs, "150.00000000"]);
+    expect(row.freeze?.from.block).toBe(from - 20_000);
+    expect(row.freeze?.to.block).toBe(to + 10_000);
+  });
+
+  it("throws when the only later update lies just beyond the week after the open", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    const from = chain.at(W.closeTs);
+    const ahead = await chain.blockAt(W.openTs + LOOKBACK_SEC);
+    chain.answer(from + 10, 160);
+    chain.answer(ahead + 1, 165);
+    await expect(run(chain, { windows: [W.id] }).done).rejects.toThrow("run again later");
+  });
+
+  it("reads no header far below the data when the feed is dead", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    const from = chain.at(W.closeTs);
+    chain.answer(from - 400_000, 150); // 800000 s before the close, beyond the 7-day look-back
+    const f = await run(chain, { windows: [W.id] }).done;
+    const row = complete(f).tokens[0]!;
+    expect(row.feedLive).toBe(false);
+    expect(row.freeze).toBeNull();
+    const lowest = chain.ts(Math.min(...chain.headers));
+    expect(lowest).toBeGreaterThanOrEqual(W.closeTs - LOOKBACK_SEC - 50_000 * 2);
   });
 
   it("rejects an unknown window, token or edition", async () => {

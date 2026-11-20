@@ -1,4 +1,4 @@
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { mkdirSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { measureEdition } from "../lib/gap/edition";
@@ -48,8 +48,13 @@ async function main(): Promise<void> {
   mkdirSync(OUT_DIR, { recursive: true });
   const target = `${OUT_DIR}edition-${edition}.json`;
   const tmp = `${target}.tmp`;
-  writeFileSync(tmp, text);
-  renameSync(tmp, target);
+  try {
+    writeFileSync(tmp, text);
+    renameSync(tmp, target);
+  } catch (e) {
+    rmSync(tmp, { force: true });
+    throw e;
+  }
   console.error(`wrote ${target}`);
 }
 

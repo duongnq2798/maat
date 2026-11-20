@@ -80,6 +80,35 @@ function inOrder(partial: boolean) {
   };
 }
 
+/** Rules across fields that a per-field schema cannot state; they also hold for every committed file. */
+function consistent(file: { windows: unknown[] }, ctx: z.core.$RefinementCtx): void {
+  const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
+  (file.windows as Array<{ status: string; id: string; closeTs: number; openTs: number; blocks?: { from: number; to: number }; tokens?: TokenRow[] }>).forEach((w, wi) => {
+    const at = ["windows", wi];
+    if (!(w.closeTs < w.openTs)) bad(at, `window ${w.id}: closeTs must be before openTs`);
+    if (w.status !== "complete") return;
+    if (w.blocks && !(w.blocks.from <= w.blocks.to)) bad([...at, "blocks"], `window ${w.id}: blocks.from must not exceed blocks.to`);
+    (w.tokens ?? []).forEach((t, ti) => {
+      const tat = [...at, "tokens", ti];
+      const name = `${w.id} ${t.symbol}`;
+      if (!t.feedLive && t.freeze) bad([...tat, "freeze"], `${name}: a dead feed has no freeze`);
+      if (t.freeze && !(t.freeze.swapsRead.from <= t.freeze.swapsRead.to)) bad([...tat, "freeze", "swapsRead"], `${name}: swapsRead.from must not exceed swapsRead.to`);
+      if (t.largestGap) {
+        if (!t.freeze) bad([...tat, "largestGap"], `${name}: a largest gap needs a freeze`);
+        else {
+          if (t.largestGap.block < t.freeze.from.block || t.largestGap.block > t.freeze.to.block) bad([...tat, "largestGap", "block"], `${name}: the largest gap lies outside the freeze`);
+          if (t.largestGap.held !== t.freeze.from.answer) bad([...tat, "largestGap", "held"], `${name}: the held price is not the freeze's opening answer`);
+        }
+      }
+      for (const k of ["pool", "feed"] as const) {
+        t.series[k].forEach(([ts], pi) => {
+          if (ts < w.closeTs || ts >= w.openTs) bad([...tat, "series", k, pi], `${name}: a ${k} point at ${ts} lies outside [closeTs, openTs)`);
+        });
+      }
+    });
+  });
+}
+
 export function editionSchema({ partial }: { partial: boolean }) {
   const pending = z.strictObject({ status: z.literal("pending"), ...windowBase });
   const complete = z.strictObject({
@@ -88,7 +117,7 @@ export function editionSchema({ partial }: { partial: boolean }) {
     blocks: z.strictObject({ from: count, to: count }),
     tokens: z.array(token).superRefine(inOrder(partial)),
   });
-  return z.strictObject({
+  const file = z.strictObject({
     edition: count,
     title: z.string().min(1),
     from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
@@ -98,6 +127,7 @@ export function editionSchema({ partial }: { partial: boolean }) {
     head: z.strictObject({ block: count, ts: count }),
     windows: z.array(z.discriminatedUnion("status", [pending, complete])),
   });
+  return file.superRefine(consistent);
 }
 
 export const EditionFileSchema = editionSchema({ partial: false });
@@ -112,7 +142,8 @@ export function toTokenRow(
   figures: TokenFigures,
   swapsRead: { from: number; to: number } | null,
 ): TokenRow {
-  const { freeze, largestGap } = figures;
+  const { freeze, largestGap, swapsWhileFrozen } = figures;
+  if (freeze && swapsWhileFrozen === null) throw new Error(`${nav.symbol}: a freeze needs its swapsWhileFrozen count`);
   if (freeze && !swapsRead) throw new Error(`${nav.symbol}: a freeze needs the block range its swaps were read over`);
   const asUpdate = (u: { block: number; logIndex: number; ts: number; answer: bigint; tx: string }) => ({
     block: u.block,
@@ -136,7 +167,7 @@ export function toTokenRow(
           to: asUpdate(freeze.to),
           hours: freeze.hours,
           returnMoveBps: freeze.returnMoveBps,
-          swapsWhileFrozen: figures.swapsWhileFrozen ?? 0,
+          swapsWhileFrozen: swapsWhileFrozen!,
           swapsRead: swapsRead!,
         }
       : null,

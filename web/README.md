@@ -19,7 +19,7 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
 | `npm run docs:gen` | rewrites the reference data in `content/generated/` from the contracts, the agent and the deployments table ([Docs content](#docs-content)) |
-| `npm run gap-index` | measures the Weekend Gap Index from Base logs and writes one edition file under content/gap-index/ (`-- --edition N`; add `--window ID --token SYM --stdout` to reproduce one figure) |
+| `npm run gap-index` | measures the Weekend Gap Index from Base logs and writes one edition file under content/gap-index/ (`-- --edition N`; to reproduce one figure run `npm run -s gap-index -- --edition N --window ID --token SYM --stdout`: `-s` keeps npm's banner out of the JSON) |
 | `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/live.spec.ts` for the live strip and `/now` against the fake RPC of `e2e/fake-live-rpc.ts`, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
 
 Keep Next's anonymous telemetry off when you build:

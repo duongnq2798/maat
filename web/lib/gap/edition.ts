@@ -59,7 +59,6 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
     }
     const fromBlock = await reader.blockAt(w.closeTs);
     const toBlock = (await reader.blockAt(w.openTs)) - 1;
-    const back = await reader.blockAt(w.closeTs - LOOKBACK_SEC);
     const ahead = w.openTs + LOOKBACK_SEC > head.ts ? head.block : await reader.blockAt(w.openTs + LOOKBACK_SEC);
     const span = { closeTs: w.closeTs, openTs: w.openTs, fromBlock, toBlock };
 
@@ -84,9 +83,16 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
       };
 
       const inside = await updatesIn(fromBlock, toBlock);
+      // Backwards span by span: stop at the first span that holds an update (the last one wins), or once a span starts
+      // more than the look-back before the close, so no header far below the data is read.
       let before: FeedUpdate | undefined;
-      for (let hi = fromBlock - 1; hi >= back && !before; hi -= SPAN) {
-        before = (await updatesIn(Math.max(back, hi - SPAN + 1), hi)).at(-1);
+      for (let hi = fromBlock - 1; hi >= 0 && !before; hi -= SPAN) {
+        const lo = Math.max(0, hi - SPAN + 1);
+        before = (await updatesIn(lo, hi)).at(-1);
+        if (!before) {
+          calls++;
+          if ((await reader.blockTs(lo)) < w.closeTs - LOOKBACK_SEC) break;
+        }
       }
       let after: FeedUpdate | undefined;
       for (let lo = toBlock + 1; lo <= ahead && !after; lo += SPAN) {
