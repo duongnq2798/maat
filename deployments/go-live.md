@@ -256,7 +256,7 @@ If `execute` returns `allowed=false` anyway (for example `SWAP_FAILED`, which a 
 
 Follow [`agent/README.md`](../agent/README.md#live-run-owner-only), "Live run (owner only)".
 
-Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `BASE_RPC_URL` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` never replaces a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`.
+Use two shells here. Run the `cast` commands of item 2 in the shell from step 7 or 8, where `VAULT` and `RPC` are set. Run `scripts/cdp-setup.ts` and `npm run agent` from `agent/` in a new shell that has never sourced `contracts/.env`. Node's `--env-file` never replaces a variable that is already set in the environment, so in the shell of steps 4 to 8 the agent would take `MAAT_EXECUTOR` (your wallet) and `MAAT_EXPENSE_PAYEE` from `contracts/.env`, not from `agent/.env`. In live mode it then stops at startup with `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>`; in dry-run mode every round ends `wrong-executor` once the vault's executor is the CDP address. To reuse a shell that sourced `contracts/.env`, first run `unset BASE_RPC_URL MAAT_DEPLOYER MAAT_OWNER MAAT_EXECUTOR MAAT_EXPENSE_PAYEE MAAT_EXPENSE_PAYEE_2 ETHERSCAN_API_KEY`. Item 2 still runs after that, because it reads `RPC`, not `BASE_RPC_URL`: step 7 set `RPC` after `set +a`, so it is not exported, the `unset` leaves it, and the agent never sees it. If `test -n "$RPC" && echo set || echo empty` prints `empty`, set it again by hand (`RPC=<your Base mainnet RPC URL>`, without `export`); the check does not print the URL.
 
 In short, and only as that page says:
 
@@ -265,8 +265,8 @@ In short, and only as that page says:
 
    ```bash
    EXECUTOR=0x...   # the address cdp-setup.ts printed
-   cast send "$VAULT" "setExecutor(address)" "$EXECUTOR" --rpc-url "$BASE_RPC_URL" --account maat-owner
-   cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"   # must print $EXECUTOR
+   cast send "$VAULT" "setExecutor(address)" "$EXECUTOR" --rpc-url "$RPC" --account maat-owner
+   cast call "$VAULT" "executor()(address)" --rpc-url "$RPC"   # must print $EXECUTOR
    ```
 
    `setExecutor` takes effect at once, with no timelock (`MandateVault.sol`, lines 139-143). From then on your wallet can no longer call `execute` (it reverts with `NotExecutor`), so `first-decision.ts` sends stop working for you. To take the role back, call `setExecutor` with your own address.
