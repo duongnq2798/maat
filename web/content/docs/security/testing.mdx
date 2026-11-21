@@ -4,7 +4,7 @@ description: "How each guarantee is tested: contract unit and fork suites, agent
 type: concept
 audience: [evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-21
 sources:
   - contracts/test/MandateVault.t.sol
   - contracts/test/GuardLib.t.sol
@@ -255,7 +255,7 @@ The website and these docs carry numbers, signatures and code that come from the
 The built site is checked too. `npm run check:out` reads the static export and fails when:
 
 - a required file is missing, or a docs page has no Markdown copy;
-- a page loads a third-party script, or loads Google Fonts at runtime;
+- a page loads a third-party script, or the landing page, `/now` or a docs page loads Google Fonts at runtime;
 - a docs page lacks `lang="en"`, the docs title suffix, a description of the right length, a canonical link or an absolute OG image;
 - a docs page's `og:image` or `twitter:image` is not the page's own link preview image, or that image is missing or is not a PNG of the size its tags give;
 - a page links a same-page anchor (`#id`) that is not on it, or a docs page links a docs page that was not exported or another file that is not in the export (anchors on other pages are checked by `docs-content.test.ts`);
@@ -266,6 +266,10 @@ The built site is checked too. `npm run check:out` reads the static export and f
 - a published ABI under `/data/abi/` is missing or differs from the committed copy;
 - the search index (`/api/search.json`) is over its gzipped size budget, holds no records, or has a result that opens a page or a heading the export does not have;
 - with `CI` or `VERCEL` set, the site URL's host is `localhost`, `127.0.0.1` or `[::1]`, or an exported file holds an http URL on `localhost` that no docs page writes in its own text;
+- the Right now on Base page, `/now`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/now` or an absolute OG image, or `sitemap.xml` leaves it out;
+- the landing page's live strip or `/now`, which read Base mainnet in the browser, has a reading in the exported HTML (a LIVE pill, a Basescan block link or a verdict line) instead of its reading state;
+- the Weekend Gap Index page, `/gap-index`, lacks `lang="en"`, its title or heading or a canonical link to `/gap-index`, or `sitemap.xml` leaves it out;
+- `/gap-index`, which is built from the committed edition files, leaves the NVDAc hours of its first measured window out of its markup (its inline scripts do not count), or has "safe", in any case, anywhere in its HTML, even inside another word;
 - the landing page fails its own checks, or its CSS or JavaScript contains docs code.
 
 The Playwright end-to-end tests load pages at several widths and fail on page overflow or a console error. They run axe in both themes on the docs home and the other pages listed in [`docs-a11y.spec.ts`](https://github.com/duongnq2798/maat/blob/main/web/e2e/docs-a11y.spec.ts), chosen for the most varied markup, and fail on a serious or critical violation. They also exercise search, Copy page as Markdown and the theme toggle. [`simulator.spec.ts`](https://github.com/duongnq2798/maat/blob/main/web/e2e/simulator.spec.ts) drives the landing page's simulator: it makes it refuse by mouse and by keyboard (a Saturday, a second buy that the concentration check refuses, the time slider at <Fact name="nyseClose" />), reproduces a refusal from a share link, falls back to the default for a broken link, takes a date typed on the keyboard, and checks that its longest strings fit at two widths.
