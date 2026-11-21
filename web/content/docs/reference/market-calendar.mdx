@@ -20,7 +20,7 @@ To call or decode the calendar from code without building the repo, use its <a h
 
 ## Functions
 
-The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol). `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules.
+The contract's tests are in [MarketCalendar.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol). `test_ownerCanOnlyMakeItStricter` covers the two owner functions, and `test_dstBoundaries`, `test_regularSession`, `test_feed245Session` and `test_holidaysAndEarlyClose` cover the time rules. One test per 2027 date after New Year, such as `test_goodFriday2027IsClosed` and `test_dayAfterThanksgiving2027ClosesEarly`, checks the shipped 2027 closures.
 
 ### addHoliday
 
@@ -72,7 +72,7 @@ The early close of a New York day, in minutes after midnight, or zero when the d
 
 ## Shipped holidays and early closes
 
-The constructor ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes, so the calendar is useful the day it is deployed. Each early close is at <Fact name="earlyClose" />. The table lists them by date, and the excerpt below is the constructor they come from.
+The constructor ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes, so the calendar is useful the day it is deployed. Each early close is at <Fact name="earlyClose" />. The table lists them by date, and the excerpt below is the constructor they come from. The 2027 dates are from the NYSE holiday calendar on nyse.com, read on 2026-11-16.
 
 | Date | Kind | Close time |
 | --- | --- | --- |
@@ -81,16 +81,37 @@ The constructor ships with <Fact name="calendarPreload.holidays" /> holidays and
 | 2026-12-24 | Early close | <Fact name="earlyClose" /> |
 | 2026-12-25 | Holiday (Christmas) | Closed all day |
 | 2027-01-01 | Holiday (New Year) | Closed all day |
+| 2027-01-18 | Holiday (Martin Luther King Jr. Day) | Closed all day |
+| 2027-02-15 | Holiday (Washington's Birthday) | Closed all day |
+| 2027-03-26 | Holiday (Good Friday) | Closed all day |
+| 2027-05-31 | Holiday (Memorial Day) | Closed all day |
+| 2027-06-18 | Holiday (Juneteenth, observed) | Closed all day |
+| 2027-07-05 | Holiday (Independence Day, observed) | Closed all day |
+| 2027-09-06 | Holiday (Labor Day) | Closed all day |
+| 2027-11-25 | Holiday (Thanksgiving) | Closed all day |
+| 2027-11-26 | Early close | <Fact name="earlyClose" /> |
+| 2027-12-24 | Holiday (Christmas, observed) | Closed all day |
 
-```solidity title="contracts/src/MarketCalendar.sol#L30-L38"
+```solidity title="contracts/src/MarketCalendar.sol#L30-L49"
     constructor(address owner_) {
         if (owner_ == address(0)) revert ZeroAddress();
         owner = owner_;
         _addHoliday(2026, 11, 26); // Thanksgiving
         _addHoliday(2026, 12, 25); // Christmas
         _addHoliday(2027, 1, 1); // New Year
+        // 2027 closures from the NYSE holiday calendar on nyse.com, read 2026-11-16.
+        _addHoliday(2027, 1, 18); // Martin Luther King Jr. Day
+        _addHoliday(2027, 2, 15); // Washington's Birthday
+        _addHoliday(2027, 3, 26); // Good Friday
+        _addHoliday(2027, 5, 31); // Memorial Day
+        _addHoliday(2027, 6, 18); // Juneteenth (observed)
+        _addHoliday(2027, 7, 5); // Independence Day (observed)
+        _addHoliday(2027, 9, 6); // Labor Day
+        _addHoliday(2027, 11, 25); // Thanksgiving
+        _addHoliday(2027, 12, 24); // Christmas (observed)
         _setEarlyClose(2026, 11, 27, 780); // 13:00
         _setEarlyClose(2026, 12, 24, 780);
+        _setEarlyClose(2027, 11, 26, 780);
     }
 ```
 

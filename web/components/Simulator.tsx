@@ -42,6 +42,11 @@ const LEGEND = "mb-3 p-0 font-mono text-[11px] text-ink-2";
 const DAY_MINUTES = 1440;
 const USD6 = 1_000_000;
 const pct = (bps: number) => `${bps / 100}%`;
+/** The window spans a year end, so its bounds carry the year: "Thu 5 Nov 2026". */
+function withYear(dayNumber: number): string {
+  const iso = isoOfDay(dayNumber);
+  return `${dayLabel(iso)} ${iso.slice(0, 4)}`;
+}
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -281,7 +286,7 @@ export function Simulator() {
           </div>
           {dayInvalid ? (
             <p id="sim-day-hint" className="m-0 mt-2 text-[13px] text-refuse">
-              Pick a date from {dayLabel(isoOfDay(WINDOW.first))} to {dayLabel(isoOfDay(WINDOW.last))}.
+              Pick a date from {withYear(WINDOW.first)} to {withYear(WINDOW.last)}.
             </p>
           ) : null}
           <div className="mt-5 flex flex-col gap-2">

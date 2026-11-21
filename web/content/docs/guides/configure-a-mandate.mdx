@@ -65,7 +65,7 @@ Open `contracts/script/MaatConfig.sol`. The table says where each setting is set
 | `sessionMode` | `Deploy.s.sol` passes `SessionMode.REGULAR` to `defaultMandate` | Enum | <Fact name="mandate.sessionMode" /> |
 | `maxPremiumBps` | `defaultMandate` | [Basis points](/docs/help/glossary#basis-point-bps), the widest [premium](/docs/help/glossary#premium) | <Fact name="mandate.maxPremiumBps" /> |
 | `maxSlippageBps` | `defaultMandate` | Basis points | <Fact name="mandate.maxSlippageBps" /> |
-| `maxStaleness` | `defaultMandate` | Seconds, the oldest answer ([staleness](/docs/help/glossary#staleness)) an oracle may give | <Fact name="mandate.maxStalenessSec" /> |
+| `maxStaleness` | `defaultMandate` | Seconds, which the code writes as `25 hours`, the oldest answer ([staleness](/docs/help/glossary#staleness)) an oracle may give | <Fact name="mandate.maxStalenessSec" /> |
 | `multiplierCooldown` | `defaultMandate` | Seconds, which the code writes as `1 days` | <Fact name="mandate.multiplierCooldownSec" /> |
 | `twapWindow` | `defaultMandate` | Seconds, the averaging window of the [TWAP](/docs/help/glossary#twap) | <Fact name="mandate.twapWindowSec" /> |
 | `perTradeCapUsd` | `defaultMandate` | USDC units | <Fact name="mandate.perTradeCapUsd" /> |
@@ -89,16 +89,22 @@ The credit constants sit at the top of the library:
     uint32 internal constant DERISK_WINDOW = 8 hours;
 ```
 
-The rest of the mandate is built in `defaultMandate`. The comment in it records why `maxPremiumBps` is not the smaller value the design started with:
+The rest of the mandate is built in `defaultMandate`. Its comments record the measurements behind three limits: why `maxPremiumBps` is not the smaller value the design started with, and where `maxSlippageBps` and `maxStaleness` come from ([Why these values](/docs/concepts/mandate#why-these-values) has the full numbers):
 
-```solidity title="contracts/script/MaatConfig.sol#L20-L37"
+```solidity title="contracts/script/MaatConfig.sol#L20-L43"
         return Mandate({
             sessionMode: mode,
             // 100 not 50: measured in-session TWAP(1800s)-vs-Chainlink premiums at BLOCK_SESSION were
             // NVDAc 53 bps, GOOGLc 49 bps, AAPLc 29 bps (measured in session on a Base fork).
             maxPremiumBps: 100,
-            maxSlippageBps: 100,
-            maxStaleness: 3600,
+            // Worst BUY cost against the oracle (pool spot plus fee, 15-min samples, NYSE sessions of Nov 2-6
+            // and 9-13 2026) was 121 bps on NVDAc, p99 109 bps. 150 costs at most $0.75 on a $50 trade.
+            maxSlippageBps: 150,
+            // The feeds' 24h heartbeat plus 1h. They update on a 0.5% move or every 24h; in those sessions
+            // they were older than 1h for up to 46% of the time (AAPL), never older than 24h. A dead feed is
+            // still caught. For BUY and SELL the TWAP-vs-oracle premium check guards against a frozen price;
+            // BORROW and WITHDRAW_COLLATERAL against debt have no premium check and rely on this limit alone.
+            maxStaleness: 25 hours,
             multiplierCooldown: 1 days,
             twapWindow: 1800,
             perTradeCapUsd: 50e6,
@@ -114,7 +120,7 @@ The rest of the mandate is built in `defaultMandate`. The comment in it records 
 
 The stocks and their [feeds](/docs/help/glossary#chainlink-equity-feed) and pools are listed in `basket()`:
 
-```solidity title="contracts/script/MaatConfig.sol#L40-L49"
+```solidity title="contracts/script/MaatConfig.sol#L46-L55"
     function basket() internal pure returns (address[] memory toks, TokenConfig[] memory cfgs) {
         toks = new address[](3);
         cfgs = new TokenConfig[](3);
