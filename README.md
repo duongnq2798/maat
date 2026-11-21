@@ -142,8 +142,11 @@ a 100 bps slippage limit. No figure here is rounded.
 - **Builder Code.** The ERC-8021 suffix is built and tested. No code is registered yet.
 - **Executor.** Not yet handed to the CDP Server Wallet; the runbook starts with the owner's own wallet.
 - **Mainnet `Decision` events.** 0.
-- **How a deploy happens.** Only the owner deploys, from their own wallet, with the checklist, commands, $20
-  smoke test, unwind procedure and executor handover in [`deployments/README.md`](deployments/README.md).
+- **How a deploy happens.** Only the owner deploys, from their own wallet, following the go-live runbook
+  [`deployments/go-live.md`](deployments/go-live.md): deploy, fund, the first `Decision` events (a weekend BUY
+  the vault must refuse, then one in session it must allow) and the executor handover, in order.
+  [`deployments/README.md`](deployments/README.md) keeps the reference it draws on (the checklist, commands,
+  smoke tests, unwind procedure and executor switch) and the address table.
 
 ## The problem
 
@@ -410,7 +413,7 @@ All addresses are Base mainnet, from [`contracts/script/BaseAddresses.sol`](cont
 | **Aerodrome Slipstream** | Swap venue and 30-minute TWAP; called directly, no router | [NVDAc/USDC](https://basescan.org/address/0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC), [GOOGLc/USDC](https://basescan.org/address/0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3), [AAPLc/USDC](https://basescan.org/address/0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6) |
 | **Aave V4 (MAG7 Spoke, Equities Hub)** | Stocks as collateral, USDC borrowing; the adapter is the Aave user and only its vault can move the position | [Spoke](https://basescan.org/address/0x17905Db0e4A3514467539956c084180616AE7B8D), [Hub](https://basescan.org/address/0xa4d5947Eb727A052bae69C593FfC84247EC9864E) |
 | **Coinbase CDP Server Wallet** | The executor key, with an account policy (sends only zero-value transactions to the vault on Base; raw hash signing rejected). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
-| **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
+| **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it; the first-decision BUYs of [`deployments/go-live.md`](deployments/go-live.md) do, because the owner sends the calldata that [`first-decision.ts`](agent/scripts/first-decision.ts) builds | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
 | **Claude** | `claude-sonnet-5-5` by default (`MAAT_LOOP_MODEL`), with structured output, proposes the round's intents. Tested against a fake client only | [`agent/src/config.ts#L26`](agent/src/config.ts#L26) |
 
 AMZNc is not in the basket: its pool held only about $34k of liquidity when the basket was chosen.
@@ -504,8 +507,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  24 passed (24)
-         Tests  167 passed (167)
+    Test Files  25 passed (25)
+         Tests  217 passed (217)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -525,7 +528,7 @@ it has not been re-timed.
 
    ```text
     Test Files  55 passed (55)
-         Tests  1715 passed (1715)
+         Tests  1717 passed (1717)
    ...
    out/ is ready to deploy (landing, /now and 49 docs pages checked)
    search index: … bytes gzipped, budget 850000
@@ -707,9 +710,11 @@ agent/                     TypeScript agent runtime
   src/                     chain/ (state reader, preview), llm/ (Claude proposer, prompt, schema),
                            exec/ (Builder Code, gas, GuardedSender, CDP), loop/ (round, scheduler, lock), ledger/
   test/                    unit tests with fakes; integration/ runs the Base fork
-  scripts/                 cdp-setup.ts (owner, once), gen-abis.ts, smoke-claude.ts (paid API)
+  scripts/                 cdp-setup.ts (owner, once), first-decision.ts (owner, offline intent builder),
+                           gen-abis.ts, smoke-claude.ts (paid API)
 web/                       Next.js landing page, docs center, brand assets, parity tests, Playwright e2e
-deployments/               mainnet deploy runbook and the (empty) address table
+deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
+                           (empty) address table
 docs/superpowers/          design specs and implementation plans
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately
@@ -737,7 +742,8 @@ SECURITY.md                how to report a security problem privately
 | [Plan: readable refusals, PR 1](docs/superpowers/plans/2026-11-20-readable-refusals-pr1.md) | The label map and `ReasonTag`, and plain labels on the landing, the simulator, the docs fork ledger and the social images |
 | [Plan: live strip](docs/superpowers/plans/2026-11-20-maat-web-live-strip.md) | The token list, ABI codec, price port, reader, verdict, freshness hook, the strip, `/now`, the simulator's Now note and their tests |
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
-| [`deployments/README.md`](deployments/README.md) | Mainnet deploy runbook |
+| [`deployments/go-live.md`](deployments/go-live.md) | The owner's go-live runbook: deploy, fund, the first-decision BUY intents built by `agent/scripts/first-decision.ts`, and the executor handover to the CDP Server Wallet |
+| [`deployments/README.md`](deployments/README.md) | The mainnet deploy reference (environment, dry run, checklist, smoke tests, unwind, executor switch) and the address table |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
 | [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
 

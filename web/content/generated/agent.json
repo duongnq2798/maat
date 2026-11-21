@@ -160,6 +160,7 @@
   ],
   "scriptFiles": [
     "cdp-setup.ts",
+    "first-decision.ts",
     "gen-abis.ts",
     "smoke-claude.ts"
   ]

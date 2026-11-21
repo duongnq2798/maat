@@ -21,6 +21,8 @@ sources:
   - contracts/.env.example
   - contracts/foundry.toml
   - contracts/script/Deploy.s.sol
+  - agent/scripts/first-decision.ts
+  - deployments/go-live.md
 next: [reference/agent-scripts, guides/run-the-agent]
 ---
 
@@ -72,7 +74,7 @@ The only values are `dry-run` and `live`, and anything else stops the start. The
 
 <EnvVar name="MAAT_BUILDER_CODE" />
 
-A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
 
 ### MAAT_LOOP_MODEL
 

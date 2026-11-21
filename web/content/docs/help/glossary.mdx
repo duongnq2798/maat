@@ -13,6 +13,8 @@ sources:
   - agent/src/policy.ts
   - agent/src/ledger/store.ts
   - agent/test/integration/agent.fork.test.ts
+  - agent/scripts/first-decision.ts
+  - deployments/go-live.md
 next: [get-started/what-is-maat, help/faq]
 ---
 
@@ -59,7 +61,7 @@ One hundredth of a percent. The mandate and the per-stock settings state their p
 
 ### Builder Code (ERC-8021)
 
-A short code registered for a project, which ERC-8021 appends to a transaction's calldata as a suffix. The agent is built to add its code to every transaction it sends (transactions the owner signs do not carry it), and no real code is registered yet. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send).
+A short code registered for a project, which ERC-8021 appends to a transaction's calldata as a suffix. The agent is built to add its code to every transaction it sends, and no real code is registered yet. The owner's own transactions, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send).
 
 ## C
 

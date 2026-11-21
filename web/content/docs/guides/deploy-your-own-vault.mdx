@@ -4,7 +4,7 @@ description: "Deploy a vault with the default mandate: dry-run it on a fork firs
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-21
 sources:
   - deployments/README.md
   - contracts/script/Deploy.s.sol
@@ -37,6 +37,8 @@ sources:
   - agent/test/integration/agent.fork.test.ts
   - contracts/test/Deploy.t.sol
   - agent/src/main.ts
+  - deployments/go-live.md
+  - agent/scripts/first-decision.ts
 next: [guides/run-the-agent, guides/change-a-rule, guides/pause-withdraw-recover]
 ---
 
@@ -44,7 +46,7 @@ This guide takes you from a clone of the repository to a `MandateVault` with the
 
 <Callout type="fork" title="Not deployed yet">
 
-The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the smoke tests come from the runbook, the smoke tests with a gas limit or a [preview](/docs/help/glossary#preview) added here. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. The Maat team has run none of the commands on this page, so none is proven on mainnet. The contracts are unaudited.
+The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the credit smoke test come from the runbook, the credit smoke test with a gas limit and a [preview](/docs/help/glossary#preview) before each send added here. The BUY smoke-test lines were written for this page: `deployments/README.md` no longer carries them, and sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, as `deployments/go-live.md` steps 7 and 8 say. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. The Maat team has run none of the commands on this page, so none is proven on mainnet. The contracts are unaudited.
 
 </Callout>
 
@@ -104,7 +106,7 @@ You need the pieces below. Your wallet is the owner of the vault, so the steps t
 | An Etherscan v2 API key | `ETHERSCAN_API_KEY` in `contracts/.env`, for `--verify`. A v2 key works for Basescan. |
 | USDC on Base | What you fund the vault with. |
 
-`contracts/.env.example` lists `BASE_RPC_URL` and the five addresses, the optional one at the zero address; add `ETHERSCAN_API_KEY` yourself. Git ignores `contracts/.env`, so a fresh clone has none: [the first step](#create-contractsenv) creates it. The deploy script reads the addresses like this:
+`contracts/.env.example` lists `BASE_RPC_URL`, the five addresses, the optional one at the zero address, and an empty `ETHERSCAN_API_KEY` that you fill in yourself. Git ignores `contracts/.env`, so a fresh clone has none: [the first step](#create-contractsenv) creates it. The deploy script reads the addresses like this:
 
 ```solidity title="contracts/script/Deploy.s.sol#L23-L27"
         address deployer = vm.envAddress("MAAT_DEPLOYER");
@@ -226,7 +228,7 @@ The second command only prints the wallet's address. It signs nothing and sends 
 - Set `MAAT_DEPLOYER` to the address just printed.
 - Set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address. `MAAT_OWNER` can be a separate address instead, as [Before you start](#before-you-start) explains.
 - Leave `MAAT_EXPENSE_PAYEE_2` at the zero address, unless you want a second payee.
-- Add `ETHERSCAN_API_KEY`.
+- Set `ETHERSCAN_API_KEY`, which the template leaves empty.
 
 This file is for the commands you run in `contracts/`. The agent reads its own `agent/.env`, which repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with the rules in [The whole path](#the-whole-path).
 
@@ -264,13 +266,13 @@ This signs and sends the deploy transactions from your wallet and costs gas. The
 
 ```bash title="contracts/"
 set -a; source .env; set +a
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify --slow
 ```
 
-If the deploy finishes but verification fails, do not redeploy. Run this instead:
+`--slow` sends the four deploy transactions one at a time, each only after the previous one is confirmed and succeeded. If the deploy finishes but verification fails, do not redeploy. Run this instead:
 
 ```bash title="contracts/"
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify --slow
 ```
 
 </Callout>
@@ -314,7 +316,7 @@ The smoke tests need a weekday session (this BUY and the [credit smoke test](#ru
 
 <Callout type="warning" title="Owner only">
 
-The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. The lines are adapted from deployments/README.md: the `--gas-limit` flag is added here. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
+The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. These lines carry no Builder Code. deployments/README.md sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, which appends one. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
 
 ```bash
 cast call "$VAULT" "previewIntent((bytes32,uint8,address,uint256,uint256,address,bytes32))(uint8)" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL"
@@ -345,7 +347,7 @@ For `maat-smoke-1`, `allowed` must be `true` and `reason` must be `0`. For `maat
 
 <Callout type="note" title="Preview from the executor">
 
-The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The runbook's `cast call` sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
+The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The `cast call` above sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
 
 </Callout>
 
