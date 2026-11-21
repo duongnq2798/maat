@@ -6,6 +6,10 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 
 `/now` (Right now on Base) reads Base mainnet in the browser through `lib/live/`: one Multicall3 call over keyless public RPCs, judged like `MandateVault` for a BUY.
 
+`/gap-index` (Weekend Gap Index) publishes one edition file per run in `content/gap-index/`, written by `npm run gap-index -- --edition N` from Base logs (`lib/gap/`).
+
+A new edition file is also imported in `content/gap-index/index.ts`. After a window ends, each live feed must post its first update after the open before the window can be measured, which can take up to the feed's heartbeat; until then the run names the feeds that have not and asks to run again later.
+
 ## Commands (run in `web/`)
 
 | Command | What it does |
@@ -19,6 +23,7 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
 | `npm run docs:gen` | rewrites the reference data in `content/generated/` from the contracts, the agent and the deployments table ([Docs content](#docs-content)) |
+| `npm run gap-index` | measures the Weekend Gap Index from Base logs and writes one edition file under content/gap-index/ (`-- --edition N`; to reproduce one figure run `npm run -s gap-index -- --edition N --window ID --token SYM --stdout`: `-s` keeps npm's banner out of the JSON) |
 | `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/live.spec.ts` for the live strip and `/now` against the fake RPC of `e2e/fake-live-rpc.ts`, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
 
 Keep Next's anonymous telemetry off when you build:

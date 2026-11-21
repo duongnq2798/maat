@@ -7,6 +7,7 @@ import {
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
+  checkGapIndexPage,
   checkLandingIsolation,
   checkLocalhost,
   checkMarkdownCopies,
@@ -33,6 +34,7 @@ const REQUIRED = [
   "apple-icon.png",
   "opengraph-image.png",
   "now.html",
+  "gap-index.html",
   "docs.html",
   "api/search.json",
   "llms.txt",
@@ -61,6 +63,13 @@ if (existsSync(join(OUT, "now.html"))) problems.push(...checkNowPage(read("now.h
 const nowUrl = new URL("/now", siteUrl()).href;
 if (existsSync(join(OUT, "sitemap.xml")) && !read("sitemap.xml").includes(`<loc>${nowUrl}</loc>`)) {
   problems.push(`sitemap.xml does not list ${nowUrl}`);
+}
+
+// /gap-index is built from the committed edition files, so its figures are in the HTML itself. The sitemap lists it.
+if (existsSync(join(OUT, "gap-index.html"))) problems.push(...checkGapIndexPage(read("gap-index.html")));
+const gapUrl = new URL("/gap-index", siteUrl()).href;
+if (existsSync(join(OUT, "sitemap.xml")) && !read("sitemap.xml").includes(`<loc>${gapUrl}</loc>`)) {
+  problems.push(`sitemap.xml does not list ${gapUrl}`);
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
@@ -133,5 +142,5 @@ if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing, /now and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now, /gap-index and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);
