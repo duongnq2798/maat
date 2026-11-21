@@ -64,15 +64,12 @@ test("the table view opens", async ({ page }) => {
 });
 
 // The site pages have no dark theme (only /docs does), so the page is checked in light.
-test("/gap-index has no serious or critical axe violations", async ({ page }) => {
+test("axe finds nothing on /gap-index", async ({ page }) => {
   await page.goto("/gap-index", { waitUntil: "networkidle" });
   await expect(page.locator('[data-overflow="unmeasured"]')).toHaveCount(0);
   await firstWindow(page).getByRole("tabpanel").locator("details").first().getByText("Table view").click();
   const { violations } = await new AxeBuilder({ page }).analyze();
-  const blocking = violations
-    .filter((v) => v.impact === "serious" || v.impact === "critical")
-    .map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }));
-  expect(blocking).toEqual([]);
+  expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }))).toEqual([]);
 });
 
 test("at 375 x 812 the page does not overflow sideways", async ({ page }) => {
