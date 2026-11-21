@@ -4,7 +4,7 @@ description: "The folders and main files of the Maat repository: what each one h
 type: reference
 audience: [developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-20
+lastReviewed: 2026-11-21
 sources:
   - README.md
   - .gitattributes
@@ -34,7 +34,7 @@ This page maps the [Maat repository](https://github.com/duongnq2798/maat) folder
 | --- | --- | --- |
 | [`contracts/`](https://github.com/duongnq2798/maat/tree/main/contracts) | The Foundry project: the [vault](/docs/help/glossary#vault), its calendar, libraries and adapters, the deploy script and the Solidity tests | [Security model](/docs/security/model) |
 | [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent) | The TypeScript agent: its source, its unit and fork tests, and its scripts | [How a decision is made](/docs/get-started/how-a-decision-is-made) |
-| [`web/`](https://github.com/duongnq2798/maat/tree/main/web) | The website: the landing page, the Right now on Base page (`/now`) and this docs center, built as a static Next.js export, with their tests | [Parity tests: the site and these docs](/docs/security/testing#parity-tests-the-site-and-these-docs) |
+| [`web/`](https://github.com/duongnq2798/maat/tree/main/web) | The website: the landing page, the Right now on Base page (`/now`), the Weekend Gap Index (`/gap-index`) and this docs center, built as a static Next.js export, with their tests | [Parity tests: the site and these docs](/docs/security/testing#parity-tests-the-site-and-these-docs) |
 | [`deployments/`](https://github.com/duongnq2798/maat/tree/main/deployments) | `go-live.md`, the [owner](/docs/help/glossary#owner)'s go-live runbook, which takes the vault from the deploy and funding through its first `Decision` events to the handover to the agent; and `README.md`, the deploy reference it draws on and the table of deployed addresses, which is empty because nothing is deployed | [Deploy your own vault](/docs/guides/deploy-your-own-vault) |
 | [`docs/`](https://github.com/duongnq2798/maat/tree/main/docs) | The design specs and the implementation plans that each part of Maat was built from, in `docs/superpowers`, and the README's screenshots, in `docs/assets/readme` | [Changelog](/docs/help/changelog), which links each milestone's spec or plan |
 | [`.github/`](https://github.com/duongnq2798/maat/tree/main/.github) | The CI workflow `workflows/ci.yml`, which runs the offline suites, the secret scan and a lint of the workflow on every pull request and every push to `main`; `scripts/ci-counts.mjs`, which writes the counts each runner reports into the run's summary, with its tests; and `dependabot.yml`, which proposes updates to the pinned actions once a month | [Run the tests](/docs/guides/run-the-tests) |
@@ -84,12 +84,12 @@ The TypeScript agent, its tests and its scripts. Run the npm commands in `agent/
 
 ## Website
 
-The landing page, `/now` and this docs center. Run the npm commands in `web/`.
+The landing page, `/now`, `/gap-index` and this docs center. Run the npm commands in `web/`.
 
 | Folder or file | What is in it | Read first |
 | --- | --- | --- |
-| [`web/app/`](https://github.com/duongnq2798/maat/tree/main/web/app) | The site's Next.js routes: the landing page and `/now` in `(site)/`, the docs pages in `(docs)/`, the 404 page in `global-not-found.tsx`, and the routes that build files rather than pages, such as each docs page's Markdown copy, `llms.txt`, `llms-full.txt`, the search index, the ABI JSON files and the sitemap | [Website](/docs/help/changelog#website) and [Docs center](/docs/help/changelog#docs-center), each of which links its design spec |
-| [`web/components/`](https://github.com/duongnq2798/maat/tree/main/web/components) | The React components: the landing page's sections in `sections/`, with the Decision engine, the simulator of the default mandate, the ledger table, the charts and the small UI parts they use; the live strip under the landing page's title and the board of `/now` in `live/`, which read Base mainnet in the browser; and this docs center's components in `docs/` | [Website](/docs/help/changelog#website) and [Docs center](/docs/help/changelog#docs-center), each of which links its design spec |
+| [`web/app/`](https://github.com/duongnq2798/maat/tree/main/web/app) | The site's Next.js routes: the landing page, `/now` and `/gap-index` in `(site)/`, the docs pages in `(docs)/`, the 404 page in `global-not-found.tsx`, and the routes that build files rather than pages, such as each docs page's Markdown copy, `llms.txt`, `llms-full.txt`, the search index, the ABI JSON files and the sitemap | [Website](/docs/help/changelog#website) and [Docs center](/docs/help/changelog#docs-center), each of which links its design spec |
+| [`web/components/`](https://github.com/duongnq2798/maat/tree/main/web/components) | The React components: the landing page's sections in `sections/`, with the Decision engine, the simulator of the default mandate, the ledger table, the charts and the small UI parts they use; the live strip under the landing page's title and the board of `/now` in `live/`, which read Base mainnet in the browser; the closed windows of `/gap-index` in `gap/`, each with a chart per token behind pill tabs, a table of every token and the command that reproduces a row; and this docs center's components in `docs/` | [Website](/docs/help/changelog#website) and [Docs center](/docs/help/changelog#docs-center), each of which links its design spec |
 | [`web/content/docs/`](https://github.com/duongnq2798/maat/tree/main/web/content/docs) | The pages of this docs center, as MDX, with a `meta.json` in each folder that sets the sidebar order | [Docs center](/docs/help/changelog#docs-center), which links its design spec and plan |
 | [`web/content/facts.ts`](https://github.com/duongnq2798/maat/blob/main/web/content/facts.ts) | The landing page's facts, each value with its source. The amounts in its ledger rows are typed in `decisions.ts` instead, and `decisions.test.ts` checks them against the fork test. Each number the docs render by its fact name comes from `facts.ts` or from `docs-facts.ts` beside it | [Default parameters](/docs/reference/default-parameters) |
 | [`web/content/generated/`](https://github.com/duongnq2798/maat/tree/main/web/content/generated) | The data that `npm run docs:gen` writes from the contract, agent and test sources, such as every function, event and error the reference pages list | [Parity tests: the site and these docs](/docs/security/testing#parity-tests-the-site-and-these-docs) |
