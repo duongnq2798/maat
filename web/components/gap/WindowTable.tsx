@@ -1,18 +1,10 @@
 import type { ReactNode } from "react";
 import { NAV_TOKENS } from "@/content/b20-nav";
 import { formatInt } from "@/content/format";
-import {
-  basescanTx,
-  type CompleteWindow,
-  etDateTime,
-  formatHours,
-  gapBps,
-  rowsInTabOrder,
-  signedBps,
-  SPOT_NOT_TWAP,
-} from "@/content/gap-index";
+import { type CompleteWindow, etDateTime, formatHours, gapBps, gapSide, rowsInTabOrder, signedBps, SPOT_NOT_TWAP } from "@/content/gap-index";
 import type { TokenRow } from "@/lib/gap/schema";
-import { basescanBlock } from "@/lib/live/basescan";
+import { basescanBlock, basescanTx } from "@/lib/live/basescan";
+import { GAP_TONE } from "./GapChart";
 
 /** Links off the site (Basescan) open in a new tab. */
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const;
@@ -77,11 +69,16 @@ function FreezeCells({ row }: { row: TokenRow }) {
       <Cell col="gap" className="text-right">
         {g ? (
           <>
-            <a href={basescanTx(g.tx)} {...EXTERNAL} className="font-mono font-semibold hover:underline">
+            {/* Hued like the chart; the underline marks it as a link whatever its hue. */}
+            <a
+              href={basescanTx(g.tx)}
+              {...EXTERNAL}
+              className={`font-mono font-semibold underline decoration-current/40 underline-offset-[3px] hover:decoration-current ${GAP_TONE[gapSide(g)]}`}
+            >
               {gapBps(g)}
               <span className="sr-only">, its transaction on Basescan</span>
             </a>
-            <span className="block text-[12px] text-ink-2">pool {g.above ? "above" : "below"}</span>
+            <span className="block text-[12px] text-ink-2">{gapSide(g) === "at" ? "pool at the held answer" : `pool ${gapSide(g)}`}</span>
           </>
         ) : (
           <span className="text-ink-2">no swap</span>

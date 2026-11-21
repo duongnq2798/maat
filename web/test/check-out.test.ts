@@ -168,6 +168,11 @@ describe("checkGapIndexPage", () => {
     ["another h1", GAP.replace(">Weekend Gap Index</h1>", ">Gap Index</h1>"), /h1/],
     ["a wrong title", GAP.replace(`Weekend Gap Index · ${SITE.name}`, SITE.title), /title/],
     ["no NVDAc hours in the HTML", GAP.replace(FIRST_NVDA_HOURS, ""), /NVDAc/],
+    [
+      "NVDAc hours in an inline script only, as React's payload carries them",
+      GAP.replace(`<ul><li>${FIRST_NVDA_HOURS} frozen</li></ul>`, `<script>self.__next_f.push([1,"${FIRST_NVDA_HOURS} frozen"])</script>`),
+      /NVDAc/,
+    ],
     ["the word safe", GAP.replace("</h1>", "</h1><p>Weekends are safe.</p>"), /safe/],
     ["the word safety", GAP.replace("</h1>", "</h1><p>A Safety margin.</p>"), /safe/],
     ["a link without a target", GAP.replace('href="#main"', 'href="#nowhere"'), /#nowhere/],

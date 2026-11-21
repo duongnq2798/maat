@@ -2,16 +2,17 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { act } from "react";
-import { createRoot, type Root } from "react-dom/client";
+import { createRoot, hydrateRoot, type Root } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Page, { metadata } from "@/app/(site)/gap-index/page";
-import { GapChart } from "@/components/gap/GapChart";
+import { escapeHtml, GAP_TONE, GapChart } from "@/components/gap/GapChart";
 import { TokenTabs } from "@/components/gap/TokenTabs";
+import { WindowTable } from "@/components/gap/WindowTable";
 import { NAV_TOKENS } from "@/content/b20-nav";
 import { FACTS } from "@/content/facts";
 import { formatInt } from "@/content/format";
-import { etDateTime, formatHours, gapBps, PUBLISHED, signedBps, TAB_ORDER } from "@/content/gap-index";
+import { etDateTime, formatHours, gapBps, gapSide, PUBLISHED, signedBps, TAB_ORDER } from "@/content/gap-index";
 import edition0 from "@/content/gap-index/edition-0.json";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { GAP_RPC } from "@/lib/gap/rpc";
@@ -56,7 +57,20 @@ describe("the published editions", () => {
     expect(signedBps(0)).toBe("0 bps");
     expect(gapBps({ bps: 356, above: true })).toBe("+356 bps");
     expect(gapBps({ bps: 45, above: false })).toBe("−45 bps");
+    expect(gapBps({ bps: 0, above: true })).toBe("0 bps");
     expect(etDateTime(1794612983)).toBe("Fri 13 Nov 18:36 ET");
+  });
+
+  it("puts a gap above, below, or at the held answer when it is 0 bps, whatever its flag says", () => {
+    expect(gapSide({ bps: 356, above: true })).toBe("above");
+    expect(gapSide({ bps: 45, above: false })).toBe("below");
+    expect(gapSide({ bps: 0, above: true })).toBe("at");
+    expect(gapSide({ bps: 0, above: false })).toBe("at");
+  });
+
+  it("escapes every character HTML gives a meaning, for the table views' markup", () => {
+    expect(escapeHtml(`<a href="x">Tom & Jerry's</a>`)).toBe("&lt;a href=&quot;x&quot;&gt;Tom &amp; Jerry&#39;s&lt;/a&gt;");
+    expect(escapeHtml("Fri 13 Nov 18:36 ET")).toBe("Fri 13 Nov 18:36 ET");
   });
 });
 
@@ -186,19 +200,26 @@ describe("the /gap-index page", () => {
         expect(cell("swapsWhileFrozen").textContent, name).toBe(formatInt(f.swapsWhileFrozen));
         expect(cell("returnMove").textContent, name).toBe(signedBps(f.returnMoveBps));
         expect(chart).toHaveTextContent(`${formatHours(f.hours)} frozen`);
-        expect(chart).toHaveTextContent(`${formatInt(f.swapsWhileFrozen)} swaps meanwhile`);
         expect(chart).toHaveTextContent(`feed came back ${signedBps(f.returnMoveBps)}`);
         if (t.largestGap) {
+          expect(chart).toHaveTextContent(`${formatInt(f.swapsWhileFrozen)} ${f.swapsWhileFrozen === 1 ? "swap" : "swaps"} meanwhile`);
           const g = gapBps(t.largestGap);
+          const tone = GAP_TONE[gapSide(t.largestGap)];
           expect(cell("gap"), name).toHaveTextContent(g);
           const links = cell("gap").querySelectorAll("a");
           expect(links, name).toHaveLength(1);
           const link = links[0]!;
           expect(link.textContent?.startsWith(g), name).toBe(true);
           expect(link).toHaveAttribute("href", `https://basescan.org/tx/${t.largestGap.tx}`);
+          // Hued like the chart, and underlined, so it reads as a link whatever its hue.
+          expect(link, name).toHaveClass(tone, "underline");
           expect(chart.querySelector("[data-gap-value]")!.textContent).toBe(g);
-          expect(chart).toHaveTextContent(`pool ${t.largestGap.above ? "above" : "below"} the held answer`);
+          expect(chart.querySelector("[data-gap-value]"), name).toHaveClass(tone);
+          expect(chart).toHaveTextContent(`pool ${gapSide(t.largestGap)} the held answer`);
           expect(chart).toHaveTextContent(TWAP_SENTENCE);
+        } else {
+          expect(chart.querySelector("[data-gap-value]")!.textContent, name).toBe("no swap meanwhile");
+          expect(chart.textContent, name).not.toMatch(/\d swaps? meanwhile/);
         }
       }
       expect(s.querySelector("[data-window-table]")!.parentElement).toHaveTextContent(TWAP_SENTENCE);
@@ -233,6 +254,21 @@ describe("the /gap-index page", () => {
     expect(section("2026-11-20")).toHaveTextContent("Measured after it ends, Mon 23 Nov 09:30 ET");
   });
 
+  it("names each window's tablist by the window's close, once the tabs mount", () => {
+    setup();
+    for (const w of complete) {
+      const tabs = section(w.id).querySelector<HTMLElement>("[data-token-tabs]")!;
+      expect(tabs).toHaveAttribute("data-token-tabs", "tabs");
+      expect(tabs.querySelector('[role="tablist"]')).toHaveAttribute("aria-label", `Tokens, window closing ${w.closeLabel}`);
+      expect(tabs.querySelectorAll("[data-panel]")).toHaveLength(NAV_TOKENS.length);
+      expect(tabs.querySelector("[data-tabs-preview]")).toBeNull();
+    }
+    expect(section("2026-11-13").querySelector('[role="tablist"]')).toHaveAttribute(
+      "aria-label",
+      "Tokens, window closing Fri 13 Nov 16:00 ET",
+    );
+  });
+
   it("puts each window's table in a scroll region a keyboard can reach", () => {
     setup();
     for (const w of complete) {
@@ -250,11 +286,15 @@ describe("the /gap-index page", () => {
     setup();
     const method = document.querySelector<HTMLElement>("section#method")!;
     expect(within(method).getByRole("heading", { level: 2 })).toHaveTextContent("How these numbers are read");
+    // The command's edition and the example window come from one edition: the latest with a measured window.
+    const edition = PUBLISHED.find((e) => e.windows.some((w) => w.status === "complete"))!;
+    const example = edition.windows.find((w) => w.status === "complete")!.id;
     for (const text of [
       GAP_RPC,
       ANSWER_UPDATED_TOPIC,
       SWAP_TOPIC,
-      "npm run gap-index -- --edition 0 --window <id> --token <SYM> --stdout",
+      `npm run gap-index -- --edition ${edition.edition} --window <id> --token <SYM> --stdout`,
+      `such as ${example}`,
       "Nothing here is signed, and the site has no server.",
       TWAP_SENTENCE,
     ]) {
@@ -266,9 +306,18 @@ describe("the /gap-index page", () => {
   it("holds every panel, every figure and no tablist in its static HTML, and never says safe", { timeout: 60_000 }, () => {
     const html = renderToString(<Page />);
     expect(html).not.toContain('role="tablist"');
+    // One no-JS style for the whole page: every panel shows and the preview of the tab row does not.
+    expect(html.match(/<noscript>/g)).toHaveLength(1);
+    expect(html).toContain(
+      '<noscript><style>[data-token-tabs="all"]>[data-panel]~[data-panel]{display:block}[data-tabs-preview]{display:none}</style></noscript>',
+    );
     const doc = new DOMParser().parseFromString(html, "text/html");
     for (const w of complete) {
       const s = doc.querySelector(`section[data-window="${w.id}"]`)!;
+      // Plain attribute reads: the parsed document's elements are not the test window's, which jest-dom requires.
+      expect(s.querySelector("[data-token-tabs]")!.getAttribute("data-token-tabs")).toBe("all");
+      expect(s.querySelector("[data-tabs-preview]")!.getAttribute("aria-hidden")).toBe("true");
+      expect(s.querySelectorAll("[data-panel]")).toHaveLength(NAV_TOKENS.length);
       expect(s.querySelectorAll("[data-gap-chart]")).toHaveLength(NAV_TOKENS.length);
       expect(s.querySelectorAll("[hidden]")).toHaveLength(0);
       const nvda = w.tokens.find((t) => t.symbol === "NVDAc")!;
@@ -346,6 +395,95 @@ describe("GapChart", () => {
     expect(c).toHaveTextContent("0 swaps in window");
     expect(c).not.toHaveTextContent(/bps|frozen|meanwhile/);
   });
+
+  // The y of every vertex a path draws: M and L carry x then y, H an x, V a y.
+  const ysOf = (d: string) => {
+    const ys: number[] = [];
+    let cmd = "";
+    let n = 0;
+    for (const tok of d.match(/[MLHVZ]|-?\d+(?:\.\d+)?/g)!) {
+      if (/[A-Z]/.test(tok)) {
+        cmd = tok;
+        n = 0;
+      } else if (cmd === "V" || ((cmd === "M" || cmd === "L") && n++ % 2 === 1)) {
+        ys.push(Number(tok));
+      }
+    }
+    return ys;
+  };
+
+  it("maps prices to y over their range padded by 8% each side, the held answer included", () => {
+    const { w, row } = nvda1113();
+    const svg = draw(w, "NVDAc").querySelector("svg[role=img]")!;
+    const d = (series: string) => svg.querySelector(`[data-series="${series}"]`)!.getAttribute("d")!;
+    const held = Number(row.freeze!.from.answer);
+    const prices = [...row.series.pool, ...row.series.feed].map(([, p]) => Number(p)).concat(held);
+    const min = Math.min(...prices);
+    const max = Math.max(...prices);
+    const pad = (max - min) * 0.08;
+    const y = (p: number) => 300 - ((p - (min - pad)) / (max - min + 2 * pad)) * 300;
+
+    // The highest and lowest points sit 0.08 / 1.16 of the height from the top and from the bottom.
+    const ys = [...ysOf(d("pool")), ...ysOf(d("feed")), ...ysOf(d("held"))];
+    expect(Math.min(...ys)).toBeCloseTo((300 * 0.08) / 1.16, 1);
+    expect(Math.max(...ys)).toBeCloseTo(300 - (300 * 0.08) / 1.16, 1);
+    expect(ysOf(d("pool"))[0]).toBeCloseTo(y(Number(row.series.pool[0]![1])), 1);
+    // The held line is flat, at the held answer's y.
+    expect(ysOf(d("held"))).toHaveLength(1);
+    expect(ysOf(d("held"))[0]).toBeCloseTo(y(held), 1);
+  });
+
+  it("hues a below-gap row's line, fill and key refuse, and keeps the feed in ink", () => {
+    const w = complete.find((x) => x.id === "2026-11-13")!;
+    const row = w.tokens.find((t) => t.symbol === "CRCLc")!;
+    expect(row.largestGap?.above).toBe(false);
+    const c = draw(w, "CRCLc");
+    const svg = c.querySelector("svg[role=img]")!;
+    expect(svg).toHaveClass("text-refuse");
+    expect(svg).not.toHaveClass("text-accent");
+    expect(svg.querySelector('[data-series="pool"]')).toHaveAttribute("stroke", "currentColor");
+    const fill = svg.querySelector('[data-series="fill"]')!.getAttribute("fill")!;
+    const gradient = svg.querySelector(`[id="${/^url\(#(.+)\)$/.exec(fill)![1]}"]`)!;
+    expect([...gradient.querySelectorAll("stop")].map((s) => s.getAttribute("stop-color"))).toEqual(["currentColor", "currentColor"]);
+    expect(svg.querySelector('[data-series="feed"]')!.parentElement).toHaveClass("text-ink-2");
+    expect(c.querySelector("li svg")).toHaveClass("text-refuse");
+  });
+
+  it("says pool at the held answer, in ink, for a gap of 0 bps, in the chart and in the table", () => {
+    const { w, row } = nvda1113();
+    const zero = { ...row, largestGap: { ...row.largestGap!, bps: 0, above: true } };
+    const c = render(<GapChart row={zero} window={w} />).container;
+    const value = c.querySelector("[data-gap-value]")!;
+    expect(value.textContent).toBe("0 bps");
+    expect(value).toHaveClass("text-ink");
+    expect(value).not.toHaveClass("text-accent");
+    expect(c).toHaveTextContent("pool at the held answer");
+    const svg = c.querySelector("svg[role=img]")!;
+    expect(svg).toHaveClass("text-ink");
+    expect(svg.getAttribute("aria-label")).toContain("Largest gap 0 bps, pool at the held answer.");
+
+    const t = render(<WindowTable window={{ ...w, tokens: w.tokens.map((x) => (x.symbol === "NVDAc" ? zero : x)) }} />).container;
+    const cell = t.querySelector('tr[data-token="NVDAc"] td[data-col="gap"]')!;
+    expect(cell.querySelector("a")).toHaveClass("text-ink", "underline");
+    expect(cell.querySelector("a")).not.toHaveClass("text-accent");
+    expect(cell).toHaveTextContent("0 bps");
+    expect(cell).toHaveTextContent("pool at the held answer");
+    expect(t.querySelector('tr[data-token="CRCLc"] td[data-col="gap"] a')).toHaveClass("text-refuse", "underline");
+  });
+
+  it("says no swap meanwhile once, and gives no count, for a freeze without a swap", () => {
+    const { w, row } = nvda1113();
+    const quiet = { ...row, largestGap: null, freeze: { ...row.freeze!, swapsWhileFrozen: 0 } };
+    const c = render(<GapChart row={quiet} window={w} />).container;
+    const header = c.querySelector("[data-gap-chart]")!.firstElementChild!;
+    expect(header.textContent!.match(/no swap meanwhile/g)).toHaveLength(1);
+    expect(header.textContent).not.toMatch(/\d swaps? meanwhile/);
+    expect(header).toHaveTextContent(`${formatHours(row.freeze!.hours)} frozen`);
+    const label = c.querySelector("svg[role=img]")!.getAttribute("aria-label")!;
+    expect(label.match(/no swap meanwhile/gi)).toHaveLength(1);
+    expect(label).not.toMatch(/\d swaps? meanwhile/);
+    expect(c).not.toHaveTextContent(/Largest gap|The gap compares/);
+  });
 });
 
 describe("TokenTabs", () => {
@@ -359,18 +497,70 @@ describe("TokenTabs", () => {
       <h4>{`${t.label} chart`}</h4>
     </div>
   ));
-  const ui = <TokenTabs windowId="2026-11-13" tabs={tabs} panels={panels} />;
+  const label = "Tokens, window closing Fri 13 Nov 16:00 ET";
+  const ui = <TokenTabs windowId="2026-11-13" label={label} tabs={tabs} panels={panels} />;
 
   it("renders every panel with its heading and no tablist before it mounts", () => {
     const html = renderToString(ui);
     expect(html).not.toContain("tablist");
-    expect(html).not.toContain("hidden");
+    // No panel is hidden: only the preview of the tab row is aria-hidden.
+    expect(html).not.toMatch(/\shidden\b/);
     for (const t of tabs) expect(html).toContain(`${t.label} chart`);
+  });
+
+  it("puts an inert preview of the pill row first before it mounts, then the panels, without tab roles", () => {
+    const host = document.createElement("div");
+    host.innerHTML = renderToString(ui);
+    const wrapper = host.querySelector("[data-token-tabs]")!;
+    expect(wrapper).toHaveAttribute("data-token-tabs", "all");
+    const [preview, ...rest] = [...wrapper.children];
+    expect(preview).toHaveAttribute("data-tabs-preview");
+    expect(preview).toHaveAttribute("aria-hidden", "true");
+    expect([...preview!.children].map((s) => [s.tagName, s.textContent])).toEqual(tabs.map((t) => ["SPAN", t.label]));
+    expect(preview!.querySelectorAll("button, a, [tabindex]")).toHaveLength(0);
+    expect(rest).toHaveLength(tabs.length);
+    for (const p of rest) {
+      expect(p).toHaveAttribute("data-panel");
+      for (const a of ["role", "id", "aria-labelledby", "hidden", "tabindex"]) expect(p).not.toHaveAttribute(a);
+    }
+  });
+
+  it("keeps one tree through hydration: the same wrapper, panel and heading nodes, the tablist in the preview's slot", async () => {
+    const host = document.body.appendChild(document.createElement("div"));
+    host.innerHTML = renderToString(ui);
+    const wrapper = host.querySelector("[data-token-tabs]")!;
+    const before = [...host.querySelectorAll("[data-panel]")];
+    const headings = [...host.querySelectorAll("h4")];
+    const previewPills = [...host.querySelectorAll("[data-tabs-preview] span")];
+    const errors: unknown[] = [];
+    let root: Root | undefined;
+    await act(async () => {
+      root = hydrateRoot(host, ui, { onRecoverableError: (e) => errors.push(e) });
+    });
+    expect(errors).toEqual([]);
+    expect(host.querySelector("[data-token-tabs]")).toBe(wrapper);
+    expect(wrapper).toHaveAttribute("data-token-tabs", "tabs");
+    expect(wrapper.firstElementChild).toHaveAttribute("role", "tablist");
+    expect(host.querySelector("[data-tabs-preview]")).toBeNull();
+    const after = [...host.querySelectorAll("[data-panel]")];
+    expect(after).toHaveLength(tabs.length);
+    after.forEach((p, i) => expect(p).toBe(before[i]));
+    [...host.querySelectorAll("h4")].forEach((h, i) => expect(h).toBe(headings[i]));
+    expect(after[0]).toHaveAttribute("role", "tabpanel");
+    expect(after[1]).toHaveAttribute("hidden");
+    // The pills keep the preview's classes, so the row keeps its height.
+    const buttons = [...host.querySelectorAll('[role="tab"]')];
+    previewPills.forEach((span, i) => {
+      for (const c of span.classList) expect(buttons[i]).toHaveClass(c);
+    });
+    act(() => root!.unmount());
+    host.remove();
   });
 
   it("renders a tablist of pill tabs after it mounts, each tab controlling its own panel", () => {
     render(ui);
     const list = screen.getByRole("tablist");
+    expect(list).toHaveAttribute("aria-label", label);
     const all = within(list).getAllByRole("tab");
     expect(all.map((t) => t.textContent)).toEqual(tabs.map((t) => t.label));
     all.forEach((tab, i) => {

@@ -56,8 +56,20 @@ export const metadata: Metadata = {
 /** Links off the site (Basescan, GitHub) open in a new tab. */
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const;
 
+/**
+ * The edition the method's example names: the latest with a measured window, else the latest. The command's edition
+ * and the example window both come from it, so they always name a row that exists.
+ */
+const EXAMPLE_EDITION = PUBLISHED.find((e) => e.windows.some((w) => w.status === "complete")) ?? PUBLISHED[0]!;
+
 /** The exact command that reproduces one row of an edition, in the parts a narrow screen may wrap between. */
-const COMMAND = ["npm run gap-index --", "--edition 0", "--window <id>", "--token <SYM>", "--stdout"];
+const COMMAND = ["npm run gap-index --", `--edition ${EXAMPLE_EDITION.edition}`, "--window <id>", "--token <SYM>", "--stdout"];
+
+/**
+ * Without JavaScript, every token's panel shows, one after another, and the preview of the tab row does not: undoes
+ * the rule in globals.css that keeps the first panel only until the tabs mount.
+ */
+const NO_SCRIPT_TABS = '[data-token-tabs="all"]>[data-panel]~[data-panel]{display:block}[data-tabs-preview]{display:none}';
 
 function Code({ children }: { children: ReactNode }) {
   return <code className="font-mono text-[0.9em] text-ink [overflow-wrap:anywhere]">{children}</code>;
@@ -129,6 +141,7 @@ function Measured({ w }: { w: CompleteWindow }) {
     <>
       <TokenTabs
         windowId={w.id}
+        label={`Tokens, window closing ${w.closeLabel}`}
         tabs={rows.map((r) => ({ id: r.symbol, label: r.symbol }))}
         panels={rows.map((r) => (
           <GapChart key={r.symbol} row={r} window={w} />
@@ -182,7 +195,7 @@ function Term({ name, children }: { name: string; children: ReactNode }) {
 }
 
 function Method() {
-  const example = PUBLISHED.flatMap((e) => e.windows).find((w) => w.status === "complete")?.id;
+  const example = EXAMPLE_EDITION.windows.find((w) => w.status === "complete")?.id;
   const lookbackDays = LOOKBACK_SEC / 86_400;
   return (
     <section id="method" aria-labelledby="method-title" className="border-t border-line bg-surface-soft">
@@ -329,6 +342,9 @@ function Method() {
 export default function GapIndexPage() {
   return (
     <>
+      <noscript>
+        <style>{NO_SCRIPT_TABS}</style>
+      </noscript>
       <a href="#main" className="skip-link">
         Skip to content
       </a>

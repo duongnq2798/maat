@@ -135,8 +135,11 @@ export function checkGapIndexPage(html: string): string[] {
   need(title === `${GAP_INDEX_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${GAP_INDEX_HEADING} · ${SITE.name}"`);
   need(/<link rel="canonical" href="https?:\/\/[^"/]+\/gap-index"/.test(html), "the canonical link is missing, not absolute or not /gap-index");
   need(new RegExp(`<h1[^>]*>${GAP_INDEX_HEADING}</h1>`).test(html), `the h1 is not "${GAP_INDEX_HEADING}"`);
+  // Looked for in the markup alone: the inline scripts carry React's copy of the page, which a reader without
+  // JavaScript and a crawler never see.
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   const hours = firstNvdaHours();
-  need(hours === null || html.includes(hours), `NVDAc's ${hours} in the first complete window is not in the exported HTML`);
+  need(hours === null || markup.includes(hours), `NVDAc's ${hours} in the first complete window is not in the exported markup`);
   need(!/safe/i.test(html), 'the page says "safe"');
 
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {

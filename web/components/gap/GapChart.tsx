@@ -1,6 +1,6 @@
 import { NAV_TOKENS } from "@/content/b20-nav";
 import { formatInt } from "@/content/format";
-import { type CompleteWindow, etDateTime, formatHours, gapBps, signedBps, SPOT_NOT_TWAP } from "@/content/gap-index";
+import { type CompleteWindow, etDateTime, formatHours, gapBps, gapSide, signedBps, SPOT_NOT_TWAP } from "@/content/gap-index";
 import { BUCKET_SEC } from "@/lib/gap/measure";
 import type { TokenRow } from "@/lib/gap/schema";
 
@@ -70,13 +70,17 @@ function geometry(row: TokenRow, w: CompleteWindow) {
   return { line, fill, solid, dashed, last: last ? ([x(last[0]), y(last[1])] as const) : null };
 }
 
-/** The hue of a gap: the accent when the pool sat above the held answer, refuse when below. */
+/** The hue of a gap, for the chart and the table: the accent above the held answer, refuse below, ink at it. */
+export const GAP_TONE = { above: "text-accent", below: "text-refuse", at: "text-ink" } as const;
+
 function tone(row: TokenRow): string {
-  if (!row.largestGap) return "text-ink";
-  return row.largestGap.above ? "text-accent" : "text-refuse";
+  return row.largestGap ? GAP_TONE[gapSide(row.largestGap)] : "text-ink";
 }
 
-/** The figures the header shows, as one sentence for the chart's accessible name. */
+/**
+ * The figures the header shows, as one sentence for the chart's accessible name. A freeze has a largest gap exactly
+ * when a swap fell in it (lib/gap/measure.ts), so without one the sentence says "no swap meanwhile" once, and no count.
+ */
 function summary(row: TokenRow, w: CompleteWindow): string {
   const head = `${row.symbol}, ${w.closeLabel} to ${w.openLabel}.`;
   const f = row.freeze;
@@ -85,8 +89,9 @@ function summary(row: TokenRow, w: CompleteWindow): string {
     return `${head} ${why[0]!.toUpperCase()}${why.slice(1)}; ${plural(row.swapsInWindow, "swap", "swaps")} in window.`;
   }
   const g = row.largestGap;
-  const gap = g ? `Largest gap ${gapBps(g)}, pool ${g.above ? "above" : "below"} the held answer.` : "No swap meanwhile.";
-  return `${head} ${gap} ${formatHours(f.hours)} frozen, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, feed came back ${signedBps(f.returnMoveBps)}.`;
+  const back = `feed came back ${signedBps(f.returnMoveBps)}.`;
+  if (!g) return `${head} ${formatHours(f.hours)} frozen, no swap meanwhile, ${back}`;
+  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${formatHours(f.hours)} frozen, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
 }
 
 function Header({ row }: { row: TokenRow }) {
@@ -110,11 +115,12 @@ function Header({ row }: { row: TokenRow }) {
             {gapBps(g)}
           </p>
           <p className="m-0 mt-1 text-[14px] text-ink-body">
-            pool {g.above ? "above" : "below"} the held answer
+            pool {gapSide(g)} the held answer
             <span className="text-ink-2"> · {etDateTime(g.ts)}</span>
           </p>
         </>
       ) : (
+        // A freeze without a largest gap had no swap: said here once, so the list below gives no count.
         <p data-gap-value className="m-0 mt-2 text-[22px] font-semibold leading-tight tracking-[-0.02em] text-ink-2">
           no swap meanwhile
         </p>
@@ -125,10 +131,12 @@ function Header({ row }: { row: TokenRow }) {
             <li>
               <strong className="font-semibold text-ink">{formatHours(f.hours)}</strong> frozen
             </li>
-            <li>
-              <strong className="font-semibold text-ink">{formatInt(f.swapsWhileFrozen)}</strong>{" "}
-              {f.swapsWhileFrozen === 1 ? "swap" : "swaps"} meanwhile
-            </li>
+            {g ? (
+              <li>
+                <strong className="font-semibold text-ink">{formatInt(f.swapsWhileFrozen)}</strong>{" "}
+                {f.swapsWhileFrozen === 1 ? "swap" : "swaps"} meanwhile
+              </li>
+            ) : null}
             <li>
               feed came back <strong className="font-semibold text-ink">{signedBps(f.returnMoveBps)}</strong>
             </li>
@@ -151,6 +159,20 @@ function Key({ dashed, className }: { dashed?: boolean; className: string }) {
       <path d="M1 4H19" stroke="currentColor" strokeWidth={dashed ? 1.5 : 2} strokeLinecap="round" strokeDasharray={dashed ? "3 3" : undefined} />
     </svg>
   );
+}
+
+const HTML_ESCAPES: Readonly<Record<string, string>> = { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" };
+
+/** Text made safe to put in HTML markup, in an element or a quoted attribute: & < > " and ' become entities. */
+export function escapeHtml(text: string): string {
+  return text.replace(/[&<>"']/g, (c) => HTML_ESCAPES[c]!);
+}
+
+/** The table view's rows as markup, every value escaped: Time, Series, Price (USD). */
+function rowsHtml(points: readonly { ts: number; series: string; price: string }[]): string {
+  return points
+    .map((p) => `<tr><td>${escapeHtml(etDateTime(p.ts))}</td><td>${escapeHtml(p.series)}</td><td>${escapeHtml(p.price)}</td></tr>`)
+    .join("");
 }
 
 function TableView({ row, w }: { row: TokenRow; w: CompleteWindow }) {
@@ -185,17 +207,12 @@ function TableView({ row, w }: { row: TokenRow; w: CompleteWindow }) {
               </th>
             </tr>
           </thead>
-          {/* The cells are styled from the tbody: a chart lists over a hundred points, and the page holds 26 charts. */}
-          <tbody className="text-ink-2 [&_td]:px-2 [&_td]:py-1.5 [&_td:first-child]:pl-3 [&_td:first-child]:text-ink-body [&_td:last-child]:pr-3 [&_td:last-child]:text-right [&_td:last-child]:font-mono [&_td:last-child]:text-ink [&>tr]:border-b [&>tr]:border-line-soft [&>tr:last-child]:border-b-0">
-            {points.map((p, i) => (
-              // Two feed updates can share a timestamp: the list never reorders, so its index is the key.
-              <tr key={i}>
-                <td>{etDateTime(p.ts)}</td>
-                <td>{p.series}</td>
-                <td>{p.price}</td>
-              </tr>
-            ))}
-          </tbody>
+          {/* The rows are one HTML string, styled from the tbody: a chart lists over a hundred points, the page holds 26
+              charts, and as elements they would weigh on the page and on its React payload twice over. */}
+          <tbody
+            className="text-ink-2 [&_td]:px-2 [&_td]:py-1.5 [&_td:first-child]:pl-3 [&_td:first-child]:text-ink-body [&_td:last-child]:pr-3 [&_td:last-child]:text-right [&_td:last-child]:font-mono [&_td:last-child]:text-ink [&>tr]:border-b [&>tr]:border-line-soft [&>tr:last-child]:border-b-0"
+            dangerouslySetInnerHTML={{ __html: rowsHtml(points) }}
+          />
         </table>
       </div>
     </details>

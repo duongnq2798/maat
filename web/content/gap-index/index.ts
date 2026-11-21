@@ -39,17 +39,21 @@ export function signedBps(n: number): string {
   return `${n > 0 ? "+" : MINUS}${formatInt(Math.abs(n))} bps`;
 }
 
-/** A largest gap with its side: pool above the held answer is "+", below is "−". */
+/** A largest gap with its side: pool above the held answer is "+", below is "−", and at it, "0 bps". */
 export function gapBps(g: { bps: number; above: boolean }): string {
   return signedBps(g.above ? g.bps : -g.bps);
+}
+
+/** Where the pool sat against the held answer at a largest gap; a gap of 0 bps is at it, whatever its flag says. */
+export function gapSide(g: { bps: number; above: boolean }): "above" | "below" | "at" {
+  if (g.bps === 0) return "at";
+  return g.above ? "above" : "below";
 }
 
 /** A block time in New York with its day: "Fri 13 Nov 18:36 ET". */
 export function etDateTime(ts: number): string {
   return `${dayLabel(isoOfDay(localTime(ts).etDay))} ${formatEt(ts)}`;
 }
-
-export const basescanTx = (tx: string) => `https://basescan.org/tx/${tx}`;
 
 /** What a gap compares, printed beside every gap; the TWAP's length is the default mandate's. */
 export const SPOT_NOT_TWAP = `the pool's spot price after a swap, not the ${FACTS.mandate.value.twapWindowSec / 60}-minute TWAP the vault checks`;
