@@ -10,7 +10,6 @@ sources:
   - deployments/README.md
   - deployments/go-live.md
   - agent/scripts/first-decision.ts
-  - web/lib/live/rpc.ts
   - docs/superpowers/specs/2026-11-07-maat-web-design.md
   - docs/superpowers/specs/2026-11-06-mandate-treasury-design.md
 next: [security/not-claimed, guides/deploy-your-own-vault]
@@ -43,7 +42,7 @@ This table follows the Status section of the README, without the test counts. Th
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-transaction reconcile | Built and tested, with fork integration tests. The Claude proposer is tested against a fake client, and the fork run uses a scripted proposer and a local sender. No output from the real Claude API is committed yet | [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent) |
 | ERC-8021 Builder Code on every agent transaction | Built and tested, including in the fork run. No real code is registered yet | [`agent/src/exec/builderCode.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/builderCode.ts) |
 | [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the [executor](/docs/help/glossary#executor), with an account policy | Built, and tested against a fake CDP client only. Never run against the real CDP | [`agent/src/exec/cdpSender.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpPolicy.ts) |
-| The landing page and this docs center. The landing page has the [interactive decision engine](/), the [labeled fork ledger](/#ledger) and a [simulator](/#try) of the default mandate, which runs in the browser and is a simulation, not the contract. The live strip under the landing page's title and the [Right now on Base](/now) page read Base mainnet in the browser | Online at maatonbase.xyz, a static export of `main` with no wallet, no analytics and no cookies. The live strip and `/now` send only read-only `eth_call` requests from the browser to two keyless public Base RPCs; they sign nothing and send no transaction. Built and tested | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
+| The landing page and this docs center. The landing page has the [interactive decision engine](/), the [labeled fork ledger](/#ledger) and a [simulator](/#try) of the default mandate, which runs in the browser and is a simulation, not the contract | Online at maatonbase.xyz, a static export of `main` with no wallet, no RPC calls, no analytics and no cookies. Built and tested | [`web/`](https://github.com/duongnq2798/maat/tree/main/web) |
 
 There is no third-party audit. Treat the contracts as unaudited. [What Maat does not claim](/docs/security/not-claimed) lists the known limits.
 

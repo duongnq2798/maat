@@ -15,7 +15,7 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 | `npm test` | unit, component and contract parity tests, and the docs gates ([Docs content](#docs-content)) |
 | `npm run typecheck` | Next route types + `tsc --noEmit` |
 | `npm run build` | static export into `out/` |
-| `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict, the live strip's reading state and no chain reading baked in), `/now` (metadata, its heading, its reading state and no chain reading baked in) and every docs page ([what it checks](#what-checkout-checks)) |
+| `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict) and every docs page ([what it checks](#what-checkout-checks)) |
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
 | `npm run docs:gen` | rewrites the reference data in `content/generated/` from the contracts, the agent and the deployments table ([Docs content](#docs-content)) |
@@ -147,9 +147,8 @@ A component that wraps Markdown text, such as `<Callout>`, stays out of `DATA_CO
 
 It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
 
-- The files a deploy needs, among them `index.html`, `now.html`, `404.html`, `docs.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
-- The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, the live strip's reading state with no LIVE pill, Basescan block link or verdict line in the HTML (the strip reads Base in the browser, so a reading in the export would be a stale one), a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
-- `/now`, the Right now on Base page: `lang`, the title "Right now on Base · Maat", a description of 50 to 160 characters, an absolute canonical URL ending in `/now`, an absolute Open Graph image, its h1, the board's reading state with no LIVE pill, Basescan block link or verdict line in the HTML, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and an entry in `sitemap.xml`.
+- The files a deploy needs, among them `index.html`, `404.html`, `docs.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
+- The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
 - Every docs page: `lang`, a title that ends in "· Maat Docs" (the docs home is "Maat Docs"), a description of 50 to 160 characters, an absolute canonical URL and `og:image`, scripts only from `/_next/`, no Google Fonts, no block element inside a paragraph, and links that lead to a heading of the page, an exported docs page or a file in `out/`.
 - Each docs page's link preview image: a PNG of the size its tags give, named by both `og:image` and `twitter:image`.
 - Each docs page's Markdown copy: no component tag left in place of its text, the index note first, and the status label, review date and Source of truth files of its page.
