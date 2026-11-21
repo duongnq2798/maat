@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { MOMENTS } from "../content/engine";
+import { formatHours, PUBLISHED } from "../content/gap-index";
 import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
@@ -102,6 +103,51 @@ export function checkNowPage(html: string): string[] {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+  return problems;
+}
+
+/** The /gap-index page's h1; its title is this, then the site's name. */
+const GAP_INDEX_HEADING = "Weekend Gap Index";
+
+/** The NVDAc hours of the first complete window the page shows, as the page writes them, or null before any. */
+function firstNvdaHours(): string | null {
+  for (const w of PUBLISHED.flatMap((e) => e.windows)) {
+    if (w.status !== "complete") continue;
+    const hours = w.tokens.find((t) => t.symbol === "NVDAc")?.freeze?.hours;
+    return hours === undefined ? null : formatHours(hours);
+  }
+  return null;
+}
+
+/**
+ * Problems with the exported /gap-index page (out/gap-index.html); an empty list means it is ready to ship. Its figures
+ * come from the committed edition files at build time, so they must be in the HTML itself, for readers without
+ * JavaScript and for crawlers.
+ */
+export function checkGapIndexPage(html: string): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`out/gap-index.html: ${problem}`);
+  };
+
+  need(html.includes('<html lang="en"'), 'missing <html lang="en">');
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
+  need(title === `${GAP_INDEX_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${GAP_INDEX_HEADING} · ${SITE.name}"`);
+  need(/<link rel="canonical" href="https?:\/\/[^"/]+\/gap-index"/.test(html), "the canonical link is missing, not absolute or not /gap-index");
+  need(new RegExp(`<h1[^>]*>${GAP_INDEX_HEADING}</h1>`).test(html), `the h1 is not "${GAP_INDEX_HEADING}"`);
+  // Looked for in the markup alone: the inline scripts carry React's copy of the page, which a reader without
+  // JavaScript and a crawler never see.
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  const hours = firstNvdaHours();
+  need(hours === null || markup.includes(hours), `NVDAc's ${hours} in the first complete window is not in the exported markup`);
+  need(!/safe/i.test(html), 'the page says "safe"');
+
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
+  }
   return problems;
 }
 

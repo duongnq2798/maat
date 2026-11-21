@@ -5,7 +5,7 @@
    A new landing folder under components/ must be added here. */
 @source "./(site)";
 @source "../components/*.tsx";
-@source "../components/{charts,live,sections,ui}";
+@source "../components/{charts,gap,live,sections,ui}";
 @source "../content/*.ts";
 @source "../lib/site.ts";
 
@@ -227,6 +227,11 @@
   }
   .skip-link:focus {
     top: 12px;
+  }
+  /* /gap-index tabs before hydration: every panel is in the HTML, but only the first shows, below a preview of the
+     pill row, so the page does not move when the tablist mounts. The page's noscript style shows every panel. */
+  [data-token-tabs="all"] > [data-panel] ~ [data-panel] {
+    display: none;
   }
   @media (max-width: 720px) {
     .wrap {
