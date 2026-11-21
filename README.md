@@ -712,7 +712,8 @@ agent/                     TypeScript agent runtime
   test/                    unit tests with fakes; integration/ runs the Base fork
   scripts/                 cdp-setup.ts (owner, once), first-decision.ts (owner, offline intent builder),
                            gen-abis.ts, smoke-claude.ts (paid API)
-web/                       Next.js landing page, docs center, brand assets, parity tests, Playwright e2e
+web/                       Next.js landing page, /now, /gap-index, docs center, brand assets, parity tests,
+                           Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            (empty) address table
 docs/superpowers/          design specs and implementation plans
