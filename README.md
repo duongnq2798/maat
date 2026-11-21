@@ -14,7 +14,7 @@
 [![CI](https://github.com/duongnq2798/maat/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/duongnq2798/maat/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-6b7280?style=flat-square)](LICENSE)
 
-**[For judges: 60 seconds](#maat-in-60-seconds)** · **[Live site](https://maatonbase.xyz)** · **[Try to make it say no](https://maatonbase.xyz/#try)** · **[Right now on Base](https://maatonbase.xyz/now)** · **[Docs](https://maatonbase.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[Tested, in numbers](#tested-in-numbers)** · **[Status](#status)** · **[Security](SECURITY.md)** · **[@maatonbase](https://x.com/maatonbase)**
+**[For judges: 60 seconds](#maat-in-60-seconds)** · **[Live site](https://maatonbase.xyz)** · **[Try to make it say no](https://maatonbase.xyz/#try)** · **[Right now on Base](https://maatonbase.xyz/now)** · **[Weekend Gap Index](https://maatonbase.xyz/gap-index)** · **[Docs](https://maatonbase.xyz/docs)** · **[Evaluate in 5 minutes](#how-to-evaluate-maat-in-5-minutes)** · **[Tested, in numbers](#tested-in-numbers)** · **[Status](#status)** · **[Security](SECURITY.md)** · **[@maatonbase](https://x.com/maatonbase)**
 
 <sub>Base "Stocks Maxxing Season" Builder Quest · Track: Agentic Stock Finance · Solidity 0.8.28 on Base (Foundry, <code>hardfork = "base:Cobalt"</code>) · TypeScript agent (viem 2.57.16, zod 4.6.7, <code>@anthropic-ai/sdk</code> 1.6.0, <code>@coinbase/cdp-sdk</code> 1.61.0) · Next.js 16.4.5 · B20 stocks · Chainlink equity feeds · Aerodrome Slipstream · Aave V4 · ERC-8021 Builder Codes</sub>
 

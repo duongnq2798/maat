@@ -6,6 +6,8 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 
 `/now` (Right now on Base) reads Base mainnet in the browser through `lib/live/`: one Multicall3 call over keyless public RPCs, judged like `MandateVault` for a BUY.
 
+`/gap-index` (Weekend Gap Index) publishes one edition file per run in `content/gap-index/`, written by `npm run gap-index -- --edition N` from Base logs (`lib/gap/`).
+
 ## Commands (run in `web/`)
 
 | Command | What it does |

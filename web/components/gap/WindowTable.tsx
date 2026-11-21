@@ -101,6 +101,7 @@ export function WindowTable({ window: w }: { window: CompleteWindow }) {
         aria-label={`Every token, ${w.closeLabel} to ${w.openLabel}, one row each`}
         tabIndex={0}
         data-window-table
+        data-scroll-x
         className="card scroll-x-cue relative overflow-x-auto"
       >
         <table className="w-full min-w-[860px] border-collapse text-left text-[13px] leading-5 tabular-nums">

@@ -328,6 +328,13 @@ function Method() {
               </li>
             ))}
           </ul>
+          <p className="m-0 max-w-[820px]">
+            How long the feeds hold their answer while NYSE is closed, per weekend:{" "}
+            <a href="/gap-index" className="underline underline-offset-2">
+              Weekend Gap Index
+            </a>
+            .
+          </p>
         </Part>
       </div>
     </section>
