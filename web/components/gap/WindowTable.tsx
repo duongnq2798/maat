@@ -4,7 +4,7 @@ import { formatInt } from "@/content/format";
 import { type CompleteWindow, etDateTime, formatHours, gapBps, gapSide, rowsInTabOrder, signedBps, SPOT_NOT_TWAP } from "@/content/gap-index";
 import type { TokenRow } from "@/lib/gap/schema";
 import { basescanBlock, basescanTx } from "@/lib/live/basescan";
-import { GAP_TONE } from "./GapChart";
+import { GAP_TONE, gapPrices } from "./GapChart";
 
 /** Links off the site (Basescan) open in a new tab. */
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const;
@@ -79,6 +79,9 @@ function FreezeCells({ row }: { row: TokenRow }) {
               <span className="sr-only">, its transaction on Basescan</span>
             </a>
             <span className="block text-[12px] text-ink-2">{gapSide(g) === "at" ? "pool at the held answer" : `pool ${gapSide(g)}`}</span>
+            <span data-gap-prices className="block whitespace-nowrap font-mono text-[12px] text-ink-2">
+              {gapPrices(g)}
+            </span>
           </>
         ) : (
           <span className="text-ink-2">no swap</span>

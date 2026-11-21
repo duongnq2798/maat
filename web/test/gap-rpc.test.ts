@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { createLogReader, GAP_RPC, SPAN } from "@/lib/gap/rpc";
+import { createLogReader, GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/lib/gap/rpc";
 import type { RawLog } from "@/lib/gap/decode";
 
 interface Req {
@@ -122,10 +122,10 @@ describe("blocks", () => {
 
   describe("blockAt on Base's real shape", () => {
     // 2 s blocks from the endpoint's floor to ERA, then 0.2 s blocks (5 per whole second); the endpoint refuses below FLOOR.
-    const FLOOR = 51_000_000;
+    const FLOOR = GAP_RPC_FIRST_BLOCK;
     const ERA = 53_556_000;
     const HEAD = 60_094_127;
-    const T_FLOOR = 1_788_789_347;
+    const T_FLOOR = GAP_RPC_FIRST_BLOCK_TS;
     const tsOf = (n: number) => (n <= ERA ? T_FLOOR + (n - FLOOR) * 2 : T_FLOOR + (ERA - FLOOR) * 2 + Math.floor((n - ERA) / 5));
     const firstAtOrAfter = (ts: number) => {
       let lo = FLOOR;
@@ -184,7 +184,7 @@ describe("blocks", () => {
 
     it("throws for a target older than the endpoint's floor, naming the block", async () => {
       const { r } = setup();
-      await expect(r.blockAt(T_FLOOR - 1)).rejects.toThrow(/block 50999999 is below what the endpoint serves/);
+      await expect(r.blockAt(T_FLOOR - 1)).rejects.toThrow(new RegExp(`block ${FLOOR - 1} is below what the endpoint serves`));
     });
   });
 

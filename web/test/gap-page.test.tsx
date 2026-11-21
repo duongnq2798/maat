@@ -17,7 +17,8 @@ import { etDateTime, formatHours, gapBps, gapSide, PUBLISHED, signedBps, TAB_ORD
 import edition0 from "@/content/gap-index/edition-0.json";
 import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
-import { GAP_RPC } from "@/lib/gap/rpc";
+import { LOOKBACK_SEC } from "@/lib/gap/measure";
+import { GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/lib/gap/rpc";
 import { EditionFileSchema, type EditionFile } from "@/lib/gap/schema";
 import { SITE } from "@/lib/site";
 
@@ -156,7 +157,7 @@ describe("the /gap-index page", () => {
     for (const w of complete) {
       const head = section(w.id).querySelector<HTMLElement>("[data-window-headline]")!;
       expect(head.textContent).toBe(
-        `${w.closeLabel} → ${w.openLabel} · blocks ${formatInt(w.blocks.from)} → ${formatInt(w.blocks.to)}`,
+        `${w.closeLabel} → ${w.openLabel} · window ${w.id} · blocks ${formatInt(w.blocks.from)} → ${formatInt(w.blocks.to)}`,
       );
       for (const b of [w.blocks.from, w.blocks.to]) {
         const a = within(head).getByRole("link", { name: formatInt(b) });
@@ -165,8 +166,24 @@ describe("the /gap-index page", () => {
       }
     }
     expect(section("2026-11-13").querySelector("[data-window-headline]")!.textContent).toBe(
-      "Fri 13 Nov 16:00 ET → Mon 16 Nov 09:30 ET · blocks 57,066,122 → 58,245,121",
+      "Fri 13 Nov 16:00 ET → Mon 16 Nov 09:30 ET · window 2026-11-13 · blocks 57,066,122 → 58,245,121",
     );
+  });
+
+  it("prints under each complete window the command that reproduces its rows, with its own edition and id, and pipe-safe", () => {
+    setup();
+    for (const e of PUBLISHED) {
+      for (const w of e.windows) {
+        const command = section(w.id).querySelector("[data-window-command]");
+        if (w.status !== "complete") {
+          expect(command, w.id).toBeNull();
+          continue;
+        }
+        expect(command!.textContent, w.id).toBe(`npm run -s gap-index -- --edition ${e.edition} --window ${w.id} --token <SYM> --stdout`);
+      }
+    }
+    // Every command the page prints keeps npm's banner out of stdout.
+    expect(document.body.textContent).not.toMatch(/npm run gap-index/);
   });
 
   it("puts every token's figures of every complete window in its table row and in its chart", () => {
@@ -203,6 +220,12 @@ describe("the /gap-index page", () => {
         expect(chart).toHaveTextContent(`${formatHours(f.hours)} frozen`);
         expect(chart).toHaveTextContent(`feed came back ${signedBps(f.returnMoveBps)}`);
         if (t.largestGap) {
+          // The gap's two prices, as the edition holds them with all 8 decimals, in the chart's header and under the table's bps.
+          const prices = `pool ${t.largestGap.pool} vs held ${t.largestGap.held}`;
+          expect(t.largestGap.pool, name).toMatch(/^\d+\.\d{8}$/);
+          expect(chart.querySelector("[data-gap-prices]")!.textContent, name).toBe(prices);
+          expect(cell("gap").querySelector("[data-gap-prices]")!.textContent, name).toBe(prices);
+          expect(chart.querySelector("svg[role=img]")!.getAttribute("aria-label"), name).toContain(prices);
           expect(chart).toHaveTextContent(`${formatInt(f.swapsWhileFrozen)} ${f.swapsWhileFrozen === 1 ? "swap" : "swaps"} meanwhile`);
           const g = gapBps(t.largestGap);
           const tone = GAP_TONE[gapSide(t.largestGap)];
@@ -291,8 +314,13 @@ describe("the /gap-index page", () => {
       GAP_RPC,
       ANSWER_UPDATED_TOPIC,
       SWAP_TOPIC,
-      `npm run gap-index -- --edition ${edition.edition} --window <id> --token <SYM> --stdout`,
+      `npm run -s gap-index -- --edition ${edition.edition} --window <id> --token <SYM> --stdout`,
       `such as ${example}`,
+      // The keyless endpoint's floor, from the named constants, and the look-back as the code reads it.
+      `The endpoint serves blocks from ${formatInt(GAP_RPC_FIRST_BLOCK)} (${new Date(GAP_RPC_FIRST_BLOCK_TS * 1000).toISOString().slice(0, 10)}), so it reproduces every window since then; older blocks need an archive node.`,
+      `${formatInt(SPAN)} blocks at a time, until the last update before it, stopping once a span starts more than ${LOOKBACK_SEC / 86_400} days before the close`,
+      `at most ${LOOKBACK_SEC / 86_400} days, until the first update at or after the open`,
+      "logs from two aggregators in one token's ranges fail the run, and a token with no update records the latest phase",
       "Nothing here is signed, and the site has no server.",
       TWAP_SENTENCE,
     ]) {
@@ -331,13 +359,13 @@ describe("a pending window", () => {
   const w: Win = { status: "pending", ...editionWindows(EDITIONS[0]!).find((x) => x.id === "2026-11-20")! };
 
   it("says when it will be measured and shows no figure", () => {
-    const s = render(<GapWindow w={w} />).container.querySelector<HTMLElement>("section")!;
+    const s = render(<GapWindow w={w} edition={0} />).container.querySelector<HTMLElement>("section")!;
     expect(s).toHaveAttribute("data-window", w.id);
     expect(s).toHaveAttribute("data-status", "pending");
     expect(s.querySelector("[data-window-headline]")!.textContent).toBe(`${w.closeLabel} → ${w.openLabel}`);
     expect(s).toHaveTextContent("Measured after it ends, Mon 23 Nov 09:30 ET");
     expect(s.querySelector("table, svg, [data-token-tabs], [data-gap-chart], a")).toBeNull();
-    expect(s.textContent).not.toMatch(/bps|\d h|swaps|blocks|npm run/);
+    expect(s.textContent).not.toMatch(/bps|\d h\b|swaps|blocks|npm run/);
   });
 });
 
@@ -345,7 +373,7 @@ describe("GapChart", () => {
   const draw = (w: Complete, symbol: string) => render(<GapChart row={w.tokens.find((t) => t.symbol === symbol)!} window={w} />).container;
 
   it("names the chart with the figures of its header and the window", () => {
-    const { w } = nvda1113();
+    const { w, row } = nvda1113();
     const svg = within(draw(w, "NVDAc")).getByRole("img");
     const label = svg.getAttribute("aria-label")!;
     for (const text of [
@@ -357,6 +385,7 @@ describe("GapChart", () => {
       "49.40 h frozen",
       "17,478 swaps meanwhile",
       "feed came back +254 bps",
+      `pool ${row.largestGap!.pool} vs held ${row.largestGap!.held}`,
     ]) {
       expect(label).toContain(text);
     }

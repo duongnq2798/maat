@@ -6,6 +6,12 @@ import type { RawLog } from "./decode";
  * 2026-11-05) and every 0.2 s (5 per second, whole-second timestamps) after.
  */
 export const GAP_RPC = "https://base-rpc.publicnode.com";
+/**
+ * The first block that endpoint serves (below it, it answers 403: older blocks need an archive node), and that block's
+ * timestamp, 1788789347 (2026-09-07T13:55:47Z).
+ */
+export const GAP_RPC_FIRST_BLOCK = 51_000_000;
+export const GAP_RPC_FIRST_BLOCK_TS = 1_788_789_347;
 /** The most blocks one eth_getLogs call may cover on that endpoint. */
 export const SPAN = 50_000;
 const MAX_ADDRESSES = 10;

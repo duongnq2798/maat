@@ -1,17 +1,19 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Metadata } from "next";
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
+import { Command, commandParts } from "@/components/gap/Command";
 import { GapWindow } from "@/components/gap/GapWindow";
 import { BlockLink, INLINE_LINK } from "@/components/gap/WindowTable";
 import { Footer } from "@/components/sections/Footer";
 import { Mark } from "@/components/ui/Mark";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { B20_DECIMALS, NAV_TOKENS } from "@/content/b20-nav";
+import { formatInt } from "@/content/format";
 import { etDateTime, PUBLISHED, SPOT_NOT_TWAP } from "@/content/gap-index";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { BUCKET_SEC, LOOKBACK_SEC } from "@/lib/gap/measure";
-import { GAP_RPC } from "@/lib/gap/rpc";
+import { GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/lib/gap/rpc";
 import type { EditionFile } from "@/lib/gap/schema";
 import { repoFileUrl, SITE } from "@/lib/site";
 
@@ -62,7 +64,10 @@ const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const;
 const EXAMPLE_EDITION = PUBLISHED.find((e) => e.windows.some((w) => w.status === "complete")) ?? PUBLISHED[0]!;
 
 /** The exact command that reproduces one row of an edition, in the parts a narrow screen may wrap between. */
-const COMMAND = ["npm run gap-index --", `--edition ${EXAMPLE_EDITION.edition}`, "--window <id>", "--token <SYM>", "--stdout"];
+const COMMAND = commandParts(EXAMPLE_EDITION.edition);
+
+/** The day of the first block the keyless endpoint serves, as the ISO date of its timestamp. */
+const ENDPOINT_FROM = new Date(GAP_RPC_FIRST_BLOCK_TS * 1000).toISOString().slice(0, 10);
 
 /**
  * Without JavaScript, every token's panel shows, one after another, and the preview of the tab row does not: undoes
@@ -125,7 +130,7 @@ function Edition({ e }: { e: EditionFile }) {
           </p>
         </div>
         {e.windows.map((w) => (
-          <GapWindow key={w.id} w={w} />
+          <GapWindow key={w.id} w={w} edition={e.edition} />
         ))}
       </div>
     </section>
@@ -186,7 +191,9 @@ function Method() {
               <p className="m-0">
                 Everything comes from Base mainnet over <Code>{GAP_RPC}</Code>, which is free and keyless, with{" "}
                 <Code>eth_getLogs</Code>, <Code>eth_getBlockByNumber</Code>, <Code>eth_blockNumber</Code>, and{" "}
-                <Code>eth_call</Code> at <Code>latest</Code> only. The tokens, their feeds and their pools are the{" "}
+                <Code>eth_call</Code> at <Code>latest</Code> only. The endpoint serves blocks from{" "}
+                {formatInt(GAP_RPC_FIRST_BLOCK)} ({ENDPOINT_FROM}), so it reproduces every window since then; older blocks
+                need an archive node. The tokens, their feeds and their pools are the{" "}
                 {NAV_TOKENS.length} of <RepoFile path="web/content/b20-nav.ts" />, the same list as{" "}
                 <a href="/now" className={INLINE_LINK}>
                   /now
@@ -196,11 +203,13 @@ function Method() {
               <ul className="m-0 flex list-disc flex-col gap-3 pl-5">
                 <li>
                   <span className="font-medium text-ink">Feed updates.</span> The proxy&apos;s <Code>phaseId()</Code> and{" "}
-                  <Code>phaseAggregators(uint16)</Code>, read at <Code>latest</Code>, give the current aggregator, which
-                  each row records with its phase. Its <Code>AnswerUpdated</Code> logs, topic{" "}
-                  <Code>{ANSWER_UPDATED_TOPIC}</Code>, are read over the window, back from its start to the last update
-                  before it, and forward from its end to the first update at or after the open, at most {lookbackDays}{" "}
-                  days each way.
+                  <Code>phaseAggregators(uint16)</Code>, read at <Code>latest</Code>, list the aggregator of each phase.
+                  Their <Code>AnswerUpdated</Code> logs, topic <Code>{ANSWER_UPDATED_TOPIC}</Code>, are read over the
+                  window; backwards from its start, {formatInt(SPAN)} blocks at a time, until the last update before it,
+                  stopping once a span starts more than {lookbackDays} days before the close; and forwards from its
+                  end, at most {lookbackDays} days, until the first update at or after the open. Each row records the
+                  aggregator and phase of the logs it used; logs from two aggregators in one token&apos;s ranges fail the
+                  run, and a token with no update records the latest phase.
                 </li>
                 <li>
                   <span className="font-medium text-ink">Swaps.</span> The pool&apos;s <Code>Swap</Code> logs, topic{" "}
@@ -272,12 +281,7 @@ function Method() {
           </p>
           <pre className="m-0 max-w-[820px] whitespace-pre-wrap rounded-xl bg-ink px-5 py-4 font-mono text-[13px] leading-6 text-bg">
             <code>
-              {COMMAND.map((part, i) => (
-                <Fragment key={part}>
-                  {i > 0 ? " " : null}
-                  <span className="whitespace-nowrap">{part}</span>
-                </Fragment>
-              ))}
+              <Command parts={COMMAND} />
             </code>
           </pre>
           <p className="m-0 max-w-[820px]">

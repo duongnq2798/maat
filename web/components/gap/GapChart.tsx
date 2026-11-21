@@ -91,8 +91,11 @@ function summary(row: TokenRow, w: CompleteWindow): string {
   const g = row.largestGap;
   const back = `feed came back ${signedBps(f.returnMoveBps)}.`;
   if (!g) return `${head} ${formatHours(f.hours)} frozen, no swap meanwhile, ${back}`;
-  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${formatHours(f.hours)} frozen, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
+  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${gapPrices(g)}. ${formatHours(f.hours)} frozen, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
 }
+
+/** The two prices a largest gap compares, as the edition holds them, 8 decimals each. */
+export const gapPrices = (g: { pool: string; held: string }) => `pool ${g.pool} vs held ${g.held}`;
 
 function Header({ row }: { row: TokenRow }) {
   const name = NAV_TOKENS.find((t) => t.symbol === row.symbol)?.name;
@@ -117,6 +120,9 @@ function Header({ row }: { row: TokenRow }) {
           <p className="m-0 mt-1 text-[14px] text-ink-body">
             pool {gapSide(g)} the held answer
             <span className="text-ink-2"> · {etDateTime(g.ts)}</span>
+          </p>
+          <p data-gap-prices className="m-0 font-mono text-[12px] text-ink-2">
+            {gapPrices(g)}
           </p>
         </>
       ) : (
