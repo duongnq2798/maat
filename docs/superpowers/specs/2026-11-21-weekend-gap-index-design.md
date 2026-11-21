@@ -122,7 +122,7 @@ The script writes the file only when every selected window and token read withou
   - `decode.ts`: the two logs;
   - `measure.ts`: the measures of section 4;
   - `schema.ts`: the edition file.
-- `web/lib/gap/rpc.ts`: Node `fetch`, retries with backoff, halving a refused span, `blockAt(timestamp)`, and the cache of decoded logs under `web/.cache/gap-index/` (git-ignored).
+- `web/lib/gap/rpc.ts`: Node `fetch`, retries with backoff, halving a refused span, `blockAt(timestamp)`, and the cache of decoded logs under `web/.cache/gap/` (git-ignored).
 - `web/scripts/gap-index.ts`: the CLI, run with `tsx`, plus an `npm run gap-index` script.
 - The token list (`web/content/b20-nav.ts`) and the price math (`priceFromSqrt`, `premiumBps` in `web/lib/live/price.ts`) are the live strip's, imported, never copied.
 
@@ -132,19 +132,19 @@ A static route `app/(site)/gap-index/page.tsx`, in the sitemap, with its own tit
 
 - **Title "Weekend Gap Index"**, then a lead that says what a closed window is and what is measured (section 1).
 - **Editions**, latest first, each with its windows. Each window has three parts.
-  - **A headline:** close to open in ET, the block range linked to Basescan, and its status.
+  - **A headline:** close to open in ET, the window id, the block range linked to Basescan, and its status. A complete window also prints the command that reproduces its rows, with its own edition and id: `npm run -s gap-index -- --edition <its edition> --window <its id> --token <SYM> --stdout`.
   - **An X-style chart, one token at a time.**
     - Pill tabs for the 13 tokens: the basket first (NVDAc, GOOGLc, AAPLc), then the rest alphabetically.
     - The pool price is one line over a fill that fades to transparent.
     - A dashed horizontal line marks the answer the feed held, over the frozen span only.
     - A dot marks the last point.
     - No gridlines and no y labels.
-    - A header shows the largest gap while frozen as the big value, then the hours frozen, the swaps meanwhile and the return move.
+    - A header shows the largest gap while frozen as the big value, with the two prices it compares (`pool 166.49078756 vs held 160.76543559`, as the edition holds them), then the hours frozen, the swaps meanwhile and the return move.
     - The chart is SVG, with its text in HTML. It has `role="img"` and an accessible name that states the header figures.
     - A table view in `<details>` lists every plotted point.
     - The tabs follow the WAI-ARIA tabs pattern. Without JavaScript, every panel shows.
-  - **A table of the 13 tokens:** frozen hours (with the bounding blocks), swaps while frozen, swaps in window, largest gap (linked to its transaction) and return move. A token without a live feed reads "feed not live in this window".
-- **"How these numbers are read":** the method (sections 2–4), the exact command, the RPC, and a note that nothing here is signed and the site has no server.
+  - **A table of the 13 tokens:** frozen hours (with the bounding blocks), swaps while frozen, largest gap (linked to its transaction, with the same two prices under it), return move, and swaps in window. The column order is deliberate: "swaps in window" comes last so that "feed not live in this window" spans the four freeze columns before it. A token without a live feed reads that.
+- **"How these numbers are read":** the method (sections 2–4), the exact command with placeholders, the RPC and the first block it serves (from `GAP_RPC_FIRST_BLOCK` in `web/lib/gap/rpc.ts`), and a note that nothing here is signed and the site has no server.
 - **Links:** a link to `/now`, and a link to `/gap-index` from `/now`'s method section.
 
 ### 6.3 Not on this page
