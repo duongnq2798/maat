@@ -150,7 +150,7 @@ A component that wraps Markdown text, such as `<Callout>`, stays out of `DATA_CO
 
 ### What check:out checks
 
-It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
+It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, the edition files in `content/gap-index/` for the NVDAc hours `/gap-index` must show, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
 
 - The files a deploy needs, among them `index.html`, `now.html`, `gap-index.html`, `404.html`, `docs.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
 - The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, the live strip's reading state with no LIVE pill, Basescan block link or verdict line in the HTML (the strip reads Base in the browser, so a reading in the export would be a stale one), a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
