@@ -7,6 +7,7 @@ import { renderToString } from "react-dom/server";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import Page, { metadata } from "@/app/(site)/gap-index/page";
 import { escapeHtml, GAP_TONE, GapChart } from "@/components/gap/GapChart";
+import { GapWindow } from "@/components/gap/GapWindow";
 import { TokenTabs } from "@/components/gap/TokenTabs";
 import { WindowTable } from "@/components/gap/WindowTable";
 import { NAV_TOKENS } from "@/content/b20-nav";
@@ -14,6 +15,7 @@ import { FACTS } from "@/content/facts";
 import { formatInt } from "@/content/format";
 import { etDateTime, formatHours, gapBps, gapSide, PUBLISHED, signedBps, TAB_ORDER } from "@/content/gap-index";
 import edition0 from "@/content/gap-index/edition-0.json";
+import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { GAP_RPC } from "@/lib/gap/rpc";
 import { EditionFileSchema, type EditionFile } from "@/lib/gap/schema";
@@ -24,7 +26,6 @@ type Complete = Extract<Win, { status: "complete" }>;
 
 const windows = PUBLISHED.flatMap((e) => e.windows);
 const complete = windows.filter((w): w is Complete => w.status === "complete");
-const pending = windows.filter((w) => w.status === "pending");
 const nvda1113 = () => {
   const w = complete.find((x) => x.id === "2026-11-13")!;
   return { w, row: w.tokens.find((t) => t.symbol === "NVDAc")! };
@@ -240,18 +241,15 @@ describe("the /gap-index page", () => {
     expect(below).toHaveTextContent("pool below the held answer");
   });
 
-  it("says when a pending window will be measured, and shows no figure for it", () => {
+  it("shows no figure for a window that is pending in the committed files, and says when it will be measured", () => {
     setup();
-    expect(pending.length).toBeGreaterThan(0);
-    for (const w of pending) {
+    // Whichever windows are pending when the files are committed: a data-only rerun may leave none.
+    for (const w of windows.filter((x) => x.status === "pending")) {
       const s = section(w.id);
       expect(s).toHaveAttribute("data-status", "pending");
-      expect(s.querySelector("[data-window-headline]")!.textContent).toBe(`${w.closeLabel} → ${w.openLabel}`);
       expect(s).toHaveTextContent(`Measured after it ends, ${w.openLabel}`);
       expect(s.querySelector("table, svg, [data-token-tabs], [data-gap-chart]")).toBeNull();
-      expect(s.textContent).not.toMatch(/bps|\d h\b|swaps|blocks/);
     }
-    expect(section("2026-11-20")).toHaveTextContent("Measured after it ends, Mon 23 Nov 09:30 ET");
   });
 
   it("names each window's tablist by the window's close, once the tabs mount", () => {
@@ -325,6 +323,21 @@ describe("the /gap-index page", () => {
     }
     neverSafe(html);
     neverSafe(setup().textContent ?? "");
+  });
+});
+
+describe("a pending window", () => {
+  // Built here, so the test never depends on which windows the committed files leave pending.
+  const w: Win = { status: "pending", ...editionWindows(EDITIONS[0]!).find((x) => x.id === "2026-11-20")! };
+
+  it("says when it will be measured and shows no figure", () => {
+    const s = render(<GapWindow w={w} />).container.querySelector<HTMLElement>("section")!;
+    expect(s).toHaveAttribute("data-window", w.id);
+    expect(s).toHaveAttribute("data-status", "pending");
+    expect(s.querySelector("[data-window-headline]")!.textContent).toBe(`${w.closeLabel} → ${w.openLabel}`);
+    expect(s).toHaveTextContent("Measured after it ends, Mon 23 Nov 09:30 ET");
+    expect(s.querySelector("table, svg, [data-token-tabs], [data-gap-chart], a")).toBeNull();
+    expect(s.textContent).not.toMatch(/bps|\d h|swaps|blocks|npm run/);
   });
 });
 

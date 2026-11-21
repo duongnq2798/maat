@@ -2,14 +2,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Metadata } from "next";
 import { Fragment, type ReactNode } from "react";
-import { GapChart } from "@/components/gap/GapChart";
-import { TokenTabs } from "@/components/gap/TokenTabs";
-import { BlockLink, INLINE_LINK, WindowTable } from "@/components/gap/WindowTable";
+import { GapWindow } from "@/components/gap/GapWindow";
+import { BlockLink, INLINE_LINK } from "@/components/gap/WindowTable";
 import { Footer } from "@/components/sections/Footer";
 import { Mark } from "@/components/ui/Mark";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { B20_DECIMALS, NAV_TOKENS } from "@/content/b20-nav";
-import { type CompleteWindow, etDateTime, PUBLISHED, rowsInTabOrder, SPOT_NOT_TWAP } from "@/content/gap-index";
+import { etDateTime, PUBLISHED, SPOT_NOT_TWAP } from "@/content/gap-index";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { BUCKET_SEC, LOOKBACK_SEC } from "@/lib/gap/measure";
 import { GAP_RPC } from "@/lib/gap/rpc";
@@ -109,49 +108,6 @@ function Header() {
   );
 }
 
-type Win = EditionFile["windows"][number];
-
-function Window({ w }: { w: Win }) {
-  const headingId = `window-${w.id}`;
-  return (
-    <section aria-labelledby={headingId} data-window={w.id} data-status={w.status} className="flex min-w-0 flex-col gap-6">
-      <div data-window-headline className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h3 id={headingId} className="m-0 text-[clamp(20px,2.4vw,26px)] font-semibold leading-tight tracking-[-0.02em] text-ink">
-          {w.closeLabel} → {w.openLabel}
-        </h3>
-        {w.status === "complete" ? (
-          <p className="m-0 font-mono text-[13px] text-ink-2">
-            <span aria-hidden="true" className="max-sm:hidden">
-              {" · "}
-            </span>
-            blocks <BlockLink block={w.blocks.from} /> → <BlockLink block={w.blocks.to} />
-          </p>
-        ) : null}
-      </div>
-      {w.status === "complete" ? <Measured w={w} /> : (
-        <p className="card m-0 border-dashed px-5 py-6 text-[15px] text-ink-body">Measured after it ends, {w.openLabel}</p>
-      )}
-    </section>
-  );
-}
-
-function Measured({ w }: { w: CompleteWindow }) {
-  const rows = rowsInTabOrder(w);
-  return (
-    <>
-      <TokenTabs
-        windowId={w.id}
-        label={`Tokens, window closing ${w.closeLabel}`}
-        tabs={rows.map((r) => ({ id: r.symbol, label: r.symbol }))}
-        panels={rows.map((r) => (
-          <GapChart key={r.symbol} row={r} window={w} />
-        ))}
-      />
-      <WindowTable window={w} />
-    </>
-  );
-}
-
 function Edition({ e }: { e: EditionFile }) {
   const headingId = `edition-${e.edition}`;
   const measured = e.windows.filter((w) => w.status === "complete").length;
@@ -169,7 +125,7 @@ function Edition({ e }: { e: EditionFile }) {
           </p>
         </div>
         {e.windows.map((w) => (
-          <Window key={w.id} w={w} />
+          <GapWindow key={w.id} w={w} />
         ))}
       </div>
     </section>

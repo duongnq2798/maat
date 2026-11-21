@@ -8,6 +8,8 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 
 `/gap-index` (Weekend Gap Index) publishes one edition file per run in `content/gap-index/`, written by `npm run gap-index -- --edition N` from Base logs (`lib/gap/`).
 
+A new edition file is also imported in `content/gap-index/index.ts`. After a window ends, each live feed must post its first update after the open before the window can be measured, which can take up to the feed's heartbeat; until then the run names the feeds that have not and asks to run again later.
+
 ## Commands (run in `web/`)
 
 | Command | What it does |
