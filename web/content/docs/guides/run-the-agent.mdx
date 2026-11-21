@@ -316,7 +316,7 @@ export function codesIn(input: Hex): readonly string[] {
 }
 ```
 
-Only the agent's transactions carry the suffix: `GuardedSender` appends it to every send. The owner's own `cast send` transactions do not.
+The agent's transactions carry the suffix: `GuardedSender` appends it to every send. Of the owner's own transactions, only the first-decision `BUY` intents of `deployments/go-live.md` carry it, because their calldata comes from `agent/scripts/first-decision.ts`; the others, such as the deploy, `approve`, `fund` and `setExecutor`, do not.
 
 </Step>
 
