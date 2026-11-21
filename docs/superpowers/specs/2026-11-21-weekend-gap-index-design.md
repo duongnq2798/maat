@@ -6,7 +6,7 @@ Date: 2026-11-21. Branch: `feat/weekend-gap-index`. Status: approved by the owne
 
 When NYSE is closed, the Chainlink feeds that price B20 stocks on Base hold their last answer, while the Aerodrome pools that trade those tokens keep running. Maat's vault refuses `MARKET_CLOSED` in those hours. This change measures that stretch from Base logs and publishes it as dated editions:
 
-- **Edition 0** covers the three weekends from Fri 2026-11-06 to Mon 2026-11-23 and ships Mon 11-23, after the last of them ends (09:30 ET, 14:30 UTC). It is published with all three windows measured, so no window that is still open appears with figures.
+- **Edition 0** covers the three weekends from Fri 2026-11-06 to Mon 2026-11-23 and is announced Mon 11-23, after the last of them ends (09:30 ET, 14:30 UTC). The page shows a window's figures only once the window has ended: until then the window is `pending` and shows when it will be measured, so no window that is still open appears with figures. A data change reruns edition 0 after Mon 11-23 14:30 UTC to measure the third window.
 - **Edition 1** covers Thanksgiving week (Wed 11-25 to Mon 11-30) and ships Mon 11-30.
 
 For each closed window and each of the 13 B20 tokens with a NAV, an edition reports:

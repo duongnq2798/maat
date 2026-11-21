@@ -534,5 +534,5 @@ export function measureToken(input: { window: WindowSpan; updates: readonly Feed
   | 7 | every task |
   | 8 | out of scope |
 
-- Data timing: the branch may carry edition 0 with 2026-11-20 `pending` while it is built, but the PR merges only after `--edition 0` is rerun after Mon 2026-11-23 14:30 UTC with all three windows complete (spec 1); the cache makes the two earlier windows free. Edition 1 runs after Mon 2026-11-30 14:30 UTC; its page import is added in that data change.
+- Data timing: the PR merges with edition 0 holding 2026-11-20 as `pending` (the page shows no figures for it); a separate data change reruns `--edition 0` after Mon 2026-11-23 14:30 UTC with all three windows complete (spec 1), and the cache makes the two earlier windows free. Edition 1 runs after Mon 2026-11-30 14:30 UTC; its page import is added in that data change.
 - Every gap is the pool's spot price after a swap, not the vault's 30-minute TWAP; the page says so beside every gap (spec 4), and G5's test pins that sentence.
