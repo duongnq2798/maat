@@ -46,11 +46,14 @@ What this endpoint allows, measured:
 
 Per token, taken from `web/content/b20-nav.ts` (the same 13 tokens as the live strip):
 
-- **Feed updates.** Read the proxy's `phaseId()` (selector `0x58303b10`) and, for each phase from 1 to it, `phaseAggregators(uint16)` (`0xc1597304`), at `latest`. The current phase's aggregator is the one measured, and the edition records its address and phase. Its `AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt)` logs (topic `0x0559884fd3a460db3073b7fc896cc77986f16e378210ded43186175bf646fc5f`) are read with every phase's aggregator in the same call:
+- **Feed updates.** Read the proxy's `phaseId()` (selector `0x58303b10`) and, for each phase from 1 to it, `phaseAggregators(uint16)` (`0xc1597304`), at `latest`. The `AnswerUpdated(int256 indexed current, uint256 indexed roundId, uint256 updatedAt)` logs (topic `0x0559884fd3a460db3073b7fc896cc77986f16e378210ded43186175bf646fc5f`) are read with every phase's aggregator in the same call:
   - over the window;
-  - backwards from the window's start, at most 7 days, until the last update before it;
+  - backwards from the window's start, span by span, until the last update before it; it stops once a span starts more than 7 days (`LOOKBACK_SEC`) before the close;
   - forwards from the window's end, at most 7 days and never past the head, until the first update at or after the open.
-  - A log from an aggregator other than the current one, inside what was read, fails the run: a phase change inside a measured range is not handled.
+  - **Which aggregator a row records.** For each token and window, the distinct aggregator addresses among the logs actually used are collected: the bounding update before, the updates inside, and the bounding update after.
+    - If more than one address appears, the run fails with "phase changed inside a measured range", naming the token, the window and the addresses.
+    - Otherwise the row records that aggregator and its phase, the 1-based index of the address in `phaseAggregators`. A proxy that upgrades to a new phase after a window therefore leaves that window reproducible.
+    - If a token's ranges hold no update at all (`feedLive: false`), the row records the latest phase's aggregator and phase. Only this case depends on the time the aggregators were read.
   - Measured: every proxy but ANT is in phase 2, and only the phase-2 aggregators emitted updates in the 100,000 blocks before the first window.
 - **Swaps.** Read the pool's `Swap(address indexed sender, address indexed recipient, int256 amount0, int256 amount1, uint160 sqrtPriceX96, uint128 liquidity, int24 tick)` logs (topic `0xc42079f94a6350d7e6235f29174924f928cc2ac818eb64fed8004e115fbcca67`) over the window and over the freeze, whichever reaches further.
   - In every pool, token0 is USDC (6 decimals) and token1 is the stock (8 decimals).

@@ -50,6 +50,8 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
   const aggregatorsOf = new Map<string, string[]>();
 
   const out: EditionFile["windows"] = [];
+  // Live feeds with no update after the window: every token is measured first, then one error names them all.
+  const waiting: string[] = [];
   for (const w of windows) {
     const base = { id: w.id, closeTs: w.closeTs, openTs: w.openTs, closeLabel: w.closeLabel, openLabel: w.openLabel };
     if (w.openTs > head.ts) {
@@ -72,14 +74,10 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
         calls += 1 + aggregators.length;
         aggregatorsOf.set(nav.symbol, aggregators);
       }
-      const current = aggregators.at(-1)!;
+      // Every phase's aggregator is read in one call; which one a row records is decided below, from the logs it uses.
       const updatesIn = async (from: number, to: number): Promise<FeedUpdate[]> => {
         calls++;
-        const rows = await source.updates(aggregators, from, to);
-        for (const u of rows) {
-          if (u.address.toLowerCase() !== current) throw new Error(`${nav.symbol}: phase changed inside a measured range (block ${u.block}, ${u.address})`);
-        }
-        return rows.sort(byPosition);
+        return (await source.updates(aggregators, from, to)).sort(byPosition);
       };
 
       const inside = await updatesIn(fromBlock, toBlock);
@@ -100,8 +98,22 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
       }
 
       const updates = [...(before ? [before] : []), ...inside, ...(after ? [after] : [])];
+
+      // The aggregator and phase a row records are those of the logs it used: the update before, the updates inside and
+      // the update after. A range that mixes two aggregators is not handled.
+      const used = [...new Set(updates.map((u) => u.address.toLowerCase()))];
+      if (used.length > 1) throw new Error(`${nav.symbol} ${w.id}: phase changed inside a measured range (${used.join(", ")})`);
+      // Only a token whose ranges hold no update at all falls back to the latest phase, so only that row depends on the
+      // time the aggregators were read.
+      const aggregator = used[0] ?? aggregators.at(-1)!;
+      const phase = aggregators.indexOf(aggregator) + 1;
+      if (phase === 0) throw new Error(`${nav.symbol} ${w.id}: ${aggregator} is not one of the proxy's phase aggregators`);
+
       const live = feedLiveIn(updates, w);
-      if (live && !after) throw new Error(`${nav.symbol}: the feed has not updated since the window; run again later`);
+      if (live && !after) {
+        waiting.push(`${nav.symbol} ${w.id}`);
+        continue;
+      }
 
       const freeze = live ? findFreeze(updates, w) : null;
       const swapsRead = freeze
@@ -111,11 +123,13 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
       const swaps = await source.swaps(nav.pool, swapsRead.from, swapsRead.to);
 
       const figures = measureToken({ window: span, updates, swaps });
-      tokens.push(toTokenRow(nav, { aggregator: current, phase: aggregators.length }, figures, freeze ? swapsRead : null));
+      tokens.push(toTokenRow(nav, { aggregator, phase }, figures, freeze ? swapsRead : null));
       log(`${nav.symbol} ${w.id}: ${calls} reads, ${((Date.now() - started) / 1000).toFixed(1)} s`);
     }
     out.push({ status: "complete", ...base, blocks: { from: fromBlock, to: toBlock }, tokens });
   }
+
+  if (waiting.length) throw new Error(`${waiting.join(", ")}: the feed has not updated since the window; run again later`);
 
   return {
     edition: def.edition,

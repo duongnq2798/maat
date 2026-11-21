@@ -13,6 +13,7 @@ import { word } from "@/lib/live/abi";
 const NVDA = NAV_TOKENS.find((t) => t.symbol === "NVDAc")!;
 const A1 = `0x${"a1".repeat(20)}`;
 const A2 = `0x${"a2".repeat(20)}`;
+const A3 = `0x${"a3".repeat(20)}`;
 const HEAD = 2_000_000;
 const WINDOWS = editionWindows(EDITIONS[0]!);
 const W = WINDOWS.find((w) => w.id === "2026-11-13")!;
@@ -94,7 +95,7 @@ class Chain implements LogReader {
     return { block: HEAD, ts: this.headTs };
   }
   async call(to: string, data: string) {
-    expect(to).toBe(NVDA.feed);
+    expect(NAV_TOKENS.map((t) => t.feed)).toContain(to);
     if (data === "0x58303b10") return `0x${word(BigInt(this.phases.length))}`;
     const m = /^0xc1597304([0-9a-f]{64})$/.exec(data);
     if (!m) throw new Error(`unexpected call ${data}`);
@@ -195,12 +196,56 @@ describe("measureEdition", () => {
     expect(complete(f).tokens[0]!.feedLive).toBe(false);
   });
 
-  it("throws when a phase-1 log lands inside the range", async () => {
+  it("throws, naming the token, the window and both addresses, when two aggregators appear inside one token's ranges", async () => {
     const chain = new Chain(W.openTs + 10 * 86_400);
     const from = chain.at(W.closeTs);
     chain.answer(from + 10, 160, A1);
-    chain.answer(from + 500_000, 165);
+    chain.answer(from + 20_000, 165);
+    await expect(run(chain, { windows: [W.id] }).done).rejects.toThrow(`NVDAc ${W.id}: phase changed inside a measured range (${A1}, ${A2})`);
+  });
+
+  it("throws when the bounding update before the window is from another aggregator than the updates after it", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    const from = chain.at(W.closeTs);
+    const to = chain.at(W.openTs) - 1;
+    chain.answer(from - 20_000, 150, A1);
+    chain.answer(to + 10_000, 155, A2);
     await expect(run(chain, { windows: [W.id] }).done).rejects.toThrow("phase changed inside a measured range");
+  });
+
+  it("measures normally and records phase 2 when the proxy moved to phase 3 after the window", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    chain.phases = [A1, A2, A3];
+    const from = chain.at(W.closeTs);
+    const to = chain.at(W.openTs) - 1;
+    chain.answer(from + 10, 160, A2);
+    chain.answer(to + 10_000, 165, A2);
+    chain.answer(to + 400_000, 170, A3); // the new phase, long after the window's reads end
+    const row = complete(await run(chain, { windows: [W.id] }).done).tokens[0]!;
+    expect(row.aggregator).toBe(A2);
+    expect(row.phase).toBe(2);
+    expect(row.feedLive).toBe(true);
+    expect(row.freeze?.to.answer).toBe("165.00000000");
+  });
+
+  it("records the latest phase's aggregator when the token's ranges hold no update at all", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    chain.phases = [A1, A2, A3];
+    const row = complete(await run(chain, { windows: [W.id] }).done).tokens[0]!;
+    expect(row.feedLive).toBe(false);
+    expect(row.aggregator).toBe(A3);
+    expect(row.phase).toBe(3);
+  });
+
+  it("records the phase of an earlier aggregator when only its logs are used", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    const from = chain.at(W.closeTs);
+    const to = chain.at(W.openTs) - 1;
+    chain.answer(from + 10, 160, A1);
+    chain.answer(to + 10_000, 165, A1);
+    const row = complete(await run(chain, { windows: [W.id] }).done).tokens[0]!;
+    expect(row.aggregator).toBe(A1);
+    expect(row.phase).toBe(1);
   });
 
   it("throws when a live feed has no update after the window", async () => {
@@ -208,6 +253,14 @@ describe("measureEdition", () => {
     const from = chain.at(W.closeTs);
     chain.answer(from + 10, 160);
     await expect(run(chain, { windows: [W.id] }).done).rejects.toThrow("the feed has not updated since the window; run again later");
+  });
+
+  it("measures every token before it throws once, naming each live feed with no update after the window", async () => {
+    const chain = new Chain(W.openTs + 10 * 86_400);
+    const from = chain.at(W.closeTs);
+    chain.answer(from + 10, 160);
+    const { done } = run(chain, { windows: [W.id], tokens: ["NVDAc", "GOOGLc", "AAPLc"] });
+    await expect(done).rejects.toThrow(`AAPLc ${W.id}, GOOGLc ${W.id}, NVDAc ${W.id}: the feed has not updated since the window; run again later`);
   });
 
   it("takes the later update on the near side and the earlier one on the far side when a span holds several", async () => {
