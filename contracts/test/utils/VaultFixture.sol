@@ -51,12 +51,17 @@ abstract contract VaultFixture is Test, IMandateVaultEvents {
 
     /// @dev The fixture's one-token (NVDAc) vault with one payee, under mandate `m`.
     function _deployVault(Mandate memory m) internal returns (MandateVault) {
+        address[] memory payees = new address[](1);
+        payees[0] = payee;
+        return _deployVault(m, payees);
+    }
+
+    /// @dev The fixture's one-token (NVDAc) vault under mandate `m`, with `payees` allowlisted at construction.
+    function _deployVault(Mandate memory m, address[] memory payees) internal returns (MandateVault) {
         address[] memory toks = new address[](1);
         toks[0] = address(nvda);
         TokenConfig[] memory cfgs = new TokenConfig[](1);
         cfgs[0] = TokenConfig({allowed: true, feed: address(feed), pool: address(pool), maxWeightBps: 4000});
-        address[] memory payees = new address[](1);
-        payees[0] = payee;
         return new MandateVault(owner, executor, address(usdc), address(registry), m, toks, cfgs, payees);
     }
 

@@ -14,6 +14,7 @@ sources:
   - agent/src/chain/state.ts
   - agent/test/policy.test.ts
   - web/components/sections/TreasuryLoop.tsx
+  - contracts/script/Deploy.s.sol
 next: [guides/run-the-agent, concepts/credit-and-health-factor]
 ---
 
@@ -139,7 +140,7 @@ Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment 
 ```
 
 - **Claude does not propose it.** The proposal schema has no `PAY_EXPENSE` action, and the system prompt says bills are settled automatically.
-- **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
+- **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list, with an optional second payee from `MAAT_EXPENSE_PAYEE_2`. The agent pays only the address in its own setting. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
 - **The vault limits it.** `PAY_EXPENSE` needs a payee on the allowlist and an amount within the balance and under the per-trade and daily caps, which it shares with trades. It works when the market is closed and it is refused while the vault is paused ([The nine checks](/docs/concepts/nine-checks#other-actions)).
 - **It is paid once.** The agent stores a send as pending before it leaves, and the next round checks `usedIntent` first. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
 - **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows. The first round in live mode on the same `MAAT_DATA_DIR` that owes at least <Fact name="billMinUsd" /> is built to pay it. The payment is the unpaid total, or the vault's whole USDC balance when that is smaller, in one `PAY_EXPENSE`; a payment of the whole balance leaves the rest owed. When that amount is above the per-trade cap, the vault refuses it with `SIZE_LIMIT` and the bill stays unpaid ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).

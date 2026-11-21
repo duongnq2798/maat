@@ -125,9 +125,10 @@ hand run. Between `4492eed` and `3778fea`, no file in `contracts/src`, `contract
 changed (`git diff --stat 4492eed 3778fea` over those folders is empty), and one fork test file had a 2-line
 change. Since `3778fea`, `contracts/src/MarketCalendar.sol` preloads the 2027 NYSE holidays and the 2027-11-26
 early close, `contracts/script/MaatConfig.sol` sets the 25 h staleness and 150 bps slippage defaults, and the
-agent fork test's `deploy.ts` uses those two values. The fork figures above were recorded at `4492eed`, before
-these changes; the agent fork run's vault had a 3600 s staleness and a 100 bps slippage limit. No figure here
-is rounded.
+agent fork test's `deploy.ts` uses those two values. `contracts/script/Deploy.s.sol` can also allowlist an
+optional second expense payee, and the fork test `DeployFork.t.sol` pins it to unset. The fork figures
+above were recorded at `4492eed`, before these changes; the agent fork run's vault had a 3600 s staleness and
+a 100 bps slippage limit. No figure here is rounded.
 
 ## Deployments and traction
 
@@ -282,6 +283,9 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 
 **Online**: served in public (the website only). **Built and tested**: on `main`, with passing tests.
 **Built**: on `main`, tested only as noted. **Planned**: not on `main`. **Not deployed**: no address on any network.
+The test counts in the table are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467)
+on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `4492eed`, 2026-11-07, as in
+[Tested, in numbers](#tested-in-numbers). Later commits add tests, so a suite run on this tree can report more.
 
 | Component | Status | Where |
 | --- | --- | --- |
@@ -479,14 +483,14 @@ it has not been re-timed.
    `reason: 6` is `MARKET_CLOSED` in [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the
    vault still holds its 200 USDC, and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list):
 
    ```bash
    forge test --no-match-path "test/fork/*"
    ```
 
    ```text
-   Ran 8 test suites in …: 230 tests passed, 0 failed, 0 skipped (230 total tests)
+   Ran 9 test suites in …: 234 tests passed, 0 failed, 0 skipped (234 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -696,7 +700,7 @@ contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork ba
     lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
     interfaces/            B20, Aave V4, Chainlink and pool interfaces
   script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
-  test/                    8 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
+  test/                    9 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
 agent/                     TypeScript agent runtime
   src/                     chain/ (state reader, preview), llm/ (Claude proposer, prompt, schema),
                            exec/ (Builder Code, gas, GuardedSender, CDP), loop/ (round, scheduler, lock), ledger/

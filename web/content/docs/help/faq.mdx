@@ -17,6 +17,7 @@ sources:
   - agent/src/runtime.ts
   - agent/src/exec/cdpSender.ts
   - agent/src/exec/cdpPolicy.ts
+  - contracts/script/Deploy.s.sol
 next: [get-started/quickstart, security/not-claimed]
 ---
 
@@ -123,7 +124,7 @@ Clone the repository and run the tests. The refusal test, the contract suites, t
 
 **Unit tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
 
-- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math and both adapters against mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
+- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list against mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
 - **Agent.** Its tests use fakes, and its fork run uses a scripted proposer and a local sender.
 - **Website.** Its tests read the Solidity sources and the fork-run gas log, so most numbers on a page fail them if they drift from the code.
 
@@ -160,7 +161,7 @@ See [What it is not](/docs/get-started/what-is-maat#what-it-is-not).
 
 **Yes, with a caveat: the contracts are MIT-licensed but unaudited.**
 
-- The deploy script reads the deployer, owner, executor and expense [payee](/docs/help/glossary#payee) addresses from environment variables. It builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you edit `MaatConfig.sol` first.
+- The deploy script reads the deployer, owner and executor addresses and one or two expense [payee](/docs/help/glossary#payee) addresses from environment variables. It builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you edit `MaatConfig.sol` first.
 - You sign every transaction from your own wallet.
 - The owner address cannot be changed afterwards, so check it character for character before you broadcast.
 
