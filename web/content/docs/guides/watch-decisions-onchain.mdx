@@ -4,7 +4,7 @@ description: Read a vault's Decision events with cast, decode them as the agent 
 type: guide
 audience: [watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-21
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -19,6 +19,8 @@ sources:
   - agent/src/ledger/journal.ts
   - agent/test/integration/agent.fork.test.ts
   - deployments/README.md
+  - deployments/go-live.md
+  - agent/scripts/first-decision.ts
 next: [get-started/read-a-decision, concepts/refusal-codes]
 ---
 
@@ -98,7 +100,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 cast call "$VAULT" "usedIntent(bytes32)(bool)" "$INTENT_ID" --rpc-url "$BASE_RPC_URL"
 ```
 
-An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts (`NotExecutor` or `IntentAlreadyUsed`) emits nothing.
+An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts emits nothing: a call from another address (`NotExecutor`), a used id (`IntentAlreadyUsed`), or a failure of a dependency that the vault does not catch, which [Fail closed](/docs/security/model#fail-closed) lists.
 
 </Step>
 
@@ -344,7 +346,7 @@ Adding a holiday or an earlier close to the vault's calendar is instant too, for
 - **Reading `amount` as dollars.** It is in raw units. For a `BUY` it is USDC, which has <Fact name="usdcDecimals" />, even though `token` is the stock. For a `SELL` it is in the stock's own decimals.
 - **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per UTC day, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
 - **Expecting a `Decision` from a reverted `execute`.** A call from another address reverts with `NotExecutor`, and a used id reverts with `IntentAlreadyUsed`. Neither emits anything.
-- **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator. Intents the owner sent by hand, such as the runbook's smoke tests, carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke`), and no journal holds text for them.
+- **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator, and no journal holds text for the intents the owner sent by hand. The runbook's credit smoke test and unwind carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke` or `unwind`). The owner's first two BUYs in the go-live runbook, `deployments/go-live.md`, hash the rationale text that `agent/scripts/first-decision.ts` prints, which that runbook has the owner keep in its record table.
 - **Hashing altered text.** A trailing newline, a re-typed quote, a `$` the shell expanded inside double quotes, a line break turned into CRLF (a native Windows `jq.exe` without `-b`), or text that was not decoded from JSON gives another hash.
 - **Treating the match as proof of the reason.** It shows what the intent committed to, nothing more.
 - **Reading `eta` as the time a change takes effect.** It is the earliest time. The change takes effect only when the owner sends the apply, with the same values, before the window closes.

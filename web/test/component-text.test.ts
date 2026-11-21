@@ -239,7 +239,7 @@ describe("tables of shared data", () => {
       [
         "| Setting | In code | Value | Source file |",
         "| --- | --- | --- | --- |",
-        "| Oldest feed answer accepted | `Mandate.maxStaleness` in `defaultMandate` | 3,600 s | `contracts/script/MaatConfig.sol` |",
+        "| Oldest feed answer accepted | `Mandate.maxStaleness` in `defaultMandate` | 90,000 s | `contracts/script/MaatConfig.sol` |",
         "| Most decimals a stock may have | literal `18` in `_requireValidTokenConfig` | 18 decimals | `contracts/src/MandateVault.sol` |",
         "| Timelock delay | `MandateVault.TIMELOCK` | 24 hours | `contracts/src/MandateVault.sol` |",
         "",

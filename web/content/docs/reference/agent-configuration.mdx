@@ -20,6 +20,9 @@ sources:
   - agent/src/addresses.ts
   - contracts/.env.example
   - contracts/foundry.toml
+  - contracts/script/Deploy.s.sol
+  - agent/scripts/first-decision.ts
+  - deployments/go-live.md
 next: [reference/agent-scripts, guides/run-the-agent]
 ---
 
@@ -57,7 +60,7 @@ The address of the [executor](/docs/help/glossary#executor), the one address the
 
 <EnvVar name="MAAT_EXPENSE_PAYEE" />
 
-The address the agent pays its [compute bill](/docs/help/glossary#compute-bill) to. It goes into the `payee` field of each `PAY_EXPENSE` [intent](/docs/help/glossary#intent). The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: the payee given to the deploy script, or one the owner added later through the [timelock](/docs/help/glossary#timelock).
+The address the agent pays its [compute bill](/docs/help/glossary#compute-bill) to. It goes into the `payee` field of each `PAY_EXPENSE` [intent](/docs/help/glossary#intent). The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: a payee given to the deploy script (its own `MAAT_EXPENSE_PAYEE`, or its optional `MAAT_EXPENSE_PAYEE_2`), or one the owner added later through the [timelock](/docs/help/glossary#timelock). The agent pays only this address and does not read the vault's list, so with two payees allowlisted, this setting picks which one it pays.
 
 For any other address the vault's preview returns [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed). The agent does not log that [reason](/docs/help/glossary#reason) onchain, so it never sends the payment and no [`Decision`](/docs/help/glossary#decision) appears. The bill stays unpaid. Once it reaches <Fact name="billMinUsd" />, each round that reaches the proposal step writes an `intent` line for it in the journal, with the preview `PAYEE_NOT_ALLOWED` and the gate `PAYEE_NOT_ALLOWED not worth a log tx`. While the vault is paused, the preview and the gate name `VAULT_PAUSED` instead, and when the vault holds no USDC the round writes a `skip` line for it. To clear it, fix this setting, or have the owner add the address through the timelock. The agent needs this setting even in [dry-run](/docs/help/glossary#dry-run) mode.
 
@@ -71,7 +74,7 @@ The only values are `dry-run` and `live`, and anything else stops the start. The
 
 <EnvVar name="MAAT_BUILDER_CODE" />
 
-A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
 
 ### MAAT_LOOP_MODEL
 

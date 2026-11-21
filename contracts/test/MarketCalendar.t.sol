@@ -25,6 +25,20 @@ contract MarketCalendarTest is Test {
     uint256 internal constant WED_1345_UTC_EDT = 1793195100; // Wed 28 Oct 09:45 EDT
     uint256 internal constant TUE_DEC1_1530_UTC = 1796139000; // Tue 1 Dec 10:30 EST
 
+    // 2027 closures, 10:30 ET on each date unless named otherwise. UTC timestamps computed with Node
+    // (Intl, America/New_York) on 2026-11-16. EDT runs from Sun 14 Mar to Sun 7 Nov 2027.
+    uint256 internal constant MLK_2027_1530_UTC = 1800286200; // Mon 18 Jan 2027 15:30 UTC, 10:30 EST
+    uint256 internal constant WASHINGTON_2027_1530_UTC = 1802705400; // Mon 15 Feb 2027 15:30 UTC, 10:30 EST
+    uint256 internal constant GOOD_FRIDAY_2027_1430_UTC = 1806071400; // Fri 26 Mar 2027 14:30 UTC, 10:30 EDT
+    uint256 internal constant MEMORIAL_2027_1430_UTC = 1811773800; // Mon 31 May 2027 14:30 UTC, 10:30 EDT
+    uint256 internal constant JUNETEENTH_2027_1430_UTC = 1813329000; // Fri 18 Jun 2027 14:30 UTC, 10:30 EDT
+    uint256 internal constant INDEPENDENCE_2027_1430_UTC = 1814797800; // Mon 5 Jul 2027 14:30 UTC, 10:30 EDT
+    uint256 internal constant LABOR_2027_1430_UTC = 1820241000; // Mon 6 Sep 2027 14:30 UTC, 10:30 EDT
+    uint256 internal constant THANKSGIVING_2027_1530_UTC = 1827156600; // Thu 25 Nov 2027 15:30 UTC, 10:30 EST
+    uint256 internal constant CHRISTMAS_2027_1530_UTC = 1829662200; // Fri 24 Dec 2027 15:30 UTC, 10:30 EST
+    uint256 internal constant FRI26NOV2027_1730_UTC = 1827250200; // Fri 26 Nov 2027 17:30 UTC, 12:30 EST
+    uint256 internal constant FRI26NOV2027_1830_UTC = 1827253800; // Fri 26 Nov 2027 18:30 UTC, 13:30 EST
+
     function setUp() public {
         cal = new MarketCalendar(address(this));
     }
@@ -83,6 +97,56 @@ contract MarketCalendarTest is Test {
         assertFalse(cal.isOpen(THANKSGIVING_1530_UTC, SessionMode.FEED_24_5));
         assertTrue(cal.isOpen(FRI27_1730_UTC, SessionMode.REGULAR));
         assertFalse(cal.isOpen(FRI27_1830_UTC, SessionMode.REGULAR));
+    }
+
+    function test_mlkDay2027IsClosed() public view {
+        assertFalse(cal.isOpen(MLK_2027_1530_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(MLK_2027_1530_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_washingtonsBirthday2027IsClosed() public view {
+        assertFalse(cal.isOpen(WASHINGTON_2027_1530_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(WASHINGTON_2027_1530_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_goodFriday2027IsClosed() public view {
+        assertFalse(cal.isOpen(GOOD_FRIDAY_2027_1430_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(GOOD_FRIDAY_2027_1430_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_memorialDay2027IsClosed() public view {
+        assertFalse(cal.isOpen(MEMORIAL_2027_1430_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(MEMORIAL_2027_1430_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_juneteenthObserved2027IsClosed() public view {
+        assertFalse(cal.isOpen(JUNETEENTH_2027_1430_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(JUNETEENTH_2027_1430_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_independenceDayObserved2027IsClosed() public view {
+        assertFalse(cal.isOpen(INDEPENDENCE_2027_1430_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(INDEPENDENCE_2027_1430_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_laborDay2027IsClosed() public view {
+        assertFalse(cal.isOpen(LABOR_2027_1430_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(LABOR_2027_1430_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_thanksgiving2027IsClosed() public view {
+        assertFalse(cal.isOpen(THANKSGIVING_2027_1530_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(THANKSGIVING_2027_1530_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_christmasObserved2027IsClosed() public view {
+        assertFalse(cal.isOpen(CHRISTMAS_2027_1530_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(CHRISTMAS_2027_1530_UTC, SessionMode.FEED_24_5));
+    }
+
+    function test_dayAfterThanksgiving2027ClosesEarly() public view {
+        assertTrue(cal.isOpen(FRI26NOV2027_1730_UTC, SessionMode.REGULAR));
+        assertFalse(cal.isOpen(FRI26NOV2027_1830_UTC, SessionMode.REGULAR));
     }
 
     function test_ownerCanOnlyMakeItStricter() public {

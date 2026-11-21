@@ -375,10 +375,12 @@ export function docsLocalhostUrls(mdx: Iterable<string>): Set<string> {
 }
 
 /**
- * Gzipped bytes the search index may take: 691,009 when the budget was set, plus about 10%. A bigger index is a choice
- * to make here, not an accident: every reader downloads it before their first result, often on a phone.
+ * Gzipped bytes the search index may take. The budget was set at 760,000, 691,009 plus about 10%. A local build of the
+ * merge that added the docs on the invariant suite, the malformed-ABI tests and the calendar vectors measured 773,483,
+ * so it is now that plus about 10%. A bigger index is a choice to make here, not an accident: every reader downloads
+ * it before their first result, often on a phone.
  */
-export const SEARCH_INDEX_GZIP_BUDGET = 760_000;
+export const SEARCH_INDEX_GZIP_BUDGET = 850_000;
 
 /**
  * Problems with the exported search index (out/api/search.json): over its gzipped budget, empty, or with a result

@@ -87,7 +87,7 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
   PREMIUM_TOO_HIGH: "The pool price is too far above or below Chainlink.",
   SIZE_LIMIT: "Over the per-trade cap or the daily cap.",
   CONCENTRATION: "The buy would push one stock past its maximum weight, or its weight can't be measured.",
-  PAYEE_NOT_ALLOWED: "Payments go only to payees the owner listed through the timelock.",
+  PAYEE_NOT_ALLOWED: "Payments go only to payees on the vault's allowlist.",
   INSUFFICIENT_BALANCE: "Not enough funds for the amount, or an amount of zero.",
   SWAP_FAILED: "The swap reverted, for example on slippage past the limit.",
   TRANSFER_FAILED: "A token transfer or approval failed.",
@@ -97,7 +97,7 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
 };
 
 /**
- * The docs' line per refusal: REASON_MEANING with four lines widened to match the code. Meant for the docs table
+ * The docs' line per refusal: REASON_MEANING with five lines widened to match the code. Meant for the docs table
  * (components/docs/content.tsx) and its Markdown copy (lib/docs/component-text.ts); the landing's Refusals section
  * keeps REASON_MEANING.
  */
@@ -107,4 +107,5 @@ export const REASON_MEANING_DOCS: Readonly<Record<RefusalCode, string>> = {
   MARKET_CLOSED: "The market is closed for the mandate's session (a weekend, a holiday or outside its hours), or the calendar can't be read.",
   BAD_PRICE: "The Chainlink answer is zero, negative, undated or from the future, or the feed or the pool's TWAP could not be read.",
   MULTIPLIER_COOLDOWN: "The token's multiplier changed recently or has a change scheduled, as around a split, or can't be read.",
+  PAYEE_NOT_ALLOWED: "The payee is not on the allowlist, which the deploy sets and the owner changes only through the timelock.",
 };

@@ -208,7 +208,7 @@ test.describe("reading comfort", () => {
       expect(layout.unwrapped).toBe(0);
       expect(layout.externalHref).toBeTruthy();
       expect(layout.externalAfter).toContain(layout.externalHref);
-      // An excerpt title's link, such as contracts/script/Deploy.s.sol#L23-L26, is not followed by its address.
+      // An excerpt title's link, such as contracts/script/Deploy.s.sol#L23-L27, is not followed by its address.
       expect(layout.excerptAfter).toBe("none");
     });
   }
