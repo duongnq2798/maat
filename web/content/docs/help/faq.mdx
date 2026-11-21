@@ -95,7 +95,7 @@ In the fork run, with the clock moved ahead to a Saturday, the agent's buy of GO
 
 ### Why refuse instead of revert?
 
-A [reverted](/docs/help/glossary#revert) call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design `execute` reverts only for a call from the wrong address (`NotExecutor`) or a reused intent id (`IntentAlreadyUsed`) ([some failures escape](/docs/security/model#fail-closed)). A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
+A [reverted](/docs/help/glossary#revert) call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design `execute` reverts only for a call from the wrong address (`NotExecutor`) or a reused intent id (`IntentAlreadyUsed`). [Some failures escape](/docs/security/model#fail-closed): a dependency can still make `execute` revert in a few ways the vault does not catch, such as return data that does not fit the ABI. A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
 
 ### How often does the agent run?
 
@@ -122,9 +122,9 @@ Clone the repository and run the tests. The refusal test, the contract suites, t
 
 ### How is Maat tested?
 
-**Unit tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
+**Unit and invariant tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
 
-- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list against mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
+- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list against mocks, an invariant suite checks the vault's rules over random sequences of calls on the same mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
 - **Agent.** Its tests use fakes, and its fork run uses a scripted proposer and a local sender.
 - **Website.** Its tests read the Solidity sources and the fork-run gas log, so most numbers on a page fail them if they drift from the code.
 

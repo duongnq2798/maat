@@ -471,6 +471,16 @@
     "test_fullyDelistedCollateralComesHomeWithoutDebt": 547,
     "test_fullyDelistedCollateralBlocksBorrowing": 554
   },
+  "contracts/test/MandateVaultMalformed.t.sol": {
+    "test_feedReturningTooLittleDataRevertsExecute": 18,
+    "test_tokenReturningTooLittleDataRevertsExecute": 28,
+    "test_adapterViewReturningTooLittleDataRevertsExecute": 34,
+    "test_revertingUsdcBalanceOfRevertsExecute": 40,
+    "test_revertingStockDecimalsRevertsExecute": 48,
+    "test_revertingPoolToken0RevertsExecute": 53,
+    "test_poolAnswerTooShortForTheTwapRevertsExecute": 59,
+    "test_poolTickOutsideTickMathRangeRevertsExecute": 69
+  },
   "contracts/test/MarketCalendar.t.sol": {
     "test_daysFromCivil": 46,
     "test_civilFromDaysRoundTrip": 52,
@@ -491,6 +501,12 @@
     "test_dayAfterThanksgiving2027ClosesEarly": 147,
     "test_ownerCanOnlyMakeItStricter": 152,
     "test_constructorRejectsZeroOwner": 167
+  },
+  "contracts/test/MarketCalendarVectors.t.sol": {
+    "test_etOffsetMatchesEveryDstTransitionFrom2007To2100": 51,
+    "test_preloadedClosuresMatchTheNyseVectors": 64,
+    "test_noOtherClosureIsPreloaded": 81,
+    "test_isOpenAtFixedEtTimesOnEachClosureDate": 103
   },
   "contracts/test/PriceLib.t.sol": {
     "test_priceFromSqrt_stockIsToken1": 32,

@@ -324,7 +324,7 @@ and calls `withdraw` (reverts `NotOwner`); the vault keeps all 200 USDC. Gaps: [
 | Layer | What it enforces | Where |
 | --- | --- | --- |
 | **The executor's only power is `execute`** | Apart from `execute`, every function that moves funds or changes a rule is owner-only, and the owner is immutable. `notifyRevenue` and `syncMultiplier` are open to anyone and only record state | [`MandateVault.sol`](contracts/src/MandateVault.sol), `test_executorCannotUseOwnerFunctions` |
-| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert. That assumes no revert from plain ERC-20 `balanceOf` and `decimals` reads, or from the pool's `token0()` and the tick math that run after a TWAP `observe` returns, outside its `catch` | `test_refusalIsLoggedNotReverted` |
+| **Refuse, do not revert** | A refused intent emits `Decision` and moves nothing. By design only `NotExecutor` and `IntentAlreadyUsed` revert. A dependency can still make `execute` revert in a few ways the vault does not catch: return data that does not fit the ABI, a revert in a read that no `try` guards (such as an ERC-20 `balanceOf` or `decimals`, or the pool's `token0()` after a TWAP `observe` returns, outside its `catch`), and a pool answer the TWAP's tick math cannot use | `test_refusalIsLoggedNotReverted`, [`MandateVaultMalformed.t.sol`](contracts/test/MandateVaultMalformed.t.sol) |
 | **Fail closed** | A reverting pause, policy, calendar, multiplier, feed or Aave read counts as unsafe. The feed case is in [`PriceLib.readFeed`](contracts/src/lib/PriceLib.sol#L13-L20), and no contract test makes the feed's `latestRoundData` revert | `test_reverting*FailsClosed` in [`GuardLib.t.sol`](contracts/test/GuardLib.t.sol), `test_unreadableCollateralFailsConcentrationClosed` |
 | **24-hour timelock** | Mandate, token and payee changes are queued, then applied with the exact queued values from 24 hours after queueing until 7 days after that, or cancelled | `test_mandateChangeNeedsTimelock`, `test_appliedParamsMustMatchQueued`, `test_expiredChangeReverts` |
 | **Owner escape hatches** | `setPaused` (instant; `REPAY` still works), `setExecutor` (instant key rotation), `withdraw` (only to the owner) | `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` |
@@ -483,14 +483,15 @@ it has not been re-timed.
    `reason: 6` is `MARKET_CLOSED` in [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the
    vault still holds its 200 USDC, and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list,
+   and the invariant suite, which takes most of the run's time):
 
    ```bash
    forge test --no-match-path "test/fork/*"
    ```
 
    ```text
-   Ran 9 test suites in …: 234 tests passed, 0 failed, 0 skipped (234 total tests)
+   Ran 12 test suites in …: 247 tests passed, 0 failed, 0 skipped (247 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -527,7 +528,7 @@ it has not been re-timed.
          Tests  1715 passed (1715)
    ...
    out/ is ready to deploy (landing, /now and 49 docs pages checked)
-   search index: … bytes gzipped, budget 760000
+   search index: … bytes gzipped, budget 850000
    ```
 
    The same site is live at [maatonbase.xyz](https://maatonbase.xyz); `npm run dev` serves it on
@@ -700,7 +701,8 @@ contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork ba
     lib/                   PriceLib (feed, TWAP, premium), DateLib, TokenTransfer
     interfaces/            B20, Aave V4, Chainlink and pool interfaces
   script/                  Deploy.s.sol, MaatConfig.sol (default mandate), BaseAddresses.sol
-  test/                    9 unit suites, mocks/, utils/ fixtures, fork/ (7 fork test files)
+  test/                    11 unit suites, invariant/ (the invariant suite and its handlers), vectors/ (calendar
+                           vectors), mocks/, utils/ fixtures, fork/ (7 fork test files)
 agent/                     TypeScript agent runtime
   src/                     chain/ (state reader, preview), llm/ (Claude proposer, prompt, schema),
                            exec/ (Builder Code, gas, GuardedSender, CDP), loop/ (round, scheduler, lock), ledger/
