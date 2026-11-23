@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { AgentEnvVar, Deployment } from "./docs-data";
 import type { Mutability, SolFunction } from "./sol-surface";
 
@@ -76,10 +77,10 @@ export const FULL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 export const FULL_HASH = /^0x[0-9a-fA-F]{64}$/;
 
 /**
- * A date as ISO 8601 writes it: YYYY-MM-DD, digits only. docs-gen accepts only this, or nothing, as a Date. It checks
- * the form, not that the day exists.
+ * A calendar day as ISO 8601 writes it: YYYY-MM-DD, a day that exists, so 2026-02-30 and 2026-13-45 fail. It is the
+ * check lib/docs/frontmatter.ts gives lastReviewed. docs-gen accepts only this, or nothing, as a Date.
  */
-export const ISO_DATE = /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/;
+export const ISO_DATE = z.iso.date();
 
 /** Whether a row of the table has an address. While none has, the deployments table is one sentence that says so. */
 export const hasAddress = (d: Deployment) => d.address !== "";

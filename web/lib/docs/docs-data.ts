@@ -164,7 +164,8 @@ export function parseBaseAddresses(text: string): BaseConstant[] {
  * The rows of the first table in deployments/README.md, whose columns must be Network | Contract | Address | Tx | Date.
  * A cell is its text: a link gives its text, and code marks are dropped. The table ends at the first line that is not
  * a row; any later table is not read. An Address is empty or a full address, a Tx empty or a full hash, and a Date
- * empty or YYYY-MM-DD, so a placeholder fails here; so does a row on any network but DEPLOYMENT_NETWORK.
+ * empty or a calendar day as YYYY-MM-DD, so a placeholder fails here; so does a row on any network but
+ * DEPLOYMENT_NETWORK.
  */
 export function parseDeployments(text: string): Deployment[] {
   const lines = text.replace(/\r\n/g, "\n").split("\n");
@@ -204,8 +205,8 @@ export function parseDeployments(text: string): Deployment[] {
     if (tx !== "" && !FULL_HASH.test(tx)) {
       throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the transaction ${tx}, not an empty cell or 0x and 64 hex digits`);
     }
-    if (date !== "" && !ISO_DATE.test(date)) {
-      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the date ${date}, not an empty cell or YYYY-MM-DD`);
+    if (date !== "" && !ISO_DATE.safeParse(date).success) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the date ${date}, not an empty cell or a calendar day as YYYY-MM-DD`);
     }
     out.push({ network, contract, address, tx, date });
   }
