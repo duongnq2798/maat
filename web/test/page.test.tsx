@@ -58,7 +58,9 @@ describe("landing page", () => {
     expect(section).toHaveTextContent("A simulation of the default mandate, running in your browser.");
     expect(section).toHaveTextContent("The contract is the source of truth.");
     expect(within(section).getByText("default mandate · not the contract")).toBeInTheDocument();
-    expect(section).toHaveTextContent("Thanksgiving on Thu 26 Nov, Christmas on Fri 25 Dec and New Year on Fri 1 Jan");
+    expect(section).toHaveTextContent(
+      "weekends, and the 12 holidays and 3 early closes the calendar lists, up to Fri 24 Dec 2027)",
+    );
     expect(section).toHaveTextContent("53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc");
     expect(section).toHaveTextContent(
       "an NVDAc feed answer 14 s old (the GOOGLc and AAPLc feeds are assumed fresh), multiplier unchanged",

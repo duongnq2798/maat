@@ -44,6 +44,34 @@
     "live mode treats a blank Builder Code as missing": 51,
     "reports a blank required address as required": 54
   },
+  "agent/test/firstDecision.test.ts": {
+    "first-decision execute calldata": 42,
+    "decodes against the MandateVault ABI to every Intent field": 43,
+    "ends with exactly the ERC-8021 suffix of the code, and without it is plain execute calldata": 60,
+    "is byte for byte what the agent's GuardedSender sends for the same intent": 71,
+    "first-decision previewIntent calldata": 92,
+    "encodes the same intent, with no suffix": 93,
+    "first-decision inputs": 102,
+    "resolves each basket token to its address in src/addresses.ts, in any letter case": 103,
+    "defaults to 5 USD and takes up to 6 decimals": 110,
+    "encodes the amount exactly as typed, up to 9 digits before the point": 116,
+    "checksums the vault address": 121,
+    "rejects the builder code %j": 125,
+    "refuses the hex form %j of a builder code, which the pattern alone lets through": 130,
+    "rejects the token %j": 135,
+    "rejects the amount %j": 140,
+    "builds BUY only: SELL and the other actions are refused": 155,
+    "gives two salts two ids, and one salt the same id": 161,
+    "takes a 32-byte --id as given": 169,
+    "needs exactly one of --id and --salt, and refuses an empty salt or a malformed id": 175,
+    "hashes the rationale text it is given": 184,
+    "first-decision command line": 190,
+    "prints both calldatas and the owner-run templates with placeholders, and makes no network call": 191,
+    "prints the codes it reads back from the execute calldata, and the Builder Code check between the preview and the send": 214,
+    "never fills a template from the environment": 222,
+    "exits 1 on a missing or invalid flag value, 2 on an unknown flag, 0 for --help": 235,
+    "imports nothing that reads settings or talks to the network": 248
+  },
   "agent/test/integration/agent.fork.test.ts": {
     "agent on a Base fork": 25,
     "buys, supplies and borrows in one round; every tx carries the Builder Code and explicit gas; preview matches execute": 98,
@@ -272,6 +300,12 @@
     "test_rejectsTokenNotInPool": 41,
     "test_rejectsCallbackOutsideSwap": 47
   },
+  "contracts/test/Deploy.t.sol": {
+    "test_expensePayees_onePayee": 22,
+    "test_expensePayees_twoPayees": 28,
+    "test_expensePayees_secondEqualToFirstReverts": 42,
+    "test_expensePayees_secondUnsetGivesOnePayee": 47
+  },
   "contracts/test/GuardLib.t.sol": {
     "test_okReturnsOraclePrice": 99,
     "test_paused": 105,
@@ -465,16 +499,42 @@
     "test_fullyDelistedCollateralComesHomeWithoutDebt": 547,
     "test_fullyDelistedCollateralBlocksBorrowing": 554
   },
+  "contracts/test/MandateVaultMalformed.t.sol": {
+    "test_feedReturningTooLittleDataRevertsExecute": 18,
+    "test_tokenReturningTooLittleDataRevertsExecute": 28,
+    "test_adapterViewReturningTooLittleDataRevertsExecute": 34,
+    "test_revertingUsdcBalanceOfRevertsExecute": 40,
+    "test_revertingStockDecimalsRevertsExecute": 48,
+    "test_revertingPoolToken0RevertsExecute": 53,
+    "test_poolAnswerTooShortForTheTwapRevertsExecute": 59,
+    "test_poolTickOutsideTickMathRangeRevertsExecute": 69
+  },
   "contracts/test/MarketCalendar.t.sol": {
-    "test_daysFromCivil": 32,
-    "test_civilFromDaysRoundTrip": 38,
-    "test_weekdayAndNthSunday": 49,
-    "test_dstBoundaries": 55,
-    "test_regularSession": 62,
-    "test_feed245Session": 71,
-    "test_holidaysAndEarlyClose": 81,
-    "test_ownerCanOnlyMakeItStricter": 88,
-    "test_constructorRejectsZeroOwner": 103
+    "test_daysFromCivil": 46,
+    "test_civilFromDaysRoundTrip": 52,
+    "test_weekdayAndNthSunday": 63,
+    "test_dstBoundaries": 69,
+    "test_regularSession": 76,
+    "test_feed245Session": 85,
+    "test_holidaysAndEarlyClose": 95,
+    "test_mlkDay2027IsClosed": 102,
+    "test_washingtonsBirthday2027IsClosed": 107,
+    "test_goodFriday2027IsClosed": 112,
+    "test_memorialDay2027IsClosed": 117,
+    "test_juneteenthObserved2027IsClosed": 122,
+    "test_independenceDayObserved2027IsClosed": 127,
+    "test_laborDay2027IsClosed": 132,
+    "test_thanksgiving2027IsClosed": 137,
+    "test_christmasObserved2027IsClosed": 142,
+    "test_dayAfterThanksgiving2027ClosesEarly": 147,
+    "test_ownerCanOnlyMakeItStricter": 152,
+    "test_constructorRejectsZeroOwner": 167
+  },
+  "contracts/test/MarketCalendarVectors.t.sol": {
+    "test_etOffsetMatchesEveryDstTransitionFrom2007To2100": 51,
+    "test_preloadedClosuresMatchTheNyseVectors": 64,
+    "test_noOtherClosureIsPreloaded": 81,
+    "test_isOpenAtFixedEtTimesOnEachClosureDate": 103
   },
   "contracts/test/PriceLib.t.sol": {
     "test_priceFromSqrt_stockIsToken1": 32,

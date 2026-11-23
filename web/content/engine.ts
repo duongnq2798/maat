@@ -84,7 +84,8 @@ export const MOMENTS: Readonly<Record<MomentId, EngineMoment>> = {
       "transfers active",
       "authorized",
       `${m.sessionMode} · open`,
-      `${FACTS.feedAgeSec.value}s ≤ ${m.maxStalenessSec}s`,
+      // The limit the replayed run's vault enforced, not today's default (FACTS.mandate).
+      `${FACTS.feedAgeSec.value}s ≤ ${FACTS.forkRunMaxStalenessSec.value}s`,
       `no change ${m.multiplierCooldownSec / 3600}h`,
       `${FACTS.premiumsBps.value.NVDAc} ≤ ${m.maxPremiumBps} bps`,
       `$${bought.amountUsd} ≤ $${m.perTradeCapUsd} · $${m.dailyCapUsd}/day`,

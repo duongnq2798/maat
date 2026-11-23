@@ -17,6 +17,7 @@ sources:
   - agent/src/runtime.ts
   - agent/src/exec/cdpSender.ts
   - agent/src/exec/cdpPolicy.ts
+  - contracts/script/Deploy.s.sol
 next: [get-started/quickstart, security/not-claimed]
 ---
 
@@ -94,7 +95,7 @@ In the fork run, with the clock moved ahead to a Saturday, the agent's buy of GO
 
 ### Why refuse instead of revert?
 
-A [reverted](/docs/help/glossary#revert) call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design `execute` reverts only for a call from the wrong address (`NotExecutor`) or a reused intent id (`IntentAlreadyUsed`) ([some failures escape](/docs/security/model#fail-closed)). A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
+A [reverted](/docs/help/glossary#revert) call leaves no record, while a refusal emits a typed `Decision` event with the reason, so every refused call can be read later. By design `execute` reverts only for a call from the wrong address (`NotExecutor`) or a reused intent id (`IntentAlreadyUsed`). [Some failures escape](/docs/security/model#fail-closed): a dependency can still make `execute` revert in a few ways the vault does not catch, such as return data that does not fit the ABI. A refused intent still spends its id, so it cannot be replayed. See [Step 4: the vault decides](/docs/get-started/how-a-decision-is-made#step-4-the-vault-decides).
 
 ### How often does the agent run?
 
@@ -111,7 +112,7 @@ The agent previews every intent first, and it sends a refusal onchain only when 
 
 ### What if the calendar misses a holiday?
 
-The calendar ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes up to 2027-01-01, and later holidays need `addHoliday` from the calendar owner. If one is missing, the calendar treats that day as a normal session, so the market check passes. The other checks still run, but the vault can still trade on the last published price until it is older than `maxStaleness`. See [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing).
+The calendar ships with <Fact name="calendarPreload.holidays" /> holidays and <Fact name="calendarPreload.earlyCloses" /> early closes up to 2027-12-24, and later holidays need `addHoliday` from the calendar owner. If one is missing, the calendar treats that day as a normal session, so the market check passes. The other checks still run, but the vault can still trade on the last published price until it is older than `maxStaleness`, which with the default of <Fact name="mandate.maxStalenessSec" /> may not happen during the holiday. The premium check still refuses a buy or a sell once the pool drifts too far from that price. See [What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing).
 
 ## For developers
 
@@ -121,9 +122,9 @@ Clone the repository and run the tests. The refusal test, the contract suites, t
 
 ### How is Maat tested?
 
-**Unit tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
+**Unit and invariant tests against mocks, fork tests against real Base state, and parity tests that hold the site to the code. No test touches the real Claude API or the CDP wallet.**
 
-- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math and both adapters against mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
+- **Contracts.** Unit tests run the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list against mocks, an invariant suite checks the vault's rules over random sequences of calls on the same mocks, and Foundry fork tests run the contracts against real Base state at two pinned mainnet blocks.
 - **Agent.** Its tests use fakes, and its fork run uses a scripted proposer and a local sender.
 - **Website.** Its tests read the Solidity sources and the fork-run gas log, so most numbers on a page fail them if they drift from the code.
 
@@ -160,7 +161,7 @@ See [What it is not](/docs/get-started/what-is-maat#what-it-is-not).
 
 **Yes, with a caveat: the contracts are MIT-licensed but unaudited.**
 
-- The deploy script reads the deployer, owner, executor and expense [payee](/docs/help/glossary#payee) addresses from environment variables. It builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you edit `MaatConfig.sol` first.
+- The deploy script reads the deployer, owner and executor addresses and one or two expense [payee](/docs/help/glossary#payee) addresses from environment variables. It builds the vault from `MaatConfig` and Maat's Base mainnet addresses, with the default mandate and the three-stock basket, so for another mandate you edit `MaatConfig.sol` first.
 - You sign every transaction from your own wallet.
 - The owner address cannot be changed afterwards, so check it character for character before you broadcast.
 

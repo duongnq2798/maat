@@ -6,6 +6,7 @@ import { FACT_TEXT } from "../lib/docs/fact-text";
 import { HEALTH_FACTOR_SCALE, MULTIPLIER_FLOW } from "../lib/docs/flows";
 import { DOCS_IA } from "../lib/docs/ia";
 import { SITE } from "../lib/site";
+import { routeLiveRpc } from "./fake-live-rpc";
 
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /**
@@ -207,7 +208,7 @@ test.describe("reading comfort", () => {
       expect(layout.unwrapped).toBe(0);
       expect(layout.externalHref).toBeTruthy();
       expect(layout.externalAfter).toContain(layout.externalHref);
-      // An excerpt title's link, such as contracts/script/Deploy.s.sol#L23-L26, is not followed by its address.
+      // An excerpt title's link, such as contracts/script/Deploy.s.sol#L23-L27, is not followed by its address.
       expect(layout.excerptAfter).toBe("none");
     });
   }
@@ -1299,13 +1300,21 @@ test("the theme toggles and persists across a reload", async ({ page }) => {
   await expect(html).toHaveClass(/\bdark\b/);
 });
 
-test("dark docs do not reach the landing page", async ({ page }) => {
-  await page.goto("/docs");
-  await page.locator("[data-theme-toggle]").first().click();
-  await expect(page.locator("html")).toHaveClass(/\bdark\b/);
-  await page.goto("/");
-  await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
-  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(255, 255, 255)");
+test.describe("the landing", () => {
+  // The landing's live strip reads Base mainnet from the browser. Both RPC hosts answer from the recorded weekend
+  // reading of e2e/fake-live-rpc.ts, so the test does not touch the network. Only this test opens the landing.
+  test.beforeEach(async ({ page }) => {
+    await routeLiveRpc(page, "weekend");
+  });
+
+  test("dark docs do not reach the landing page", async ({ page }) => {
+    await page.goto("/docs");
+    await page.locator("[data-theme-toggle]").first().click();
+    await expect(page.locator("html")).toHaveClass(/\bdark\b/);
+    await page.goto("/");
+    await expect(page.locator("html")).not.toHaveClass(/\bdark\b/);
+    expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe("rgb(255, 255, 255)");
+  });
 });
 
 test("at 360px the sidebar drawer opens and closes by keyboard", async ({ page }) => {

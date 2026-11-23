@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from "node:util";
 import { MOMENTS } from "../content/engine";
+import { formatHours, PUBLISHED } from "../content/gap-index";
 import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
@@ -47,6 +48,13 @@ export function checkExport(html: string): string[] {
     `the simulator's default verdict (${simVerdict} · ${sim.reason}) is not in the exported HTML`,
   );
 
+  // The live strip reads Base in the browser: the export holds its reading state and never a chain value, a live pill or a
+  // verdict.
+  need(html.includes("Reading Base mainnet"), "the live strip's reading state is not in the exported HTML");
+  need(!html.includes(">LIVE<"), "the exported HTML shows a LIVE pill, so a reading was baked into the page");
+  need(!html.includes("basescan.org/block/"), "the exported HTML links a Base block, so a reading was baked into the page");
+  need(!html.includes("data-verdict-line"), "the exported HTML holds a verdict line, so a reading was baked into the page");
+
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
     need(html.includes(` id="${id}"`), `link #${id} has no target`);
   }
@@ -54,6 +62,92 @@ export function checkExport(html: string): string[] {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+  return problems;
+}
+
+/** The /now page's h1; its title is this, then the site's name. */
+const NOW_HEADING = "Right now on Base";
+
+/**
+ * Problems with the exported /now page (out/now.html); an empty list means it is ready to ship. Like the landing's live
+ * strip, it reads Base in the browser, so its HTML holds the reading state and never a chain value, a live pill or a
+ * verdict: the method, the addresses and the thresholds are not readings and may be there.
+ */
+export function checkNowPage(html: string): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`out/now.html: ${problem}`);
+  };
+
+  need(html.includes('<html lang="en"'), 'missing <html lang="en">');
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
+  need(title === `${NOW_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${NOW_HEADING} · ${SITE.name}"`);
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
+  // An entity such as &#x27; counts as one character.
+  const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;
+  need(length >= 50 && length <= 160, `meta description is ${description === undefined ? "missing" : `${length} characters`}, want 50 to 160`);
+  need(/<link rel="canonical" href="https?:\/\/[^"/]+\/now"/.test(html), "the canonical link is missing, not absolute or not /now");
+  const og = /<meta property="og:image" content="([^"]+)"/.exec(html)?.[1];
+  need(og !== undefined && /^https?:\/\//.test(og), "og:image is missing or not an absolute URL");
+  need(new RegExp(`<h1[^>]*>${NOW_HEADING}</h1>`).test(html), `the h1 is not "${NOW_HEADING}"`);
+
+  need(html.includes("Reading Base mainnet"), "the board's reading state is not in the exported HTML");
+  need(!html.includes(">LIVE<"), "the exported HTML shows a LIVE pill, so a reading was baked into the page");
+  need(!html.includes("basescan.org/block/"), "the exported HTML links a Base block, so a reading was baked into the page");
+  need(!html.includes("data-verdict-line"), "the exported HTML holds a verdict line, so a reading was baked into the page");
+
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
+  }
+  need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+  return problems;
+}
+
+/** The /gap-index page's h1; its title is this, then the site's name. */
+const GAP_INDEX_HEADING = "Weekend Gap Index";
+
+/** The NVDAc hours of the first complete window the page shows, as the page writes them, or null before any. */
+function firstNvdaHours(): string | null {
+  for (const w of PUBLISHED.flatMap((e) => e.windows)) {
+    if (w.status !== "complete") continue;
+    const hours = w.tokens.find((t) => t.symbol === "NVDAc")?.freeze?.hours;
+    return hours === undefined ? null : formatHours(hours);
+  }
+  return null;
+}
+
+/**
+ * Problems with the exported /gap-index page (out/gap-index.html); an empty list means it is ready to ship. Its figures
+ * come from the committed edition files at build time, so they must be in the HTML itself, for readers without
+ * JavaScript and for crawlers.
+ */
+export function checkGapIndexPage(html: string): string[] {
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`out/gap-index.html: ${problem}`);
+  };
+
+  need(html.includes('<html lang="en"'), 'missing <html lang="en">');
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
+  need(title === `${GAP_INDEX_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${GAP_INDEX_HEADING} · ${SITE.name}"`);
+  need(/<link rel="canonical" href="https?:\/\/[^"/]+\/gap-index"/.test(html), "the canonical link is missing, not absolute or not /gap-index");
+  need(new RegExp(`<h1[^>]*>${GAP_INDEX_HEADING}</h1>`).test(html), `the h1 is not "${GAP_INDEX_HEADING}"`);
+  // Looked for in the markup alone: the inline scripts carry React's copy of the page, which a reader without
+  // JavaScript and a crawler never see.
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  const hours = firstNvdaHours();
+  need(hours === null || markup.includes(hours), `NVDAc's ${hours} in the first complete window is not in the exported markup`);
+  need(!/safe/i.test(html), 'the page says "safe"');
+
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
+  }
   return problems;
 }
 
@@ -302,10 +396,12 @@ export function docsLocalhostUrls(mdx: Iterable<string>): Set<string> {
 }
 
 /**
- * Gzipped bytes the search index may take: 691,009 when the budget was set, plus about 10%. A bigger index is a choice
- * to make here, not an accident: every reader downloads it before their first result, often on a phone.
+ * Gzipped bytes the search index may take. The budget was set at 760,000, 691,009 plus about 10%. A local build of the
+ * merge that added the docs on the invariant suite, the malformed-ABI tests and the calendar vectors measured 773,483,
+ * so it is now that plus about 10%. A bigger index is a choice to make here, not an accident: every reader downloads
+ * it before their first result, often on a phone.
  */
-export const SEARCH_INDEX_GZIP_BUDGET = 760_000;
+export const SEARCH_INDEX_GZIP_BUDGET = 850_000;
 
 /**
  * Problems with the exported search index (out/api/search.json): over its gzipped budget, empty, or with a result

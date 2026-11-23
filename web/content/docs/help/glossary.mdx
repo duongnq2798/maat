@@ -13,6 +13,8 @@ sources:
   - agent/src/policy.ts
   - agent/src/ledger/store.ts
   - agent/test/integration/agent.fork.test.ts
+  - agent/scripts/first-decision.ts
+  - deployments/go-live.md
 next: [get-started/what-is-maat, help/faq]
 ---
 
@@ -59,7 +61,7 @@ One hundredth of a percent. The mandate and the per-stock settings state their p
 
 ### Builder Code (ERC-8021)
 
-A short code registered for a project, which ERC-8021 appends to a transaction's calldata as a suffix. The agent is built to add its code to every transaction it sends (transactions the owner signs do not carry it), and no real code is registered yet. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send).
+A short code registered for a project, which ERC-8021 appends to a transaction's calldata as a suffix. The agent is built to add its code to every transaction it sends, and no real code is registered yet. The owner's own transactions, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. See [How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send).
 
 ## C
 
@@ -111,7 +113,7 @@ A listed stock whose `allowed` flag is false while its feed or pool is still set
 
 ### Fail closed
 
-Treating a read that reverts as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed, pool [TWAP](/docs/help/glossary#twap) and Aave reads all work this way. It does not cover return data that fails to decode, or a few calls that run after a read returns: those revert `execute` instead ([Fail closed](/docs/security/model#fail-closed)). See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
+Treating a read that reverts as the unsafe answer, so the vault refuses the action and records it instead of guessing. The pause, policy, calendar, multiplier, feed, pool [TWAP](/docs/help/glossary#twap) and Aave reads all work this way. It does not cover return data that does not fit the read's ABI, a revert in a read that no `try` guards, such as a token's `balanceOf`, or a few calls that run after a read returns: those are not caught and revert `execute` instead ([Fail closed](/docs/security/model#fail-closed) lists them). See [Splits and the multiplier](/docs/concepts/splits-and-multiplier#fail-closed) and [The nine checks](/docs/concepts/nine-checks#each-check).
 
 ### Feed edge
 

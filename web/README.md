@@ -4,6 +4,14 @@ Public landing page for Maat (W1) and its docs center at `/docs`, in one static 
 Spec: `docs/superpowers/specs/2026-11-07-maat-web-design.md`. Approved comp: `docs/superpowers/specs/assets/2026-11-07-maat-landing-v2.dc.html`.
 Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`. Plan: `docs/superpowers/plans/2026-11-07-maat-docs-center.md`.
 
+`/now` (Right now on Base) reads Base mainnet in the browser through `lib/live/`: one Multicall3 call over keyless public RPCs, judged like `MandateVault` for a BUY.
+
+`/gap-index` (Weekend Gap Index) publishes one edition file per run in `content/gap-index/`, written by `npm run gap-index -- --edition N` from Base logs (`lib/gap/`).
+
+A new edition file is also imported in `content/gap-index/index.ts`. After a window ends, each live feed must post its first update after the open before the window can be measured, which can take up to the feed's heartbeat; until then the run names the feeds that have not and asks to run again later.
+
+`/ledger` (the mainnet ledger) reads the vault named in the deployments table from Base in the browser through `lib/chain/`, and shows a waiting state until that table has one ([Mainnet ledger](#mainnet-ledger)).
+
 ## Commands (run in `web/`)
 
 | Command | What it does |
@@ -13,12 +21,13 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 | `npm test` | unit, component and contract parity tests, and the docs gates ([Docs content](#docs-content)) |
 | `npm run typecheck` | Next route types + `tsc --noEmit` |
 | `npm run build` | static export into `out/` |
-| `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict) and every docs page ([what it checks](#what-checkout-checks)) |
+| `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict, the live strip's reading state and no chain reading baked in), `/now` (metadata, its heading, its reading state and no chain reading baked in), `/gap-index` (metadata, its heading, the first measured window's NVDAc hours in the markup and no "safe"), `/ledger` (the waiting state while the deployments table has no vault, its canonical URL and its sitemap entry) and every docs page ([what it checks](#what-checkout-checks)) |
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
 | `npm run rationales` | `npm run rationales -- <journal.jsonl>` rewrites `content/generated/rationales.json`, the rationale text the mainnet ledger checks against each `rationaleHash` ([Mainnet ledger](#mainnet-ledger)) |
 | `npm run docs:gen` | rewrites the reference data in `content/generated/` from the contracts, the agent and the deployments table ([Docs content](#docs-content)) |
-| `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs, `e2e/ledger.spec.ts` for `/ledger` against a fake Base RPC. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
+| `npm run gap-index` | measures the Weekend Gap Index from Base logs and writes one edition file under content/gap-index/ (`-- --edition N`; to reproduce one figure run `npm run -s gap-index -- --edition N --window ID --token SYM --stdout`: `-s` keeps npm's banner out of the JSON) |
+| `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/live.spec.ts` for the live strip and `/now` against the fake RPC of `e2e/fake-live-rpc.ts`, `e2e/gap-index.spec.ts` for `/gap-index`, `e2e/ledger.spec.ts` for `/ledger` against the fake Base RPC of `e2e/fake-rpc.ts`, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
 
 Keep Next's anonymous telemetry off when you build:
 
@@ -144,10 +153,12 @@ A component that wraps Markdown text, such as `<Callout>`, stays out of `DATA_CO
 
 ### What check:out checks
 
-It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
+It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, the edition files in `content/gap-index/` for the NVDAc hours `/gap-index` must show, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
 
-- The files a deploy needs, among them `index.html`, `404.html`, `docs.html`, `ledger.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
-- The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
+- The files a deploy needs, among them `index.html`, `now.html`, `gap-index.html`, `404.html`, `docs.html`, `ledger.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
+- The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, the live strip's reading state with no LIVE pill, Basescan block link or verdict line in the HTML (the strip reads Base in the browser, so a reading in the export would be a stale one), a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
+- `/now`, the Right now on Base page: `lang`, the title "Right now on Base · Maat", a description of 50 to 160 characters, an absolute canonical URL ending in `/now`, an absolute Open Graph image, its h1, the board's reading state with no LIVE pill, Basescan block link or verdict line in the HTML, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and an entry in `sitemap.xml`.
+- `/gap-index`, the Weekend Gap Index page: `lang`, the title "Weekend Gap Index · Maat", an absolute canonical URL ending in `/gap-index`, its h1, the NVDAc hours of the first measured window in the markup with its inline scripts removed (the page is built from the committed edition files, so its figures must be in the HTML itself, for readers without JavaScript and for crawlers), no "safe" in any case anywhere in the HTML, a target for each `#` link, scripts only from `/_next/`, and an entry in `sitemap.xml`.
 - Every docs page: `lang`, a title that ends in "· Maat Docs" (the docs home is "Maat Docs"), a description of 50 to 160 characters, an absolute canonical URL and `og:image`, scripts only from `/_next/`, no Google Fonts, no block element inside a paragraph, and links that lead to a heading of the page, an exported docs page or a file in `out/`.
 - Each docs page's link preview image: a PNG of the size its tags give, named by both `og:image` and `twitter:image`.
 - Each docs page's Markdown copy: no component tag left in place of its text, the index note first, and the status label, review date and Source of truth files of its page.
