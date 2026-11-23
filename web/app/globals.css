@@ -8,6 +8,7 @@
 @source "../components/{charts,gap,live,sections,ui}";
 @source "../content/*.ts";
 @source "../lib/site.ts";
+@source "../components/instrument";
 
 @theme {
   --color-bg: #FFFFFF;
@@ -33,6 +34,31 @@
 
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+/* Instrument tokens (spec 2026-11-23-maat-web-instrument-design.md, sections 8.2 and 9.2), beside the pinned block
+   above and never inside it. Tailwind writes a token into the sheet only once a class or a var() uses it. */
+@theme {
+  --color-chassis-2: #14171F;
+  --color-chassis-line: #262B36;
+  --color-lcd: #F3F4F6;
+  --color-lcd-2: #B4BAC6;
+  --color-lcd-ghost: #1A1E27;
+  --color-pass-lit: #9DAEFF;
+  --color-refuse-lit: #FF9B66;
+  --color-lamp-pass: #4D6BFF;
+  --color-lamp-refuse: #FF5A1F;
+  --color-label: #4A5160;
+  --color-refuse-ink: #9A3412;
+  --color-tick: #C9CED8;
+
+  --t-tick: 120ms;
+  --t-flip: 240ms;
+  --t-weigh: 600ms;
+  --t-draw: 900ms;
+  --stagger: 30ms;
+  /* Named for the instrument, not ease-out: Tailwind's ease-out utility reads a variable of that name. */
+  --ease-instrument: cubic-bezier(0.2, 0.7, 0.2, 1);
 }
 
 @layer base {
@@ -283,6 +309,14 @@
 }
 .anim-live {
   animation: live 2s ease-in-out infinite;
+}
+
+/* ThumbBar (phase P1): its padding clears a phone's home indicator. The inset is named here, in the stylesheet only,
+   never in a class name or an inline style (spec 2026-11-23 section 5.2). */
+@layer components {
+  .thumb-bar {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
