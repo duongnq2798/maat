@@ -589,8 +589,8 @@ need an archive RPC and run by hand. Lighthouse, a browser audit of the producti
 
 - **Unaudited.** No third party has reviewed the contracts.
 - **Not on mainnet yet.** All execution evidence is from a local fork, with a scripted proposer; the real
-  Claude API and the CDP wallet have been tested only against fakes. The Base App mini-app, x402 revenue and
-  the live dashboard do not exist yet.
+  Claude API and the CDP wallet have been tested only against fakes. x402 revenue does not exist yet, and the
+  mainnet ledger at `/ledger` shows its waiting state until the deploy, so it has no mainnet data yet.
 - **The calendar must be maintained.** It ships with Thanksgiving and Christmas 2026 and every NYSE
   holiday of 2027 (New Year to Christmas observed on 2027-12-24), plus early closes on 2026-11-27, 2026-12-24
   and 2027-11-26. Later holidays need `addHoliday` from the calendar owner. If one is missed, only the price
@@ -634,13 +634,15 @@ counters; and one immutable owner key, with no multisig, controls the vault.
 
 Planned, roughly in this order. None of this is on `main`, and no dates are promised.
 
-1. Mainnet deploy of Agent #1's vault by the owner, executor handed to the CDP Server Wallet, the first real
-   `Decision` events, the live ledger on the website and a Base App mini-app manifest (W2).
-2. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
+1. Mainnet deploy of Agent #1's vault by the owner, executor handed to the CDP Server Wallet, and the first
+   real `Decision` events, which the website's [`/ledger`](https://maatonbase.xyz/ledger) page, already
+   built, then reads.
+2. A rationale store the agent writes as it runs, read by `/ledger` (W2 follow-up).
+3. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
    progress in PR #2, open and unmerged.
-3. MCP server and Bankr Skill exposing the same check.
-4. `MandateFactory`: any agent deploys its own vault with its own mandate.
-5. Daily diary and replay page (W3).
+4. MCP server and Bankr Skill exposing the same check.
+5. `MandateFactory`: any agent deploys its own vault with its own mandate.
+6. Daily diary and replay page (W3).
 
 ## Built during the Quest
 
