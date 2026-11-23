@@ -569,7 +569,7 @@ These go in `globals.css`, outside the pinned colour block.
 **`--ease-instrument: cubic-bezier(.2,.7,.2,1)`.** This is new, though the curve itself is not: today it is written inline in `.anim-row` and `.anim-stamp`. It is not named `--ease-out`, because that is Tailwind's own `cubic-bezier(0,0,.2,1)`, and defining it would change the `ease-out` utility.
 
 **`--ease-needle` and `--ease-settle`.**
-- `--ease-needle` has damping ratio .42, about 22% overshoot. `--ease-settle` has damping ratio .7, about 4% overshoot.
+- `--ease-needle` has damping ratio .42, 23.4% overshoot. `--ease-settle` has damping ratio .7, 4.6% overshoot.
 - Both are `linear()` strings that `web/scripts/springs.ts` generates from `web/lib/motion/spring.ts` into a marked block.
 - `web/test/springs.test.ts` fails if the block and the model disagree, so the CSS and the drag share one model.
 
@@ -738,7 +738,7 @@ Items 2, 4 and 5 are manual measurements, taken at P-1 and P5 and recorded in th
    - It is painted in 2.0 s or less p50 on desktop, and 3.0 s or less under Lighthouse mobile throttling.
    - The lead moves 1 px or less.
    - CLS is 0.00 on `/`, `/now` and `/gap-index`.
-3. **Weight.** `web/e2e/weight.spec.ts` gzips `out/index.html` and every `/_next/` script, stylesheet and font the landing links. It fails if:
+3. **Weight.** `web/e2e/weight.spec.ts` gzips `out/index.html` and every `/_next/` module script, stylesheet and font the landing links. A `noModule` legacy polyfill is not counted, because no browser that runs the module scripts downloads it. It fails if:
    - the total is over 360,000 B;
    - JS is over 185,000 B;
    - CSS is over 18,000 B;
@@ -802,8 +802,8 @@ The mainnet go-live moved to Tue 24 Nov. Until it is done, main stays at `66bd0d
 | Phase | When | Branch | Scope |
 |---|---|---|---|
 | P-1 | Tue 24 Nov, after the go-live | none | merge PR #15 when green; check the record change still applies to the new main; capture a before baseline (screenshots, Lighthouse ×3, weights) |
-| P0 primitives | built Mon 23 to Tue 24 Nov, merged after P-1 | `feat/instrument-primitives` | the section 5.1 units, unmounted; additive and motion tokens; springs script and parity test; contrast test; `formatLimit` and `nextOpen`; the `@source` line; `weight.spec.ts`; webkit and firefox projects. No visual change |
-| P1 hero | merged by Wed 25 Nov 16:00 UTC | `feat/hero-instrument` | LiveSnapshotProvider and `active`; Readout in LiveStrip; Balance and verdict-first DecisionEngine; H1 and H2 scale; spec plate; tick ruler; ThumbBar; 120 ms colour transitions; drag-to-tip; the unlit docked plate in the `/gap-index` Header; the docked readout in Nav only if PR #15 has merged |
+| P0 primitives | built Mon 23 to Tue 24 Nov, merged after P-1 | `feat/instrument-primitives` | the section 5.1 units that no later phase names, unmounted; additive and motion tokens; springs script and parity test; contrast test; `formatLimit` and `nextOpen`; the `@source` line; `weight.spec.ts`; webkit and firefox projects. No visual change |
+| P1 hero | merged by Wed 25 Nov 16:00 UTC | `feat/hero-instrument` | LiveSnapshotProvider, `active` and HoldKey; Readout in LiveStrip; Balance and verdict-first DecisionEngine; H1 and H2 scale; spec plate; tick ruler; ThumbBar; 120 ms colour transitions; drag-to-tip; the unlit docked plate in the `/gap-index` Header; the docked readout in Nav only if PR #15 has merged |
 | P2a story | Thu 26 to Fri 27 Nov | `feat/scope-annunciator` | Weekend Scope, `content/scope.ts` and ScopeScrubber; Annunciator and `firing.ts`; Problem channels and ThisWeek; Built-on plate |
 | P2b story | Sat 28 to Sun 29 Nov | `feat/signal-path-desk` | `#how` signal path; simulator keys and Execute sequence; ledger cards; SOURCES and `sources.spec.ts` |
 | P3 pages | Mon 30 Nov to Tue 1 Dec | `feat/live-pages-instrument` | NowConsole, built and unit-tested but not mounted; `/gap-index` scrubber, small multiples, snap pills and tape; `/ledger` readouts if PR #15 has merged; docs.css; view transitions |
