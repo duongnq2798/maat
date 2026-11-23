@@ -539,7 +539,7 @@ describe("parseDeployments", () => {
     );
   });
 
-  it("fails on a row on any network but Base mainnet, and on a Tx that is neither empty nor 0x and 64 hex digits", () => {
+  it("fails on a row on any network but Base mainnet, on a Tx that is neither empty nor 0x and 64 hex digits, and on a Date that is neither empty nor YYYY-MM-DD", () => {
     // DEPLOYMENT_NETWORK: the deploy script and the agent are built for Base mainnet only.
     for (const network of ["Base", "Base Mainnet", "Base Sepolia"]) {
       const row = `| ${network} | MandateVault | ${VAULT} | | |`;
@@ -552,5 +552,14 @@ describe("parseDeployments", () => {
       );
     }
     expect(parseDeployments(table(`| Base mainnet | MandateVault | ${VAULT} | ${TX} | 2026-12-01 |`)).map((d) => d.tx)).toEqual([TX]);
+    // The token is built from parts, so this file holds no token for the deploy's fill to replace.
+    for (const date of [`@@${"DEPLOY_DATE"}@@`, "Dec 1, 2026", "2026-12-1"]) {
+      const row = `| Base mainnet | MandateVault | ${VAULT} | ${TX} | ${date} |`;
+      expect(() => parseDeployments(table(row))).toThrow(
+        `deployments/README.md: the row ${row} has the date ${date}, not an empty cell or YYYY-MM-DD`,
+      );
+    }
+    const linked = `| Base mainnet | MandateVault | [\`${VAULT}\`](https://basescan.org/address/${VAULT}) | [\`${TX}\`](https://basescan.org/tx/${TX}) | 2026-12-01 |`;
+    expect(parseDeployments(table(`| Base mainnet | MarketCalendar | ${VAULT} | ${TX} | |`, linked)).map((d) => d.date)).toEqual(["", "2026-12-01"]);
   });
 });
