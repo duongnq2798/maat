@@ -451,8 +451,9 @@ export function checkMarkdownCopies(text: string, path?: string): string[] {
 
 /**
  * Problems with out/ledger.html: its static state matches the build's deployments table (the waiting view while no
- * vault is recorded, a connecting line once one is), it names its canonical URL, its in-page links have targets, it
- * loads no third-party script, and the sitemap lists it.
+ * vault is recorded, a connecting line and no chain reading once one is, since the browser reads Base), it has the
+ * description and OG image the other pages need, it names its canonical URL, its in-page links have targets, it loads
+ * no third-party script or Google Fonts, and the sitemap lists it.
  */
 export function checkLedgerPage(opts: { html: string; vaultRecorded: boolean; sitemap: string; url: string }): string[] {
   const { html, vaultRecorded, sitemap, url } = opts;
@@ -461,8 +462,14 @@ export function checkLedgerPage(opts: { html: string; vaultRecorded: boolean; si
     if (!ok) problems.push(problem);
   };
   const waiting = html.includes("Waiting for the mainnet deploy");
-  if (vaultRecorded) need(!waiting, "out/ledger.html shows the waiting state, but a vault is recorded");
-  else need(waiting, "out/ledger.html does not show the waiting state, but no vault is recorded");
+  if (vaultRecorded) {
+    need(!waiting, "out/ledger.html shows the waiting state, but a vault is recorded");
+    need(html.includes("Connecting to Base"), "out/ledger.html does not show the connecting line, but a vault is recorded");
+    need(!html.includes("Reading Base mainnet"), "out/ledger.html has a chain reading in its HTML (Reading Base mainnet)");
+    need(!html.includes("basescan.org/tx/"), "out/ledger.html has a chain reading in its HTML (a Basescan transaction link)");
+  } else need(waiting, "out/ledger.html does not show the waiting state, but no vault is recorded");
+  needDescriptionAndOgImage(html, (ok, problem) => need(ok, `out/ledger.html: ${problem}`));
+  need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "out/ledger.html: the page loads Google Fonts at runtime");
   need(/<link rel="canonical" href="[^"]*\/ledger"/.test(html), "out/ledger.html has no canonical URL ending in /ledger");
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
     need(html.includes(` id="${id}"`), `out/ledger.html: link #${id} has no target`);

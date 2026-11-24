@@ -632,6 +632,7 @@ describe("checkLedgerPage", () => {
   const page = (body: string) =>
     [
       '<!DOCTYPE html><html lang="en"><head><title>Mainnet ledger · Maat</title>',
+      '<meta name="description" content="Every decision the vault makes on Base, allowed or refused, read in your browser."/>',
       '<link rel="canonical" href="https://maat.example/ledger"/>',
       '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
       '<script src="/_next/static/chunks/ledger.js" async=""></script>',
@@ -650,7 +651,30 @@ describe("checkLedgerPage", () => {
 
   it("fails when the static state does not match the deployments table", () => {
     expect(check(CONNECTING, false)).toEqual(["out/ledger.html does not show the waiting state, but no vault is recorded"]);
-    expect(check(WAITING, true)).toEqual(["out/ledger.html shows the waiting state, but a vault is recorded"]);
+    expect(check(WAITING, true)).toEqual([
+      "out/ledger.html shows the waiting state, but a vault is recorded",
+      "out/ledger.html does not show the connecting line, but a vault is recorded",
+    ]);
+  });
+
+  it("fails a page with a vault recorded that lacks the connecting line or has a chain reading baked in", () => {
+    // The browser reads Base; a reading in the export would be one from build time, shown as if current.
+    expect(check(page("<p>Mainnet ledger</p>"), true)).toEqual(["out/ledger.html does not show the connecting line, but a vault is recorded"]);
+    expect(check(page("<p>Connecting to Base…</p><p>Reading Base mainnet · block 61,745,836</p>"), true)).toEqual([
+      "out/ledger.html has a chain reading in its HTML (Reading Base mainnet)",
+    ]);
+    expect(check(page('<p>Connecting to Base…</p><a href="https://basescan.org/tx/0xab">tx</a>'), true)).toEqual([
+      "out/ledger.html has a chain reading in its HTML (a Basescan transaction link)",
+    ]);
+  });
+
+  it.each([
+    ["a missing meta description", (h: string) => h.replace(/<meta name="description" content="[^"]*"\/>/, ""), "out/ledger.html: meta description is missing, want 50 to 160"],
+    ["a short meta description", (h: string) => h.replace(/content="Every decision[^"]*"/, 'content="Too short."'), "out/ledger.html: meta description is 10 characters, want 50 to 160"],
+    ["a relative og:image", (h: string) => h.replace("https://maat.example/opengraph-image.png", "/opengraph-image.png"), "out/ledger.html: og:image is missing or not an absolute URL"],
+    ["Google Fonts", (h: string) => h.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), "out/ledger.html: the page loads Google Fonts at runtime"],
+  ])("flags %s, as the other pages' checks do", (_name, edit, problem) => {
+    expect(check(edit(CONNECTING), true)).toEqual([problem]);
   });
 
   it("fails when the sitemap does not list the page", () => {

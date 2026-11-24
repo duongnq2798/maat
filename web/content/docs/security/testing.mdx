@@ -270,7 +270,7 @@ The built site is checked too. `npm run check:out` reads the static export and f
 - the landing page's live strip or `/now`, which read Base mainnet in the browser, has a reading in the exported HTML (a LIVE pill, a Basescan block link or a verdict line) instead of its reading state;
 - the Weekend Gap Index page, `/gap-index`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/gap-index` or an absolute OG image, or `sitemap.xml` leaves it out;
 - `/gap-index`, which is built from the committed edition files, leaves the NVDAc hours of its first measured window out of its markup (its inline scripts do not count), or has "safe", in any case, anywhere in its HTML, even inside another word;
-- the mainnet ledger page, `/ledger`, shows its waiting state although `deployments/README.md` records a vault, or does not show it while none is recorded, lacks a canonical link to `/ledger`, or `sitemap.xml` leaves it out;
+- the mainnet ledger page, `/ledger`, shows its waiting state although `deployments/README.md` records a vault, or does not show it while none is recorded; lacks its connecting line, or has a chain reading in its HTML (a "Reading Base mainnet" line or a Basescan transaction link), while a vault is recorded; lacks a description of the right length, an absolute OG image or a canonical link to `/ledger`; loads Google Fonts; or `sitemap.xml` leaves it out;
 - `/data/deployments.json` or `/data/rationales.json`, which `/ledger` reads in the browser, is missing or differs from the generated data it is written from;
 - the landing page fails its own checks, or its CSS or JavaScript contains docs code.
 

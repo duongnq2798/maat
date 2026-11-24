@@ -21,7 +21,7 @@ A new edition file is also imported in `content/gap-index/index.ts`. After a win
 | `npm test` | unit, component and contract parity tests, and the docs gates ([Docs content](#docs-content)) |
 | `npm run typecheck` | Next route types + `tsc --noEmit` |
 | `npm run build` | static export into `out/` |
-| `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict, the live strip's reading state and no chain reading baked in), `/now` (metadata, its heading, its reading state and no chain reading baked in), `/gap-index` (metadata, its heading, the first measured window's NVDAc hours in the markup and no "safe"), `/ledger` (the waiting state while the deployments table has no vault, its canonical URL and its sitemap entry) and every docs page ([what it checks](#what-checkout-checks)) |
+| `npm run check:out` | checks `out/`: the landing page (metadata, link targets, no third-party scripts, Saturday state in the HTML, the simulator's `#try` section and its default verdict, the live strip's reading state and no chain reading baked in), `/now` (metadata, its heading, its reading state and no chain reading baked in), `/gap-index` (metadata, its heading, the first measured window's NVDAc hours in the markup and no "safe"), `/ledger` (metadata, its connecting line and no chain reading baked in while the deployments table records a vault, the waiting state while it has none, and its sitemap entry) and every docs page ([what it checks](#what-checkout-checks)) |
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
 | `npm run rationales` | `npm run rationales -- <journal.jsonl>` rewrites `content/generated/rationales.json`, the rationale text the mainnet ledger checks against each `rationaleHash` ([Mainnet ledger](#mainnet-ledger)) |
@@ -164,7 +164,7 @@ It checks the `out/` the last build left and does not build, so run it after `np
 - Each docs page's Markdown copy: no component tag left in place of its text, the index note first, and the status label, review date and Source of truth files of its page.
 - `llms.txt`, `llms-full.txt` and `sitemap.xml` list every docs page, and `llms.txt` gives the status under its summary and links each page's Markdown copy.
 - Each ABI under `out/data/abi/` holds the committed ABI.
-- `out/ledger.html`: the waiting state while the deployments table has no vault and not after, a canonical URL ending in `/ledger`, a target for each `#` link, scripts only from `/_next/`, and a `sitemap.xml` entry.
+- `/ledger`, the mainnet ledger: while the deployments table records a vault, its connecting line and no chain reading in the HTML (no "Reading Base mainnet" line and no Basescan transaction link: the page reads Base in the browser); the waiting state only while the table has none; a description of 50 to 160 characters, an absolute Open Graph image, a canonical URL ending in `/ledger`, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and a `sitemap.xml` entry.
 - The search index stays within the gzipped budget in `lib/check-out.ts`, and every result opens an exported page and heading.
 - On CI or Vercel only: no exported file links an `http://localhost` URL (see below).
 
