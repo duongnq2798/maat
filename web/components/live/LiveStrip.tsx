@@ -28,7 +28,7 @@ const GHOST_BLOCK = "88,888,888";
  * rounded up to 4 px. Every state fits, so the lead never moves when a reading lands. 62.5rem (1000 px), where the
  * hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem) and xl (80rem).
  */
-export const STRIP_RESERVE = "h-[352px] sm:h-[232px] min-[62.5rem]:h-[296px] xl:h-[232px]";
+export const STRIP_RESERVE = "h-[412px] sm:h-[248px] min-[62.5rem]:h-[288px] xl:h-[300px]";
 
 function NowLink() {
   return (
