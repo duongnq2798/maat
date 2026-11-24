@@ -59,4 +59,18 @@ describe("countdownText (spec 2026-11-23 section 6.1, amendment A9)", () => {
   it("counts down when MarketCalendar agrees the NYSE is closed", () => {
     expect(countdown(SAT, SAT + 14, false)).toBe("opens Mon 09:30 ET · in 1 d 23 h");
   });
+
+  it("says only how long when MarketCalendar agrees before the open, since the row's detail names it", () => {
+    expect(sessionAt({ timestamp: MON, calendar: { source: "onchain", address: CALENDAR, open: false } }).detail).toBe(
+      "Monday · opens 09:30 ET",
+    );
+    expect(countdown(MON, MON, false)).toBe("in 2 h 30 min");
+  });
+
+  it("names the open when MarketCalendar cannot be read before it, since the row's detail does not", () => {
+    expect(sessionAt({ timestamp: MON, calendar: { source: "onchain", address: CALENDAR, open: null } }).detail).toBe(
+      "MarketCalendar unreadable · counted closed",
+    );
+    expect(countdown(MON, MON, null)).toBe("opens Mon 09:30 ET · in 2 h 30 min");
+  });
 });

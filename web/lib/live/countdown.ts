@@ -8,9 +8,11 @@ import type { Session } from "./verdict";
  * NYSE next opens after the block, and how long that is from the visitor's clock `nowSec`, floored to the minute.
  * - null in session, and null when MarketCalendar's answer differs from the repo calendar's (the row then says
  *   "MarketCalendar: open" or "MarketCalendar: closed", and the repo calendar cannot say when it opens);
- * - "in 2 h 30 min" when the open is later on the block's own ET day, which session.detail already names
+ * - "in 2 h 30 min" when the open is later on the block's own ET day and session.detail already names it
  *   ("Monday · opens 09:30 ET");
- * - "opens Mon 09:30 ET · in 1 d 23 h" otherwise, and "in under 1 min" for the last minute.
+ * - "opens Mon 09:30 ET · in 1 d 23 h" otherwise, and "in under 1 min" for the last minute. That includes a trading
+ *   morning when MarketCalendar cannot be read: the detail then says "MarketCalendar unreadable · counted closed",
+ *   which names no open.
  * Pass the clock as it stood at the reading (wallAtReadSec + ageMs / 1000), so HOLD, which freezes the age, freezes it.
  */
 export function countdownText(session: Session, blockTs: number, nowSec: number): string | null {
@@ -24,7 +26,8 @@ export function countdownText(session: Session, blockTs: number, nowSec: number)
   const left = Math.max(0, opensAt - nowSec);
   const wait = left < 60 ? "under 1 min" : formatAge(Math.floor(left / 60) * 60);
   const open = localTime(opensAt);
-  if (open.etDay === localTime(blockTs).etDay) return `in ${wait}`;
+  const time = clockLabel(open.minuteOfDay);
+  if (open.etDay === localTime(blockTs).etDay && session.detail.endsWith(`opens ${time} ET`)) return `in ${wait}`;
   const day = (WEEKDAY_NAMES[open.weekday] ?? "").slice(0, 3);
-  return `opens ${day} ${clockLabel(open.minuteOfDay)} ET · in ${wait}`;
+  return `opens ${day} ${time} ET · in ${wait}`;
 }
