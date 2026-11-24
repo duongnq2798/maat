@@ -26,7 +26,7 @@ By the end of this page you will have rerun the end-to-end agent [fork test](/do
 
 <Callout type="fork" title="What this run covers">
 
-The contracts and the agent's send path run on the fork. The real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) do not: a scripted proposer stands in for Claude, and a local sender stands in for the CDP wallet. The Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The Saturday [round](/docs/help/glossary#round) is the same fork with the clock moved forward, not a real Saturday block. No Maat contract is deployed to Base mainnet.
+The contracts and the agent's send path run on the fork. The real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) do not: a scripted proposer stands in for Claude, and a local sender stands in for the CDP wallet. The Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The Saturday [round](/docs/help/glossary#round) is the same fork with the clock moved forward, not a real Saturday block. The test deploys its own copies of the contracts on the fork. The four Maat contracts that the owner deployed on Base mainnet play no part in it.
 
 </Callout>
 
@@ -140,7 +140,7 @@ The test is a script of rounds. Each row of the ledger below is one transaction 
 | Third (`fork-3`) | The same BUY again | The agent sends nothing, because it already logged that reason today. The executor's transaction count does not change. |
 | Fourth (`fork-4`) | A SELL of NVDAc in [dry-run](/docs/help/glossary#dry-run) mode, with a fresh journal | Nothing is sent. The journal records what the agent would have done, as `dry-run: would execute` or `dry-run: would log-refusal`. |
 
-The Builder Code in this test is `bc_maattest`, a value made up for the test. No real code is registered yet, so the test shows that the suffix is appended to the calldata, not that Base attributes anything. [Read a decision](/docs/get-started/read-a-decision) explains each field of a `Decision`.
+The Builder Code in this test is `bc_maattest`, a value made up for the test, so the test shows that the suffix is appended to the calldata, not that Base attributes anything. Maat's real code is registered, and the calldata of the vault's first `Decision` on Base mainnet carries it ([Next: mainnet](/docs/get-started/status#next-mainnet)). [Read a decision](/docs/get-started/read-a-decision) explains each field of a `Decision`.
 
 The trace of a run is the agent's journal, `journal.jsonl`. The test creates it in a new folder in your operating system's temp directory, named `maat-fork-` followed by random characters, and never removes it. Each line is one JSON object. An `intent` line holds the `preview`, the `gate` that says what the agent did with it and, when it sent the intent, the `txHash` and the `decision` with its `allowed` and `reason`. The dry-run round writes its own journal in a folder that starts with `maat-fork-dry-`.
 

@@ -18,7 +18,7 @@ sources:
 next: [reference/adapters, guides/pause-withdraw-recover]
 ---
 
-The vault can put its stock to work. It supplies a stock to [Aave V4](/docs/help/glossary#aave-v4) as collateral, borrows USDC against it, repays, and takes the collateral back. This page explains the four credit actions, the [health factor](/docs/help/glossary#health-factor) that limits them, the stricter limit that applies in the hours before the [Chainlink feeds](/docs/help/glossary#chainlink-equity-feed) stop for a weekend or a holiday, and what still works when the market is closed or the vault is paused. The vault's credit rules are tested with a mock adapter in unit tests and, with the real Aave V4, on a Base mainnet fork. No position has been opened on mainnet, because nothing is deployed.
+The vault can put its stock to work. It supplies a stock to [Aave V4](/docs/help/glossary#aave-v4) as collateral, borrows USDC against it, repays, and takes the collateral back. This page explains the four credit actions, the [health factor](/docs/help/glossary#health-factor) that limits them, the stricter limit that applies in the hours before the [Chainlink feeds](/docs/help/glossary#chainlink-equity-feed) stop for a weekend or a holiday, and what still works when the market is closed or the vault is paused. The vault's credit rules are tested with a mock adapter in unit tests and, with the real Aave V4, on a Base mainnet fork. Every run this page describes is one of those tests, not a run of the vault the owner deployed on Base mainnet ([Status and roadmap](/docs/get-started/status#next-mainnet) has its address).
 
 ## The four credit actions
 

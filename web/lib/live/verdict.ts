@@ -99,7 +99,7 @@ function hours(sec: number): string {
 }
 
 const NOT_RUN_DETAIL: Readonly<Record<number, string>> = {
-  3: "needs a deployed vault",
+  3: "needs a vault's address",
   8: "needs a vault's balances",
   9: "needs a vault's balances",
 };

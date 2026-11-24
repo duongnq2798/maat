@@ -44,17 +44,17 @@ next: [guides/run-the-agent, guides/change-a-rule, guides/pause-withdraw-recover
 
 This guide takes you from a clone of the repository to a `MandateVault` with the default [mandate](/docs/help/glossary#mandate) on [Base](/docs/help/glossary#base) mainnet: a dry run on a fork that needs no key, a checklist, the broadcast from your own wallet, funding, and the smoke tests. It is written for a builder who will own the [vault](/docs/help/glossary#vault). Every transaction is signed by you, and no script in this repository holds a key.
 
-<Callout type="fork" title="Not deployed yet">
+<Callout type="note" title="What has run">
 
-The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the credit smoke test come from the runbook, the credit smoke test with a gas limit and a [preview](/docs/help/glossary#preview) before each send added here. The BUY smoke-test lines were written for this page: `deployments/README.md` no longer carries them, and sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, as `deployments/go-live.md` steps 7 and 8 say. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. The Maat team has run none of the commands on this page, so none is proven on mainnet. The contracts are unaudited.
+The owner deployed the four Maat contracts to Base mainnet with the default mandate, and the table in `deployments/README.md` holds their addresses and deploy transactions. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the credit smoke test come from the runbook, the credit smoke test with a gas limit and a [preview](/docs/help/glossary#preview) before each send added here. The BUY smoke-test lines were written for this page: `deployments/README.md` no longer carries them, and sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, as `deployments/go-live.md` steps 7 and 8 say. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. These docs record no run of the commands on this page on Base mainnet: the deploy appears in them only as the addresses and transactions in `deployments/README.md`. The contracts are unaudited.
 
 </Callout>
 
 ## The whole path
 
-<Callout type="fork" title="Not run on mainnet">
+<Callout type="note" title="On mainnet, the deploy and one refusal are recorded">
 
-Nobody has followed this path on Base mainnet. Each step links the sections that explain it.
+Nobody has followed this whole path on Base mainnet. The owner deployed the four Maat contracts there, which is step 2 below. After it, these docs record only the vault's first `Decision`, a `BUY` the vault refused with `MARKET_CLOSED`, on [Status and roadmap](/docs/get-started/status#next-mainnet). Each step links the sections that explain it.
 
 </Callout>
 
@@ -122,7 +122,7 @@ In the runbook the owner is your wallet, the executor is temporarily your wallet
 
 **The owner does not have to be the deployer.** The script reads each address separately, and the deploy fork test `test_deployWiresEverything` deploys with four different addresses and checks the owner of both the vault and the calendar. The deployer signs only the deploy. After it, the owner signs `fund` (which pulls the USDC from the owner), `setExecutor`, `setPaused`, `withdraw`, every [timelocked](/docs/help/glossary#timelock) change, and the calendar's `addHoliday` and `setEarlyClose`. The executor signs the smoke-test `execute` calls. The commands on this page sign every role with one keystore wallet, `maat-owner`. The owner is fixed at the deploy, so this is when to choose a better-protected owner address. A multisig owner is compatible with the contract and is not set up, and a multisig cannot sign the `--account` commands on these pages. [The owner key](/docs/security/threat-model#the-owner-key) says what a leaked owner key allows.
 
-Time: not measured. No mainnet deploy has been run, and the runbook gives no durations. The smoke tests need a weekday session and a weekend day.
+Time: not measured. These docs record no duration for Maat's own deploy, and the runbook gives none. The smoke tests need a weekday session and a weekend day.
 
 ## Deploy and fund
 
@@ -214,7 +214,7 @@ If the wallet is wrong, or it sends another transaction between the simulation a
 
 <Callout type="warning" title="Owner only">
 
-The owner runs and signs the commands in this section of the runbook from their own wallet. `cast wallet import` adds your key to a Foundry keystore under the name `maat-owner`, which the later commands pass as `--account`. The commands are copied from deployments/README.md, and the Maat team has not run them.
+The owner runs and signs the commands in this section of the runbook from their own wallet. `cast wallet import` adds your key to a Foundry keystore under the name `maat-owner`, which the later commands pass as `--account`. The commands are copied from deployments/README.md, and these docs record no run of them.
 
 ```bash
 cast wallet import maat-owner --interactive
@@ -343,7 +343,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
   "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)" "$(cast keccak maat-smoke-1)"
 ```
 
-For `maat-smoke-1`, `allowed` must be `true` and `reason` must be `0`. For `maat-smoke-2`, `allowed` must be `false` and `reason` must be `6`. If your `cast` prints the log raw instead, `allowed` is data word 3 and `reason` is data word 4 ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)). No vault is deployed, so this command has not been run against one.
+For `maat-smoke-1`, `allowed` must be `true` and `reason` must be `0`. For `maat-smoke-2`, `allowed` must be `false` and `reason` must be `6`. If your `cast` prints the log raw instead, `allowed` is data word 3 and `reason` is data word 4 ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)). No output of this command from a vault is recorded, so none is shown.
 
 <Callout type="note" title="Preview from the executor">
 
@@ -405,7 +405,7 @@ cast call "$ADAPTER" "debt()(uint256)" --rpc-url "$BASE_RPC_URL"
 cast call "$ADAPTER" "hasPosition()(bool)" --rpc-url "$BASE_RPC_URL"
 ```
 
-`debt()` must print `0` and `hasPosition()` must print `false`. The fork test `test_creditLoopInSession` asserts both after a similar round trip, with other amounts, on a Base fork. On mainnet none of this has been run.
+`debt()` must print `0` and `hasPosition()` must print `false`. The fork test `test_creditLoopInSession` asserts both after a similar round trip, with other amounts, on a Base fork. These docs record no run of it on Base mainnet.
 
 </Step>
 
@@ -415,7 +415,7 @@ cast call "$ADAPTER" "hasPosition()(bool)" --rpc-url "$BASE_RPC_URL"
 
 deployments/README.md has a table with one row per contract: `MarketCalendar`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `MandateVault`. Its columns are the network, the contract, the address, the transaction and the date. Fill in the addresses and the transaction hashes from the broadcast and the smoke tests. The addresses are in the script output. The transactions are in `contracts/broadcast/Deploy.s.sol/8453/run-*.json`, which holds the transactions and the deployer address but no key. Whether to commit that file is the owner's decision.
 
-The Maat team's table is empty because nothing has been broadcast. If you deploy from your own copy of the repository, fill in your copy of the table, and keep the vault address for the agent's `MAAT_VAULT` setting.
+The Maat team's table holds the addresses of the four Maat contracts that the owner deployed. If you deploy from your own copy of the repository, put your addresses in place of those in your copy of the table, and keep the vault address for the agent's `MAAT_VAULT` setting.
 
 </Step>
 
@@ -428,7 +428,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - `previewIntent` returned `0`, and `cast logs` shows the BUY's `Decision` with `allowed=true` and `reason=0`.
 - The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A refusal moves no funds.
 - The four credit intents emitted a `Decision` with `allowed=true` each, and the adapter reads `debt()` as `0` and `hasPosition()` as `false`.
-- The table in deployments/README.md has your four addresses.
+- Your copy of the table in deployments/README.md has your four addresses, in place of Maat's.
 
 ## Common mistakes
 
@@ -449,7 +449,7 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 
 <Callout type="fork" title="Only this repository's agent has done this">
 
-No agent other than the one in this repository has driven a vault, and nothing is deployed. These steps have run only inside the agent's fork test, on a local Base fork.
+No agent other than the one in this repository has driven a vault, and that agent has run in live mode only in its fork test, on a local Base fork.
 
 </Callout>
 

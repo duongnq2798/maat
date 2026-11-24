@@ -37,7 +37,7 @@ Full local check: `npm run verify`, then `npm run e2e` (the build inside `verify
 
 Every number on the page lives in `content/facts.ts` with a `source`. `test/facts.test.ts` reads the contracts and the fork test directly, so a contract change that moves a number fails the tests until the site is updated.
 
-W1 shows only the labeled Base fork run. Values that exist only after the mainnet deploy are shown as `[after deploy]` and `[from mainnet tx]`, never as made-up hashes.
+W1's decisions are only those of the labeled Base fork run. The mandate sheet's `mandateHash` chip is the `mandateHash()` of the vault the owner deployed on Base mainnet, shortened. A value that exists only once a decision is a mainnet transaction is shown as `[from mainnet tx]`, never as a made-up hash.
 
 ## Docs content
 
@@ -85,7 +85,7 @@ The docs center is one MDX file per page, `content/docs/<section>/<page>.mdx`, w
 | **Excerpts.** A code block that quotes a file opens at the start of a line, with a title such as `contracts/src/GuardLib.sol#L44-L62` (the path from the repository root, then the lines), and holds exactly those lines | `test/docs-content.test.ts` |
 | **Cited tests.** A `test_...` name in code is a Solidity test in `contracts/test`, and a link whose text is a test name goes to the file that defines it. Text in double quotes in the same line or table cell as a link to a file in `agent/test` is an `it()` or `describe()` title in that file; a phrase in code beside that link, or beside the file's name in code, is a title or a string of that file | `test/docs-content.test.ts` |
 | **Agent messages.** Each message in the first column of the table under Agent scripts' "Messages the agent prints" heading is one string in `agent/src` or `agent/scripts`, word for word, with a placeholder such as `<PID>` for each value the code fills in | `test/docs-content.test.ts` |
-| **Deploy claims.** Once a Base mainnet row of the table in `deployments/README.md` has an address, the test lists every line of every page, and of `lib/docs/abi.ts`, that still says nothing is deployed, and fails until each is rewritten | `test/docs-content.test.ts` |
+| **Deploy claims.** The table in `deployments/README.md` records the four Base mainnet addresses, so the test lists every line of every page, and of `lib/docs/abi.ts`, that still denies the deploy, and fails on any line it lists. Its other tests put such a line back into copies of pages and of `lib/docs/abi.ts`, fill the four rows with test values, and check that the list names each of those lines, and none while no row has an address. One more runs the real pages and `lib/docs/abi.ts` against the four rows filled with test values, so a line that still denies the deploy fails before the real addresses are written too | `test/docs-content.test.ts` |
 | **Block components.** A table, diagram or other block component has a blank line before and after it; otherwise MDX puts it inside a paragraph | `check:out` |
 | **Callouts.** `<Callout>` takes the type `note`, `warning` or `fork`; any other type fails the build | `components/docs/Callout.tsx` |
 

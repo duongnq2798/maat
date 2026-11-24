@@ -117,7 +117,7 @@ const THRESHOLDS: readonly { key: Threshold; unit: string }[] = [
 const CHECKS: readonly { how: ReactNode; code: RefusalCode | null }[] = [
   { how: <>in the basket: {andList(FACTS.basket.value)}</>, code: "TOKEN_NOT_ALLOWED" },
   { how: <><Code>isPaused(0)</Code>; a failed call counts as paused</>, code: "TOKEN_PAUSED" },
-  { how: <>not run: it needs a deployed vault</>, code: null },
+  { how: <>not run: it needs a vault&apos;s address</>, code: null },
   { how: <>the NYSE session at the block&apos;s time (see The NYSE session); a failed calendar call counts as closed</>, code: "MARKET_CLOSED" },
   {
     how: (

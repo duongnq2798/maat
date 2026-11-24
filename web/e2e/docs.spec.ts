@@ -502,9 +502,7 @@ test.describe("page frame", () => {
   test("the status label links to what the labels mean, and the status page's own table keeps plain labels", async ({ page }) => {
     await page.goto("/docs/concepts/nine-checks");
     const link = page.locator("#nd-page header").getByRole("link", { name: "Status: Fork-tested. What this label means", exact: true });
-    await expect(link).toHaveAccessibleDescription(
-      "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
-    );
+    await expect(link).toHaveAccessibleDescription("Built and tested; the contracts and the send path have run on a Base mainnet fork.");
     // Hidden, not visually hidden: a screen reader reads the meaning once, as the link's description, not again as text.
     await expect(page.locator("#status-meaning")).toBeHidden();
     await link.click();
@@ -779,7 +777,7 @@ test.describe("files for tools", () => {
     request,
   }) => {
     const llms = await (await request.get("/llms.txt")).text();
-    expect(llms).toMatch(/^> .+\n\nStatus: built and fork-tested\. Nothing is deployed to Base mainnet, the contracts are unaudited, /m);
+    expect(llms).toMatch(/^> .+\n\nStatus: built and fork-tested, and the four Maat contracts are deployed to Base mainnet\. The contracts are unaudited, /m);
     const copies = [...llms.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+\/md\/docs[^)]*\.md)\): .*Web page: (\S+)$/gm)];
     expect(copies).toHaveLength(DOCS_IA.flatMap((s) => s.pages).length);
     for (const [, md = "", web] of copies) {
@@ -792,7 +790,9 @@ test.describe("files for tools", () => {
       expect(text, md).toContain(`\nURL: ${web}\n`);
     }
     const nine = await (await request.get("/md/docs/concepts/nine-checks.md")).text();
-    expect(nine).toMatch(/\nURL: [^\n]+\n\nStatus: Fork-tested\. Built and tested; [^\n]+; not deployed\. Last reviewed: \d{4}-\d{2}-\d{2}\.\n/);
+    expect(nine).toMatch(
+      /\nURL: [^\n]+\n\nStatus: Fork-tested\. Built and tested; the contracts and the send path have run on a Base mainnet fork\. Last reviewed: \d{4}-\d{2}-\d{2}\.\n/,
+    );
     expect(nine).toContain(`\n## Source of truth\n`);
     expect(nine).toContain(`(${SITE.repoUrl}/blob/main/contracts/src/GuardLib.sol)`);
     // llms-full.txt is every page already, so no page in it repeats the note.
@@ -819,7 +819,8 @@ test.describe("files for tools", () => {
     const file = (await response.json()) as { source: string; note: string; abi: { type: string; name?: string }[] };
     expect(Object.keys(file)).toEqual(["source", "note", "abi"]);
     expect(file.source).toContain("agent/src/abi/generated.ts");
-    expect(file.note).toContain("not deployed");
+    expect(file.note).toContain("deployed to Base mainnet, at the addresses in deployments/README.md");
+    expect(file.note).not.toContain("not deployed");
     expect(file.abi.some((e) => e.type === "function" && e.name === "execute")).toBe(true);
   });
 });

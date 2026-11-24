@@ -22,8 +22,8 @@ import { SITE } from "@/lib/site";
 import fixture from "./fixtures/live-aggregate3.json";
 import { failSlot, passingBasket, roundData, SLOTS, type Slot, slotIndex } from "./helpers/live";
 
-// The deployments table the page reads is a copy that a test may change, so no test depends on whether MarketCalendar
-// is deployed yet: the tests of each session source say which one they want.
+// The deployments table the page reads is a copy that a test may change, so no test depends on whether the table names
+// a MarketCalendar address: the tests of each session source say which one they want.
 vi.mock("@/content/generated/deployments.json", async (importOriginal) => ({
   default: structuredClone((await importOriginal<{ default: unknown }>()).default),
 }));
@@ -205,6 +205,12 @@ describe("the /now page", () => {
       null,
       null,
     ]);
+    // The page reads no vault: each check it leaves out says what that check needs, not that no vault exists.
+    expect([3, 8, 9].map((n) => items[n - 1]?.textContent)).toEqual([
+      expect.stringContaining("not run: it needs a vault's address"),
+      expect.stringContaining("not run: it needs a vault's balances"),
+      expect.stringContaining("not run: it needs a vault's balances"),
+    ]);
   });
 
   it("names the calls of the one multicall, the repo calendar and the endpoints, in the order they are tried", () => {
@@ -314,6 +320,8 @@ describe("the /now board", () => {
     const fake = fakeReader(results());
     const html = renderToString(<NowBoard reader={fake.reader} />);
     expect(html).toContain("Reading Base mainnet");
+    // Why checks 3, 8 and 9 are not run: this page reads no vault, not that no vault exists.
+    expect(html).toContain("and this page reads no vault, so they are not run here.");
     const doc = new DOMParser().parseFromString(html, "text/html");
     const rows = [...doc.querySelectorAll("tbody tr")];
     expect(rows.map((r) => r.getAttribute("data-token"))).toEqual(NAV_TOKENS.map((t) => t.symbol));

@@ -28,7 +28,7 @@ sources:
 next: [security/not-claimed, guides/pause-withdraw-recover]
 ---
 
-This page says what Maat protects, who can touch it, and what an attacker gets from each secret that could leak: what they can do, what they cannot, and what the response is. It is about the code and the tests as they are. Nothing is deployed, and the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP wallet](/docs/help/glossary#cdp-server-wallet), so none of these keys protects a deployed system yet, and the CDP wallet and the Claude API have never been used by this code. Where a protection is untested against the real service, the row says so. [The security model](/docs/security/model) lists the rules themselves.
+This page says what Maat protects, who can touch it, and what an attacker gets from each secret that could leak: what they can do, what they cannot, and what the response is. It is about the code and the tests as they are. The owner deployed the four Maat contracts on [Base](/docs/help/glossary#base) mainnet, so the owner key now controls a deployed vault and calendar. The agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP wallet](/docs/help/glossary#cdp-server-wallet), and the CDP wallet and the Claude API have never been used by this code. Where a protection is untested against the real service, the row says so. [The security model](/docs/security/model) lists the rules themselves.
 
 ## Assets
 
