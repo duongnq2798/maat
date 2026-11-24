@@ -7,10 +7,20 @@ const row = (contract: string, address = "", tx = "", network = "Base mainnet") 
 const VAULT_LOWER = "0xb20000000000000000000078ee7ce2fe4908108c";
 const VAULT = "0xb20000000000000000000078ee7ce2fE4908108C";
 const TX = `0x${"ab".repeat(32)}`;
+// The Base mainnet MandateVault and its deploy tx, as deployments/README.md records them.
+const RECORDED = {
+  vault: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
+  deployTx: "0xf5a532fe5d8b2ddf7fce312f524537e614f4988b425972dd1098f3d56631c9c1",
+};
 
 describe("deploymentConfig", () => {
-  it("is null while the MandateVault row has no address (the committed table)", () => {
-    expect(deploymentConfig(docsData.deployments)).toBeNull();
+  it("reads the vault and its deploy tx from the committed table", () => {
+    expect(deploymentConfig(docsData.deployments)).toEqual(RECORDED);
+  });
+
+  it("is null while the MandateVault row has no address, or the table has no such row", () => {
+    expect(deploymentConfig([row("MarketCalendar"), row("MandateVault")])).toBeNull();
+    expect(deploymentConfig([])).toBeNull();
   });
 
   it("returns the checksummed vault and its deploy tx", () => {
@@ -33,10 +43,15 @@ describe("deploymentConfig", () => {
 });
 
 describe("deploymentsFile", () => {
-  it("publishes the whole table with the vault fields", () => {
+  it("publishes the whole committed table with the recorded vault", () => {
     const f = deploymentsFile(docsData.deployments);
-    expect(f).toMatchObject({ network: "Base mainnet", chainId: 8453, vault: null, deployTx: null });
+    expect(f).toMatchObject({ network: "Base mainnet", chainId: 8453, ...RECORDED });
     expect(f.contracts).toEqual(docsData.deployments);
+  });
+
+  it("publishes null vault fields for a table with no vault address", () => {
+    const rows = [row("MandateVault")];
+    expect(deploymentsFile(rows)).toEqual({ network: "Base mainnet", chainId: 8453, vault: null, deployTx: null, contracts: rows });
   });
 
   it("fills the vault fields from the MandateVault row", () => {

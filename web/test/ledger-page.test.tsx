@@ -122,7 +122,16 @@ const mainnet = (): LedgerState => ({
   refreshError: null,
 });
 
-describe("/ledger before the mainnet deploy", () => {
+describe("/ledger as the build exports it", () => {
+  it("connects instead of waiting, because the committed deployments table records the vault", () => {
+    hook.state = { mode: "loading-config" };
+    render(<LedgerPage />);
+    expect(screen.getByText(/Connecting to Base/)).toBeInTheDocument();
+    expect(screen.queryByText("Waiting for the mainnet deploy")).toBeNull();
+  });
+});
+
+describe("/ledger while the deployments file has no vault", () => {
   beforeEach(() => {
     hook.state = { mode: "waiting" };
   });
