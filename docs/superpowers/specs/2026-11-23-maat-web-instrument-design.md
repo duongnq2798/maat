@@ -210,7 +210,7 @@ Each unit has one purpose and can be tested on its own.
 | Unit | Path | Does | Depends on |
 |---|---|---|---|
 | LiveSnapshotProvider | `web/components/live/LiveSnapshotProvider.tsx` | runs exactly one `useLiveSnapshot` per page and gives `{ state, refresh, refreshing, hold, setHold }` through context to every live surface | `useLiveSnapshot` |
-| Readout | `web/components/instrument/Readout.tsx` | chassis window, 100% of its column wide, fixed height per breakpoint (sized for the tallest state at that breakpoint's narrowest width), bezel-keys slot | Ghost |
+| Readout | `web/components/instrument/Readout.tsx` | chassis window, 100% of its column wide, a reserved height per breakpoint, set as a min-height (sized for the tallest state measured at that breakpoint's narrowest width, so a taller frame on an unmeasured platform grows the box instead of covering the lead), bezel-keys slot | Ghost |
 | Digits | `web/components/instrument/Digits.tsx` | mono tabular number that rolls only the changed digits between two real readings | `rollDigits` |
 | Ghost | `web/components/instrument/Ghost.tsx` | unlit segments as CSS generated content on an empty aria-hidden span; hidden under `forced-colors` | none |
 | HoldKey | `web/components/instrument/HoldKey.tsx` | `aria-pressed` key that freezes reads and the countdown (WCAG 2.2.2) | LiveSnapshotProvider |
@@ -246,7 +246,7 @@ Each unit has one purpose and can be tested on its own.
 | `web/playwright.config.ts` | `webkit` and `firefox` projects (`devices['Desktop Safari']`, `devices['Desktop Firefox']`) with `testMatch: /smoke\.spec\.ts$/` only | P0 |
 | `.github/workflows/ci.yml` | after the chromium install step: `npx --no-install playwright install --with-deps webkit firefox` | P0 |
 | `web/components/live/useLiveSnapshot.ts` | new option `active` (default true): while it is false (HOLD) there is no read, no 30 s timer and no 5 s reclassify interval. When it turns true, it reads at once if the last read is older than `REFRESH_MS`. Reads still run every 30 s while the page is visible, as today | P1 |
-| `web/components/live/LiveStrip.tsx` | renders inside a Readout (3.5); keeps its export name, states and strings. The phone reserve band gives way to the Readout's fixed height | P1 |
+| `web/components/live/LiveStrip.tsx` | renders inside a Readout (3.5); keeps its export name, states and strings. The phone reserve band gives way to the Readout's reserved min-height | P1 |
 | `web/components/live/VerdictLine.tsx` and `LiveStatus.tsx` | a new prop for a chassis palette (lcd and lcd-2) inside the Readout. `data-tone` keeps the values `ink` and `muted`, and NowBoard on white keeps today's classes | P1 |
 | `web/components/DecisionEngine.tsx` | verdict-first order and the Balance, inside the DOM rules of 3.6 | P1 |
 | `web/components/sections/Hero.tsx` | spec plate (3.1), tick ruler, CTAs above the fold, the H1 and H2 scale | P1 |
@@ -332,9 +332,9 @@ From the top:
 - **y 0-32:** the status line, in its pinned phone form.
 - **y 32-96:** the nav, with the mark, Docs and the GitHub pill.
 - **H1:** 44 px, in 4 lines.
-- **Readout:** 358 px wide at 390, 343 at 375 and 328 at 360 (100% of the column). Its height is fixed, and the live verdict line is in the first screen.
+- **Readout:** 358 px wide at 390, 343 at 375 and 328 at 360 (100% of the column). Its height is reserved as a min-height, so the lead stays put between live states, and the live verdict line is in the first screen.
 - **Lead:** 17 px.
-- **CTAs:** stacked, 52 px each. At 390x844 they end at about y 1054, below the first screen, under the fixed-height Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out.
+- **CTAs:** stacked, 52 px each. At 390x844 they end at about y 1054, below the first screen, under the Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out.
 - **Screen 2** opens on the Balance and the verdict window, then the channels.
 - **ThumbBar.**
   - When both hero CTAs have scrolled out, a 56 px bottom bar slides up. It holds a live lamp and "Try to make it say no", which links `#try` on the landing.
