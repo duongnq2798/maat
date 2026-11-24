@@ -26,6 +26,8 @@ export interface FakeScenario {
   calls: Readonly<Record<string, Readonly<Record<string, Answer>>>>;
   /** eth_getLogs refuses wider ranges, as publicnode does (50,000). */
   maxLogRange?: bigint;
+  /** Sees every eth_getLogs request the fake answers, so a test can check which address and blocks the page asked for. */
+  onLogs?: (r: { address: string; from: bigint; to: bigint }) => void;
 }
 
 class RpcError extends Error {
@@ -112,11 +114,14 @@ function handle(s: FakeScenario, method: string, params: readonly unknown[]): un
       return b;
     }
     case "eth_getLogs": {
-      const { fromBlock, toBlock } = params[0] as { fromBlock: Hex; toBlock: Hex };
+      const { address, fromBlock, toBlock } = params[0] as { address?: string; fromBlock: Hex; toBlock: Hex };
       const from = BigInt(fromBlock);
       const to = BigInt(toBlock);
       const max = s.maxLogRange ?? 50_000n;
       if (to - from + 1n > max) throw new RpcError(-32600, `exceed maximum block range: ${max}`);
+      s.onLogs?.({ address: String(address ?? ""), from, to });
+      // Only the scenario's vault has logs, as on the real chain a request for another address finds none of them.
+      if (String(address ?? "").toLowerCase() !== s.vault.toLowerCase()) return [];
       return s.logs
         .filter((l) => BigInt(l.blockNumber) >= from && BigInt(l.blockNumber) <= to)
         .map((l) => ({
@@ -155,6 +160,22 @@ function handle(s: FakeScenario, method: string, params: readonly unknown[]): un
     default:
       throw new RpcError(-32601, `the method ${method} does not exist`);
   }
+}
+
+/**
+ * Stops every request to the Base RPCs before it leaves the browser, for a test in which the page must not call Base.
+ * Returns the URLs it stopped, so the test can assert there were none.
+ */
+export async function blockBase(page: Page): Promise<string[]> {
+  const stopped: string[] = [];
+  await page.route(
+    (url) => RPC_HOSTS.includes(url.host),
+    async (route) => {
+      stopped.push(route.request().url());
+      await route.abort();
+    },
+  );
+  return stopped;
 }
 
 /**

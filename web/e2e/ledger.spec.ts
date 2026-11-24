@@ -2,9 +2,10 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import { getAddress, keccak256, toBytes } from "viem";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
-import { SCAN_FLOOR_BLOCK } from "../lib/chain/config";
+import deployments from "../content/generated/deployments.json" with { type: "json" };
+import { deploymentConfig } from "../lib/chain/config";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
-import { installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
+import { blockBase, installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
 import { collectErrors, measureFit } from "./helpers";
 
 const addr = (name: string) => getAddress(addresses.find((a) => a.name === name)!.value);
@@ -13,10 +14,14 @@ const NVDAC = addr("NVDAC");
 const GOOGLC = addr("GOOGLC");
 const NVDA_FEED = addr("NVDA_FEED");
 const GOOGL_FEED = addr("GOOGL_FEED");
-const VAULT = getAddress("0x00000000000000000000000000000000000aa001");
 const CREDIT = getAddress("0x0000000000000000000000000000000000000c03");
 
-const DEPLOY = SCAN_FLOOR_BLOCK + 10_000n;
+// The build serves the committed deployments table at /data/deployments.json, so the page reads the real vault. The
+// fake chain answers for that address, and for its deploy tx with the block it was mined in on Base (61,698,517).
+const RECORDED = deploymentConfig(deployments)!;
+const VAULT = RECORDED.vault;
+const DEPLOY_TX = RECORDED.deployTx!;
+const DEPLOY = 61_698_517n;
 const HEAD = DEPLOY + 120_000n;
 const T0 = 1_795_707_000; // Thu 26 Nov 2026 15:30 UTC
 const HEAD_TIME = T0 + 7300;
@@ -33,7 +38,7 @@ const scenario: FakeScenario = {
   ],
   times: { [String(DEPLOY + 5n)]: T0, [String(DEPLOY + 60_000n)]: T0 + 86_400, [String(HEAD - 10n)]: T0 + 2 * 86_400 },
   receipts: {
-    [hash32(42)]: { block: DEPLOY, gasUsed: 4_000_000n },
+    [DEPLOY_TX.toLowerCase()]: { block: DEPLOY, gasUsed: 4_000_000n },
     [hash32(1)]: { block: DEPLOY + 5n, gasUsed: 758_192n },
     [hash32(2)]: { block: DEPLOY + 60_000n, gasUsed: 111_116n },
     [hash32(3)]: { block: HEAD - 10n, gasUsed: 111_116n },
@@ -91,7 +96,17 @@ async function blockingViolations(page: Page) {
     .map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
 }
 
-test.describe("/ledger before the mainnet deploy", () => {
+// The waiting view, for a build whose deployments table has no vault (a fork of the repository before its own deploy).
+// The committed table records one, so the test serves the page a deployments file without it.
+test.describe("/ledger with a deployments file that has no vault", () => {
+  let stopped: string[];
+  test.beforeEach(async ({ page }) => {
+    stopped = await blockBase(page);
+    await page.route("**/data/deployments.json", (route) =>
+      route.fulfill({ json: { network: "Base mainnet", chainId: 8453, vault: null, deployTx: null, contracts: [] } }),
+    );
+  });
+
   for (const width of [360, 768, 1440, 1920] as const) {
     test(`fits ${width}px, waits without calling Base, and logs no errors`, async ({ page }) => {
       const errors = collectErrors(page);
@@ -104,6 +119,7 @@ test.describe("/ledger before the mainnet deploy", () => {
       expect(fit.overflow).toBeLessThanOrEqual(0);
       expect(fit.clipped).toEqual([]);
       await page.screenshot({ path: `test-results/screens/ledger-waiting-${width}.png`, fullPage: true });
+      expect(stopped).toEqual([]);
       expect([...hosts]).toEqual([]);
       expect(errors).toEqual([]);
     });
@@ -111,15 +127,29 @@ test.describe("/ledger before the mainnet deploy", () => {
 
   test("has no serious or critical axe violations", async ({ page }) => {
     await page.goto("/ledger", { waitUntil: "networkidle" });
+    await expect(page.getByText("Waiting for the mainnet deploy")).toBeVisible();
     expect(await blockingViolations(page)).toEqual([]);
+    expect(stopped).toEqual([]);
+  });
+});
+
+test.describe("/ledger as built, before Base answers", () => {
+  test("starts by connecting to the vault the deployments table records, never waiting", async ({ page }) => {
+    const stopped = await blockBase(page);
+    const res = await page.request.get("/data/deployments.json");
+    expect(await res.json()).toMatchObject({ vault: VAULT, deployTx: DEPLOY_TX });
+    await page.goto("/ledger");
+    await expect(page.getByText(/Connecting to Base|Base could not be read/)).toBeVisible();
+    await expect(page.getByText("Waiting for the mainnet deploy")).toHaveCount(0);
+    // Every request it tried went to a Base RPC, and none left the browser.
+    await expect.poll(() => stopped.length).toBeGreaterThan(0);
+    expect(stopped.every((u) => RPC_HOSTS.includes(new URL(u).host))).toBe(true);
   });
 });
 
 test.describe("/ledger reading a fake Base mainnet", () => {
+  let logRequests: { address: string; from: bigint; to: bigint }[] = [];
   test.beforeEach(async ({ page }) => {
-    await page.route("**/data/deployments.json", (route) =>
-      route.fulfill({ json: { network: "Base mainnet", chainId: 8453, vault: VAULT, deployTx: hash32(42), contracts: [] } }),
-    );
     await page.route("**/data/rationales.json", (route) =>
       route.fulfill({
         json: [
@@ -128,7 +158,19 @@ test.describe("/ledger reading a fake Base mainnet", () => {
         ],
       }),
     );
-    await installFakeChain(page, scenario);
+    logRequests = [];
+    await installFakeChain(page, { ...scenario, onLogs: (r) => logRequests.push(r) });
+  });
+
+  test("reads the recorded vault from its deploy block", async ({ page }) => {
+    await page.goto("/ledger");
+    await expect(page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem")).toHaveCount(3);
+    await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0);
+    await expect(page.getByRole("link", { name: /vault on Basescan/ })).toHaveAttribute("href", `https://basescan.org/address/${VAULT}`);
+    expect(logRequests.length).toBeGreaterThan(0);
+    expect(logRequests.every((r) => r.address.toLowerCase() === VAULT.toLowerCase())).toBe(true);
+    expect(logRequests.reduce((min, r) => (r.from < min ? r.from : min), HEAD)).toBe(DEPLOY);
+    expect(logRequests.reduce((max, r) => (r.to > max ? r.to : max), 0n)).toBe(HEAD);
   });
 
   test("lists the vault's decisions, verifies rationales and reads the treasury", async ({ page }) => {
