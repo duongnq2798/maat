@@ -21,7 +21,7 @@ export function Hero() {
     <header id="top" className="relative overflow-hidden">
       <Ruler className="absolute inset-x-0 top-0" />
       <div aria-hidden="true" className="hero-glow absolute -right-[10%] -top-[10%] h-[120%] w-3/5" />
-      <div className="wrap relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-start gap-10 pb-16 pt-8 sm:pb-24 sm:pt-10 md:gap-14">
+      <div className="wrap relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-start gap-10 pb-16 pt-8 sm:pb-24 sm:pt-10 md:gap-14 xl:grid-cols-[minmax(0,1fr)_560px] xl:gap-12">
         <div className="flex flex-col gap-5">
           <span className="inline-flex items-center gap-2.5 self-start rounded-full border border-line bg-white py-[7px] pl-2 pr-3.5 text-[13px] text-ink-2">
             <span className="rounded-full bg-accent-tint px-2 py-[3px] font-mono text-[11px] font-semibold text-accent">
