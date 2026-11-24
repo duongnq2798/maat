@@ -694,6 +694,15 @@
   }
 }
 
+/* Drag-to-tip (components/instrument/useTipDrag.ts): while a drag writes --tilt every frame, the beam and the pans
+   follow it directly instead of easing toward each new value. */
+@layer components {
+  .balance[data-dragging] .balance-beam,
+  .balance[data-dragging] .balance-pan {
+    transition: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
