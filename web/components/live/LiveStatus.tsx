@@ -1,4 +1,5 @@
-import { type MouseEvent, useEffect, useRef } from "react";
+import { type MouseEvent, type ReactNode, useEffect, useRef } from "react";
+import type { Surface } from "@/components/instrument/types";
 import { basescanBlock } from "@/lib/live/basescan";
 import type { LiveState } from "@/lib/live/freshness";
 import { formatAge, formatBlock } from "@/lib/live/format";
@@ -6,7 +7,9 @@ import { headlineText } from "@/lib/live/verdict";
 
 /**
  * The pieces the landing strip and /now share: the reading and failure sentences, the LIVE / NOT LIVE pill, the block
- * link, why a reading is not live, the one polite live region, and a Retry that keeps its focus.
+ * link, why a reading is not live, the one polite live region, and a Retry that keeps its focus. Each visible piece
+ * takes a palette: "faceplate", the default, is /now's white board with today's classes; "chassis" is the landing's
+ * Readout, in lcd and pass-lit on the dark window.
  */
 export const READING = "Reading Base mainnet…";
 export const FAILED = "Could not read Base mainnet (both public RPCs failed). Nothing is shown rather than old data.";
@@ -41,15 +44,22 @@ export function LiveAnnouncer({ state }: { state: LiveState }) {
 /** A pill no taller than the 20 px line, so the line keeps its height. */
 const PILL = "mr-1 inline-flex items-center gap-1.5 rounded-full px-2 align-[1px] font-mono text-[11px] font-semibold leading-4";
 
+/** The pill's colours on each surface. The faceplate's are NowBoard's, byte for byte. */
+const LIVE_PILL: Readonly<Record<Surface, { live: string; dot: string; notLive: string }>> = {
+  faceplate: { live: "bg-accent-tint py-px text-accent", dot: "bg-accent", notLive: "border border-ink-2 text-ink-2" },
+  chassis: { live: "readout-lit border border-pass-lit text-pass-lit", dot: "bg-pass-lit", notLive: "border border-lcd-2 text-lcd-2" },
+};
+
 /** LIVE for a live reading, NOT LIVE for any other reading. */
-export function LivePill({ live }: { live: boolean }) {
+export function LivePill({ live, palette = "faceplate" }: { live: boolean; palette?: Surface }) {
+  const p = LIVE_PILL[palette];
   return live ? (
-    <span className={`${PILL} bg-accent-tint py-px text-accent`}>
-      <span aria-hidden="true" className="anim-live size-1.5 rounded-full bg-accent" />
+    <span className={`${PILL} ${p.live}`}>
+      <span aria-hidden="true" className={`anim-live size-1.5 rounded-full ${p.dot}`} />
       LIVE
     </span>
   ) : (
-    <span className={`${PILL} border border-ink-2 text-ink-2`}>NOT LIVE</span>
+    <span className={`${PILL} ${p.notLive}`}>NOT LIVE</span>
   );
 }
 
@@ -68,17 +78,40 @@ export function Sep({ mark = "·" }: { mark?: "·" | "—" }) {
   );
 }
 
-export function BlockLink({ n, children }: { n: bigint; children: string }) {
+const BLOCK_LINK: Readonly<Record<Surface, string>> = {
+  faceplate: "whitespace-nowrap font-mono text-[12px]",
+  chassis: "whitespace-nowrap font-mono text-[12px] text-pass-lit",
+};
+
+/**
+ * A block, linked on Basescan. `label` names the link whole when its content is not one string: the strip's link
+ * holds one Digits cell per character, and engines may join those cells into a name differently.
+ */
+export function BlockLink({
+  n,
+  children,
+  label,
+  palette = "faceplate",
+}: {
+  n: bigint;
+  children: ReactNode;
+  label?: string;
+  palette?: Surface;
+}) {
   return (
-    <a href={basescanBlock(n)} target="_blank" rel="noopener noreferrer" className="whitespace-nowrap font-mono text-[12px]">
+    <a href={basescanBlock(n)} target="_blank" rel="noopener noreferrer" aria-label={label} className={BLOCK_LINK[palette]}>
       {children}
     </a>
   );
 }
 
 /** Why a reading is not live: it aged or a refresh failed (stale), or the RPC's head was behind the visitor's clock. */
-export function NotLiveWhy({ state }: { state: ShownState }) {
-  const block = <BlockLink n={state.reading.snapshot.block}>{formatBlock(state.reading.snapshot.block)}</BlockLink>;
+export function NotLiveWhy({ state, palette = "faceplate" }: { state: ShownState; palette?: Surface }) {
+  const block = (
+    <BlockLink n={state.reading.snapshot.block} palette={palette}>
+      {formatBlock(state.reading.snapshot.block)}
+    </BlockLink>
+  );
   return state.status === "behind" ? (
     <span>
       the RPC&apos;s latest block {block} is {formatAge(state.lagSec)} behind your clock
@@ -91,8 +124,12 @@ export function NotLiveWhy({ state }: { state: ShownState }) {
   );
 }
 
-const READ_BUTTON =
-  "cursor-pointer rounded-full border border-line-strong bg-transparent align-middle font-medium text-ink hover:border-ink aria-disabled:cursor-wait aria-disabled:text-ink-2 aria-disabled:hover:border-line-strong";
+const READ_BUTTON: Readonly<Record<Surface, string>> = {
+  faceplate:
+    "cursor-pointer rounded-full border border-line-strong bg-transparent align-middle font-medium text-ink hover:border-ink aria-disabled:cursor-wait aria-disabled:text-ink-2 aria-disabled:hover:border-line-strong",
+  chassis:
+    "cursor-pointer rounded-full border border-chassis-line bg-transparent align-middle font-medium text-lcd hover:border-lcd-2 aria-disabled:cursor-wait aria-disabled:text-lcd-2 aria-disabled:hover:border-chassis-line",
+};
 
 /**
  * Retry or Refresh. While the read is in flight the button stays where it is and keeps focus: aria-disabled, not
@@ -104,6 +141,7 @@ export function ReadButton({
   idle,
   busy,
   className,
+  palette = "faceplate",
 }: {
   refreshing: boolean;
   onClick: (e: MouseEvent<HTMLButtonElement>) => void;
@@ -111,9 +149,15 @@ export function ReadButton({
   busy: string;
   /** The button's size. */
   className: string;
+  palette?: Surface;
 }) {
   return (
-    <button type="button" onClick={onClick} aria-disabled={refreshing || undefined} className={`${READ_BUTTON} ${className}`}>
+    <button
+      type="button"
+      onClick={onClick}
+      aria-disabled={refreshing || undefined}
+      className={`${READ_BUTTON[palette]} ${className}`}
+    >
       {refreshing ? busy : idle}
     </button>
   );
