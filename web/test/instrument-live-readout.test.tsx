@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { meterText } from "@/components/instrument/Meter";
 import { LiveStrip, STRIP_RESERVE } from "@/components/live/LiveStrip";
 import { FACTS } from "@/content/facts";
@@ -28,6 +28,27 @@ const strip = () => document.querySelector<HTMLElement>("[data-live-strip]")!;
 const rows = () => [...strip().querySelectorAll<HTMLElement>(":scope > p > span")];
 const countdown = () => strip().querySelector("[data-countdown]");
 const readAge = () => strip().querySelector("[data-read-age]")?.textContent;
+
+/** An IntersectionObserver that reports each element on screen as soon as it watches it. */
+class OnScreenObserver {
+  readonly callback: IntersectionObserverCallback;
+  constructor(callback: IntersectionObserverCallback) {
+    this.callback = callback;
+  }
+  observe(target: Element) {
+    this.callback([{ target, isIntersecting: true } as IntersectionObserverEntry], this as unknown as IntersectionObserver);
+  }
+  unobserve() {}
+  disconnect() {}
+  takeRecords() {
+    return [];
+  }
+}
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  delete (Element.prototype as { animate?: unknown }).animate;
+});
 
 describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)", () => {
   it("keeps the strip's DOM: announcer, one <p> of three block rows, the bezel keys, then the noscript", async () => {
@@ -147,6 +168,38 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)",
     expect(refresh).toHaveTextContent("Refresh");
     expect(refresh).not.toHaveAttribute("aria-disabled");
     expect(readAge()).toBe(`read 0 s ago · ${HOST}`);
+  });
+
+  it("runs the scan line once per new reading on screen, never for the first reading and never while held", async () => {
+    vi.stubGlobal("IntersectionObserver", OnScreenObserver);
+    vi.stubGlobal("matchMedia", (media: string) => ({ matches: false, media, addEventListener() {}, removeEventListener() {} }));
+    const animate = vi.fn<Element["animate"]>(() => ({}) as Animation);
+    Element.prototype.animate = animate as unknown as Element["animate"];
+    const fake = await mount({ timestamp: SAT }, SAT + 14);
+    const scanLine = strip().querySelector("[data-scan]");
+    expect(scanLine).not.toBeNull();
+    expect(animate).not.toHaveBeenCalled();
+    await advance(30_000);
+    expect(fake.multicalls()).toBe(2);
+    expect(animate).toHaveBeenCalledTimes(1);
+    expect(animate.mock.contexts[0]).toBe(scanLine);
+    // Held: no read starts, and a reading that Refresh asks for lands on screen without a scan.
+    const hold = screen.getByRole("button", { name: "Hold" });
+    fireEvent.click(hold);
+    await advance(30_000);
+    expect(fake.multicalls()).toBe(2);
+    fake.set({ timestamp: SAT + 60 });
+    fireEvent.click(strip().querySelector<HTMLButtonElement>("[data-refresh-key]")!);
+    await advance(0);
+    expect(fake.multicalls()).toBe(3);
+    expect(strip().querySelector(":scope > p")).toHaveAttribute("data-live-time", String(SAT + 60));
+    expect(animate).toHaveBeenCalledTimes(1);
+    // Released: the next reading scans again.
+    fireEvent.click(hold);
+    await advance(30_000);
+    expect(fake.multicalls()).toBe(4);
+    expect(animate).toHaveBeenCalledTimes(2);
+    expect(animate.mock.contexts[1]).toBe(scanLine);
   });
 
   it("reserves one fixed height per breakpoint, never a min-height", async () => {
