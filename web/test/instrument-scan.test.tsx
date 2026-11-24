@@ -59,13 +59,17 @@ function Probe({ k, held }: { k: number | null; held: boolean }) {
   );
 }
 
-/** The probe with a 120 px window, its first reading (key 1000) shown, and the observer's first report given. */
+/**
+ * The probe with a 120 px window, the observer's first report given, then its first reading (key 1000) shown. The
+ * report comes first, as in a browser, where the observer answers long before the first read: so only the first-reading
+ * guard keeps that reading from scanning.
+ */
 function mount(onScreen: boolean) {
   const r = render(<Probe k={null} held={false} />);
   Object.defineProperty(r.container.firstElementChild!, "clientHeight", { configurable: true, value: 120 });
-  r.rerender(<Probe k={1_000} held={false} />);
   const io = FakeIO.all[0];
   if (io) act(() => io.fire(onScreen));
+  r.rerender(<Probe k={1_000} held={false} />);
   return r;
 }
 
