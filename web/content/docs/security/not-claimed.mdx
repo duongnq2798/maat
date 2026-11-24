@@ -1,6 +1,6 @@
 ---
 title: What Maat does not claim
-description: "No audit, no mainnet deployment yet, and the known limitations: what can still go wrong and what is out of scope."
+description: "No audit, no live run of the agent on mainnet, and the known limitations: what can still go wrong and what is out of scope."
 type: concept
 audience: [evaluator, newcomer]
 status: fork-tested
@@ -14,9 +14,9 @@ sources:
 next: [security/testing, security/report-a-vulnerability]
 ---
 
-<Callout type="warning" title="Unaudited and not on mainnet">
+<Callout type="warning" title="Unaudited, and the agent has run live only on a fork">
 
-No third party has reviewed the contracts. No Maat contract is deployed to [Base](/docs/help/glossary#base) mainnet, so there is no [vault](/docs/help/glossary#vault) address and no mainnet transaction. All execution evidence is from a local fork of Base mainnet, and the fork run used a scripted proposer and a local sender: the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run.
+No third party has reviewed the contracts. The owner deployed the four Maat contracts, the [vault](/docs/help/glossary#vault) among them, to [Base](/docs/help/glossary#base) mainnet unaudited, at the addresses under [Next: mainnet](/docs/get-started/status#next-mainnet). The agent has run in [live mode](/docs/help/glossary#live-mode) only on a local fork of Base mainnet, which is where all the execution evidence in these docs comes from. The fork run used a scripted proposer and a local sender: the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run.
 
 </Callout>
 
@@ -28,11 +28,11 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 **What would fix it.** A review by an independent security reviewer, and fixes for what it finds. None has been done.
 
-## Not on mainnet yet
+## The agent has not run live on mainnet
 
-**What it means for you.** No Maat vault is deployed, and there is no mainnet [`Decision`](/docs/help/glossary#decision). The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The [Builder Code](/docs/help/glossary#builder-code-erc-8021) is not registered, and no output from the real Claude API is committed. The mainnet ledger and dashboard, the Base App mini-app and [x402](/docs/help/glossary#x402) revenue do not exist yet.
+**What it means for you.** The four Maat contracts are on Base mainnet, but the agent has run in live mode only on a fork, and every [`Decision`](/docs/help/glossary#decision) these docs show is from the fork run, apart from the vault's first `Decision` on Base mainnet, which the owner sent and [Next: mainnet](/docs/get-started/status#next-mainnet) records. Each `Decision` the vault on Base mainnet emits is public in its events on Basescan. The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The owner registered Maat's [Builder Code](/docs/help/glossary#builder-code-erc-8021), and the calldata of that first `Decision` carries it, but no output from the real Claude API is committed. The mainnet ledger and dashboard, the Base App mini-app and [x402](/docs/help/glossary#x402) revenue do not exist yet.
 
-**What would fix it.** The owner deploys by hand and runs the first real [rounds](/docs/help/glossary#round). The checklist is in [Next: mainnet](/docs/get-started/status#next-mainnet), and the commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault). A deployment would not make the contracts audited.
+**What would fix it.** The agent runs its first real [rounds](/docs/help/glossary#round) on the mainnet vault, in live mode, with the real Claude API and the CDP wallet. The checklist is in [Next: mainnet](/docs/get-started/status#next-mainnet), and the commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault). The deploy did not make the contracts audited.
 
 ## The calendar must be maintained
 

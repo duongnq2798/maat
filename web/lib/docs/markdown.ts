@@ -94,7 +94,7 @@ export function pageMarkdown(page: {
  * (content/docs/index.mdx). test/docs-page.test.tsx checks each of its clauses against that paragraph.
  */
 export const LLMS_STATUS =
-  "built and fork-tested. Nothing is deployed to Base mainnet, the contracts are unaudited, and the real Claude API and CDP wallet have not run in any Maat test.";
+  "built and fork-tested, and the four Maat contracts are deployed to Base mainnet. The contracts are unaudited, and the real Claude API and CDP wallet have not run in any Maat test.";
 
 /** The line that opens each page's own Markdown file: where the index and the other pages are. */
 export const INDEX_NOTE_START = "> Index of every page: ";

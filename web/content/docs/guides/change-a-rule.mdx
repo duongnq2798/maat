@@ -31,7 +31,7 @@ The [vault](/docs/help/glossary#vault)'s rules never change in a single step. Th
 
 <Callout type="note" title="What is tested">
 
-The queue, wait, apply, cancel and expiry rules are pinned by unit tests in `contracts/test/MandateVaultAdmin.t.sol`, which run against mocks. No [fork test](/docs/help/glossary#fork-test) queues a change, and no Maat vault is deployed. `deployments/README.md` names the queue and apply functions in one line and gives no commands for them, so the `cast` commands on this page were written for this guide. No test sends them and the Maat team has not run them. Treat them as untested, and read the output of each one yourself.
+The queue, wait, apply, cancel and expiry rules are pinned by unit tests in `contracts/test/MandateVaultAdmin.t.sol`, which run against mocks. No [fork test](/docs/help/glossary#fork-test) queues a change, and these docs record no change queued on Maat's own vault on Base mainnet. `deployments/README.md` names the queue and apply functions in one line and gives no commands for them, so the `cast` commands on this page were written for this guide. No test sends them, and these docs record no run of them. Treat them as untested, and read the output of each one yourself.
 
 </Callout>
 
@@ -42,8 +42,8 @@ Every step that changes the vault is signed by the owner, the one address that i
 | Need | Detail |
 | --- | --- |
 | The owner wallet | Imported as the Foundry keystore `maat-owner` in the runbook, and passed to `cast send` as `--account`. Only the owner can queue, apply or cancel. |
-| `cast` | From [Foundry](https://getfoundry.sh). The `cast logs` commands decode events as the help text of `cast logs` describes it in the Foundry version that [Watch decisions onchain](/docs/guides/watch-decisions-onchain) names. The Maat team has not run them, and an older `cast` may print raw logs. |
-| A vault and an RPC | Written `<VAULT_ADDRESS>` and `<BASE_RPC_URL>` here. The Maat team has deployed no vault, so there is nothing to read yet. |
+| `cast` | From [Foundry](https://getfoundry.sh). The `cast logs` commands decode events as the help text of `cast logs` describes it in the Foundry version that [Watch decisions onchain](/docs/guides/watch-decisions-onchain) names. These docs record no run of them, and an older `cast` may print raw logs. |
+| A vault and an RPC | Written `<VAULT_ADDRESS>` and `<BASE_RPC_URL>` here. Maat's own vault is at the address in the `MandateVault` row of the table in `deployments/README.md`. |
 | The new values | The whole new mandate, or the new settings of one stock, or the payee and a flag. Check them against [what the vault rejects](/docs/guides/configure-a-mandate#what-the-vault-rejects) first. |
 | bash | Linux, macOS, or Git Bash on Windows, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). The commands use bash syntax (`export`, `NAME=value` and `$(...)` command substitution), which PowerShell and cmd do not run as written. |
 
@@ -96,7 +96,7 @@ cast call "$VAULT" "mandateHash()(bytes32)" --rpc-url "$BASE_RPC_URL"
 cast call "$VAULT" "policyHash()(bytes32)" --rpc-url "$BASE_RPC_URL"
 ```
 
-No Maat vault is deployed, so this page shows no output. The first call returns the current mandate as a tuple. The other two return the [mandate hash](/docs/help/glossary#mandate-hash) and the [policy hash](/docs/help/glossary#policy-hash). Write both hashes down, because you compare against them in the last step. For the stocks and the payees, read the lists and then each stock's settings:
+No output from a vault is recorded for these calls, so this page shows none. The first call returns the current mandate as a tuple. The other two return the [mandate hash](/docs/help/glossary#mandate-hash) and the [policy hash](/docs/help/glossary#policy-hash). Write both hashes down, because you compare against them in the last step. For the stocks and the payees, read the lists and then each stock's settings:
 
 ```bash
 cast call "$VAULT" "tokens()(address[])" --rpc-url "$BASE_RPC_URL"
@@ -142,7 +142,7 @@ Queue each change once. Queueing the same values again restarts the wait.
 
 </Callout>
 
-The transaction emits `MandateChangeQueued`. Its `eta` is the time of the block plus the timelock, which is the earliest moment the change can be applied. The vault does not keep the values, so keep `NEW_MANDATE`. If you lose it, the event holds the whole mandate. This page shows no output, because no vault is deployed.
+The transaction emits `MandateChangeQueued`. Its `eta` is the time of the block plus the timelock, which is the earliest moment the change can be applied. The vault does not keep the values, so keep `NEW_MANDATE`. If you lose it, the event holds the whole mandate. This page shows no output, because these docs record no queued change on a vault.
 
 </Step>
 
@@ -225,7 +225,7 @@ What each check shows:
 - `policyHash()` is new, and equals the hash in the `PolicyHashUpdated` event of the same transaction. It covers the mandate, the listed stocks, their settings and the payee list, so any applied change that alters one of them moves it. An apply that writes the values already stored leaves it as it was.
 - `queuedAt` for your change hash is zero, because the apply deleted the entry.
 
-No Maat vault is deployed, so this page shows no output. Anyone can make the same comparison without the owner key. The latest `PolicyHashUpdated` event has to equal `policyHash()`, and that is how a watcher confirms that the policy they read is the one the vault enforces.
+No output from a vault is recorded for these checks, so this page shows none. Anyone can make the same comparison without the owner key. The latest `PolicyHashUpdated` event has to equal `policyHash()`, and that is how a watcher confirms that the policy they read is the one the vault enforces.
 
 </Step>
 
@@ -324,7 +324,7 @@ The vault asks its [market calendar](/docs/reference/market-calendar) whether th
 
 With credit on and a `deriskWindow` above zero, a missing holiday on a Tuesday to Friday also leaves the [de-risk window](/docs/help/glossary#de-risk-window) off on the session day before it. From Monday to Thursday the vault turns the window on only when `isHoliday` is true for the next day, or when a calendar read fails, which counts as inside the window (`_inDeriskWindow` in `MandateVault.sol`). Every Friday is in the window anyway.
 
-`addHoliday` and `setEarlyClose` do not go through the timelock. They take effect in the block that includes them, and they can only make the calendar stricter: nothing removes a holiday, and an early close can only move earlier. To loosen the calendar, deploy a new one and switch the mandate's `calendar` to it through [the timelock](#queue-wait-and-apply). `test_ownerCanOnlyMakeItStricter` in `MarketCalendar.t.sol` covers the owner check, a later close that reverts, an earlier close and a new holiday. No test covers the bounds on a close or a date that wraps, and like the rest of this page, the `cast` commands below have not been run.
+`addHoliday` and `setEarlyClose` do not go through the timelock. They take effect in the block that includes them, and they can only make the calendar stricter: nothing removes a holiday, and an early close can only move earlier. To loosen the calendar, deploy a new one and switch the mandate's `calendar` to it through [the timelock](#queue-wait-and-apply). `test_ownerCanOnlyMakeItStricter` in `MarketCalendar.t.sol` covers the owner check, a later close that reverts, an earlier close and a new holiday. No test covers the bounds on a close or a date that wraps, and like the rest of this page, these docs record no run of the `cast` commands below.
 
 ### Find the calendar and its owner
 
@@ -376,7 +376,7 @@ cast call "$CALENDAR" "earlyCloseMin(uint256)(uint16)" <ET_DAY> --rpc-url "$BASE
 cast call "$CALENDAR" "isOpen(uint256,uint8)(bool)" <UNIX_TIME> 0 --rpc-url "$BASE_RPC_URL"
 ```
 
-`localTime` prints the New York day number, the weekday (0 is Sunday) and the minute of the day. Pass the first value as `<ET_DAY>`, without any bracketed shorthand. `isHoliday` prints true once the holiday is added, and `earlyCloseMin` prints the close you set, or zero. `isOpen` asks about one moment under a session mode, `0` for `REGULAR` and `1` for `FEED_24_5`, and prints false at any moment of a holiday. The day number in `HolidayAdded` and `EarlyCloseSet` is the same number, so the logs of your transaction are a second check. No Maat calendar is deployed, so this page shows no output.
+`localTime` prints the New York day number, the weekday (0 is Sunday) and the minute of the day. Pass the first value as `<ET_DAY>`, without any bracketed shorthand. `isHoliday` prints true once the holiday is added, and `earlyCloseMin` prints the close you set, or zero. `isOpen` asks about one moment under a session mode, `0` for `REGULAR` and `1` for `FEED_24_5`, and prints false at any moment of a holiday. The day number in `HolidayAdded` and `EarlyCloseSet` is the same number, so the logs of your transaction are a second check. No output from a calendar is recorded for these calls, so this page shows none.
 
 ## Next steps
 

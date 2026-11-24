@@ -29,11 +29,11 @@ sources:
 next: [guides/deploy-your-own-vault, guides/change-a-rule]
 ---
 
-This guide shows where every default of the [mandate](/docs/help/glossary#mandate) lives in the code, how to change one before you deploy, and which values the [vault](/docs/help/glossary#vault) rejects with an error instead of accepting. It is written for builders who deploy their own vault. Nothing is deployed yet, so you are changing the values that the deploy script is built to use, and the vault's rules below are built and tested.
+This guide shows where every default of the [mandate](/docs/help/glossary#mandate) lives in the code, how to change one before you deploy, and which values the [vault](/docs/help/glossary#vault) rejects with an error instead of accepting. It is written for builders who deploy their own vault. The owner deployed Maat's own vault to Base mainnet with the default mandate, so an edit here changes only the values that a new deploy starts with, and the vault's rules below are built and tested.
 
 ## Before you start
 
-This guide is for builders who edit the deploy configuration before the first deploy. You edit Solidity in a clone of the repository, so you need the same tools as [Deploy your own vault](/docs/guides/deploy-your-own-vault).
+This guide is for builders who edit the deploy configuration before they deploy their own vault. You edit Solidity in a clone of the repository, so you need the same tools as [Deploy your own vault](/docs/guides/deploy-your-own-vault).
 
 | Need | Detail |
 | --- | --- |
@@ -45,7 +45,7 @@ This guide is for builders who edit the deploy configuration before the first de
 
 Time: the edit is a few lines. Checking it takes the dry run and the unit tests.
 
-<Callout type="note" title="Before the first deploy only">
+<Callout type="note" title="Before you deploy only">
 
 Editing `MaatConfig.sol` changes the values a new deployment starts with. It changes nothing on a vault that already exists. After a vault is deployed, every change to the mandate, to a stock's settings or to the [payee](/docs/help/glossary#payee) list goes through the [timelock](/docs/help/glossary#timelock): the [owner](/docs/help/glossary#owner) queues it, waits <Fact name="timelockHours" />, then applies exactly the queued values within <Fact name="gracePeriodDays" />, and even a tighter limit waits. [Change a rule](/docs/guides/change-a-rule) walks through that.
 

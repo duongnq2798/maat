@@ -48,7 +48,7 @@ The RPC endpoint for Base mainnet. It must be a valid URL. The agent builds one 
 
 <EnvVar name="MAAT_VAULT" />
 
-The address of the `MandateVault` the agent reads and sends to. You get it from the deploy logs once the owner deploys, and nothing is deployed yet. The agent's guarded sender sends only to this address and refuses any other target. The CDP policy that `cdp-setup.ts` attaches names one vault, so use the same address in both places. The zero address in `.env.example` is a placeholder, so replace it.
+The address of the `MandateVault` the agent reads and sends to. For a vault you deploy, you get it from the deploy logs, and the address of Maat's own vault is on [Base addresses](/docs/reference/base-addresses). The agent's guarded sender sends only to this address and refuses any other target. The CDP policy that `cdp-setup.ts` attaches names one vault, so use the same address in both places. The zero address in `.env.example` is a placeholder, so replace it.
 
 ### MAAT_EXECUTOR
 
@@ -74,7 +74,7 @@ The only values are `dry-run` and `live`, and anything else stops the start. The
 
 <EnvVar name="MAAT_BUILDER_CODE" />
 
-A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. The owner registered Maat's own code, and the calldata of the vault's first `Decision` on Base mainnet carries it. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
 
 ### MAAT_LOOP_MODEL
 

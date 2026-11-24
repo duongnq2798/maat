@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: Market closed (MARKET_CLOSED). Tested on a local fork of Base mainnet; not deployed to mainnet." width="100%">
+<img src="web/brand/out/og.png" alt="Maat. The AI agent that knows when not to trade. A vault decision card shows check 03 Vault policy PASS, check 04 Market session FAIL, and the verdict Refused: Market closed (MARKET_CLOSED). Tested on a local fork of Base mainnet." width="100%">
 
 # Maat
 
@@ -8,7 +8,7 @@
 
 **An AI treasury agent for tokenized stocks on Base. A model (Claude) proposes trades; the onchain `MandateVault` decides. It refuses when the US market is closed, the feed is stale, the pool has drifted from the oracle or a stock split is pending. A refusal does not revert: the vault emits a typed `Decision` event and moves no money.**
 
-[![Status: unaudited, not on mainnet](https://img.shields.io/badge/status-unaudited%20%C2%B7%20not%20on%20mainnet-b45309?style=flat-square)](#status)
+[![Status: unaudited, on Base mainnet](https://img.shields.io/badge/status-unaudited%20%C2%B7%20on%20Base%20mainnet-b45309?style=flat-square)](#status)
 [![Base mainnet fork tested](https://img.shields.io/badge/Base%20mainnet-fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
 [![Track: Agentic Stock Finance](https://img.shields.io/badge/track-Agentic%20Stock%20Finance-0B0D12?style=flat-square)](#by-track-agentic-stock-finance)
 [![CI](https://github.com/duongnq2798/maat/actions/workflows/ci.yml/badge.svg?branch=main&event=push)](https://github.com/duongnq2798/maat/actions/workflows/ci.yml)
@@ -23,11 +23,12 @@
 > The LLM proposes. The contract decides.
 
 > [!IMPORTANT]
-> **Status as of 2026-11-19.** The contracts are **unaudited**. **No Maat contract is deployed** to Base mainnet
-> or any testnet; the owner signs the deploy by hand ([`deployments/README.md`](deployments/README.md)). The
-> agent has run in live mode **only on a local fork of Base mainnet**, with a scripted proposer in place of
-> Claude and a local test account as the sender. The real Claude API and the Coinbase CDP Server Wallet have
-> been tested **only against fakes**. The website and its docs are **online** at [maatonbase.xyz](https://maatonbase.xyz).
+> **Status as of 2026-11-24.** The contracts are **unaudited**. The owner deployed the four Maat contracts to
+> **Base mainnet** on 2026-11-24, by hand, from `main` at `66bd0d0`, with the default mandate; their
+> addresses are in [`deployments/README.md`](deployments/README.md) ([Deployments and traction](#deployments-and-traction)).
+> No Maat contract is on a testnet. The agent has run in live mode **only on a local fork of Base mainnet**, with
+> a scripted proposer in place of Claude and a local test account as the sender. The real Claude API and the
+> Coinbase CDP Server Wallet have been tested **only against fakes**. The website and its docs are **online** at [maatonbase.xyz](https://maatonbase.xyz).
 > x402 revenue, the Guard Service API, MCP, the Bankr Skill and `MandateFactory` are **planned, not built** on
 > `main` (an x402 Guard Service is in PR #2, open and unmerged). See [Status](#status).
 
@@ -47,8 +48,10 @@
   adapters, deploy script, agent runtime, and the website with a 49-page docs center. CI on `main`
   ([run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467), 2026-11-19): 220 contract,
   167 agent, 1,494 website unit and 259 end-to-end tests passed.
-- **What is not done yet.** No deploy (0 mainnet `Decision` events), no registered Builder Code, no run
-  against the real Claude API or CDP, no audit; x402 and the rest are planned (see the box above).
+- **On Base mainnet.** The owner deployed the four Maat contracts on 2026-11-24. They are unaudited.
+  [Addresses](#deployments-and-traction).
+- **What is not done yet.** No live run of the agent on mainnet, no run against the real Claude API or CDP,
+  no audit; x402 and the rest are planned (see the box above).
 - **Evidence.** On a local fork of Base mainnet at block 53,551,627 (Thursday 2026-11-05, 10:30 ET), the agent,
   with a scripted proposer, bought $20 of NVDAc (allowed, 758,192 gas). With the clock moved to Saturday, a $10
   GOOGLc buy was refused as market closed (`MARKET_CLOSED`) and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
@@ -71,7 +74,7 @@
    contract, not the page, is the source of truth.
 2. **See Base right now.** [maatonbase.xyz/now](https://maatonbase.xyz/now) reads the 13 B20s with a NAV from Base
    mainnet in your browser, at a block it links on Basescan, and judges a BUY of each with the vault's checks, in
-   its order. Checks 3, 8 and 9 need the deployed vault and are not run.
+   its order. Checks 3, 8 and 9 need a vault's address or balances, and `/now` reads no vault, so they are not run.
 3. **Read the fork ledger.** [maatonbase.xyz/#ledger](https://maatonbase.xyz/#ledger) shows the four decisions
    of the agent's run on a Base mainnet fork, labelled as a fork.
 4. **Open the CI run.** [Run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) on
@@ -134,14 +137,26 @@ a 100 bps slippage limit. No figure here is rounded.
 
 | Contract | Base mainnet |
 | --- | --- |
-| `MarketCalendar` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
-| `AerodromeSwapAdapter` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
-| `AaveV4CreditAdapter` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
-| `MandateVault` | [Not deployed](deployments/README.md) (as of 2026-11-19) |
+| `MarketCalendar` | Deployed; [address and deploy tx](deployments/README.md) |
+| `AerodromeSwapAdapter` | Deployed; [address and deploy tx](deployments/README.md) |
+| `AaveV4CreditAdapter` | Deployed; [address and deploy tx](deployments/README.md) |
+| `MandateVault` | Deployed; [address and deploy tx](deployments/README.md) |
 
-- **Builder Code.** The ERC-8021 suffix is built and tested. No code is registered yet.
+The owner deployed the four Maat contracts on 2026-11-24, from `main` at `66bd0d0`, with the
+default mandate in [`contracts/script/MaatConfig.sol`](contracts/script/MaatConfig.sol). The contracts are
+unaudited. The table in [`deployments/README.md`](deployments/README.md) records each address and deploy
+transaction, with Basescan links; the docs show the same table on
+[Status and roadmap](https://maatonbase.xyz/docs/get-started/status#next-mainnet) and
+[Base addresses](https://maatonbase.xyz/docs/reference/base-addresses).
+
+- **Builder Code.** The ERC-8021 suffix is built and tested. The owner registered Maat's code on the Base
+  Dashboard, and the calldata of the vault's first `Decision` on Base mainnet
+  ([`0xdfdb6739...6c3b`](https://basescan.org/tx/0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b)) carries it.
 - **Executor.** Not yet handed to the CDP Server Wallet; the runbook starts with the owner's own wallet.
-- **Mainnet `Decision` events.** 0.
+- **Mainnet `Decision` events.** This README keeps no count. Every `Decision` the vault emits is public in its
+  events on Basescan, at the `MandateVault` address in [`deployments/README.md`](deployments/README.md);
+  [Watch decisions onchain](https://maatonbase.xyz/docs/guides/watch-decisions-onchain) shows how to read and
+  decode them.
 - **How a deploy happens.** Only the owner deploys, from their own wallet, following the go-live runbook
   [`deployments/go-live.md`](deployments/go-live.md): deploy, fund, the first `Decision` events (a weekend BUY
   the vault must refuse, then one in session it must allow) and the executor handover, in order.
@@ -285,21 +300,22 @@ agent's copy is tested against it ([`agent/test/types.test.ts`](agent/test/types
 ## Status
 
 **Online**: served in public (the website only). **Built and tested**: on `main`, with passing tests.
-**Built**: on `main`, tested only as noted. **Planned**: not on `main`. **Not deployed**: no address on any network.
+**Built**: on `main`, tested only as noted. **Planned**: not on `main`. **Deployed**: on Base mainnet, at the
+address in [`deployments/README.md`](deployments/README.md).
 The test counts in the table are from CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467)
 on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `4492eed`, 2026-11-07, as in
 [Tested, in numbers](#tested-in-numbers). Later commits add tests, so a suite run on this tree can report more.
 
 | Component | Status | Where |
 | --- | --- | --- |
-| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Not deployed** | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
+| `MandateVault`: holds USDC and B20 stocks, runs the nine checks, logs each verdict as `Decision`, 24 h timelock on every rule change | **Built and tested** (220 unit tests across the contracts, 14 fork tests). **Deployed** on Base mainnet | [`contracts/src/MandateVault.sol`](contracts/src/MandateVault.sol) |
 | `GuardLib`: market-safety checks (pause, transfer policy, session, feed, multiplier, premium) | **Built and tested** | [`contracts/src/GuardLib.sol`](contracts/src/GuardLib.sol) |
-| `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027) | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
-| `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
-| `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop) | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
-| Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner has not broadcast it yet | [`contracts/script`](contracts/script) |
+| `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027). **Deployed** on Base mainnet | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
+| `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested. **Deployed** on Base mainnet | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
+| `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop). **Deployed** on Base mainnet | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
+| Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner deployed the four Maat contracts to Base mainnet on 2026-11-24, from `main` at `66bd0d0` | [`contracts/script`](contracts/script) |
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
-| ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). No real code registered yet | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
+| ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
 | Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
 | Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
@@ -355,7 +371,8 @@ Every actor, key and trust boundary: [Security model](https://maatonbase.xyz/doc
 
 ## Base mainnet fork evidence
 
-Everything here ran on a local fork of Base mainnet, not on mainnet itself. Nothing was broadcast.
+Everything in this section ran on a local fork of Base mainnet, not on Base mainnet itself, and broadcast nothing.
+The contracts' mainnet deploy is in [Deployments and traction](#deployments-and-traction).
 
 **The agent, end to end.** [`agent.fork.test.ts`](agent/test/integration/agent.fork.test.ts) deploys the
 contracts from their compiled artifacts with a test helper ([`deploy.ts`](agent/test/integration/deploy.ts)) on
@@ -528,7 +545,7 @@ it has not been re-timed.
 
    ```text
     Test Files  65 passed (65)
-         Tests  1969 passed (1969)
+         Tests  1971 passed (1971)
    ...
    out/ is ready to deploy (landing, /now, /gap-index and 49 docs pages checked)
    search index: … bytes gzipped, budget 850000
@@ -588,9 +605,10 @@ need an archive RPC and run by hand. Lighthouse, a browser audit of the producti
 ## Known limitations
 
 - **Unaudited.** No third party has reviewed the contracts.
-- **Not on mainnet yet.** All execution evidence is from a local fork, with a scripted proposer; the real
-  Claude API and the CDP wallet have been tested only against fakes. The Base App mini-app, x402 revenue and
-  the live dashboard do not exist yet.
+- **The agent has not run live on mainnet.** The four Maat contracts are on Base mainnet
+  ([Deployments and traction](#deployments-and-traction)), but every agent execution this README reports ran on
+  a local fork, with a scripted proposer; the real Claude API and the CDP wallet have been tested only against
+  fakes. The Base App mini-app, x402 revenue and the live dashboard do not exist yet.
 - **The calendar must be maintained.** It ships with Thanksgiving and Christmas 2026 and every NYSE
   holiday of 2027 (New Year to Christmas observed on 2027-12-24), plus early closes on 2026-11-27, 2026-12-24
   and 2027-11-26. Later holidays need `addHoliday` from the calendar owner. If one is missed, only the price
@@ -624,9 +642,9 @@ need an archive RPC and run by hand. Lighthouse, a browser audit of the producti
   brand images, to 0.7.5, and `compression` 1.8.1 under `serve`, which the e2e tests use, to 1.8.2 (PR #11).
   Neither package ships in the static site.
 
-**The case against Maat.** It is unaudited and has no mainnet record: every execution so far ran on a local
-fork, with a scripted proposer in place of Claude, so nothing here shows how the real model behaves or how the
-vault holds up with real money. Its session check is only as good as a calendar the owner must keep current;
+**The case against Maat.** It is unaudited, and its evidence is from a local fork: every agent execution this
+README reports ran there, with a scripted proposer in place of Claude, so nothing here shows how the real model behaves or
+how the vault holds up with real money. Its session check is only as good as a calendar the owner must keep current;
 its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
 counters; and one immutable owner key, with no multisig, controls the vault.
 
@@ -634,8 +652,9 @@ counters; and one immutable owner key, with no multisig, controls the vault.
 
 Planned, roughly in this order. None of this is on `main`, and no dates are promised.
 
-1. Mainnet deploy of Agent #1's vault by the owner, executor handed to the CDP Server Wallet, the first real
-   `Decision` events, the live ledger on the website and a Base App mini-app manifest (W2).
+1. Agent #1 running on mainnet, after the owner's deploy ([Deployments and traction](#deployments-and-traction)):
+   the executor handed to the CDP Server Wallet, the live ledger on the website and a Base App mini-app manifest
+   (W2).
 2. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
    progress in PR #2, open and unmerged.
 3. MCP server and Bankr Skill exposing the same check.
@@ -715,7 +734,7 @@ agent/                     TypeScript agent runtime
 web/                       Next.js landing page, /now, /gap-index, docs center, brand assets, parity tests,
                            Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
-                           (empty) address table
+                           Base mainnet address table
 docs/superpowers/          design specs and implementation plans
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately

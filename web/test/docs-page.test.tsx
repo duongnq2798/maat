@@ -213,9 +213,7 @@ describe("PageHeader", () => {
     const link = screen.getByRole("link", { name: "Status: Fork-tested. What this label means" });
     expect(link).toHaveAttribute("href", "/docs/get-started/status#what-the-three-labels-mean");
     expect(link).toHaveTextContent("Fork-tested");
-    expect(link).toHaveAccessibleDescription(
-      "Built and tested; the contracts and the send path have run on a Base mainnet fork; not deployed.",
-    );
+    expect(link).toHaveAccessibleDescription("Built and tested; the contracts and the send path have run on a Base mainnet fork.");
     // Hidden text that only the description reads, not a tooltip or the ARIA 1.3 draft attribute. Visually hidden
     // (sr-only) text would be read a second time as page text.
     expect(link).not.toHaveAttribute("title");

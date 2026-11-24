@@ -263,7 +263,8 @@ export function NowBoard({ reader }: { reader?: LiveReader }) {
           <p className="m-0 text-[15px] leading-relaxed text-ink-2">
             The default mandate holds {andList(FACTS.basket.value)}. Its verdict runs checks 1 to 7 for a BUY, in the
             vault&apos;s order, and stops at the first failure; the market checks run 2 to 7 for every token, as if it
-            were in the basket. Checks 3, 8 and 9 need a deployed vault and are not run here.
+            were in the basket. Checks 3, 8 and 9 need a vault&apos;s address or balances, and this page reads no vault, so
+            they are not run here.
           </p>
         </div>
         <div data-now-rows data-tone={tone} className={TONE[tone]}>

@@ -17,7 +17,7 @@ sources:
 next: [concepts/nine-checks, guides/configure-a-mandate, concepts/timelock-and-roles]
 ---
 
-The [mandate](/docs/help/glossary#mandate) is the rule set the [vault](/docs/help/glossary#vault) enforces on every action. This page goes through every field of it: what it limits, its unit, its default value, and which check reads it. Nothing is deployed yet, so the defaults are the values the deploy script is built to set, and they have been exercised on a fork of [Base](/docs/help/glossary#base) mainnet.
+The [mandate](/docs/help/glossary#mandate) is the rule set the [vault](/docs/help/glossary#vault) enforces on every action. This page goes through every field of it: what it limits, its unit, its default value, and which check reads it. The defaults are the values the deploy script sets. The owner deployed Maat's vault on [Base](/docs/help/glossary#base) mainnet with them ([Status and roadmap](/docs/get-started/status#next-mainnet) has its address), and they have been exercised on a fork of Base mainnet.
 
 ## What the mandate is
 
@@ -44,7 +44,7 @@ struct Mandate {
 }
 ```
 
-A second struct, `TokenConfig`, holds the settings that differ for each stock, and the vault keeps a list of payees it may pay. Together they are the vault's policy. The [policy hash](/docs/help/glossary#policy-hash) commits to all of it, and the vault emits it as `PolicyHashUpdated` when the vault is created and whenever a change is applied. On a deployed vault you would read the mandate with `mandate()`, a stock's settings with `tokenConfig(token)` and the payees with `payees()`.
+A second struct, `TokenConfig`, holds the settings that differ for each stock, and the vault keeps a list of payees it may pay. Together they are the vault's policy. The [policy hash](/docs/help/glossary#policy-hash) commits to all of it, and the vault emits it as `PolicyHashUpdated` when the vault is created and whenever a change is applied. On a deployed vault, such as Maat's own on Base mainnet, read the mandate with `mandate()`, a stock's settings with `tokenConfig(token)` and the payees with `payees()`.
 
 The [executor](/docs/help/glossary#executor) cannot change any of it. Only the [owner](/docs/help/glossary#owner) can, and only through the [timelock](/docs/help/glossary#timelock) (see [Changing it](#changing-it)).
 

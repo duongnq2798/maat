@@ -81,7 +81,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "get-started/status",
         "Status and roadmap",
-        "What is built and fork-tested today, what is next before mainnet, and what is planned but not built, with what each step needs.",
+        "What is built and fork-tested, what is deployed on Base mainnet and what comes next, and what is planned but not built, with what each step needs.",
       ),
     ],
   },
@@ -287,7 +287,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "security/not-claimed",
         "What Maat does not claim",
-        "No audit, no mainnet deployment yet, and the known limitations: what can still go wrong and what is out of scope.",
+        "No audit, no live run of the agent on mainnet, and the known limitations: what can still go wrong and what is out of scope.",
       ),
       page(
         "security/testing",

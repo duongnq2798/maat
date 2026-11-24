@@ -10,7 +10,8 @@ export function abiUrl(name: AbiName): string {
   return `/data/abi/${name}.json`;
 }
 
-export const ABI_NOTE = "ABI of contracts that are built and fork-tested, not deployed. The contracts are unaudited.";
+export const ABI_NOTE =
+  "ABI of contracts that are built and fork-tested. The four Maat contracts are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.";
 
 /**
  * The file /data/abi/<name>.json serves: where the ABI comes from, what it is not, and the ABI itself. The build reads

@@ -22,14 +22,14 @@ sources:
 next: [security/threat-model, security/testing]
 ---
 
-This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "the agent proposes, the contract decides" against the code and not only against the README. Everything here is built and fork-tested. Nothing is deployed, the contracts are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run, so the agent-side rows describe code that was tested against fakes.
+This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "the agent proposes, the contract decides" against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run, so the agent-side rows describe code that was tested against fakes.
 
 ## At a glance
 
 | Question | Answer | Where it is shown |
 | --- | --- | --- |
 | **Audit** | None. No third party has reviewed the contracts or the agent | [Unaudited](/docs/security/not-claimed#unaudited) |
-| **Deployment** | None. No Maat contract is deployed to [Base](/docs/help/glossary#base) mainnet | [Not on mainnet yet](/docs/security/not-claimed#not-on-mainnet-yet) |
+| **Deployment** | The owner deployed the four Maat contracts to [Base](/docs/help/glossary#base) mainnet, with the default mandate. The agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork | [Base addresses](/docs/reference/base-addresses), and [The agent has not run live on mainnet](/docs/security/not-claimed#the-agent-has-not-run-live-on-mainnet) |
 | **Contract code** | No proxy, `delegatecall` or `selfdestruct`, so the contracts cannot be upgraded and deployed code cannot change. Behind the [timelock](/docs/help/glossary#timelock), the [owner](/docs/help/glossary#owner) can point the vault at a different calendar, swap adapter, credit adapter, feed or pool, or list a new stock token | [Trust boundaries](#trust-boundaries) |
 | **Owner** | One key, fixed at deployment, with no transfer function. Pausing, replacing the [executor](/docs/help/glossary#executor) and withdrawing to the owner are instant | [The owner key](/docs/security/threat-model#the-owner-key) |
 | **Mandate, stock and payee changes** | Queued, then applied with the exact queued values between <Fact name="timelockHours" /> after queueing and <Fact name="gracePeriodDays" /> after that, or cancelled. A change not applied in that window expires | [What the contract enforces](#what-the-contract-enforces) |

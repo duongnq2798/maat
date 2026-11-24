@@ -336,7 +336,9 @@ describe("the published ABIs", () => {
     expect(file.source).toBe(
       `${abiName} in agent/src/abi/generated.ts (https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which npm run gen:abi in agent/ generates from the compiled contracts in contracts/out.`,
     );
-    expect(file.note).toBe("ABI of contracts that are built and fork-tested, not deployed. The contracts are unaudited.");
+    expect(file.note).toBe(
+      "ABI of contracts that are built and fork-tested. The four Maat contracts are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.",
+    );
     expect(abiUrl(name)).toBe(`/data/abi/${name}.json`);
   });
 

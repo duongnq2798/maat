@@ -42,7 +42,7 @@ This guide takes you from a clone of the repository to one [round](/docs/help/gl
 
 <Callout type="fork" title="What has run">
 
-The agent's rounds and its send path ran on a [Base](/docs/help/glossary#base) mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and the Maat team has not run them. The two journal commands in [step 4](#read-the-journal), the suffix check in [Switch to live mode and run one round](#switch-to-live-mode-and-run-one-round) and the commands in [What to watch while it runs](#what-to-watch-while-it-runs), apart from the `executor()` read copied from `deployments/README.md`, were written for this guide, and have not been run either. The `smoke-claude.ts` command comes from [Agent scripts](/docs/reference/agent-scripts#smoke-claudets). No Maat vault is deployed, so the checklist for live mode is untested on mainnet.
+The agent's rounds and its send path ran on a [Base](/docs/help/glossary#base) mainnet fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). The real Claude API and the real CDP wallet did not run in any of the Maat tests: the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The commands below are copied from `agent/README.md` and `deployments/README.md`, and these docs record no run of them. The two journal commands in [step 4](#read-the-journal), the suffix check in [Switch to live mode and run one round](#switch-to-live-mode-and-run-one-round) and the commands in [What to watch while it runs](#what-to-watch-while-it-runs), apart from the `executor()` read copied from `deployments/README.md`, were written for this guide, and these docs record no run of them either. The `smoke-claude.ts` command comes from [Agent scripts](/docs/reference/agent-scripts#smoke-claudets). The agent has run in live mode only on a fork, so the checklist for live mode is untested on mainnet.
 
 </Callout>
 
@@ -52,7 +52,7 @@ The first part of this guide is for any builder with a vault address. The part m
 
 | Need | Detail |
 | --- | --- |
-| A vault to read | Its address is `MAAT_VAULT`. The Maat team has deployed none, so you need your own: [Deploy your own vault](/docs/guides/deploy-your-own-vault). |
+| A vault to read | Its address is `MAAT_VAULT`. Maat's own vault is at the address in the `MandateVault` row of the table in `deployments/README.md`. Only a vault's owner can make your CDP account its executor, so live mode needs a vault of your own: [Deploy your own vault](/docs/guides/deploy-your-own-vault). |
 | Two more addresses | `MAAT_EXECUTOR` must be the executor that the vault reports, and `MAAT_EXPENSE_PAYEE` an address on the vault's [payee](/docs/help/glossary#payee) list. Both are required in every mode, dry run included. |
 | Node.js 22.9 or newer | With npm. `agent/package.json` sets the minimum. |
 | bash | Linux, macOS, or Git Bash on Windows. The commands are written for bash, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). They use `export`, `$VAR` and `grep`, which PowerShell and cmd do not run as written. The `cast` lines need [Foundry](https://getfoundry.sh). |
@@ -197,7 +197,7 @@ Register the project at [dashboard.base.org](https://dashboard.base.org), go to 
 ^[a-z0-9_]{1,32}$
 ```
 
-In live mode the agent turns the code into an ERC-8021 suffix and appends it to the calldata of every transaction it sends. The owner's own transactions, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. No real code is registered yet.
+In live mode the agent turns the code into an ERC-8021 suffix and appends it to the calldata of every transaction it sends. The owner's own transactions, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. The owner registered Maat's code, and the calldata of the vault's first `Decision` on Base mainnet carries it ([Next: mainnet](/docs/get-started/status#next-mainnet)).
 
 </Step>
 
@@ -249,7 +249,7 @@ From that transaction on, the owner's own `execute` calls [revert](/docs/help/gl
 
 ### Fund the executor for gas
 
-Send <Fact name="executorGasEth" /> on Base to the executor address. The figure in [`agent/README.md`](https://github.com/duongnq2798/maat/blob/main/agent/README.md#live-run-owner-only) is an estimate and no transaction has been sent on Base mainnet to check it. A paymaster cannot be used, because it only supports smart accounts.
+Send <Fact name="executorGasEth" /> on Base to the executor address. The figure in [`agent/README.md`](https://github.com/duongnq2798/maat/blob/main/agent/README.md#live-run-owner-only) is an estimate, and these docs record no Base mainnet transaction that checks it. A paymaster cannot be used, because it only supports smart accounts.
 
 </Step>
 
@@ -289,7 +289,7 @@ npm run agent -- --once
 
 </Callout>
 
-Check the transaction on Basescan. Its input data must end with the Builder Code suffix. This page shows no output, because nothing has been sent.
+Check the transaction on Basescan. Its input data must end with the Builder Code suffix. This page shows no output, because these docs record no round in live mode on Base mainnet.
 
 To read the input data yourself, this call only reads:
 
