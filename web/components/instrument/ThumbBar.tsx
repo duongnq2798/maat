@@ -29,9 +29,10 @@ type Mode = "none" | "shown" | "hidden";
 /**
  * The phone bottom bar (spec 2026-11-23 section 6.2): a lamp from the page's one reading and "Try to make it say no".
  * It renders nothing until both [data-hero-cta] links have scrolled out above the viewport, so the static HTML and the
- * first screen never hold it; after that it slides up, and back down (inert) while #try or the footer is in view. One
- * IntersectionObserver of its own watches the CTAs, #try and the footer; where there is none, the bar never shows.
- * Below md only. Mounted from app/(site)/page.tsx, never from the Hero.
+ * first screen never hold it; after that it slides up, and back down (inert) while #try or the footer is in view. Two
+ * IntersectionObservers of its own watch them: one for the CTAs on a root that reaches far below the screen, so a jump
+ * straight past them still counts, and one for #try and the footer on the screen. Where there is none, the bar never
+ * shows. Below md only. Mounted from app/(site)/page.tsx, never from the Hero.
  */
 export function ThumbBar({ href = "#try" }: { href?: string }) {
   const live = useLiveIfAny();
@@ -45,21 +46,27 @@ export function ThumbBar({ href = "#try" }: { href?: string }) {
     const footer = document.querySelector("footer");
     const above = new Map<Element, boolean>(ctas.map((el) => [el, false]));
     const view = { tryInView: false, footerInView: false };
-    const io = new IntersectionObserver((entries) => {
+    const onEntries = (entries: IntersectionObserverEntry[]) => {
       for (const e of entries) {
         if (above.has(e.target)) {
-          // Out of view above the viewport's top edge: scrolled past, not yet to come.
+          // Out of the root above its top edge, the viewport's: scrolled past, not yet to come.
           above.set(e.target, !e.isIntersecting && e.boundingClientRect.bottom <= (e.rootBounds?.top ?? 0));
         } else if (e.target === tryIt) view.tryInView = e.isIntersecting;
         else if (e.target === footer) view.footerInView = e.isIntersecting;
       }
       const shown = thumbShown({ ctasAbove: [...above.values()].every(Boolean), ...view });
       setMode((m) => (shown ? "shown" : m === "none" ? "none" : "hidden"));
-    });
-    for (const el of ctas) io.observe(el);
+    };
+    // The root reaches far below the screen, so a CTA leaves it only by passing above the top edge, even in one jump.
+    const ctaIo = new IntersectionObserver(onEntries, { rootMargin: "0px 0px 100000px 0px" });
+    const io = new IntersectionObserver(onEntries);
+    for (const el of ctas) ctaIo.observe(el);
     if (tryIt !== null) io.observe(tryIt);
     if (footer !== null) io.observe(footer);
-    return () => io.disconnect();
+    return () => {
+      ctaIo.disconnect();
+      io.disconnect();
+    };
   }, []);
 
   if (mode === "none") return null;

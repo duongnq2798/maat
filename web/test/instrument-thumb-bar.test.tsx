@@ -19,10 +19,14 @@ const css = readFileSync("app/globals.css", "utf8");
 class FakeIO {
   static all: FakeIO[] = [];
   callback: IntersectionObserverCallback;
+  options: IntersectionObserverInit | undefined;
   targets: Element[] = [];
   disconnected = false;
-  constructor(callback: IntersectionObserverCallback) {
+  /** Whether each target was in the root at its last layout. */
+  seen = new Map<Element, boolean>();
+  constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
     this.callback = callback;
+    this.options = options;
     FakeIO.all.push(this);
   }
   observe(el: Element) {
@@ -35,15 +39,29 @@ class FakeIO {
   takeRecords() {
     return [];
   }
-  /** Reports `target` in or out of view, its bottom edge at `bottom` px against a viewport whose top is 0. */
-  report(target: Element, isIntersecting: boolean, bottom = 0) {
+  /** Reports `target` in or out of view, its bottom edge at `bottom` px against a root whose top is `rootTop`. */
+  report(target: Element, isIntersecting: boolean, bottom = 0, rootTop = 0) {
     const entry = {
       target,
       isIntersecting,
       boundingClientRect: { bottom } as DOMRectReadOnly,
-      rootBounds: { top: 0 } as DOMRectReadOnly,
+      rootBounds: { top: rootTop } as DOMRectReadOnly,
     } as IntersectionObserverEntry;
     act(() => this.callback([entry], this as unknown as IntersectionObserver));
+  }
+  /**
+   * Lays `target` out from `top` to `bottom` px and reports it as a real observer with the default threshold does: on
+   * its first layout, then only when it enters or leaves the root, the viewport grown by the observer's rootMargin
+   * (px only). A jump that leaves a target out of the root on both sides is never reported.
+   */
+  layout(target: Element, top: number, bottom: number) {
+    const margin = (this.options?.rootMargin ?? "0px").split(/\s+/).map((v) => Number.parseFloat(v));
+    const marginTop = margin[0] ?? 0;
+    const root = { top: -marginTop, bottom: window.innerHeight + (margin[2] ?? marginTop) };
+    const isIntersecting = bottom >= root.top && top <= root.bottom;
+    if (this.seen.get(target) === isIntersecting) return;
+    this.seen.set(target, isIntersecting);
+    this.report(target, isIntersecting, bottom, root.top);
   }
 }
 
@@ -80,7 +98,10 @@ async function mount(first: Answer = { timestamp: SAT }, wallSec = SAT + 14, obs
   return {
     fake,
     unmount,
+    /** The observer that watches the CTAs. */
     io: () => FakeIO.all.find((o) => o.targets.some((t) => t.hasAttribute("data-hero-cta")))!,
+    /** The observer that watches #try (and the footer). */
+    pageIo: () => FakeIO.all.find((o) => o.targets.some((t) => t.id === "try"))!,
     verify: verify!,
     tryCta: tryCta!,
     section: container.querySelector("#try")!,
@@ -135,17 +156,48 @@ describe("the ThumbBar (spec 2026-11-23 sections 6.2 and 11 item 12)", () => {
     expect(ui.bar()).toBeNull();
   });
 
+  it("watches the CTAs on a root that reaches far below the screen, and #try and the footer on the screen", async () => {
+    const ui = await mount();
+    expect(ui.io().targets).toEqual([ui.verify, ui.tryCta]);
+    expect(ui.io().options?.rootMargin).toBe("0px 0px 100000px 0px");
+    expect(ui.pageIo().targets).toEqual([ui.section, ui.footer]);
+    expect(ui.pageIo().options?.rootMargin).toBeUndefined();
+  });
+
+  it("shows after one jump from below the screen to past the CTAs, which a real observer reports", async () => {
+    const ui = await mount();
+    const fold = window.innerHeight;
+    // The first layout, as at 390x844: both CTAs just below the first screen, #try and the footer far below it.
+    ui.io().layout(ui.verify, fold + 33, fold + 85);
+    ui.io().layout(ui.tryCta, fold + 98, fold + 150);
+    ui.pageIo().layout(ui.section, fold + 6000, fold + 7000);
+    ui.pageIo().layout(ui.footer, fold + 12_000, fold + 12_400);
+    expect(ui.bar()).toBeNull();
+    // One instant jump to #how, as a fragment link under reduced motion or find-in-page makes: no frame in between.
+    ui.io().layout(ui.verify, -3199, -3147);
+    ui.io().layout(ui.tryCta, -3134, -3082);
+    ui.pageIo().layout(ui.section, 2000, 3000);
+    expect(ui.bar()).toHaveAttribute("data-thumb-bar", "shown");
+    // One jump back to the hero, and one down again.
+    ui.io().layout(ui.verify, fold + 33, fold + 85);
+    ui.io().layout(ui.tryCta, fold + 98, fold + 150);
+    expect(ui.bar()).toHaveAttribute("data-thumb-bar", "hidden");
+    ui.io().layout(ui.verify, -3199, -3147);
+    ui.io().layout(ui.tryCta, -3134, -3082);
+    expect(ui.bar()).toHaveAttribute("data-thumb-bar", "shown");
+  });
+
   it("hides, inert, while #try or the footer is in view, and comes back after", async () => {
     const ui = await mount();
     scrollPast(ui);
-    ui.io().report(ui.section, true);
+    ui.pageIo().report(ui.section, true);
     expect(ui.bar()).toHaveAttribute("data-thumb-bar", "hidden");
     expect(ui.bar()).toHaveAttribute("inert");
-    ui.io().report(ui.section, false);
+    ui.pageIo().report(ui.section, false);
     expect(ui.bar()).toHaveAttribute("data-thumb-bar", "shown");
-    ui.io().report(ui.footer, true);
+    ui.pageIo().report(ui.footer, true);
     expect(ui.bar()).toHaveAttribute("data-thumb-bar", "hidden");
-    ui.io().report(ui.footer, false);
+    ui.pageIo().report(ui.footer, false);
     expect(ui.bar()).toHaveAttribute("data-thumb-bar", "shown");
   });
 
@@ -162,11 +214,12 @@ describe("the ThumbBar (spec 2026-11-23 sections 6.2 and 11 item 12)", () => {
     expect(FakeIO.all).toHaveLength(0);
   });
 
-  it("disconnects its observer when the page unmounts", async () => {
+  it("disconnects both its observers when the page unmounts", async () => {
     const ui = await mount();
-    const io = ui.io();
+    const [ctaIo, pageIo] = [ui.io(), ui.pageIo()];
     ui.unmount();
-    expect(io.disconnected).toBe(true);
+    expect(ctaIo.disconnected).toBe(true);
+    expect(pageIo.disconnected).toBe(true);
   });
 
   it("keeps the landing's static HTML free of the bar, of lit lamps and of refusals", { timeout: 60_000 }, () => {
