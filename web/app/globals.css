@@ -332,6 +332,33 @@
   }
 }
 
+/* Ghost and Digits (components/instrument/Ghost.tsx, Digits.tsx). A ghost's 8s come from data-ghost, so no 8 is ever
+   text; a digit rolls inside its cell, and the number clips the roll. */
+@layer components {
+  .ghost::before {
+    content: attr(data-ghost);
+    color: var(--color-lcd-ghost);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: pre;
+  }
+  @media (forced-colors: active) {
+    .ghost {
+      display: none;
+    }
+  }
+  .digits {
+    display: inline-block;
+    clip-path: inset(0);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .digits > span {
+    display: inline-block;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
