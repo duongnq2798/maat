@@ -144,8 +144,9 @@ a 100 bps slippage limit. No figure here is rounded.
 
 The owner deployed the four Maat contracts on 2026-11-24, from `main` at `66bd0d0`, with the
 default mandate in [`contracts/script/MaatConfig.sol`](contracts/script/MaatConfig.sol). The contracts are
-unaudited. The table in [`deployments/README.md`](deployments/README.md) records each address and deploy
-transaction, with Basescan links; the docs show the same table on
+unaudited. On 2026-11-24, Basescan showed the source of all four as verified, with an exact match. The table
+in [`deployments/README.md`](deployments/README.md) records each address and deploy transaction, with Basescan
+links; the docs show the same table on
 [Status and roadmap](https://maatonbase.xyz/docs/get-started/status#next-mainnet) and
 [Base addresses](https://maatonbase.xyz/docs/reference/base-addresses).
 
@@ -153,6 +154,14 @@ transaction, with Basescan links; the docs show the same table on
   Dashboard, and the calldata of the vault's first `Decision` on Base mainnet
   ([`0xdfdb6739...6c3b`](https://basescan.org/tx/0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b)) carries it.
 - **Executor.** Not yet handed to the CDP Server Wallet; the runbook starts with the owner's own wallet.
+- **Owner smoke test.** On 2026-11-24 the owner, as the executor, sent two 5 USDC NVDAc `BUY` intents with
+  [`deployments/go-live.md`](deployments/go-live.md) and the calldata of
+  [`agent/scripts/first-decision.ts`](agent/scripts/first-decision.ts); the agent runtime sent neither. The vault
+  refused the first, before the US market opened, with `MARKET_CLOSED`
+  ([`0xdfdb6739...6c3b`](https://basescan.org/tx/0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b)),
+  and allowed the second, in session, with reason `OK`
+  ([`0x61622340...23c8`](https://basescan.org/tx/0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8),
+  block 61,745,836, 16:59:02 UTC), which swapped 5 USDC for 0.03311718 NVDAc.
 - **Mainnet `Decision` events.** This README keeps no count. Every `Decision` the vault emits is public in its
   events on Basescan, at the `MandateVault` address in [`deployments/README.md`](deployments/README.md). The
   [mainnet ledger](https://maatonbase.xyz/ledger) reads them from Base in your browser, with the vault's
