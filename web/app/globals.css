@@ -676,6 +676,24 @@
   }
 }
 
+/* The ThumbBar (components/instrument/ThumbBar.tsx): it slides up over --t-flip when both hero CTAs have scrolled out,
+   and back down while #try or the footer is in view. The reduce block turns the transition off, so under reduced
+   motion it appears without sliding. */
+@layer components {
+  [data-thumb-bar] {
+    transition: translate var(--t-flip) var(--ease-instrument), visibility var(--t-flip);
+  }
+  [data-thumb-bar="hidden"] {
+    translate: 0 100%;
+    visibility: hidden;
+  }
+  @starting-style {
+    [data-thumb-bar="shown"] {
+      translate: 0 100%;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
