@@ -11,9 +11,17 @@ export function meterPercent(value: number, limit: number): number {
   return Math.min(100, (value / limit) * 100);
 }
 
-/** What a meter writes beside its bar: the reading rounded to a whole unit, then the limit, in the limit wording. */
+/**
+ * The whole-unit reading a meter writes and judges: the value floored, the way the contract reads it. PriceLib.premiumBps
+ * is integer division and a feed's age is whole seconds, so 100.6 bps passes a 100 bps limit and 90,000.9 s a 90,000 s one.
+ */
+export function meterReading(value: number): number {
+  return Math.floor(value);
+}
+
+/** What a meter writes beside its bar: the reading floored to a whole unit, then the limit, in the limit wording. */
 export function meterText(value: number, limit: number, unit: LimitUnit): string {
-  return `${formatLimit(Math.round(value), unit)} / ${formatLimit(limit, unit)}`;
+  return `${formatLimit(meterReading(value), unit)} / ${formatLimit(limit, unit)}`;
 }
 
 export interface MeterProps {
@@ -29,13 +37,13 @@ export interface MeterProps {
 /**
  * A hairline bar scaled to `limit`, with the number written beside it (spec section 4: meters mean magnitude, and the
  * number is always written). The bar is aria-hidden; the written number is the reading. data-over marks a reading past
- * its limit, and turns the fill to the refusal lamp colour. It compares the reading as meterText writes it, rounded to a
- * whole unit, so the refusal colour never sits beside a number that reads as at the limit.
+ * its limit, and turns the fill to the refusal lamp colour. It compares the reading as meterText writes it, floored to a
+ * whole unit as the contract compares it, so the refusal colour never sits beside a number that reads as at the limit.
  */
 export function Meter({ value, limit, unit, on = "faceplate", className }: MeterProps) {
   const percent = meterPercent(value, limit);
   const text = meterText(value, limit, unit);
-  const reading = Math.round(value);
+  const reading = meterReading(value);
   const classes = ["meter inline-flex flex-col gap-1", className].filter(Boolean).join(" ");
   return (
     <span data-meter="" data-on={on} data-over={reading > limit ? "" : undefined} className={classes}>

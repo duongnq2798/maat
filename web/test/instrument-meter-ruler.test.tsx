@@ -43,9 +43,9 @@ describe("meterPercent and meterText (components/instrument/Meter.tsx)", () => {
     }
   });
 
-  it("writes the reading, rounded, over the limit, in the limit wording", () => {
+  it("writes the reading, floored, over the limit, in the limit wording", () => {
     expect(meterText(53, m.maxPremiumBps, "bps")).toBe("53 bps / 100 bps");
-    expect(meterText(52.6, m.maxPremiumBps, "bps")).toBe("53 bps / 100 bps");
+    expect(meterText(52.6, m.maxPremiumBps, "bps")).toBe("52 bps / 100 bps");
     expect(meterText(14, m.maxStalenessSec, "s")).toBe("14 s / 90,000 s (25 h)");
   });
 
