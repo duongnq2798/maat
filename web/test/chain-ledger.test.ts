@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, type AbiEvent, type Address, type Hash, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
-import { REASON_LABEL, REASON_MEANING, REASONS } from "@/content/reasons";
+import { REASON_LABEL, REASON_MEANING, REASON_MEANING_DOCS, REASONS } from "@/content/reasons";
 import { vaultAbi } from "@/lib/chain/abi";
 import type { CachedLog } from "@/lib/chain/cache";
 import { decodeVaultLogs } from "@/lib/chain/events";
@@ -194,8 +194,12 @@ describe("summarize", () => {
 });
 
 describe("reasonDisplay", () => {
-  it("labels each code with REASON_LABEL, keeps the code, and explains it with REASON_MEANING", () => {
-    expect(reasonDisplay("MARKET_CLOSED")).toEqual({ label: "Market closed", code: "MARKET_CLOSED", meaning: REASON_MEANING.MARKET_CLOSED });
+  it("labels each code with REASON_LABEL, keeps the code, and explains it with the docs' line, REASON_MEANING_DOCS", () => {
+    expect(reasonDisplay("MARKET_CLOSED")).toEqual({ label: "Market closed", code: "MARKET_CLOSED", meaning: REASON_MEANING_DOCS.MARKET_CLOSED });
+    for (const code of REASONS) expect(reasonDisplay(code).meaning).toBe(REASON_MEANING_DOCS[code]);
+    // The vault's first refusal was sent on a Tuesday at 09:28 ET, before the open: "after hours" does not cover it.
+    expect(reasonDisplay("MARKET_CLOSED").meaning).not.toContain("after hours");
+    expect(reasonDisplay("MARKET_CLOSED").meaning).not.toBe(REASON_MEANING.MARKET_CLOSED);
     expect(reasonDisplay("OK")).toEqual({ label: REASON_LABEL.OK, code: "OK", meaning: `${REASON_LABEL.OK}.` });
   });
 });
