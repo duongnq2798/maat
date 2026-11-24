@@ -439,6 +439,34 @@
   }
 }
 
+/* Meter and Ruler (components/instrument/Meter.tsx, Ruler.tsx). A meter's fill width comes inline from its reading;
+   the ruler's numbers are RULER's: a major tick every 56 px at full height, a minor one every 8 px at half. */
+@layer components {
+  .meter-track {
+    display: block;
+    height: 2px;
+    background: var(--color-line);
+  }
+  .meter[data-on="chassis"] .meter-track {
+    background: var(--color-chassis-line);
+  }
+  .meter-fill {
+    display: block;
+    height: 100%;
+    background: var(--color-lamp-pass);
+  }
+  .meter[data-over] .meter-fill {
+    background: var(--color-lamp-refuse);
+  }
+  .ruler {
+    height: 12px;
+    background-image: repeating-linear-gradient(to right, var(--color-tick) 0 1px, transparent 1px 56px), repeating-linear-gradient(to right, var(--color-tick) 0 1px, transparent 1px 8px);
+    background-size: 100% 12px, 100% 6px;
+    background-position: left bottom;
+    background-repeat: no-repeat;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
