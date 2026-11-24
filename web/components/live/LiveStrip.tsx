@@ -6,7 +6,7 @@ import type { LiveState } from "@/lib/live/freshness";
 import { formatBlock, formatEt, formatUtc } from "@/lib/live/format";
 import type { LiveReader } from "@/lib/live/rpc";
 import { BlockLink, FAILED, LiveAnnouncer, LivePill, NotLiveWhy, READING, ReadButton, Sep, useRetry } from "./LiveStatus";
-import { useLiveSnapshot } from "./useLiveSnapshot";
+import { LiveSnapshotProvider, type LiveSnapshotValue, useLive, useLiveIfAny } from "./LiveSnapshotProvider";
 import { VerdictLine } from "./VerdictLine";
 
 function NowLink() {
@@ -78,13 +78,9 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
  */
 const RESERVE = "min-h-40 sm:min-h-20 min-[62.5rem]:min-h-30 xl:min-h-25";
 
-/**
- * A quiet line under the landing H1: the Base block this browser read, its NYSE session, and what an agent under the
- * default mandate would do with a BUY of each basket token. The static HTML holds the reading state only; no chain
- * value is ever baked in.
- */
-export function LiveStrip({ reader }: { reader?: LiveReader }) {
-  const { state, refresh, refreshing } = useLiveSnapshot({ reader });
+/** The strip itself, on the page's one snapshot. */
+function Strip({ live }: { live: LiveSnapshotValue }) {
+  const { state, refresh, refreshing } = live;
   const { box, onRetry } = useRetry(state, refreshing, refresh);
 
   return (
@@ -97,5 +93,26 @@ export function LiveStrip({ reader }: { reader?: LiveReader }) {
         </p>
       </noscript>
     </div>
+  );
+}
+
+/** A strip that made its own provider: it reads the snapshot from there. */
+function SharedStrip() {
+  return <Strip live={useLive()} />;
+}
+
+/**
+ * A quiet line under the landing H1: the Base block this browser read, its NYSE session, and what an agent under the
+ * default mandate would do with a BUY of each basket token. The static HTML holds the reading state only; no chain
+ * value is ever baked in. Under a LiveSnapshotProvider it reads the page's snapshot, and `reader` is not used; with
+ * none above it (a test that renders the Hero alone), it runs a provider of its own with `reader`.
+ */
+export function LiveStrip({ reader }: { reader?: LiveReader }) {
+  const live = useLiveIfAny();
+  if (live !== null) return <Strip live={live} />;
+  return (
+    <LiveSnapshotProvider reader={reader}>
+      <SharedStrip />
+    </LiveSnapshotProvider>
   );
 }
