@@ -17,8 +17,8 @@ import {
 } from "./fake-live-rpc";
 
 // Every frame the landing's live Readout can show, at six widths, under reduced motion so each frame is final at once
-// (spec 2026-11-23 sections 3.5, 6.2 and 13). Each test writes the Readout's natural height, measured with its fixed
-// height lifted, to test-results/readout-heights/<frame>-<width>.txt; STRIP_RESERVE in components/live/LiveStrip.tsx
+// (spec 2026-11-23 sections 3.5, 6.2 and 13). Each test writes the Readout's natural height, measured with its
+// min-height lifted, to test-results/readout-heights/<frame>-<width>.txt; STRIP_RESERVE in components/live/LiveStrip.tsx
 // comes from those files. No test here touches the network: e2e/fake-live-rpc.ts answers for Base.
 
 const WIDTHS = [360, 640, 1000, 1280, 1440, 1920] as const;
@@ -160,18 +160,21 @@ for (const frame of FRAMES) {
       expect(empty).toBe(0);
       await expect(s.locator("[data-readout-keys]").getByRole("button", { name: "Hold" })).toBeVisible();
 
-      // The natural height: the Readout with its fixed height lifted for one measurement.
-      const { box, natural } = await s.evaluate((el) => {
-        const fixed = el.getBoundingClientRect().height;
-        el.style.height = "auto";
+      // The natural height: the Readout with its reserved min-height lifted for one measurement. The box itself
+      // grows past the reserve rather than overflow, so the frame is checked against the reserve, not the box.
+      const { reserve, box, natural } = await s.evaluate((el) => {
+        const reserved = Number.parseFloat(getComputedStyle(el).minHeight);
+        const shown = el.getBoundingClientRect().height;
+        el.style.minHeight = "0px";
         const content = el.getBoundingClientRect().height;
-        el.style.height = "";
-        return { box: fixed, natural: content };
+        el.style.minHeight = "";
+        return { reserve: reserved, box: shown, natural: content };
       });
       mkdirSync(HEIGHTS, { recursive: true });
       writeFileSync(`${HEIGHTS}/${frame.name}-${width}.txt`, `${Math.ceil(natural)}\n`);
       await page.screenshot({ path: `test-results/screens/states-${frame.name}-${width}.png` });
-      expect(natural, `${frame.name} at ${width} px needs ${Math.ceil(natural)} px`).toBeLessThanOrEqual(box);
+      expect(natural, `${frame.name} at ${width} px needs ${Math.ceil(natural)} px`).toBeLessThanOrEqual(reserve);
+      expect(box, "the Readout keeps its reserved height").toBe(reserve);
 
       // The only errors are the 503s the frame asked for; any other error fails the test.
       const expected = errors.filter((e) => LIVE_RPCS.includes(originOf(e.url)) && /status of 503\b/.test(e.text));

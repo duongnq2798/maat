@@ -23,14 +23,24 @@ import { VerdictLine } from "./VerdictLine";
 const GHOST_BLOCK = "88,888,888";
 
 /**
- * The Readout's fixed height per breakpoint (spec 2026-11-23 sections 3.5 and 6.2): the tallest frame of
- * e2e/instrument-states.spec.ts at that breakpoint's narrowest width (360, 640, 1000, and 1280 to 1920 px), plus 20 px,
- * rounded up to 4 px. Every state fits, so the lead never moves when a reading lands. 62.5rem (1000 px), where the
- * hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem) and xl (80rem). Measured
- * 2026-11-24: the three-refusal frame is the tallest at every width, at 366 px (360), 194 px (640), 234 px (1000) and
- * 248 px (1440 and 1920; 223 px at 1280).
+ * The Readout's height per breakpoint (spec 2026-11-23 sections 3.5 and 6.2): the tallest frame of
+ * e2e/instrument-states.spec.ts at that breakpoint's narrowest width (360, 640, 1000, and 1280 to 1920 px) on any
+ * engine and OS measured, plus 20 px, rounded up to 4 px. Every state fits, so the lead never moves when a reading
+ * lands. 62.5rem (1000 px), where the hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem)
+ * and xl (80rem).
+ *
+ * The same Geist files lay out at different widths per platform: Chromium on Linux rounds each glyph advance to a whole
+ * pixel (11 px Geist Mono 7 px a glyph, not 6.6), Windows does not. Measured 2026-11-24, the three-refusal frame is the
+ * tallest everywhere: 408 px at 360 and 262 px at 1000 on Linux (Chromium in CI), against 366 and 234 on Windows
+ * Chromium and 368 and 236 on Windows Firefox and WebKit; 195 px at 640 (Firefox, WebKit). xl keeps 268: its tallest
+ * frame is 249.70 px (Firefox and WebKit at 1920; 248 px on Chromium, Windows and Linux), which 268 clears by 18 px,
+ * and the rule's 272 would move the 1440x900 CTAs from 880.23 to 884.23 px.
+ *
+ * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
+ * measures (at 320 px the three-refusal frame needs 450 px on Windows), grows the window and moves the lead down
+ * instead of running over it.
  */
-export const STRIP_RESERVE = "h-[388px] sm:h-[216px] min-[62.5rem]:h-[256px] xl:h-[268px]";
+export const STRIP_RESERVE = "min-h-[428px] sm:min-h-[216px] min-[62.5rem]:min-h-[284px] xl:min-h-[268px]";
 
 function NowLink() {
   return (

@@ -202,11 +202,11 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)",
     expect(animate.mock.contexts[1]).toBe(scanLine);
   });
 
-  it("reserves one fixed height per breakpoint, never a min-height", async () => {
+  it("reserves one min-height per breakpoint, never a fixed height, so a taller frame grows the window", async () => {
     await mount({ timestamp: SAT }, SAT + 14);
-    expect(STRIP_RESERVE).toMatch(/^h-\[\d+px\] sm:h-\[\d+px\] min-\[62\.5rem\]:h-\[\d+px\] xl:h-\[\d+px\]$/);
+    expect(STRIP_RESERVE).toMatch(/^min-h-\[\d+px\] sm:min-h-\[\d+px\] min-\[62\.5rem\]:min-h-\[\d+px\] xl:min-h-\[\d+px\]$/);
     for (const cls of STRIP_RESERVE.split(" ")) expect(strip().className.split(" ")).toContain(cls);
-    expect(strip().className).not.toMatch(/(^|\s)min-h-/);
+    expect(strip().className).not.toMatch(/(^|\s)([^\s:]+:)?h-\[/);
   });
 
   it("draws the block number at readout size with a weight settle, and keeps the scan line hidden at rest", () => {
