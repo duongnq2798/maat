@@ -29,14 +29,16 @@ export interface MeterProps {
 /**
  * A hairline bar scaled to `limit`, with the number written beside it (spec section 4: meters mean magnitude, and the
  * number is always written). The bar is aria-hidden; the written number is the reading. data-over marks a reading past
- * its limit, and turns the fill to the refusal lamp colour.
+ * its limit, and turns the fill to the refusal lamp colour. It compares the reading as meterText writes it, rounded to a
+ * whole unit, so the refusal colour never sits beside a number that reads as at the limit.
  */
 export function Meter({ value, limit, unit, on = "faceplate", className }: MeterProps) {
   const percent = meterPercent(value, limit);
   const text = meterText(value, limit, unit);
+  const reading = Math.round(value);
   const classes = ["meter inline-flex flex-col gap-1", className].filter(Boolean).join(" ");
   return (
-    <span data-meter="" data-on={on} data-over={value > limit ? "" : undefined} className={classes}>
+    <span data-meter="" data-on={on} data-over={reading > limit ? "" : undefined} className={classes}>
       <span aria-hidden="true" className="meter-track">
         <span className="meter-fill" style={{ width: `${percent}%` }} />
       </span>
