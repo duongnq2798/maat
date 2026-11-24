@@ -33,8 +33,8 @@ const GHOST_BLOCK = "88,888,888";
  * pixel (11 px Geist Mono 7 px a glyph, not 6.6), Windows does not. Measured 2026-11-24, the three-refusal frame is the
  * tallest everywhere: 408 px at 360 and 262 px at 1000 on Linux (Chromium in CI), against 366 and 234 on Windows
  * Chromium and 368 and 236 on Windows Firefox and WebKit; 195 px at 640 (Firefox, WebKit). xl keeps 268: its tallest
- * frame is 249.70 px (Firefox and WebKit at 1920; 248 px on Chromium, Windows and Linux), which 268 clears by 18 px,
- * and the rule's 272 would move the 1440x900 CTAs from 880.23 to 884.23 px.
+ * frame is 249.70 px at 1920 and 250 px rounded up at 1440, both on Firefox and WebKit (248 px on Chromium, Windows and
+ * Linux), which 268 clears by 18 px, and the rule's 272 would move the 1440x900 CTAs from 880.23 to 884.23 px.
  *
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
  * measures (at 320 px the three-refusal frame needs 450 px on Windows), grows the window and moves the lead down
