@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 import { Command, commandParts } from "@/components/gap/Command";
 import { GapWindow } from "@/components/gap/GapWindow";
 import { BlockLink, INLINE_LINK } from "@/components/gap/WindowTable";
+import { DockedPlate } from "@/components/instrument/DockedPlate";
 import { Footer } from "@/components/sections/Footer";
 import { Mark } from "@/components/ui/Mark";
 import { SectionHeading } from "@/components/ui/SectionHeading";
@@ -97,6 +98,7 @@ function Header() {
           <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
         </a>
         <div className="flex flex-wrap items-center gap-1">
+          <DockedPlate className="mr-2 hidden md:inline-flex" />
           <a href="/#how" className="navlink max-[720px]:hidden">
             How Maat decides
           </a>
