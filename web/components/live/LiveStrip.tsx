@@ -26,9 +26,11 @@ const GHOST_BLOCK = "88,888,888";
  * The Readout's fixed height per breakpoint (spec 2026-11-23 sections 3.5 and 6.2): the tallest frame of
  * e2e/instrument-states.spec.ts at that breakpoint's narrowest width (360, 640, 1000, and 1280 to 1920 px), plus 20 px,
  * rounded up to 4 px. Every state fits, so the lead never moves when a reading lands. 62.5rem (1000 px), where the
- * hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem) and xl (80rem).
+ * hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem) and xl (80rem). Measured
+ * 2026-11-24: the three-refusal frame is the tallest at every width, at 350 px (360), 194 px (640), 234 px (1000) and
+ * 248 px (1440 and 1920; 223 px at 1280).
  */
-export const STRIP_RESERVE = "h-[412px] sm:h-[248px] min-[62.5rem]:h-[288px] xl:h-[300px]";
+export const STRIP_RESERVE = "h-[372px] sm:h-[216px] min-[62.5rem]:h-[256px] xl:h-[268px]";
 
 function NowLink() {
   return (
@@ -46,11 +48,11 @@ function NowLink() {
 function Basket({ reading }: { reading: Reading }) {
   const limit = FACTS.mandate.value.maxPremiumBps;
   return (
-    <span data-basket="" className="mt-2 grid grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-3">
+    <span data-basket="" className="mt-1 grid grid-cols-1 gap-x-4 sm:grid-cols-3">
       {FACTS.basket.value.map((symbol) => {
         const v = reading.verdicts.find((t) => t.symbol === symbol);
         return (
-          <span key={symbol} data-basket-token={symbol} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span key={symbol} data-basket-token={symbol} className="flex flex-wrap items-center gap-x-2 leading-4">
             <span className="font-mono text-[12px] font-medium text-lcd">{symbol}</span>
             <Lamp state={v === undefined ? "reading" : v.mandate === "OK" ? "pass" : "refuse"} on="chassis" />
             {v !== undefined && v.premiumBps !== null ? (
@@ -169,7 +171,7 @@ interface KeysProps {
 function Keys({ state, refreshing, hold, onRefresh, scanLine }: KeysProps) {
   const shown = state.status === "reading" || state.status === "error" ? null : state;
   return (
-    <ReadoutKeys className="mt-auto pt-2">
+    <ReadoutKeys className="mt-auto">
       <span ref={scanLine} aria-hidden="true" data-scan="" className="readout-scan" />
       {shown === null ? null : (
         <span data-read-age="">
@@ -210,7 +212,7 @@ function Strip({ live }: { live: LiveSnapshotValue }) {
       tabIndex={-1}
       data-live-strip={state.status}
       reserve={STRIP_RESERVE}
-      className="relative flex flex-col text-[13px] leading-5"
+      className="relative flex flex-col pt-2 pb-2 text-[13px] leading-5"
     >
       <LiveAnnouncer state={state} />
       <Body state={state} refreshing={refreshing} onRetry={onRetry} />
