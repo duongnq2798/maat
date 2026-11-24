@@ -144,6 +144,8 @@ jobs:
         run: npm run check:out
       - id: browsers
         run: npx --no-install playwright install --with-deps --only-shell chromium
+      - id: cross_browsers
+        run: npx --no-install playwright install --with-deps webkit firefox
       - id: e2e
         env:
           PLAYWRIGHT_JSON_OUTPUT_FILE: ${{ runner.temp }}/e2e.json

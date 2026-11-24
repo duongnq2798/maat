@@ -8,6 +8,8 @@
 @source "../components/{charts,gap,ledger,live,sections,ui}";
 @source "../content/*.ts";
 @source "../lib/site.ts";
+@source "../components/instrument";
+@source not inline("ring transform"); /* prose and SVG attribute words in the part files, never used as classes */
 
 @theme {
   --color-bg: #FFFFFF;
@@ -34,6 +36,44 @@
   --font-sans: var(--font-geist-sans), system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }
+
+/* Instrument tokens (spec 2026-11-23-maat-web-instrument-design.md, sections 8.2 and 9.2), beside the pinned block
+   above and never inside it. Tailwind writes a token into the sheet only once a class or a var() uses it. */
+@theme {
+  --color-chassis-2: #14171F;
+  --color-chassis-line: #262B36;
+  --color-lcd: #F3F4F6;
+  --color-lcd-2: #B4BAC6;
+  --color-lcd-ghost: #1A1E27;
+  --color-pass-lit: #9DAEFF;
+  --color-refuse-lit: #FF9B66;
+  --color-lamp-pass: #4D6BFF;
+  --color-lamp-refuse: #FF5A1F;
+  --color-label: #4A5160;
+  --color-refuse-ink: #9A3412;
+  --color-tick: #C9CED8;
+
+  --t-tick: 120ms;
+  --t-flip: 240ms;
+  --t-weigh: 600ms;
+  --t-draw: 900ms;
+  --stagger: 30ms;
+  /* Named for the instrument, not ease-out: Tailwind's ease-out utility reads a variable of that name. */
+  --ease-instrument: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* springs:start: written by `npx tsx scripts/springs.ts` from lib/motion/spring.ts; do not edit by hand. */
+@theme {
+  --ease-needle: linear(0, 0.036, 0.13, 0.264, 0.421, 0.584, 0.742, 0.885, 1.006, 1.101, 1.17, 1.213, 1.232, 1.231, 1.215, 1.187, 1.152, 1.114, 1.077, 1.041, 1.011, 0.986, 0.967, 0.954, 0.947, 0.945, 0.948, 0.953, 0.961, 0.969, 0.978, 0.987, 0.994, 1.001, 1.006, 1.01, 1.012, 1.013, 1.013, 1.012, 1.01, 1.008, 1.006, 1.004, 1.002, 1, 0.999, 0.998, 0.997, 0.997, 0.997, 0.997, 0.997, 0.998, 0.998, 0.999, 0.999, 1, 1, 1, 1);
+  --ease-settle: linear(0, 0.014, 0.05, 0.104, 0.17, 0.244, 0.322, 0.401, 0.479, 0.554, 0.624, 0.69, 0.749, 0.802, 0.85, 0.891, 0.926, 0.955, 0.98, 0.999, 1.015, 1.026, 1.035, 1.041, 1.044, 1.046, 1.046, 1.045, 1.043, 1.04, 1.037, 1.033, 1.029, 1.026, 1.022, 1.019, 1.016, 1.013, 1.01, 1.008, 1.006, 1.004, 1.003, 1.001, 1, 1, 0.999, 0.999, 0.998, 0.998, 0.998, 0.998, 0.998, 0.998, 0.998, 0.998, 0.998, 0.999, 0.999, 0.999, 1);
+}
+@supports not (transition-timing-function: linear(0, 1)) {
+  :root {
+    --ease-needle: cubic-bezier(0.34, 1.4, 0.64, 1);
+    --ease-settle: cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+}
+/* springs:end */
 
 @layer base {
   html {
@@ -78,10 +118,11 @@
   }
   .h2 {
     margin: 0;
-    font-size: clamp(40px, 4.6vw, 64px);
+    font-size: clamp(32px, 3.6vw, 52px);
     line-height: 1.02;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.045em;
     font-weight: 600;
+    text-wrap: balance;
   }
   .lead {
     margin: 0;
@@ -283,6 +324,383 @@
 }
 .anim-live {
   animation: live 2s ease-in-out infinite;
+}
+
+/* ThumbBar (phase P1): its padding clears a phone's home indicator. The inset is named here, in the stylesheet only,
+   never in a class name or an inline style (spec 2026-11-23 section 5.2). */
+@layer components {
+  .thumb-bar {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+/* Ghost and Digits (components/instrument/Ghost.tsx, Digits.tsx). A ghost's 8s come from data-ghost, so no 8 is ever
+   text; a digit rolls inside its cell, and the number clips the roll. */
+@layer components {
+  .ghost::before {
+    content: attr(data-ghost);
+    color: var(--color-lcd-ghost);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: pre;
+  }
+  @media (forced-colors: active) {
+    .ghost {
+      display: none;
+    }
+  }
+  .digits {
+    display: inline-block;
+    clip-path: inset(0);
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .digits > span {
+    display: inline-block;
+  }
+}
+
+/* Lamp (components/instrument/Lamp.tsx): the lamp is the ::before beside the word, unlit until data-lamp lights it.
+   Lighting runs lamp-on once: a 6 px ring that fades to nothing, the base style. */
+@layer components {
+  .lamp {
+    --lamp: var(--color-line-strong);
+  }
+  .lamp[data-on="chassis"] {
+    --lamp: var(--color-lcd-ghost);
+  }
+  .lamp[data-lamp="pass"] {
+    --lamp: var(--color-lamp-pass);
+  }
+  .lamp[data-lamp="refuse"] {
+    --lamp: var(--color-lamp-refuse);
+  }
+  .lamp::before {
+    content: "";
+    flex: none;
+    box-sizing: border-box;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background-color: var(--lamp);
+    transition: background-color var(--t-tick) var(--ease-instrument);
+  }
+  .lamp[data-lamp="pass"]::before,
+  .lamp[data-lamp="refuse"]::before {
+    animation: lamp-on var(--t-flip) var(--ease-instrument);
+  }
+  .lamp[data-lamp="skip"]::before {
+    border: 1px solid var(--color-ink-3);
+    background-color: transparent;
+  }
+  @media (forced-colors: active) {
+    .lamp::before {
+      border: 1px solid CanvasText;
+    }
+  }
+}
+@keyframes lamp-on {
+  from {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--lamp) 35%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* SourcePlate (components/instrument/SourcePlate.tsx): provenance by word and by shape. Uppercase comes from CSS. */
+@layer components {
+  .plate {
+    letter-spacing: 0.12em;
+  }
+  .plate > [data-plate-shape] {
+    flex: none;
+    box-sizing: border-box;
+    width: 8px;
+    height: 8px;
+    border: 1px solid currentColor;
+  }
+  .plate[data-plate="live"] > [data-plate-shape] {
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .plate[data-plate="replay"] > [data-plate-shape] {
+    border-radius: 999px;
+    background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 3px);
+  }
+  .plate[data-plate="edition"] > [data-plate-shape] {
+    background: currentColor;
+  }
+  .plate[data-plate="simulated"] > [data-plate-shape] {
+    border-radius: 2px;
+  }
+  .plate[data-plate="planned"] > [data-plate-shape] {
+    border-radius: 999px;
+    border-style: dashed;
+  }
+}
+
+/* Meter and Ruler (components/instrument/Meter.tsx, Ruler.tsx). A meter's fill width comes inline from its reading;
+   the ruler's numbers are RULER's: a major tick every 56 px at full height, a minor one every 8 px at half. */
+@layer components {
+  .meter-track {
+    display: block;
+    height: 2px;
+    background: var(--color-line);
+  }
+  .meter[data-on="chassis"] .meter-track {
+    background: var(--color-chassis-line);
+  }
+  .meter-fill {
+    display: block;
+    height: 100%;
+    background: var(--color-lamp-pass);
+  }
+  .meter[data-over] .meter-fill {
+    background: var(--color-lamp-refuse);
+  }
+  .ruler {
+    height: 12px;
+    background-image: repeating-linear-gradient(to right, var(--color-tick) 0 1px, transparent 1px 56px), repeating-linear-gradient(to right, var(--color-tick) 0 1px, transparent 1px 8px);
+    background-size: 100% 12px, 100% 6px;
+    background-position: left bottom;
+    background-repeat: no-repeat;
+  }
+}
+
+/* Balance (components/instrument/Balance.tsx). Only the beam tilts: level is allowed, -6deg is refused. Each pan rides
+   its end of the crossbar, 8 units from the pivot, and stays upright. The base style is the final frame. */
+@layer components {
+  .balance {
+    --tilt: 0deg;
+  }
+  .balance[data-verdict="refused"] {
+    --tilt: -6deg;
+  }
+  .balance-beam {
+    transform-box: view-box;
+    transform-origin: 15px 10px;
+    rotate: var(--tilt);
+    transition: rotate var(--t-weigh) var(--ease-needle);
+  }
+  .balance-pan {
+    transition: translate var(--t-weigh) var(--ease-needle);
+  }
+  .balance-pan[data-pan="feather"] {
+    translate: calc(8px * (1 - cos(var(--tilt)))) calc(-8px * sin(var(--tilt)));
+  }
+  .balance-pan[data-pan="order"] {
+    translate: calc(-8px * (1 - cos(var(--tilt)))) calc(8px * sin(var(--tilt)));
+  }
+  .balance-tick {
+    stroke: var(--color-tick);
+    stroke-linecap: butt;
+  }
+  .balance-tick[data-tick="PASS"] {
+    stroke: var(--color-lamp-pass);
+  }
+  .balance-tick[data-tick="FAIL"] {
+    stroke: var(--color-lamp-refuse);
+  }
+}
+
+/* Tape (components/instrument/Tape.tsx): printed rows. Only a row that lands while the page is open prints in. */
+@layer components {
+  .tape {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tape-row {
+    border-left: 2px solid var(--color-lamp-pass);
+    padding-left: 10px;
+  }
+  .tape-row[data-verdict="refused"] {
+    border-left-color: var(--color-lamp-refuse);
+  }
+  .tape-row[data-fresh] {
+    animation: print 260ms var(--ease-instrument) both;
+  }
+}
+@keyframes print {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
+/* Bezel keys (components/instrument/HoldKey.tsx, KEY_CLASS): 24 px keys with a 44 px target, a 1 px press over 60 ms,
+   and their colour on the 120 ms tick. */
+@layer components {
+  .readout-key {
+    position: relative;
+    transition: translate 60ms var(--ease-instrument), color var(--t-tick) var(--ease-instrument), border-color var(--t-tick) var(--ease-instrument);
+  }
+  .readout-key::before {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+  .readout-key:active {
+    translate: 0 1px;
+  }
+}
+
+/* The live strip's Readout (components/live/LiveStrip.tsx). The block number at readout size, its weight settling from
+   300 to 560 when a reading lands; the scan line, hidden at rest (useScan shows it for one 400 ms pass); the LIVE
+   pill's lamp; and focus rings in pass-lit on the dark window. */
+@layer components {
+  .readout-figure {
+    font-size: clamp(26px, 2.6vw, 38px);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-weight: 560;
+  }
+  .readout-digits {
+    animation: wght-settle var(--t-flip) var(--ease-instrument) both;
+  }
+  .readout-scan {
+    position: absolute;
+    top: 0;
+    left: 14px;
+    right: 14px;
+    height: 1px;
+    background: var(--color-pass-lit);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .readout-lit {
+    --lamp: var(--color-lamp-pass);
+    animation: lamp-on var(--t-flip) var(--ease-instrument);
+  }
+  [data-readout] :focus-visible {
+    outline-color: var(--color-pass-lit);
+  }
+}
+@keyframes wght-settle {
+  from {
+    font-weight: 300;
+  }
+}
+
+/* The engine card's weighing intro (components/DecisionEngine.tsx). It replays on every choice, because the weighing
+   node is keyed by run, and starts where the visitor's last moment left the beam (data-tilt-from). The ticks light on
+   the rows' schedule (120 + 160·i ms) and the beam swings from 620 ms on the needle spring, so the weighing ends by
+   1.52 s and the card's whole intro, with the verdict stamp, by 2.15 s: inside section 8.1's 2.2 s. The base style is
+   the final frame, so the static HTML and reduced motion show the truth. */
+@layer components {
+  .weighing {
+    --tilt-from: 0deg;
+  }
+  .weighing[data-tilt-from="refused"] {
+    --tilt-from: -6deg;
+  }
+  .weighing .balance-beam {
+    animation: beam-tip var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-pan[data-pan="feather"] {
+    animation: pan-feather var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-pan[data-pan="order"] {
+    animation: pan-order var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-tick {
+    animation: tick-lit var(--t-tick) var(--ease-instrument) both;
+  }
+  .weighing .balance-tick:nth-child(2) {
+    animation-delay: 120ms;
+  }
+  .weighing .balance-tick:nth-child(3) {
+    animation-delay: 280ms;
+  }
+  .weighing .balance-tick:nth-child(4) {
+    animation-delay: 440ms;
+  }
+  .weighing .balance-tick:nth-child(5) {
+    animation-delay: 600ms;
+  }
+  .weighing .balance-tick:nth-child(6) {
+    animation-delay: 760ms;
+  }
+  .weighing .balance-tick:nth-child(7) {
+    animation-delay: 920ms;
+  }
+  .weighing .balance-tick:nth-child(8) {
+    animation-delay: 1080ms;
+  }
+  .weighing .balance-tick:nth-child(9) {
+    animation-delay: 1240ms;
+  }
+  .weighing .balance-tick:nth-child(10) {
+    animation-delay: 1400ms;
+  }
+  .balance-label::before {
+    content: attr(data-label);
+    white-space: nowrap;
+  }
+}
+@keyframes beam-tip {
+  from {
+    rotate: var(--tilt-from);
+  }
+}
+@keyframes pan-feather {
+  from {
+    translate: calc(8px * (1 - cos(var(--tilt-from)))) calc(-8px * sin(var(--tilt-from)));
+  }
+}
+@keyframes pan-order {
+  from {
+    translate: calc(-8px * (1 - cos(var(--tilt-from)))) calc(8px * sin(var(--tilt-from)));
+  }
+}
+@keyframes tick-lit {
+  from {
+    stroke: var(--color-tick);
+  }
+}
+
+/* The 120 ms colour tick (spec 2026-11-23 section 8.3): nav links, the pills, the simulator's chips and the
+   /gap-index token pills change colour over --t-tick instead of snapping. */
+@layer components {
+  .tick-colour,
+  .navlink,
+  .pill-dark,
+  .pill-line {
+    transition-property: color, background-color, border-color;
+    transition-duration: var(--t-tick);
+    transition-timing-function: var(--ease-instrument);
+  }
+}
+
+/* The ThumbBar (components/instrument/ThumbBar.tsx): it slides up over --t-flip when both hero CTAs have scrolled out,
+   and back down while #try or the footer is in view. The reduce block turns the transition off, so under reduced
+   motion it appears without sliding. */
+@layer components {
+  [data-thumb-bar] {
+    transition: translate var(--t-flip) var(--ease-instrument), visibility var(--t-flip);
+  }
+  [data-thumb-bar="hidden"] {
+    translate: 0 100%;
+    visibility: hidden;
+  }
+  @starting-style {
+    [data-thumb-bar="shown"] {
+      translate: 0 100%;
+    }
+  }
+}
+
+/* Drag-to-tip (components/instrument/useTipDrag.ts): while a drag writes --tilt every frame, the beam and the pans
+   follow it directly instead of easing toward each new value. */
+@layer components {
+  .balance[data-dragging] .balance-beam,
+  .balance[data-dragging] .balance-pan {
+    transition: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

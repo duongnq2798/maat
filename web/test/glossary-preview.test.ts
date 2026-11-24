@@ -49,10 +49,10 @@ for (const page of pages) for (const id of linkedEntries(page.source)) linked.se
 
 /**
  * Words that give a term's status: how far it is built and what it has run against. A preview cut to its first sentence
- * would lose them (Builder Code says "no real code is registered yet" in its second sentence).
+ * would lose them (Builder Code says "the owner registered Maat's code" in its third sentence).
  */
 const STATUS_WORDS = [
-  "registered yet",
+  "the owner registered",
   "never run",
   "not built",
   "planned",
@@ -187,7 +187,9 @@ describe("the glossary's previews", () => {
     );
     expect(lost).toEqual([]);
     // The caveats that sit after an entry's first sentence.
-    expect(previews.get("builder-code-erc-8021")).toContain("no real code is registered yet");
+    expect(previews.get("builder-code-erc-8021")).toContain(
+      "The owner registered Maat's code, and the calldata of the vault's first `Decision` on Base mainnet carries it.",
+    );
     expect(previews.get("cdp-server-wallet")).toContain("has never run against the real CDP");
     expect(previews.get("x402")).toContain("It is not built");
     expect(previews.get("fork-test")).toContain("not that it has run on mainnet");

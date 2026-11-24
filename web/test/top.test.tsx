@@ -7,12 +7,12 @@ import { Nav } from "@/components/sections/Nav";
 import { SITE } from "@/lib/site";
 
 describe("announcement bar", () => {
-  it("says this is a fork run, verbatim", () => {
+  it("says the decisions are a fork run and the contracts are on Base mainnet, unaudited, verbatim", () => {
     render(<AnnouncementBar />);
-    expect(screen.getByText("Tested on a Base mainnet fork")).toBeInTheDocument();
-    expect(screen.getByText("Mainnet launch is next. Every decision below was recorded on that fork.")).toBeInTheDocument();
+    expect(screen.getByText("Contracts on Base mainnet")).toBeInTheDocument();
+    expect(screen.getByText("Unaudited. Every decision below was recorded on a Base mainnet fork.")).toBeInTheDocument();
     // The short form phones see in place of the sentence above.
-    expect(screen.getByText("Mainnet is next.")).toBeInTheDocument();
+    expect(screen.getByText("Unaudited.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Follow the build" })).toHaveAttribute("href", "https://x.com/maatonbase");
   });
 });

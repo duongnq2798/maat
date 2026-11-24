@@ -4,10 +4,10 @@ To deploy, fund and send the first intents on Base mainnet, follow the owner's r
 
 | Network | Contract | Address | Tx | Date |
 |---|---|---|---|---|
-| Base mainnet | MarketCalendar | | | |
-| Base mainnet | AerodromeSwapAdapter | | | |
-| Base mainnet | AaveV4CreditAdapter | | | |
-| Base mainnet | MandateVault | | | |
+| Base mainnet | MarketCalendar | [`0x9bfe055323101245a644AF162287C4C38708aDB1`](https://basescan.org/address/0x9bfe055323101245a644AF162287C4C38708aDB1) | [`0x35f260151b987f6d05b63b1d90539edeaf4f7edf348155201049fea94fd337e6`](https://basescan.org/tx/0x35f260151b987f6d05b63b1d90539edeaf4f7edf348155201049fea94fd337e6) | 2026-11-24 |
+| Base mainnet | AerodromeSwapAdapter | [`0x3265EEBEf5ad3c1CE41874Addf18CA207Be35Bfa`](https://basescan.org/address/0x3265EEBEf5ad3c1CE41874Addf18CA207Be35Bfa) | [`0x3f2b3ef236ade3ed1fa0b3ab2282ecddda340b2376137b7b438bb9c270127b39`](https://basescan.org/tx/0x3f2b3ef236ade3ed1fa0b3ab2282ecddda340b2376137b7b438bb9c270127b39) | 2026-11-24 |
+| Base mainnet | AaveV4CreditAdapter | [`0x45dEA6BBeD30c120794115FeC8b01C346564aB2C`](https://basescan.org/address/0x45dEA6BBeD30c120794115FeC8b01C346564aB2C) | [`0xe79ef5ab90c0055ba218d6c0d2f271e30a128ba23e02f915ff527fde77818957`](https://basescan.org/tx/0xe79ef5ab90c0055ba218d6c0d2f271e30a128ba23e02f915ff527fde77818957) | 2026-11-24 |
+| Base mainnet | MandateVault | [`0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b`](https://basescan.org/address/0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b) | [`0xf5a532fe5d8b2ddf7fce312f524537e614f4988b425972dd1098f3d56631c9c1`](https://basescan.org/tx/0xf5a532fe5d8b2ddf7fce312f524537e614f4988b425972dd1098f3d56631c9c1) | 2026-11-24 |
 
 Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet, plus an optional second payee.
 

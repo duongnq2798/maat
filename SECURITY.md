@@ -4,15 +4,15 @@ How to report a security problem in Maat privately, and what to expect after you
 
 ## Supported versions
 
-The `main` branch, and the contracts at the addresses listed in [`deployments/`](deployments/) once they are
-listed there. The contracts are unaudited.
+The `main` branch, and the contracts at the addresses listed in [`deployments/README.md`](deployments/README.md).
+The contracts are unaudited.
 
 ## Scope
 
 A report can cover `contracts/src`, `contracts/script`, `agent/src` and `web/`, and the contracts at the
-addresses listed in [`deployments/`](deployments/). A bug in a third party's code (Base, Chainlink,
-Aerodrome, Aave V4, the B20 tokens, CDP or USDC) goes to that party. If it changes what the Maat vault or
-agent does, report the Maat side here.
+addresses listed in [`deployments/README.md`](deployments/README.md). A bug in a third party's code (Base,
+Chainlink, Aerodrome, Aave V4, the B20 tokens, CDP or USDC) goes to that party. If it changes what the Maat
+vault or agent does, report the Maat side here.
 
 ## How to report
 

@@ -36,7 +36,7 @@ When something looks wrong, the [owner](/docs/help/glossary#owner) of a [vault](
 
 <Callout type="fork" title="What is tested">
 
-Unit tests with mocks pin the rules on this page: `test_vaultPaused`, `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` and `test_executorCannotUseOwnerFunctions`. In the [fork tests](/docs/help/glossary#fork-test), which run against [Base](/docs/help/glossary#base) at a pinned block, `test_creditLoopInSession` and `test_weekendBlocksBorrowButAllowsRepayAndWithdraw` send a `REPAY` and then a `WITHDRAW_COLLATERAL` against the real [Aave V4](/docs/help/glossary#aave-v4), from a made-up executor address. Nothing in the fork tests pauses the vault, makes the owner the executor, or withdraws a stock. The two `setExecutor` commands below, and the `executor()` read in [Rotate the executor](#rotate-the-executor), are copied from `deployments/README.md`. The unwind's `execute` commands are adapted from it: one `WITHDRAW_COLLATERAL` per supplied stock, and an explicit `--gas-limit` on each. The pause and withdraw commands and the other reads, including the unwind's position reads and [previews](/docs/help/glossary#preview), were written for this page. The Maat team has not run any of them, and no Maat vault is deployed.
+Unit tests with mocks pin the rules on this page: `test_vaultPaused`, `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` and `test_executorCannotUseOwnerFunctions`. In the [fork tests](/docs/help/glossary#fork-test), which run against [Base](/docs/help/glossary#base) at a pinned block, `test_creditLoopInSession` and `test_weekendBlocksBorrowButAllowsRepayAndWithdraw` send a `REPAY` and then a `WITHDRAW_COLLATERAL` against the real [Aave V4](/docs/help/glossary#aave-v4), from a made-up executor address. Nothing in the fork tests pauses the vault, makes the owner the executor, or withdraws a stock. The two `setExecutor` commands below, and the `executor()` read in [Rotate the executor](#rotate-the-executor), are copied from `deployments/README.md`. The unwind's `execute` commands are adapted from it: one `WITHDRAW_COLLATERAL` per supplied stock, and an explicit `--gas-limit` on each. The pause and withdraw commands and the other reads, including the unwind's position reads and [previews](/docs/help/glossary#preview), were written for this page. These docs record no run of any of them, on Maat's own vault or any other.
 
 </Callout>
 
@@ -49,7 +49,7 @@ Only the owner can sign the steps marked **Owner only**. The owner is set when t
 | The owner wallet | The Foundry keystore `maat-owner` in the runbook, passed to `cast send` as `--account`. |
 | `cast` | From [Foundry](https://getfoundry.sh). |
 | bash | Linux, macOS, or Git Bash on Windows. The commands are written for bash, as in the [Quickstart](/docs/get-started/quickstart#prerequisites), and do not run in PowerShell or cmd. |
-| Placeholders | `<VAULT_ADDRESS>`, `<BASE_RPC_URL>` and `<OWNER_ADDRESS>`, filled in once, in the block at the top of [The emergency steps](#the-emergency-steps). The Maat team has deployed no vault, so there is nothing to point them at yet. |
+| Placeholders | `<VAULT_ADDRESS>`, `<BASE_RPC_URL>` and `<OWNER_ADDRESS>`, filled in once, in the block at the top of [The emergency steps](#the-emergency-steps). For Maat's own vault, `<VAULT_ADDRESS>` is the address in the `MandateVault` row of the table in `deployments/README.md`. |
 | For the unwind | The credit adapter's address, which is the `creditAdapter` field of `mandate()` and the `AaveV4CreditAdapter` row of the table in `deployments/README.md`. |
 
 Time: each signed command is one transaction that takes effect in that transaction. The unwind takes several. No durations have been measured.
@@ -129,7 +129,7 @@ The transaction emits `PausedSet` with the new value, and it emits it even when 
 cast call "$VAULT" "paused()(bool)" --rpc-url "$BASE_RPC_URL"
 ```
 
-No Maat vault is deployed, so this page shows no output.
+No output from a vault is recorded for these commands, so this page shows none.
 
 </Step>
 
@@ -152,7 +152,7 @@ cast send "$VAULT" "setExecutor(address)" "$EXECUTOR" --rpc-url "$BASE_RPC_URL" 
 cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"
 ```
 
-To give the agent a new key, create a new CDP account first. `cdp-setup.ts` finds the account named by `CDP_ACCOUNT_NAME` if it exists and creates one only when it does not, so a new key needs a new name in `.env`. Then run the script again as [Run the agent](/docs/guides/run-the-agent#create-the-executor-and-attach-the-policy) shows, send the new account <Fact name="executorGasEth" /> for gas, and point the vault at it with the commands above. That estimate comes from [`agent/README.md`](https://github.com/duongnq2798/maat/blob/main/agent/README.md#live-run-owner-only), and no transaction has been sent on Base mainnet to check it.
+To give the agent a new key, create a new CDP account first. `cdp-setup.ts` finds the account named by `CDP_ACCOUNT_NAME` if it exists and creates one only when it does not, so a new key needs a new name in `.env`. Then run the script again as [Run the agent](/docs/guides/run-the-agent#create-the-executor-and-attach-the-policy) shows, send the new account <Fact name="executorGasEth" /> for gas, and point the vault at it with the commands above. That estimate comes from [`agent/README.md`](https://github.com/duongnq2798/maat/blob/main/agent/README.md#live-run-owner-only), and these docs record no Base mainnet transaction that checks it.
 
 </Callout>
 

@@ -29,6 +29,12 @@ describe("what an agent under the default mandate would do", () => {
     expect(v.feedAgeSec).toBe(102);
     expect(v.premiumBps).toBe(25n);
     expect(v.checks.map((c) => c.mark)).toEqual(["PASS", "PASS", "NOT_RUN", "PASS", "PASS", "PASS", "PASS", "NOT_RUN", "NOT_RUN"]);
+    // The page reads no vault: the reason is what a check needs, not that no vault exists.
+    expect(v.checks.filter((c) => c.mark === "NOT_RUN").map((c) => [c.n, c.detail])).toEqual([
+      [3, "needs a vault's address"],
+      [8, "needs a vault's balances"],
+      [9, "needs a vault's balances"],
+    ]);
   });
 
   it("refuses MARKET_CLOSED on a weekend before reading the feed", () => {
@@ -147,7 +153,7 @@ describe("the session at the block", () => {
     expect(on(FRI, false)).toEqual({ open: false, source: "onchain", detail: "MarketCalendar: closed" });
   });
 
-  it("uses the repo calendar until MarketCalendar is deployed", () => {
+  it("uses the repo calendar when the deployments table names no MarketCalendar", () => {
     expect(sessionAt({ timestamp: SAT, calendar: { source: "repo" } })).toEqual({ open: false, source: "repo", detail: "Saturday · NYSE closed" });
     expect(sessionAt({ timestamp: FRI, calendar: { source: "repo" } })).toMatchObject({ open: true, detail: "Friday · open until 16:00 ET" });
   });

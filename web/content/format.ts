@@ -44,3 +44,21 @@ export function andList(items: readonly string[]): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }
+
+/** The units a limit is written in on the instrument surfaces. */
+export type LimitUnit = "s" | "bps";
+
+/**
+ * A limit as every new instrument surface writes it (spec 2026-11-23 section 5.1): "100 bps", and seconds with the
+ * whole hours, or else the whole minutes, after them: "90,000 s (25 h)", "1,800 s (30 min)". Under a minute, or
+ * when neither divides it, the seconds stand alone: "45 s", "90 s". The Mandate sheet keeps its own "90000 s" and
+ * NowBoard its formatAge until phase P4.
+ */
+export function formatLimit(value: number, unit: LimitUnit): string {
+  if (!Number.isInteger(value) || value < 0) throw new Error(`a limit is a whole number of ${unit}, 0 or more: ${value}`);
+  if (unit === "bps") return `${formatInt(value)} bps`;
+  const seconds = `${formatInt(value)} s`;
+  if (value >= 3600 && value % 3600 === 0) return `${seconds} (${formatInt(value / 3600)} h)`;
+  if (value >= 60 && value % 60 === 0) return `${seconds} (${formatInt(value / 60)} min)`;
+  return seconds;
+}

@@ -65,6 +65,22 @@ export function checkExport(html: string): string[] {
   return problems;
 }
 
+/** Records `problem` when `ok` is false. Each page's check passes its own, which puts the page's name before it. */
+type Need = (ok: boolean, problem: string) => void;
+
+/**
+ * The tags a search result and a link preview read, which /now, /gap-index and every docs page must have: a meta
+ * description of 50 to 160 characters and an absolute og:image.
+ */
+function needDescriptionAndOgImage(html: string, need: Need): void {
+  const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
+  // An entity such as &#x27; counts as one character.
+  const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;
+  need(length >= 50 && length <= 160, `meta description is ${description === undefined ? "missing" : `${length} characters`}, want 50 to 160`);
+  const og = /<meta property="og:image" content="([^"]+)"/.exec(html)?.[1];
+  need(og !== undefined && /^https?:\/\//.test(og), "og:image is missing or not an absolute URL");
+}
+
 /** The /now page's h1; its title is this, then the site's name. */
 const NOW_HEADING = "Right now on Base";
 
@@ -82,13 +98,8 @@ export function checkNowPage(html: string): string[] {
   need(html.includes('<html lang="en"'), 'missing <html lang="en">');
   const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
   need(title === `${NOW_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${NOW_HEADING} · ${SITE.name}"`);
-  const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
-  // An entity such as &#x27; counts as one character.
-  const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;
-  need(length >= 50 && length <= 160, `meta description is ${description === undefined ? "missing" : `${length} characters`}, want 50 to 160`);
+  needDescriptionAndOgImage(html, need);
   need(/<link rel="canonical" href="https?:\/\/[^"/]+\/now"/.test(html), "the canonical link is missing, not absolute or not /now");
-  const og = /<meta property="og:image" content="([^"]+)"/.exec(html)?.[1];
-  need(og !== undefined && /^https?:\/\//.test(og), "og:image is missing or not an absolute URL");
   need(new RegExp(`<h1[^>]*>${NOW_HEADING}</h1>`).test(html), `the h1 is not "${NOW_HEADING}"`);
 
   need(html.includes("Reading Base mainnet"), "the board's reading state is not in the exported HTML");
@@ -133,6 +144,7 @@ export function checkGapIndexPage(html: string): string[] {
   need(html.includes('<html lang="en"'), 'missing <html lang="en">');
   const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
   need(title === `${GAP_INDEX_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${GAP_INDEX_HEADING} · ${SITE.name}"`);
+  needDescriptionAndOgImage(html, need);
   need(/<link rel="canonical" href="https?:\/\/[^"/]+\/gap-index"/.test(html), "the canonical link is missing, not absolute or not /gap-index");
   need(new RegExp(`<h1[^>]*>${GAP_INDEX_HEADING}</h1>`).test(html), `the h1 is not "${GAP_INDEX_HEADING}"`);
   // Looked for in the markup alone: the inline scripts carry React's copy of the page, which a reader without
@@ -148,6 +160,7 @@ export function checkGapIndexPage(html: string): string[] {
   for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }
+  need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
   return problems;
 }
 
@@ -167,13 +180,8 @@ export function checkDocsPage(html: string, path: string, known: ReadonlySet<str
   const title = /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? "";
   if (path === "out/docs.html") need(title === `${SITE.name} Docs`, `title "${title}" is not "${SITE.name} Docs"`);
   else need(title.endsWith(suffix) && title.length > suffix.length, `title "${title}" does not end with "${suffix}"`);
-  const description = /<meta name="description" content="([^"]*)"/.exec(html)?.[1];
-  // An entity such as &#x27; counts as one character.
-  const length = description?.replace(/&[^;\s]+;/g, "x").length ?? 0;
-  need(length >= 50 && length <= 160, `meta description is ${description === undefined ? "missing" : `${length} characters`}, want 50 to 160`);
+  needDescriptionAndOgImage(html, need);
   need(/<link rel="canonical" href="https?:\/\/[^"]+"/.test(html), "canonical link is missing or not absolute");
-  const og = /<meta property="og:image" content="([^"]+)"/.exec(html)?.[1];
-  need(og !== undefined && /^https?:\/\//.test(og), "og:image is missing or not an absolute URL");
   for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }

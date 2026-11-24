@@ -87,10 +87,10 @@ Each integration Maat is built on has code in this repository that uses it and a
 | [Chainlink equity feeds](/docs/help/glossary#chainlink-equity-feed) | `PriceLib.readFeed`, called by `GuardLib` and `MandateVault` | `test_liveBasketTradesNearNav` in `contracts/test/fork/PriceLibFork.t.sol`, which reads all three feeds | Fork of Base |
 | [Aerodrome Slipstream](/docs/help/glossary#aerodrome-slipstream) pools | `AerodromeSwapAdapter.swapExactIn` swaps, and `PriceLib.twapPrice` reads the TWAP with `observe` | `test_buyAndSellNvdac` in `contracts/test/fork/AerodromeSwapAdapterFork.t.sol`, and `test_liveBasketTradesNearNav` for the TWAP of all three pools | Fork of Base |
 | [Aave V4](/docs/help/glossary#aave-v4) | `AaveV4CreditAdapter`, through the MAG7 spoke | `test_reservesMatchOnchain` and `test_fullCreditLoopOnAave` in `contracts/test/fork/AaveV4CreditAdapterFork.t.sol` | Fork of Base |
-| All of the above, wired together | `contracts/script/Deploy.s.sol` | `test_deployWiresEverything` in `contracts/test/fork/DeployFork.t.sol` | Fork of Base; nothing was broadcast |
+| All of the above, wired together | `contracts/script/Deploy.s.sol` | `test_deployWiresEverything` in `contracts/test/fork/DeployFork.t.sol` | Fork of Base; a fork run broadcasts nothing. The table at the top of this page lists the four Maat contracts the owner deployed on Base mainnet |
 | [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) | `agent/src/exec/cdpSender.ts`, with the policy in `agent/src/exec/cdpPolicy.ts` | `agent/test/cdpSender.test.ts` and `agent/test/cdpPolicy.test.ts` | Tested against a fake only. The agent's fork test sent from an anvil account instead |
 | Claude API | `ClaudeProposer` in `agent/src/llm/proposer.ts` | `agent/test/proposer.test.ts` | Tested against a fake only. The agent's fork test used a scripted proposer instead |
-| [Builder Codes](/docs/help/glossary#builder-code-erc-8021) | `GuardedSender` in `agent/src/exec/sender.ts` adds the suffix from `agent/src/exec/builderCode.ts` to every transaction | `agent/test/builderCode.test.ts`, and the agent's fork test, which checks the suffix on every transaction it sent | Test vector; no code registered. The fork test used the code `bc_maattest` |
+| [Builder Codes](/docs/help/glossary#builder-code-erc-8021) | `GuardedSender` in `agent/src/exec/sender.ts` adds the suffix from `agent/src/exec/builderCode.ts` to every transaction | `agent/test/builderCode.test.ts`, and the agent's fork test, which checks the suffix on every transaction it sent | Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries Maat's code. The fork test used the code `bc_maattest` |
 
 ## Check an address yourself
 
@@ -104,7 +104,7 @@ cast call <FEED> "decimals()(uint8)" --rpc-url "$BASE_RPC_URL"
 cast call <STOCK> "decimals()(uint8)" --rpc-url "$BASE_RPC_URL"
 ```
 
-These calls have not been run by the Maat team, so this page shows no output. The first two should return `USDC` and the stock, in that order, as the row above the pools says. The fork test `test_readsB20StateThroughPrecompile` found 8 decimals for NVDAc at `BLOCK_SESSION`. A matching answer shows that a contract has the shape the vault expects, not that it is the right contract, so open the address on Basescan as well. The deploy script uses these constants, so run its dry run on a fork before you broadcast anything. [Deploy your own vault](/docs/guides/deploy-your-own-vault) covers that.
+These docs record no run of these calls, so this page shows no output. The first two should return `USDC` and the stock, in that order, as the row above the pools says. The fork test `test_readsB20StateThroughPrecompile` found 8 decimals for NVDAc at `BLOCK_SESSION`. A matching answer shows that a contract has the shape the vault expects, not that it is the right contract, so open the address on Basescan as well. The deploy script uses these constants, so run its dry run on a fork before you broadcast anything. [Deploy your own vault](/docs/guides/deploy-your-own-vault) covers that.
 
 ## Related
 

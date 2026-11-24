@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { AgentEnvVar, Deployment } from "./docs-data";
 import type { Mutability, SolFunction } from "./sol-surface";
 
@@ -74,6 +75,12 @@ export const FULL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 
 /** A full transaction hash, as Basescan links it: 0x and 64 hex digits. docs-gen accepts only this, or nothing, as a Tx. */
 export const FULL_HASH = /^0x[0-9a-fA-F]{64}$/;
+
+/**
+ * A calendar day as ISO 8601 writes it: YYYY-MM-DD, a day that exists, so 2026-02-30 and 2026-13-45 fail. It is the
+ * check lib/docs/frontmatter.ts gives lastReviewed. docs-gen accepts only this, or nothing, as a Date.
+ */
+export const ISO_DATE = z.iso.date();
 
 /** Whether a row of the table has an address. While none has, the deployments table is one sentence that says so. */
 export const hasAddress = (d: Deployment) => d.address !== "";

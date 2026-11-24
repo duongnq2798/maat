@@ -4,7 +4,7 @@ description: "How each guarantee is tested: contract unit and fork suites, agent
 type: concept
 audience: [evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-21
+lastReviewed: 2026-11-23
 sources:
   - contracts/test/MandateVault.t.sol
   - contracts/test/GuardLib.t.sol
@@ -42,7 +42,7 @@ sources:
 next: [guides/run-the-tests, guides/reproduce-the-fork-run]
 ---
 
-This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. Nothing is deployed, and no test here touches mainnet.
+This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. The owner deployed the four Maat contracts on Base mainnet, but no test here touches mainnet.
 
 ## Layers
 
@@ -248,14 +248,14 @@ The website and these docs carry numbers, signatures and code that come from the
 | **Docs facts** | A number only the docs cite (the grace period, the gas cap, the agent's defaults) that differs from the file it names | [`docs-facts.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-facts.test.ts) |
 | **Generated data** | The committed data (functions, events, errors, types, addresses, the agent's settings and scripts, the published ABIs, the deployment table parsed from `deployments/README.md` and the line each contract and agent test starts on) differs from what the sources now parse to. The test says to run `npm run docs:gen` | [`docs-gen.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-gen.test.ts) |
 | **Coverage** | A public function, event, error, enum, struct, agent setting or script with no reference entry, or a Solidity file count or submodule commit under [Scope for a reviewer](#scope-for-a-reviewer) that differs from what git records | [`docs-coverage.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-coverage.test.ts) |
-| **Content** | A page whose frontmatter, links, anchors, repository paths or typed numbers are wrong, whose code excerpt differs from the lines of the file it names, or that cites a test that does not exist. It also fails when an agent message quoted on [Agent scripts](/docs/reference/agent-scripts) is no longer in the agent's code word for word, when the [repository map](/docs/reference/repository-map) names a path the repository does not track, and, once `deployments/README.md` records a Base mainnet address, while a page or the note of the ABI JSON files still says Maat has no deployment in one of the phrases the test looks for | [`docs-content.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-content.test.ts) |
+| **Content** | A page whose frontmatter, links, anchors, repository paths or typed numbers are wrong, whose code excerpt differs from the lines of the file it names, or that cites a test that does not exist. It also fails when an agent message quoted on [Agent scripts](/docs/reference/agent-scripts) is no longer in the agent's code word for word, when the [repository map](/docs/reference/repository-map) names a path the repository does not track, and, since `deployments/README.md` records the Base mainnet addresses of the four Maat contracts, when a page or the note of the ABI JSON files says Maat has no deployment in one of the phrases the test looks for | [`docs-content.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-content.test.ts) |
 | **Structure** | A written page that is not in the information architecture, or a section list out of order | [`docs-ia.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-ia.test.ts) |
 | **Markdown copy** | A reference entry, table or diagram whose Markdown text differs from what the component renders on the page | [`component-text-parity.test.tsx`](https://github.com/duongnq2798/maat/blob/main/web/test/component-text-parity.test.tsx) |
 
 The built site is checked too. `npm run check:out` reads the static export and fails when:
 
 - a required file is missing, or a docs page has no Markdown copy;
-- a page loads a third-party script, or the landing page, `/now` or a docs page loads Google Fonts at runtime;
+- a page loads a third-party script, or the landing page, `/now`, `/gap-index` or a docs page loads Google Fonts at runtime;
 - a docs page lacks `lang="en"`, the docs title suffix, a description of the right length, a canonical link or an absolute OG image;
 - a docs page's `og:image` or `twitter:image` is not the page's own link preview image, or that image is missing or is not a PNG of the size its tags give;
 - a page links a same-page anchor (`#id`) that is not on it, or a docs page links a docs page that was not exported or another file that is not in the export (anchors on other pages are checked by `docs-content.test.ts`);
@@ -268,7 +268,7 @@ The built site is checked too. `npm run check:out` reads the static export and f
 - with `CI` or `VERCEL` set, the site URL's host is `localhost`, `127.0.0.1` or `[::1]`, or an exported file holds an http URL on `localhost` that no docs page writes in its own text;
 - the Right now on Base page, `/now`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/now` or an absolute OG image, or `sitemap.xml` leaves it out;
 - the landing page's live strip or `/now`, which read Base mainnet in the browser, has a reading in the exported HTML (a LIVE pill, a Basescan block link or a verdict line) instead of its reading state;
-- the Weekend Gap Index page, `/gap-index`, lacks `lang="en"`, its title or heading or a canonical link to `/gap-index`, or `sitemap.xml` leaves it out;
+- the Weekend Gap Index page, `/gap-index`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/gap-index` or an absolute OG image, or `sitemap.xml` leaves it out;
 - `/gap-index`, which is built from the committed edition files, leaves the NVDAc hours of its first measured window out of its markup (its inline scripts do not count), or has "safe", in any case, anywhere in its HTML, even inside another word;
 - the mainnet ledger page, `/ledger`, shows its waiting state although `deployments/README.md` records a vault, or does not show it while none is recorded, lacks a canonical link to `/ledger`, or `sitemap.xml` leaves it out;
 - `/data/deployments.json` or `/data/rationales.json`, which `/ledger` reads in the browser, is missing or differs from the generated data it is written from;
@@ -286,7 +286,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | **Fuzzing beyond the mocks** | The invariant suite runs on mocks only and is the only randomized test: every other contract test, fork tests included, takes fixed inputs, and [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the suite leaves out |
 | **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
-| **Mainnet** | No Maat contract is deployed, so every test is a unit test or a fork |
+| **Mainnet** | The owner deployed the four Maat contracts on Base mainnet, but every test is still a unit test or a fork |
 | **A real split or dividend** | The assumption that the feed includes the multiplier has not been observed across one |
 | **Some failure paths** | No unit test makes the feed's `latestRoundData` or the pool's `observe` revert during `execute`, none makes a stock's `balanceOf` revert, none makes the stock's `decimals()` revert outside `twapPrice`, and none calls `withdraw` with a token that has no code. A reverting USDC `balanceOf`, a reverting pool `token0()` or stock `decimals()` inside `twapPrice`, reads that return data that does not decode and pool answers the TWAP cannot use are tested in [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol), and `execute` reverts with each |
 | **Reentrancy** | No test has an adapter, a pool or a token call back into the vault during `execute`. [Reentrancy](/docs/security/model#reentrancy) says what the vault relies on instead of a guard |

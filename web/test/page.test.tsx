@@ -82,10 +82,10 @@ describe("landing page", () => {
     const section = c.querySelector("#mandate") as HTMLElement;
     expect(section.querySelectorAll("dl > div")).toHaveLength(12);
     expect(within(section).getByText("timelock 24h")).toBeInTheDocument();
-    expect(within(section).getByText("mandateHash [after deploy]")).toBeInTheDocument();
-    // Nothing is deployed yet, so the sheet must not claim a network.
-    expect(within(section).getByText("default · not deployed yet")).toBeInTheDocument();
-    expect(section).not.toHaveTextContent("Base mainnet");
+    // The sheet is the default mandate (contracts/script/MaatConfig.sol) the owner deployed on Base mainnet, and the chip
+    // is that vault's mandateHash(), shortened.
+    expect(within(section).getByText("mandateHash 0x77a277…661b")).toBeInTheDocument();
+    expect(within(section).getByText("default · Base mainnet")).toBeInTheDocument();
     expect(within(section).getByText(/waits 24 hours/)).toBeInTheDocument();
   });
 
@@ -114,10 +114,9 @@ describe("landing page", () => {
     expect(screen.getByText(SITE.tagline)).toBeInTheDocument();
   });
 
-  it("never shows a made-up hash and keeps the mainnet placeholders", () => {
+  it("never shows a made-up hash and keeps the mainnet tx placeholder", () => {
     const text = setup().textContent ?? "";
     expect(text).not.toMatch(/0x[0-9a-fA-F]{40,}/);
-    expect(text).toContain("[after deploy]");
     expect(text).toContain("[from mainnet tx]");
   });
 

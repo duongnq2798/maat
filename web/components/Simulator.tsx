@@ -54,7 +54,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       aria-pressed={on}
       onClick={onClick}
-      className={`min-h-10 cursor-pointer rounded-full border px-3.5 py-2 text-[13px] font-medium ${
+      className={`tick-colour min-h-10 cursor-pointer rounded-full border px-3.5 py-2 text-[13px] font-medium ${
         on ? "border-ink bg-ink text-white" : "border-line-strong bg-white text-ink hover:border-ink"
       }`}
     >

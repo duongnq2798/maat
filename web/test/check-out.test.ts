@@ -147,7 +147,9 @@ const FIRST_NVDA_HOURS = (() => {
 const GAP = [
   '<!DOCTYPE html><html lang="en" class="f"><head>',
   `<title>Weekend Gap Index · ${SITE.name}</title>`,
+  '<meta name="description" content="For each closed NYSE window: how long the Chainlink feeds of the B20 stocks on Base went without an update, and the swaps meanwhile."/>',
   '<link rel="canonical" href="https://maat.example/gap-index"/>',
+  '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
   '<script src="/_next/static/chunks/main.js" async=""></script>',
   '</head><body><a href="#main" class="skip-link">Skip to content</a>',
   '<main id="main"><h1 class="m-0 text-ink">Weekend Gap Index</h1>',
@@ -169,6 +171,11 @@ describe("checkGapIndexPage", () => {
     ["a missing h1", GAP.replace('<h1 class="m-0 text-ink">Weekend Gap Index</h1>', ""), /h1/],
     ["another h1", GAP.replace(">Weekend Gap Index</h1>", ">Gap Index</h1>"), /h1/],
     ["a wrong title", GAP.replace(`Weekend Gap Index · ${SITE.name}`, SITE.title), /title/],
+    ["no meta description", GAP.replace(/<meta name="description"[^>]*>/, ""), /description is missing/],
+    ["a short meta description", GAP.replace(/content="For each closed[^"]*"/, 'content="Too short."'), /10 characters/],
+    ["a long meta description", GAP.replace(/content="For each closed[^"]*"/, `content="${"x".repeat(161)}"`), /161 characters/],
+    ["no og:image", GAP.replace(/<meta property="og:image"[^>]*>/, ""), /og:image/],
+    ["a relative og:image", GAP.replace("https://maat.example/opengraph-image.png", "/opengraph-image.png"), /og:image/],
     ["no NVDAc hours in the HTML", GAP.replace(FIRST_NVDA_HOURS, ""), /NVDAc/],
     [
       "NVDAc hours in an inline script only, as React's payload carries them",
@@ -179,6 +186,7 @@ describe("checkGapIndexPage", () => {
     ["the word safety", GAP.replace("</h1>", "</h1><p>A Safety margin.</p>"), /safe/],
     ["a link without a target", GAP.replace('href="#main"', 'href="#nowhere"'), /#nowhere/],
     ["a third-party script", GAP.replace("/_next/static/chunks/main.js", "https://cdn.example/x.js"), /third-party script/],
+    ["Google Fonts", GAP.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), /Google Fonts/],
   ])("flags %s", (_name, html, problem) => {
     expect(checkGapIndexPage(html).join("\n")).toMatch(problem);
   });

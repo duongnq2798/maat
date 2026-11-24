@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { Surface } from "@/components/instrument/types";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { type RefusalCode, reasonText } from "@/content/reasons";
 import { type Headline, headlineText, VAULT_NOT_RUN } from "@/lib/live/verdict";
@@ -10,6 +11,16 @@ export const TONE: Record<VerdictTone, string> = {
   ink: "text-ink",
   // A reading that is not live: the whole sentence in the secondary ink, the tag's label included.
   muted: "text-ink-2 [&_[data-reason-tag]>span]:text-ink-2",
+};
+
+/**
+ * The same tones inside the landing's Readout (spec 2026-11-23 section 5.2): lcd text and pass-lit links on the dark
+ * window. A live line's tags keep their two weights, the label in lcd and the code in lcd-2; a muted line is lcd-2
+ * throughout.
+ */
+export const CHASSIS_TONE: Record<VerdictTone, string> = {
+  ink: "text-lcd [&_a]:text-pass-lit [&_[data-reason-tag]>span]:text-lcd [&_[data-reason-tag]>span+span]:text-lcd-2",
+  muted: "text-lcd-2 [&_a]:text-pass-lit [&_[data-reason-tag]>span]:text-lcd-2",
 };
 
 function codes(h: Headline): RefusalCode[] {
@@ -27,18 +38,21 @@ function codes(h: Headline): RefusalCode[] {
  * The headline sentence of headlineText, word for word, with each "Label (CODE)" shown as its ReasonTag. Splitting the
  * one sentence keeps the strip, /now and the announcement in the same words. The tags are two flex boxes, so a screen
  * reader reads "Market closed MARKET_CLOSED" as part of the sentence; no aria-label is needed. When nothing is refused,
- * the closing "vault checks not run" links `methodHref`, the method that says which checks need a vault.
+ * the closing "vault checks not run" links `methodHref`, the method that says which checks need a vault. `palette`
+ * picks TONE (the faceplate, the default) or CHASSIS_TONE; data-tone says the tone on either.
  */
 export function VerdictLine({
   headline: h,
   tone = "ink",
   className,
   methodHref,
+  palette = "faceplate",
 }: {
   headline: Headline;
   tone?: VerdictTone;
   className?: string;
   methodHref?: string;
+  palette?: Surface;
 }) {
   let rest = headlineText(h);
   const parts: ReactNode[] = [];
@@ -60,8 +74,9 @@ export function VerdictLine({
     rest = rest.slice(at + VAULT_NOT_RUN.length);
   }
   parts.push(rest);
+  const tones = palette === "chassis" ? CHASSIS_TONE : TONE;
   return (
-    <span data-verdict-line={h.kind} data-tone={tone} className={className ? `${TONE[tone]} ${className}` : TONE[tone]}>
+    <span data-verdict-line={h.kind} data-tone={tone} className={className ? `${tones[tone]} ${className}` : tones[tone]}>
       {parts}
     </span>
   );

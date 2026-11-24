@@ -336,7 +336,9 @@ describe("the published ABIs", () => {
     expect(file.source).toBe(
       `${abiName} in agent/src/abi/generated.ts (https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which npm run gen:abi in agent/ generates from the compiled contracts in contracts/out.`,
     );
-    expect(file.note).toBe("ABI of contracts that are built and fork-tested, not deployed. The contracts are unaudited.");
+    expect(file.note).toBe(
+      "ABI of contracts that are built and fork-tested. The four Maat contracts are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.",
+    );
     expect(abiUrl(name)).toBe(`/data/abi/${name}.json`);
   });
 
@@ -539,7 +541,7 @@ describe("parseDeployments", () => {
     );
   });
 
-  it("fails on a row on any network but Base mainnet, and on a Tx that is neither empty nor 0x and 64 hex digits", () => {
+  it("fails on a row on any network but Base mainnet, on a Tx that is neither empty nor 0x and 64 hex digits, and on a Date that is neither empty nor a calendar day as YYYY-MM-DD", () => {
     // DEPLOYMENT_NETWORK: the deploy script and the agent are built for Base mainnet only.
     for (const network of ["Base", "Base Mainnet", "Base Sepolia"]) {
       const row = `| ${network} | MandateVault | ${VAULT} | | |`;
@@ -552,5 +554,20 @@ describe("parseDeployments", () => {
       );
     }
     expect(parseDeployments(table(`| Base mainnet | MandateVault | ${VAULT} | ${TX} | 2026-12-01 |`)).map((d) => d.tx)).toEqual([TX]);
+    // The token is built from parts, so this file holds no token for the deploy's fill to replace.
+    // The form alone is not enough: 2026-13-45, 2026-02-30 and 2026-02-29 are not days, while 2028-02-29 is.
+    for (const date of [`@@${"DEPLOY_DATE"}@@`, "Dec 1, 2026", "2026-12-1", "2026-13-45", "2026-02-30", "2026-02-29"]) {
+      const row = `| Base mainnet | MandateVault | ${VAULT} | ${TX} | ${date} |`;
+      expect(() => parseDeployments(table(row))).toThrow(
+        `deployments/README.md: the row ${row} has the date ${date}, not an empty cell or a calendar day as YYYY-MM-DD`,
+      );
+    }
+    const linked = `| Base mainnet | MandateVault | [\`${VAULT}\`](https://basescan.org/address/${VAULT}) | [\`${TX}\`](https://basescan.org/tx/${TX}) | 2026-12-01 |`;
+    const leap = `| Base mainnet | MandateVault | ${VAULT} | ${TX} | 2028-02-29 |`;
+    expect(parseDeployments(table(`| Base mainnet | MarketCalendar | ${VAULT} | ${TX} | |`, linked, leap)).map((d) => d.date)).toEqual([
+      "",
+      "2026-12-01",
+      "2028-02-29",
+    ]);
   });
 });
