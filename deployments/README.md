@@ -9,6 +9,8 @@ To deploy, fund and send the first intents on Base mainnet, follow the owner's r
 | Base mainnet | AaveV4CreditAdapter | [`0x45dEA6BBeD30c120794115FeC8b01C346564aB2C`](https://basescan.org/address/0x45dEA6BBeD30c120794115FeC8b01C346564aB2C) | [`0xe79ef5ab90c0055ba218d6c0d2f271e30a128ba23e02f915ff527fde77818957`](https://basescan.org/tx/0xe79ef5ab90c0055ba218d6c0d2f271e30a128ba23e02f915ff527fde77818957) | 2026-11-24 |
 | Base mainnet | MandateVault | [`0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b`](https://basescan.org/address/0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b) | [`0xf5a532fe5d8b2ddf7fce312f524537e614f4988b425972dd1098f3d56631c9c1`](https://basescan.org/tx/0xf5a532fe5d8b2ddf7fce312f524537e614f4988b425972dd1098f3d56631c9c1) | 2026-11-24 |
 
+On 2026-11-24, Basescan showed the source of all four contracts as verified, with an exact match, on each address's Contract tab.
+
 Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet, plus an optional second payee.
 
 ## Environment
