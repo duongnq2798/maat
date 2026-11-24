@@ -179,7 +179,7 @@ These are five ways P1 can break while every test written task by task stays gre
 
 ## Spec amendments
 
-At these points the spec's wording is wrong or says nothing, and this plan follows the amended text below. Each one is an edit to `docs/superpowers/specs/2026-11-23-maat-web-instrument-design.md` on the spec branch `docs/web-instrument-spec`. A4 to A9 are already applied to the spec, in the commit that adds this plan. A10 was applied after Task 14 measured the CTAs' bottom at 390x844 at 1013.58 px. Commit `7107123` raised the phone Readout's reserve from 388 px to a 428 px min-height, for Linux text metrics, so the CTAs now end at 1053.58 px, and A10 gives that edge. The executor does not edit the spec.
+At these points the spec's wording is wrong or says nothing, and this plan follows the amended text below. Each one is an edit to `docs/superpowers/specs/2026-11-23-maat-web-instrument-design.md` on the spec branch `docs/web-instrument-spec`. A4 to A9 are already applied to the spec, in the commit that adds this plan. A10 was applied after Task 14 measured the CTAs' bottom at 390x844 at 1013.58 px. Commit `7107123` raised the phone Readout's reserve from 388 px to a 428 px min-height, for Linux text metrics, so the CTAs now end at 1053.58 px, and A10 gives that edge. That commit also turns every reserve value into a min-height: on each measured platform and width the box stays at the reserve, and on an unmeasured one a taller frame grows the box instead of covering the lead. Task 6's unit test now asserts one min-height per breakpoint and no fixed height, in place of "never a min-height". The same commit keeps the xl reserve at 268 px, about 18 px over the tallest xl frame (249.70 px on Firefox and WebKit at 1920 px, and 250 px rounded up at 1440 px), and not the rule's 272 px, which would end the 1440x900 CTAs at 884.23 px. The executor does not edit the spec.
 
 - **A4, spec 5.1, the ThumbBar row's "Depends on" cell.**
   - Replace "`onceInView`" with "LiveSnapshotProvider, Lamp and its own IntersectionObserver".
@@ -197,7 +197,7 @@ At these points the spec's wording is wrong or says nothing, and this plan follo
 - **A9, spec 6.1, the Readout's row 2.**
   - After "from `nextOpen`, at minute resolution." add: "When the next open is later on the block's own ET day, `session.detail` already names it ("Monday · opens 09:30 ET"), so only "· in 2 h 30 min" follows. Under a minute it reads "· in under 1 min". There is no countdown in session, or when MarketCalendar's answer differs from the repo calendar's. A reading that is not live shows `session.detail` without one."
 - **A10, spec 6.2, "**CTAs:** stacked, 52 px each, ending at about y 780." Apply this one only if Task 14 records the CTAs' bottom past 844 at 390x844.**
-  - Replace it with "**CTAs:** stacked, 52 px each. At 390x844 they end at about y 1054, below the first screen, under the fixed-height Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out."
+  - Replace it with "**CTAs:** stacked, 52 px each. At 390x844 they end at about y 1054, below the first screen, under the Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out."
   - Spec 11 item 1 asks only for the H1 and the live verdict line in the first screen at 390x844, and Task 14 pins those.
 
 ---
