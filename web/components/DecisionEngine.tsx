@@ -35,7 +35,8 @@ export function DecisionEngine() {
   const [state, setState] = useState<{ moment: MomentId; run: number; from: Tilt }>({ moment: "sat", run: 0, from: "level" });
   const [dragged, setDragged] = useState(false);
   const drag = useRef<TipDrag | null>(null);
-  const pressed = useRef(false);
+  const pressed = useRef(0); // the press that is down, 0 when none is
+  const presses = useRef(0);
   const moment = MOMENTS[state.moment];
 
   // A drag never outlives the card.
@@ -60,7 +61,8 @@ export function DecisionEngine() {
     const zone = e.currentTarget;
     const svg = zone.querySelector<SVGSVGElement>("svg.balance");
     if (svg === null) return;
-    pressed.current = true;
+    const press = ++presses.current;
+    pressed.current = press;
     try {
       zone.setPointerCapture(e.pointerId);
     } catch {
@@ -69,7 +71,7 @@ export function DecisionEngine() {
     const { pointerId, clientX } = e;
     const restDeg = moment.allowed ? 0 : BALANCE.refusedDeg;
     void import("@/components/instrument/useTipDrag").then(({ beginTipDrag }) => {
-      if (!pressed.current || drag.current !== null || !zone.isConnected) return;
+      if (pressed.current !== press || drag.current !== null || !zone.isConnected) return;
       drag.current = beginTipDrag({
         svg,
         zone,
@@ -84,7 +86,7 @@ export function DecisionEngine() {
     });
   };
   const onPointerUp = () => {
-    pressed.current = false;
+    pressed.current = 0;
   };
 
   return (

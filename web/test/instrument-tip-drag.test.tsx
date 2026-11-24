@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { DecisionEngine } from "@/components/DecisionEngine";
+import { BALANCE } from "@/components/instrument/Balance";
 import { beginTipDrag, TIP_MAX_DEG, type TipTarget, tipTarget } from "@/components/instrument/useTipDrag";
 import { MOMENTS } from "@/content/engine";
 
@@ -254,6 +255,56 @@ describe("drag-to-tip in the engine card", () => {
     await settle();
     expect(ui.svg()).not.toHaveAttribute("data-dragging");
     expect(screen.queryByText(CAPTION)).toBeNull();
+  });
+
+  /** The card on a frame queue the test runs, so a drag's frames run when the test says. */
+  function framedCard() {
+    const frames = frameQueue();
+    vi.stubGlobal("requestAnimationFrame", frames.raf);
+    vi.stubGlobal("cancelAnimationFrame", frames.caf);
+    return { ...card(), frames };
+  }
+
+  /** Two presses inside one act, the first released before the drag has loaded, then the import() settles. */
+  const twoPresses = (ui: { zone: () => HTMLElement }, a: { x: number; id: number }, b: { x: number; id: number }) =>
+    act(async () => {
+      ui.zone().dispatchEvent(new FakePointerEvent("pointerdown", { clientX: a.x, pointerId: a.id }));
+      ui.zone().dispatchEvent(new FakePointerEvent("pointerup", { clientX: a.x, pointerId: a.id }));
+      ui.zone().dispatchEvent(new FakePointerEvent("pointerdown", { clientX: b.x, pointerId: b.id }));
+    });
+
+  const tiltOf = (svg: Element) => (svg as SVGSVGElement).style.getPropertyValue("--tilt");
+  // Saturday, the first moment shown, is refused: the beam rests at BALANCE.refusedDeg.
+  const REST = `${BALANCE.refusedDeg.toFixed(3)}deg`;
+
+  it("drags with the touch that is down when an earlier touch ended before the drag loaded, and then ends", async () => {
+    motion(false);
+    const ui = framedCard();
+    await twoPresses(ui, { x: 100, id: 1 }, { x: 100, id: 2 });
+    await settle();
+    const svg = ui.svg();
+    expect(svg).toHaveAttribute("data-dragging");
+    expect(tiltOf(svg)).toBe(REST);
+    send(ui.zone(), "pointermove", 160, 2);
+    ui.frames.run();
+    expect(tiltOf(svg)).not.toBe(REST);
+    send(ui.zone(), "pointerup", 160, 2);
+    ui.frames.run();
+    expect(svg).not.toHaveAttribute("data-dragging");
+    expect(tiltOf(svg)).toBe("");
+    expect(ui.frames.pending()).toBe(0);
+  });
+
+  it("pulls from where the mouse press that is down began, not from an earlier press", async () => {
+    motion(false);
+    const ui = framedCard();
+    await twoPresses(ui, { x: 40, id: 1 }, { x: 100, id: 1 });
+    await settle();
+    const svg = ui.svg();
+    expect(svg).toHaveAttribute("data-dragging");
+    send(ui.zone(), "pointermove", 100);
+    ui.frames.run();
+    expect(tiltOf(svg)).toBe(REST);
   });
 
   it("imports the integrator lazily, and turns the beam's transitions off while dragging", () => {
