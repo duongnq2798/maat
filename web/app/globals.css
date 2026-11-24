@@ -531,6 +531,23 @@
   }
 }
 
+/* Bezel keys (components/instrument/HoldKey.tsx, KEY_CLASS): 24 px keys with a 44 px target, a 1 px press over 60 ms,
+   and their colour on the 120 ms tick. */
+@layer components {
+  .readout-key {
+    position: relative;
+    transition: translate 60ms var(--ease-instrument), color var(--t-tick) var(--ease-instrument), border-color var(--t-tick) var(--ease-instrument);
+  }
+  .readout-key::before {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+  .readout-key:active {
+    translate: 0 1px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
