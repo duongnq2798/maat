@@ -503,6 +503,33 @@
   }
 }
 
+/* Tape (components/instrument/Tape.tsx): printed rows. Only a row that lands while the page is open prints in. */
+@layer components {
+  .tape {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .tape-row {
+    border-left: 2px solid var(--color-lamp-pass);
+    padding-left: 10px;
+  }
+  .tape-row[data-verdict="refused"] {
+    border-left-color: var(--color-lamp-refuse);
+  }
+  .tape-row[data-fresh] {
+    animation: print 260ms var(--ease-instrument) both;
+  }
+}
+@keyframes print {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
