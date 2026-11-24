@@ -123,7 +123,7 @@ export function DecisionEngine() {
               <span className={`text-sm font-medium ${c.mark === "SKIP" ? "text-ink-2" : ""}`}>{c.label}</span>
               <span className="font-mono text-xs text-ink-2">{c.detail}</span>
             </span>
-            <span className={`rounded-md py-1 text-center font-mono text-[11px] font-semibold ${MARK_STYLE[c.mark]}`}>
+            <span className={`rounded-md py-0.5 text-center font-mono text-[11px] leading-4 font-semibold ${MARK_STYLE[c.mark]}`}>
               {c.mark}
             </span>
           </li>
