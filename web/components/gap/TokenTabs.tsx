@@ -69,7 +69,7 @@ export function TokenTabs({ windowId, label, tabs, panels }: Props) {
                 aria-controls={panelId(t.id)}
                 tabIndex={on ? 0 : -1}
                 onClick={() => select(i)}
-                className={`${pill(on)} cursor-pointer transition-colors ${on ? "" : "hover:border-ink"}`}
+                className={`${pill(on)} cursor-pointer tick-colour ${on ? "" : "hover:border-ink"}`}
               >
                 {t.label}
               </button>
