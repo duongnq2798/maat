@@ -585,6 +585,83 @@
   }
 }
 
+/* The engine card's weighing intro (components/DecisionEngine.tsx). It replays on every choice, because the weighing
+   node is keyed by run, and starts where the visitor's last moment left the beam (data-tilt-from). The ticks light on
+   the rows' schedule (120 + 160·i ms) and the beam swings from 620 ms on the needle spring, so the weighing ends by
+   1.52 s and the card's whole intro, with the verdict stamp, by 2.15 s: inside section 8.1's 2.2 s. The base style is
+   the final frame, so the static HTML and reduced motion show the truth. */
+@layer components {
+  .weighing {
+    --tilt-from: 0deg;
+  }
+  .weighing[data-tilt-from="refused"] {
+    --tilt-from: -6deg;
+  }
+  .weighing .balance-beam {
+    animation: beam-tip var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-pan[data-pan="feather"] {
+    animation: pan-feather var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-pan[data-pan="order"] {
+    animation: pan-order var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-tick {
+    animation: tick-lit var(--t-tick) var(--ease-instrument) both;
+  }
+  .weighing .balance-tick:nth-child(2) {
+    animation-delay: 120ms;
+  }
+  .weighing .balance-tick:nth-child(3) {
+    animation-delay: 280ms;
+  }
+  .weighing .balance-tick:nth-child(4) {
+    animation-delay: 440ms;
+  }
+  .weighing .balance-tick:nth-child(5) {
+    animation-delay: 600ms;
+  }
+  .weighing .balance-tick:nth-child(6) {
+    animation-delay: 760ms;
+  }
+  .weighing .balance-tick:nth-child(7) {
+    animation-delay: 920ms;
+  }
+  .weighing .balance-tick:nth-child(8) {
+    animation-delay: 1080ms;
+  }
+  .weighing .balance-tick:nth-child(9) {
+    animation-delay: 1240ms;
+  }
+  .weighing .balance-tick:nth-child(10) {
+    animation-delay: 1400ms;
+  }
+  .balance-label::before {
+    content: attr(data-label);
+    white-space: nowrap;
+  }
+}
+@keyframes beam-tip {
+  from {
+    rotate: var(--tilt-from);
+  }
+}
+@keyframes pan-feather {
+  from {
+    translate: calc(8px * (1 - cos(var(--tilt-from)))) calc(-8px * sin(var(--tilt-from)));
+  }
+}
+@keyframes pan-order {
+  from {
+    translate: calc(-8px * (1 - cos(var(--tilt-from)))) calc(8px * sin(var(--tilt-from)));
+  }
+}
+@keyframes tick-lit {
+  from {
+    stroke: var(--color-tick);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
