@@ -83,7 +83,7 @@ Every other section 5.1 unit is built in Tasks 1-13.
   - `web/content/calendar.ts`;
   - `.github/workflows/ci.yml`.
 
-  `web/playwright.config.ts` is the one exception: its line 10, `projects: [...]`, is replaced by six lines in Task 14.
+  `web/playwright.config.ts` is the one exception: its line 10, `projects: [...]`, is replaced by seven lines in Task 14.
 
   Edit no existing test. Every new assertion goes in a new file. `web/test/setup.ts` is not changed.
 - **No new dependency of any kind.** `npm ci` is the only install, plus the WebKit and Firefox browser download in Task 14. There is no animation library, no CDN and no third-party script.
@@ -2801,9 +2801,9 @@ describe("meterPercent and meterText (components/instrument/Meter.tsx)", () => {
     }
   });
 
-  it("writes the reading, rounded, over the limit, in the limit wording", () => {
+  it("writes the reading, floored, over the limit, in the limit wording", () => {
     expect(meterText(53, m.maxPremiumBps, "bps")).toBe("53 bps / 100 bps");
-    expect(meterText(52.6, m.maxPremiumBps, "bps")).toBe("53 bps / 100 bps");
+    expect(meterText(52.6, m.maxPremiumBps, "bps")).toBe("52 bps / 100 bps");
     expect(meterText(14, m.maxStalenessSec, "s")).toBe("14 s / 90,000 s (25 h)");
   });
 
@@ -2913,9 +2913,17 @@ export function meterPercent(value: number, limit: number): number {
   return Math.min(100, (value / limit) * 100);
 }
 
-/** What a meter writes beside its bar: the reading rounded to a whole unit, then the limit, in the limit wording. */
+/**
+ * The whole-unit reading a meter writes and judges: the value floored, the way the contract reads it. PriceLib.premiumBps
+ * is integer division and a feed's age is whole seconds, so 100.6 bps passes a 100 bps limit and 90,000.9 s a 90,000 s one.
+ */
+export function meterReading(value: number): number {
+  return Math.floor(value);
+}
+
+/** What a meter writes beside its bar: the reading floored to a whole unit, then the limit, in the limit wording. */
 export function meterText(value: number, limit: number, unit: LimitUnit): string {
-  return `${formatLimit(Math.round(value), unit)} / ${formatLimit(limit, unit)}`;
+  return `${formatLimit(meterReading(value), unit)} / ${formatLimit(limit, unit)}`;
 }
 
 export interface MeterProps {
@@ -2936,9 +2944,10 @@ export interface MeterProps {
 export function Meter({ value, limit, unit, on = "faceplate", className }: MeterProps) {
   const percent = meterPercent(value, limit);
   const text = meterText(value, limit, unit);
+  const reading = meterReading(value);
   const classes = ["meter inline-flex flex-col gap-1", className].filter(Boolean).join(" ");
   return (
-    <span data-meter="" data-on={on} data-over={value > limit ? "" : undefined} className={classes}>
+    <span data-meter="" data-on={on} data-over={reading > limit ? "" : undefined} className={classes}>
       <span aria-hidden="true" className="meter-track">
         <span className="meter-fill" style={{ width: `${percent}%` }} />
       </span>
@@ -4041,14 +4050,14 @@ SCRATCH='<your scratchpad path>' && git -C E:/APP2028/stocks-maxxing-hackathon/.
 
 **Files:**
 - Modify:
-  - `web/playwright.config.ts`, where line 10, `projects: [...]`, becomes six lines;
+  - `web/playwright.config.ts`, where line 10, `projects: [...]`, becomes seven lines;
   - `.github/workflows/ci.yml`, adding two lines after line 146, the `browsers` step's `run:` line.
 - Test: `web/test/instrument-browsers.test.ts`, plus the real smoke run on both engines.
 
 **Interfaces:**
 - Consumes: `web/e2e/smoke.spec.ts`, unchanged and never edited, and `readRepo` from `web/test/helpers/solidity.ts`.
 - Produces:
-  - Playwright projects `chromium` (every spec), `webkit` (`devices["Desktop Safari"]`, `testMatch: /smoke\.spec\.ts$/`) and `firefox` (`devices["Desktop Firefox"]`, the same `testMatch`);
+  - Playwright projects `chromium` (every spec), `webkit` (`devices["Desktop Safari"]` at `deviceScaleFactor: 1`, `testMatch: /smoke\.spec\.ts$/`) and `firefox` (`devices["Desktop Firefox"]`, the same `testMatch`);
   - CI step `- id: cross_browsers` with `run: npx --no-install playwright install --with-deps webkit firefox`.
 
 - [ ] **Step 1: Write the failing test**
@@ -4069,7 +4078,7 @@ describe("cross-browser smoke (spec 2026-11-23 section 11, item 13)", () => {
     const projects = /\n  projects: \[\n([\s\S]*?)\n  \],\n/.exec(config)?.[1];
     expect(projects?.split("\n").map((line) => line.trim())).toEqual([
       '{ name: "chromium", use: { ...devices["Desktop Chrome"] } },',
-      '{ name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /smoke\\.spec\\.ts$/ },',
+      '{ name: "webkit", use: { ...devices["Desktop Safari"], deviceScaleFactor: 1 }, testMatch: /smoke\\.spec\\.ts$/ },',
       '{ name: "firefox", use: { ...devices["Desktop Firefox"] }, testMatch: /smoke\\.spec\\.ts$/ },',
     ]);
   });
@@ -4124,9 +4133,10 @@ Set new_string to:
 
 ```ts
   // Every spec runs on Chromium. WebKit and Firefox run smoke.spec.ts only (spec 2026-11-23 section 11, item 13).
+  // WebKit caps a screenshot at 32,767 device px; the 360 px landing is over half that until the redesign shortens it.
   projects: [
     { name: "chromium", use: { ...devices["Desktop Chrome"] } },
-    { name: "webkit", use: { ...devices["Desktop Safari"] }, testMatch: /smoke\.spec\.ts$/ },
+    { name: "webkit", use: { ...devices["Desktop Safari"], deviceScaleFactor: 1 }, testMatch: /smoke\.spec\.ts$/ },
     { name: "firefox", use: { ...devices["Desktop Firefox"] }, testMatch: /smoke\.spec\.ts$/ },
   ],
 ```
@@ -4464,14 +4474,19 @@ git -C E:/APP2028/stocks-maxxing-hackathon/.claude/worktrees/instrument-primitiv
 ```
 
 Expected:
-- The name-status lists exactly 41 paths:
+- The name-status lists exactly 42 paths:
   - `M` for `.github/workflows/ci.yml`, `web/app/globals.css`, `web/content/calendar.ts`, `web/content/format.ts` and `web/playwright.config.ts`;
   - `A` for the 5 `web/lib/motion/*.ts` files and `web/scripts/springs.ts`;
   - `A` for the 12 `web/components/instrument/*` files;
-  - `A` for the 17 new `web/test/*` files and `web/e2e/weight.spec.ts`.
-- The numstat shows `0` removed lines for all three files: `245	0` for `globals.css`, `20	0` for `calendar.ts` and `18	0` for `format.ts`.
-- The log shows 15 commits.
+  - `A` for the 18 new `web/test/*` files and `web/e2e/weight.spec.ts`.
+- The numstat shows `0` removed lines for all three files: `246	0` for `globals.css`, `20	0` for `calendar.ts` and `18	0` for `format.ts`.
+- The log shows 19 commits.
 - The status is empty.
+
+The build added four commits beyond the tasks above, which is why the counts are 42 paths, 246 lines and 19 commits rather than 41, 245 and 15:
+- `d02346c` reworded a `springs.test.ts` title that printed `undefined`;
+- `4457e42` added `@source not inline("ring transform");` to `globals.css`, because prose in the part files and an SVG `transform` attribute produced unused `.ring` and `.transform` rules. From here on, no markup uses the bare `ring` or `transform` class; a sized form such as `ring-2` is unaffected;
+- `2a7d37c` and `746974f` made a Meter compare and write its reading floored to a whole unit, as the contract does, and added `web/test/instrument-meter-over.test.tsx`.
 
 Then use the Grep tool with pattern `components/instrument|lib/motion` over `web/app`, `web/components` and `web/content`, with glob `*.{ts,tsx}`. Expected: matches only inside `web/components/instrument/`, and the comments of `web/app/globals.css` are not scanned. No page, section or existing component imports a part.
 
@@ -4582,7 +4597,7 @@ Expected:
 - `npm run verify` exits 0.
 - `netstat` prints nothing.
 - The e2e run passes every spec on Chromium, `weight.spec.ts` and PR #15's `ledger.spec.ts` included, and smoke on WebKit and Firefox.
-- The numstat prints `245	1	web/app/globals.css`. The brace line is the one removed line, and its new form is one of the 245 added lines.
+- The numstat prints `246	1	web/app/globals.css`. The brace line is the one removed line, and its new form is one of the 246 added lines (245 planned, plus the `@source not inline("ring transform");` line of `4457e42`).
 
 If a test fails, stop and report it with the failing titles. This covers a weight budget that PR #15's code pushes over the limit. Do not raise a budget and do not change what is counted.
 
