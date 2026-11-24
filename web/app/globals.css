@@ -118,10 +118,11 @@
   }
   .h2 {
     margin: 0;
-    font-size: clamp(40px, 4.6vw, 64px);
+    font-size: clamp(32px, 3.6vw, 52px);
     line-height: 1.02;
-    letter-spacing: -0.04em;
+    letter-spacing: -0.045em;
     font-weight: 600;
+    text-wrap: balance;
   }
   .lead {
     margin: 0;
@@ -528,6 +529,177 @@
   }
   to {
     clip-path: inset(0);
+  }
+}
+
+/* Bezel keys (components/instrument/HoldKey.tsx, KEY_CLASS): 24 px keys with a 44 px target, a 1 px press over 60 ms,
+   and their colour on the 120 ms tick. */
+@layer components {
+  .readout-key {
+    position: relative;
+    transition: translate 60ms var(--ease-instrument), color var(--t-tick) var(--ease-instrument), border-color var(--t-tick) var(--ease-instrument);
+  }
+  .readout-key::before {
+    content: "";
+    position: absolute;
+    inset: -10px -4px;
+  }
+  .readout-key:active {
+    translate: 0 1px;
+  }
+}
+
+/* The live strip's Readout (components/live/LiveStrip.tsx). The block number at readout size, its weight settling from
+   300 to 560 when a reading lands; the scan line, hidden at rest (useScan shows it for one 400 ms pass); the LIVE
+   pill's lamp; and focus rings in pass-lit on the dark window. */
+@layer components {
+  .readout-figure {
+    font-size: clamp(26px, 2.6vw, 38px);
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-weight: 560;
+  }
+  .readout-digits {
+    animation: wght-settle var(--t-flip) var(--ease-instrument) both;
+  }
+  .readout-scan {
+    position: absolute;
+    top: 0;
+    left: 14px;
+    right: 14px;
+    height: 1px;
+    background: var(--color-pass-lit);
+    visibility: hidden;
+    pointer-events: none;
+  }
+  .readout-lit {
+    --lamp: var(--color-lamp-pass);
+    animation: lamp-on var(--t-flip) var(--ease-instrument);
+  }
+  [data-readout] :focus-visible {
+    outline-color: var(--color-pass-lit);
+  }
+}
+@keyframes wght-settle {
+  from {
+    font-weight: 300;
+  }
+}
+
+/* The engine card's weighing intro (components/DecisionEngine.tsx). It replays on every choice, because the weighing
+   node is keyed by run, and starts where the visitor's last moment left the beam (data-tilt-from). The ticks light on
+   the rows' schedule (120 + 160·i ms) and the beam swings from 620 ms on the needle spring, so the weighing ends by
+   1.52 s and the card's whole intro, with the verdict stamp, by 2.15 s: inside section 8.1's 2.2 s. The base style is
+   the final frame, so the static HTML and reduced motion show the truth. */
+@layer components {
+  .weighing {
+    --tilt-from: 0deg;
+  }
+  .weighing[data-tilt-from="refused"] {
+    --tilt-from: -6deg;
+  }
+  .weighing .balance-beam {
+    animation: beam-tip var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-pan[data-pan="feather"] {
+    animation: pan-feather var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-pan[data-pan="order"] {
+    animation: pan-order var(--t-weigh) var(--ease-needle) 620ms both;
+  }
+  .weighing .balance-tick {
+    animation: tick-lit var(--t-tick) var(--ease-instrument) both;
+  }
+  .weighing .balance-tick:nth-child(2) {
+    animation-delay: 120ms;
+  }
+  .weighing .balance-tick:nth-child(3) {
+    animation-delay: 280ms;
+  }
+  .weighing .balance-tick:nth-child(4) {
+    animation-delay: 440ms;
+  }
+  .weighing .balance-tick:nth-child(5) {
+    animation-delay: 600ms;
+  }
+  .weighing .balance-tick:nth-child(6) {
+    animation-delay: 760ms;
+  }
+  .weighing .balance-tick:nth-child(7) {
+    animation-delay: 920ms;
+  }
+  .weighing .balance-tick:nth-child(8) {
+    animation-delay: 1080ms;
+  }
+  .weighing .balance-tick:nth-child(9) {
+    animation-delay: 1240ms;
+  }
+  .weighing .balance-tick:nth-child(10) {
+    animation-delay: 1400ms;
+  }
+  .balance-label::before {
+    content: attr(data-label);
+    white-space: nowrap;
+  }
+}
+@keyframes beam-tip {
+  from {
+    rotate: var(--tilt-from);
+  }
+}
+@keyframes pan-feather {
+  from {
+    translate: calc(8px * (1 - cos(var(--tilt-from)))) calc(-8px * sin(var(--tilt-from)));
+  }
+}
+@keyframes pan-order {
+  from {
+    translate: calc(-8px * (1 - cos(var(--tilt-from)))) calc(8px * sin(var(--tilt-from)));
+  }
+}
+@keyframes tick-lit {
+  from {
+    stroke: var(--color-tick);
+  }
+}
+
+/* The 120 ms colour tick (spec 2026-11-23 section 8.3): nav links, the pills, the simulator's chips and the
+   /gap-index token pills change colour over --t-tick instead of snapping. */
+@layer components {
+  .tick-colour,
+  .navlink,
+  .pill-dark,
+  .pill-line {
+    transition-property: color, background-color, border-color;
+    transition-duration: var(--t-tick);
+    transition-timing-function: var(--ease-instrument);
+  }
+}
+
+/* The ThumbBar (components/instrument/ThumbBar.tsx): it slides up over --t-flip when both hero CTAs have scrolled out,
+   and back down while #try or the footer is in view. The reduce block turns the transition off, so under reduced
+   motion it appears without sliding. */
+@layer components {
+  [data-thumb-bar] {
+    transition: translate var(--t-flip) var(--ease-instrument), visibility var(--t-flip);
+  }
+  [data-thumb-bar="hidden"] {
+    translate: 0 100%;
+    visibility: hidden;
+  }
+  @starting-style {
+    [data-thumb-bar="shown"] {
+      translate: 0 100%;
+    }
+  }
+}
+
+/* Drag-to-tip (components/instrument/useTipDrag.ts): while a drag writes --tilt every frame, the beam and the pans
+   follow it directly instead of easing toward each new value. */
+@layer components {
+  .balance[data-dragging] .balance-beam,
+  .balance[data-dragging] .balance-pan {
+    transition: none;
   }
 }
 

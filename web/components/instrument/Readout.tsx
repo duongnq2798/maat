@@ -2,9 +2,10 @@ import type { ComponentProps, ReactNode } from "react";
 
 export interface ReadoutProps extends Omit<ComponentProps<"div">, "className"> {
   /**
-   * The fixed height per breakpoint, as Tailwind classes written out where the Readout is used, for example
-   * "h-[132px] md:h-[112px]": sized for the tallest state at that breakpoint's narrowest width, so nothing under the
-   * window moves when a reading lands (spec 2026-11-23 sections 3.5 and 5.1).
+   * The height per breakpoint, as Tailwind classes written out where the Readout is used, for example
+   * "min-h-[132px] md:min-h-[112px]": sized for the tallest state at that breakpoint's narrowest width, so nothing
+   * under the window moves when a reading lands (spec 2026-11-23 sections 3.5 and 5.1). A min-height keeps that height
+   * while every state fits, and grows the window rather than let a taller state run over what is under it.
    */
   reserve: string;
   className?: string;
