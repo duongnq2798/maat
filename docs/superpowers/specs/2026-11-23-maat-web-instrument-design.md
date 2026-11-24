@@ -222,8 +222,8 @@ Each unit has one purpose and can be tested on its own.
 | Tape | `web/components/instrument/Tape.tsx` | printed verdict rows, with a clip-path print-in | none |
 | Fig | `web/components/instrument/Fig.tsx` | puts `data-fact` on the element that already holds a whole string; shows its sources when SOURCES is on (section 10.2) | `content/facts.ts` |
 | Live | `web/components/instrument/Live.tsx` | marks a live value with `data-live` (block, host, time) | none |
-| ThumbBar | `web/components/instrument/ThumbBar.tsx` | phone bottom bar (6.2); mounted from `app/(site)/page.tsx`, never from `Hero.tsx`; renders nothing until both hero CTAs have scrolled out | `onceInView` |
-| useTipDrag | `web/components/instrument/useTipDrag.ts` | lazy drag integrator, loaded on the first pointerdown | `spring.ts` |
+| ThumbBar | `web/components/instrument/ThumbBar.tsx` | phone bottom bar (6.2); mounted from `app/(site)/page.tsx`, never from `Hero.tsx`; renders nothing until both hero CTAs have scrolled out | LiveSnapshotProvider, Lamp and its own IntersectionObserver |
+| useTipDrag | `web/components/instrument/useTipDrag.ts` | `beginTipDrag`, the drag integrator as a plain function (it calls no hook, so it stays server-safe), loaded with `import()` on the first pointerdown | `spring.ts` |
 | Scope | `web/components/instrument/Scope.tsx` | server component: calls `content/scope.ts`; renders the trace, small multiples and window tape | `content/scope.ts` |
 | ScopeScrubber | `web/components/instrument/ScopeScrubber.tsx` | `'use client'`: range input and crosshair; gets the downsampled series and precomputed `aria-valuetext` strings as props; imports nothing from `content/gap-index`, `content/scope.ts` or `lib/gap/schema` | none |
 | NowConsole | `web/components/live/NowConsole.tsx` | channel strips for `/now` (7.1) | Lamp, Meter, LiveSnapshotProvider |
@@ -281,10 +281,10 @@ From the top:
 - **H1.** Geist 600 at `clamp(44px,5.4vw,78px)`, line-height .96, -0.055em. Three lines at 1440, with "when not to trade." in accent. It is the LCP element and never animates.
 - **Readout.** The live strip inside a chassis window: 568 px wide at 1440 (100% of the column), `#0B0D12`, radius 14, with an inset 1 px `#262B36` bezel. Its one `<p>` holds three rows:
   1. `LIVE · Base block N · HH:MM:SS UTC · HH:MM ET`. This is the LIVE pill, the block link, then `formatUtc · formatEt`, as today.
-  2. `session.detail` verbatim, for example "Saturday · NYSE closed". A countdown follows it, for example "· opens Mon 09:30 ET · in 11 h 58 min", from `nextOpen`, at minute resolution.
+  2. `session.detail` verbatim, for example "Saturday · NYSE closed". A countdown follows it, for example "· opens Mon 09:30 ET · in 11 h 58 min", from `nextOpen`, at minute resolution. When the next open is later on the block's own ET day, `session.detail` already names it ("Monday · opens 09:30 ET"), so only "· in 2 h 30 min" follows. Under a minute it reads "· in under 1 min". There is no countdown in session, or when MarketCalendar's answer differs from the repo calendar's. A reading that is not live shows `session.detail` without one.
   3. The VerdictLine sentence verbatim (`data-verdict-line` kept), then the "All 13 B20s →" link to `/now`. The three basket lamps (NVDAc, GOOGLc, AAPLc) sit on this row. Each carries PASS or REFUSE and a hairline premium meter that shows live TWAP-vs-feed bps against `FACTS.mandate.value.maxPremiumBps`, with the number written.
 
-  Read age, RPC host, HOLD and Refresh are 11 px keys on the bottom bezel, outside the `<p>`. The full detail is under SOURCES and on `/now`.
+  Read age, RPC host, HOLD and Refresh are 11 px keys on the bottom bezel, outside the `<p>`. HOLD is there in every state. Read age, RPC host and Refresh appear once a reading is shown (live, stale or behind). In the error state the line's own Retry reads again, and in the reading state a read is already in flight. The full detail is under SOURCES and on `/now`.
 - **Lead.** `SITE.description`, at 19 px, directly after the strip.
 - **CTAs.** "Verify it in 5 minutes" and "Try to make it say no", ending at about y 736, above the fold. Today they are cut at y 880-900.
 - **Spec plate.** 9 / 19 / 24h, with the pinned labels (3.1) engraved in 11 px mono, and the SOURCES key outside the label/value pairs.
@@ -312,7 +312,7 @@ From the top:
   - everything has finished by 2.2 s.
 - **First read (usually 0.5-2 s).**
   - The LIVE lamp lights in 120 ms.
-  - Block digits roll from ghost to the real value in 240 ms each, with a 30 ms stagger.
+  - The ghost segments give way to the real block number at once. Digits roll (240 ms each, 30 ms stagger) only between two real readings, as 8.1 rule 3 and `rollDigits` have it.
   - Geist Mono's weight settles from 300 to 560. The digits are mono, so nothing reflows.
   - One polite announcement goes through the existing sr-only span.
 - **Every 30 s while the page is visible**, as `useLiveSnapshot` reads today.
@@ -528,7 +528,7 @@ Docs prose about the redesign waits for the record change.
 - **Shared parts.** The same header, footer and CTA appear on every site page. Off the landing, the CTA and the ThumbBar link `/#try`, never a bare `#id`.
 - **Live chrome reads Base only on `/` and `/now`.**
   - This covers the docked mini readout, the ThumbBar lamp and the footer's "from block N".
-  - On `/gap-index` and `/ledger` these show their unlit frame with "Live on / and /now", make no RPC request, and link `/now`.
+  - On `/gap-index` and `/ledger` these show their unlit frame with "Live on / and /now", make no RPC request, and link `/now`. In P1 only the `/gap-index` Header shows it. The `/ledger` frame ships with the pages-first nav in P4, because `/ledger` renders PR #15's `Nav`, whose links its tests pin.
   - The docked readout reaches `/now` in P4, because the `/now` Header is in a record file.
 - **Calibration rail and "Sections" sheet.** These exist on the landing only, at 1280 px and up.
   - Both scroll-spy the six ids. They link `#top`, `#how`, `#reasons`, `#try` and `#mandate`.
