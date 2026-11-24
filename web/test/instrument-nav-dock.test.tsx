@@ -157,13 +157,15 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
     expect(read("components/sections/Nav.tsx")).toContain("{onLanding ? <NavDock /> : null}");
   });
 
-  it("draws the hairline on the 120 ms tick, and from lg lands anchors below the pinned bar, on pages that have it", () => {
+  it("draws the hairline on the 120 ms tick, and from lg pads the scrollport below the pinned bar, on pages that have it", () => {
     expect(css).toMatch(
       /\.nav-bar\s*\{\s*border-bottom:\s*1px solid transparent;\s*transition:\s*border-color var\(--t-tick\) var\(--ease-instrument\);\s*\}/,
     );
     expect(css).toMatch(/\.nav-bar\[data-scrolled\]\s*\{\s*border-bottom-color:\s*var\(--color-line\);\s*\}/);
     expect(css).toMatch(
-      /@layer base\s*\{\s*@media \(min-width: 64rem\)\s*\{\s*html:has\(\[data-nav-bar\]\) \[id\]\s*\{\s*scroll-margin-top:\s*96px;\s*\}\s*\}\s*\}/,
+      /@layer base\s*\{\s*@media \(min-width: 64rem\)\s*\{\s*html:has\(\[data-nav-bar\]\)\s*\{\s*scroll-padding-top:\s*82px;\s*\}\s*\}\s*\}/,
     );
+    // The padding offsets focus as well as anchors; an [id] margin offsets anchors only, so none is added on top of it.
+    expect(css).not.toMatch(/html:has\(\[data-nav-bar\]\) \[id\]/);
   });
 });

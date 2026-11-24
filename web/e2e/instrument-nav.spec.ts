@@ -70,6 +70,32 @@ for (const width of [1024, 1440]) {
   });
 }
 
+// Focus that moves back up the page lands on a control that may already be on screen, right under the pinned bar, so
+// the browser does not scroll for it unless the page pads its scrollport by the bar (WCAG 2.2 SC 2.4.11). The hero's
+// block link is such a control: put the next tab stop 140 px from the top, which leaves the block link under the bar,
+// and step back to it.
+for (const width of [1024, 1440]) {
+  test(`from lg, at ${width} px, Shift+Tab does not leave the focused control under the pinned bar`, async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await liveWeekend(page, width);
+    const blockLink = page.locator("#top [data-live-strip]").getByRole("link", { name: /^Base block / });
+    await blockLink.focus();
+    await page.keyboard.press("Tab");
+    await expect(blockLink).not.toBeFocused();
+    const placed = await page.evaluate(() => {
+      const next = document.activeElement as HTMLElement;
+      window.scrollBy({ top: next.getBoundingClientRect().top - 140, behavior: "instant" });
+      next.focus({ preventScroll: true });
+      return { inMain: document.getElementById("main")!.contains(next), top: Math.round(next.getBoundingClientRect().top) };
+    });
+    expect(placed).toEqual({ inMain: true, top: 140 });
+    await page.keyboard.press("Shift+Tab");
+    await expect(blockLink).toBeFocused();
+    const barBottom = await navBar(page).evaluate((el) => el.getBoundingClientRect().bottom);
+    await expect.poll(() => page.evaluate(() => document.activeElement!.getBoundingClientRect().bottom)).toBeGreaterThan(barBottom);
+  });
+}
+
 test("/ledger keeps the bar without a docked reading, and reads no chain", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   // Serve a deployments file that names no vault, so /ledger stays in its waiting view and reads nothing from Base,
