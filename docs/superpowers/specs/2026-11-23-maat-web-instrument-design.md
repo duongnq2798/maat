@@ -286,7 +286,7 @@ From the top:
 
   Read age, RPC host, HOLD and Refresh are 11 px keys on the bottom bezel, outside the `<p>`. HOLD is there in every state. Read age, RPC host and Refresh appear once a reading is shown (live, stale or behind). In the error state the line's own Retry reads again, and in the reading state a read is already in flight. The full detail is under SOURCES and on `/now`.
 - **Lead.** `SITE.description`, at 19 px, directly after the strip.
-- **CTAs.** "Verify it in 5 minutes" and "Try to make it say no", ending at about y 736, above the fold. Today they are cut at y 880-900.
+- **CTAs.** "Verify it in 5 minutes" and "Try to make it say no", ending at about y 880, above the fold. Before this redesign they were cut at y 880-900.
 - **Spec plate.** 9 / 19 / 24h, with the pinned labels (3.1) engraved in 11 px mono, and the SOURCES key outside the label/value pairs.
 
 **Right column, x 748-1308: the engine card, verdict first.**
@@ -334,7 +334,7 @@ From the top:
 - **H1:** 44 px, in 4 lines.
 - **Readout:** 358 px wide at 390, 343 at 375 and 328 at 360 (100% of the column). Its height is fixed, and the live verdict line is in the first screen.
 - **Lead:** 17 px.
-- **CTAs:** stacked, 52 px each, ending at about y 780.
+- **CTAs:** stacked, 52 px each. At 390x844 they end at about y 1014, below the first screen, under the fixed-height Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out.
 - **Screen 2** opens on the Balance and the verdict window, then the channels.
 - **ThumbBar.**
   - When both hero CTAs have scrolled out, a 56 px bottom bar slides up. It holds a live lamp and "Try to make it say no", which links `#try` on the landing.
