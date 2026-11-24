@@ -3,7 +3,7 @@
 // export check all run on it, so that PR cannot fail on a test that pinned the pending state.
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import Page from "@/app/(site)/gap-index/page";
+import Page, { metadata } from "@/app/(site)/gap-index/page";
 import { PUBLISHED } from "@/content/gap-index";
 import { checkGapIndexPage } from "@/lib/check-out";
 import type { EditionFile } from "@/lib/gap/schema";
@@ -31,7 +31,9 @@ describe("the committed edition with every pending window measured", () => {
   it("passes the export check", () => {
     const html = [
       `<!DOCTYPE html><html lang="en"><head><title>Weekend Gap Index · ${SITE.name}</title>`,
-      '<link rel="canonical" href="https://maat.example/gap-index"/></head><body>',
+      `<meta name="description" content="${metadata.description}"/>`,
+      '<link rel="canonical" href="https://maat.example/gap-index"/>',
+      '<meta property="og:image" content="https://maat.example/opengraph-image.png"/></head><body>',
       renderToString(<Page />),
       "</body></html>",
     ].join("");
