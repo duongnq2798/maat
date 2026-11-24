@@ -10,7 +10,7 @@ Docs center spec: `docs/superpowers/specs/2026-11-07-maat-docs-center-design.md`
 
 A new edition file is also imported in `content/gap-index/index.ts`. After a window ends, each live feed must post its first update after the open before the window can be measured, which can take up to the feed's heartbeat; until then the run names the feeds that have not and asks to run again later.
 
-`/ledger` (the mainnet ledger) reads the vault named in the deployments table from Base in the browser through `lib/chain/`, and shows a waiting state until that table has one ([Mainnet ledger](#mainnet-ledger)).
+`/ledger` (the mainnet ledger) reads the vault the deployments table records, the Base mainnet `MandateVault`, from Base in the browser through `lib/chain/`; built from a table with no vault, it shows a waiting state instead ([Mainnet ledger](#mainnet-ledger)).
 
 ## Commands (run in `web/`)
 
@@ -170,7 +170,7 @@ It checks the `out/` the last build left and does not build, so run it after `np
 
 ### Mainnet ledger
 
-`/ledger` has no server. The static HTML follows the deployments table the build read: the waiting state while the Base mainnet `MandateVault` row has no address, a connecting line once it has one. In the browser the page fetches `/data/deployments.json` (written from that table by `npm run docs:gen` and the build), and once it names a vault it reads Base directly through `lib/chain/`: a check that the address is a `MandateVault`, the treasury in one multicall at the latest block, the vault's logs from its deploy block (the table's Tx cell; without one, `SCAN_FLOOR_BLOCK` in `lib/chain/config.ts`) in chunks, newest first, and the block times and gas of new decisions. What it read is cached in `localStorage`, below a reorg margin.
+`/ledger` has no server. The static HTML follows the deployments table the build read: the waiting state while the Base mainnet `MandateVault` row has no address, a connecting line once it has one. The committed table records the vault, so the export shows the connecting line. In the browser the page fetches `/data/deployments.json` (written from that table by `npm run docs:gen` and the build), and once it names a vault it reads Base directly through `lib/chain/`: a check that the address is a `MandateVault`, the treasury in one multicall at the latest block, the vault's logs from its deploy block (the table's Tx cell; without one, `SCAN_FLOOR_BLOCK` in `lib/chain/config.ts`) in chunks, newest first, and the block times and gas of new decisions. What it read is cached in `localStorage`, below a reorg margin.
 
 - RPCs: `DEFAULT_RPCS` in `lib/chain/rpc.ts`, keyless and open to any origin. `NEXT_PUBLIC_BASE_RPC_URL`, if set at build time to an `https:` URL, is tried first; it ships to every visitor, so never put a private key or a paid key there.
 - Rationale text: `/data/rationales.json`, from `content/generated/rationales.json`. To refresh it, run `npm run rationales -- <path to the agent's journal.jsonl>` and commit the file. The page shows a text only when its hash matches the one in the `Decision` event.

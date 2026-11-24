@@ -1,7 +1,7 @@
 # Maat Web W2: Mainnet ledger & dashboard. Design Spec
 
 - **Date:** 2026-11-20
-- **Status:** approved by the owner (decisions in §2, design sections 1–2 approved in chat; the owner asked to proceed without further check-ins)
+- **Status:** approved by the owner (decisions in §2, design sections 1–2 approved in chat; the owner asked to proceed without further check-ins). Built. `deployments/README.md` now records the Base mainnet `MandateVault`, deployed on 2026-11-24, so `/ledger` builds in its mainnet state; the waiting state of §6.2 remains for a table with no vault
 - **Parent specs:** `docs/superpowers/specs/2026-11-07-maat-web-design.md` §10 (W2), `docs/superpowers/specs/2026-11-06-mandate-treasury-design.md` §3.6 (dashboard) and §5 (compliance)
 
 ---
