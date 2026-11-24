@@ -334,7 +334,7 @@ From the top:
 - **H1:** 44 px, in 4 lines.
 - **Readout:** 358 px wide at 390, 343 at 375 and 328 at 360 (100% of the column). Its height is fixed, and the live verdict line is in the first screen.
 - **Lead:** 17 px.
-- **CTAs:** stacked, 52 px each. At 390x844 they end at about y 1014, below the first screen, under the fixed-height Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out.
+- **CTAs:** stacked, 52 px each. At 390x844 they end at about y 1054, below the first screen, under the fixed-height Readout and the lead. The ThumbBar carries "Try to make it say no" once they scroll out.
 - **Screen 2** opens on the Balance and the verdict window, then the channels.
 - **ThumbBar.**
   - When both hero CTAs have scrolled out, a 56 px bottom bar slides up. It holds a live lamp and "Try to make it say no", which links `#try` on the landing.
