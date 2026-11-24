@@ -467,6 +467,42 @@
   }
 }
 
+/* Balance (components/instrument/Balance.tsx). Only the beam tilts: level is allowed, -6deg is refused. Each pan rides
+   its end of the crossbar, 8 units from the pivot, and stays upright. The base style is the final frame. */
+@layer components {
+  .balance {
+    --tilt: 0deg;
+  }
+  .balance[data-verdict="refused"] {
+    --tilt: -6deg;
+  }
+  .balance-beam {
+    transform-box: view-box;
+    transform-origin: 15px 10px;
+    rotate: var(--tilt);
+    transition: rotate var(--t-weigh) var(--ease-needle);
+  }
+  .balance-pan {
+    transition: translate var(--t-weigh) var(--ease-needle);
+  }
+  .balance-pan[data-pan="feather"] {
+    translate: calc(8px * (1 - cos(var(--tilt)))) calc(-8px * sin(var(--tilt)));
+  }
+  .balance-pan[data-pan="order"] {
+    translate: calc(-8px * (1 - cos(var(--tilt)))) calc(8px * sin(var(--tilt)));
+  }
+  .balance-tick {
+    stroke: var(--color-tick);
+    stroke-linecap: butt;
+  }
+  .balance-tick[data-tick="PASS"] {
+    stroke: var(--color-lamp-pass);
+  }
+  .balance-tick[data-tick="FAIL"] {
+    stroke: var(--color-lamp-refuse);
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
