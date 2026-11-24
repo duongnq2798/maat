@@ -256,6 +256,36 @@ describe("/ledger reading mainnet", () => {
     expect(within(mandate).getByText("Mandate change")).toBeInTheDocument();
   });
 
+  it("says who sent the intents only as far as the chain shows it", () => {
+    // The vault records the executor's address, not who runs it, and the owner can be the executor (as at the deploy).
+    const { container, unmount } = render(<LedgerApp initial="loading" />);
+    expect(screen.getByText(/Every intent sent to the vault/)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/the agent sends|Executor \(the agent\)/);
+    const who = screen.getByRole("heading", { name: "Who and what" }).parentElement!;
+    expect(within(who).getByText("Executor")).toBeInTheDocument();
+    expect(who).not.toHaveTextContent("same address as the owner");
+    unmount();
+
+    hook.state = { ...mainnet(), snapshot: { ...snapshot, treasury: { ...treasury, executor: treasury.owner } } } as LedgerState;
+    render(<LedgerApp initial="loading" />);
+    const same = screen.getByRole("heading", { name: "Who and what" }).parentElement!;
+    expect(within(same).getByText("Executor · same address as the owner")).toBeInTheDocument();
+  });
+
+  it("does not name the agent's journal as the missing source of a rationale", () => {
+    render(<LedgerApp initial="loading" />);
+    const badge = screen.getByText("Rationale not exported yet");
+    expect(badge.getAttribute("title")).not.toMatch(/agent/);
+    expect(badge.getAttribute("title")).toMatch(/hash onchain still commits to its text/);
+  });
+
+  it("says the health factor is unavailable, not waiting for the deploy, when the treasury read failed", () => {
+    hook.state = { ...mainnet(), snapshot: { ...snapshot, treasury: null, treasuryError: "multicall failed" } } as LedgerState;
+    render(<LedgerApp initial="loading" />);
+    expect(screen.queryByText(/once the vault is deployed/)).toBeNull();
+    expect(screen.getByText("Health factor unavailable: the vault's balances could not be read.")).toBeInTheDocument();
+  });
+
   it("draws the health factor from the credit adapter", () => {
     render(<LedgerApp initial="loading" />);
     expect(screen.getByRole("img", { name: /Health factor 2.40/ })).toBeInTheDocument();

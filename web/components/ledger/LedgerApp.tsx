@@ -20,8 +20,10 @@ const WAD = 1e18;
 /** Aave reports type(uint256).max as the health factor of a position with no debt. */
 const NO_DEBT = 10n ** 30n;
 
-function healthFactor(t: Treasury | null): { hf: number | null; emptyText: string } {
-  if (!t) return { hf: null, emptyText: "Shown once the vault is deployed and borrows." };
+function healthFactor(snapshot: LedgerSnapshot | null): { hf: number | null; emptyText: string } {
+  if (!snapshot) return { hf: null, emptyText: "Shown once the vault is deployed and borrows." };
+  const t: Treasury | null = snapshot.treasury;
+  if (!t) return { hf: null, emptyText: "Health factor unavailable: the vault's balances could not be read." };
   if (!t.credit) return { hf: null, emptyText: "No credit adapter is set, so the vault does not borrow." };
   const r = t.credit.healthFactor;
   if (!r.ok) return { hf: null, emptyText: "Health factor unavailable: the read failed." };
@@ -32,7 +34,7 @@ function healthFactor(t: Treasury | null): { hf: number | null; emptyText: strin
 function Charts({ snapshot, reason, onReason }: { snapshot: LedgerSnapshot | null; reason: RefusalCode | null; onReason: (c: RefusalCode | null) => void }) {
   const t = snapshot?.treasury ?? null;
   const m = FACTS.mandate.value;
-  const { hf, emptyText } = healthFactor(t);
+  const { hf, emptyText } = healthFactor(snapshot);
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <DecisionsPerDayChart days={snapshot?.summary.perDay ?? []} />
@@ -76,7 +78,7 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
         <span className="eyebrow">Base mainnet</span>
         <h1 className="h2">Mainnet ledger</h1>
         <p className="lead">
-          Every intent the agent sends, every answer the vault gives and what it holds, read from Base by your browser.
+          Every intent sent to the vault, every answer it gives and what it holds, read from Base by your browser.
           Refusals included.
         </p>
       </header>

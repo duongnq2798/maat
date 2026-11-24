@@ -28,7 +28,7 @@ const BADGE: Record<RationaleCheck, { text: string; className: string; title: st
   missing: {
     text: "Rationale not exported yet",
     className: "bg-surface-soft text-ink-2",
-    title: "The agent's journal has not been exported for this intent; the hash onchain still commits to its text.",
+    title: "No text has been exported for this intent yet; the hash onchain still commits to its text.",
   },
 };
 

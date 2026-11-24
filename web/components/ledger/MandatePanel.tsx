@@ -106,7 +106,11 @@ export function MandatePanel({ treasury, pending }: { treasury: Treasury | null;
             <h3 className="text-sm font-semibold text-ink">Who and what</h3>
             <div className="mt-2 divide-y divide-line-soft">
               <AddressLink label="Owner" address={treasury.owner} />
-              <AddressLink label="Executor (the agent)" address={treasury.executor} />
+              {/* The chain names the executor's address, not who runs it; the owner can hold the role, as at the deploy. */}
+              <AddressLink
+                label={treasury.executor.toLowerCase() === treasury.owner.toLowerCase() ? "Executor · same address as the owner" : "Executor"}
+                address={treasury.executor}
+              />
               <AddressLink label="Market calendar" address={treasury.mandate.calendar} />
               <AddressLink label="Swap adapter" address={treasury.mandate.swapAdapter} />
               <AddressLink label="Credit adapter" address={treasury.mandate.creditAdapter} />
