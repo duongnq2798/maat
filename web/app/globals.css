@@ -703,6 +703,26 @@
   }
 }
 
+/* The nav bar (components/live/NavDock.tsx, NavBar): white, pinned from lg, with a hairline once the page has
+   scrolled, on the 120 ms tick. From lg, on a page that has the bar, every anchor lands below it. /now and /gap-index
+   load this file but have no bar, so their anchors keep the base 16 px. */
+@layer components {
+  .nav-bar {
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--t-tick) var(--ease-instrument);
+  }
+  .nav-bar[data-scrolled] {
+    border-bottom-color: var(--color-line);
+  }
+}
+@layer base {
+  @media (min-width: 64rem) {
+    html:has([data-nav-bar]) [id] {
+      scroll-margin-top: 96px;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
