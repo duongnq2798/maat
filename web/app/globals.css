@@ -359,6 +359,86 @@
   }
 }
 
+/* Lamp (components/instrument/Lamp.tsx): the lamp is the ::before beside the word, unlit until data-lamp lights it.
+   Lighting runs lamp-on once: a 6 px ring that fades to nothing, the base style. */
+@layer components {
+  .lamp {
+    --lamp: var(--color-line-strong);
+  }
+  .lamp[data-on="chassis"] {
+    --lamp: var(--color-lcd-ghost);
+  }
+  .lamp[data-lamp="pass"] {
+    --lamp: var(--color-lamp-pass);
+  }
+  .lamp[data-lamp="refuse"] {
+    --lamp: var(--color-lamp-refuse);
+  }
+  .lamp::before {
+    content: "";
+    flex: none;
+    box-sizing: border-box;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background-color: var(--lamp);
+    transition: background-color var(--t-tick) var(--ease-instrument);
+  }
+  .lamp[data-lamp="pass"]::before,
+  .lamp[data-lamp="refuse"]::before {
+    animation: lamp-on var(--t-flip) var(--ease-instrument);
+  }
+  .lamp[data-lamp="skip"]::before {
+    border: 1px solid var(--color-ink-3);
+    background-color: transparent;
+  }
+  @media (forced-colors: active) {
+    .lamp::before {
+      border: 1px solid CanvasText;
+    }
+  }
+}
+@keyframes lamp-on {
+  from {
+    box-shadow: 0 0 0 6px color-mix(in srgb, var(--lamp) 35%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+/* SourcePlate (components/instrument/SourcePlate.tsx): provenance by word and by shape. Uppercase comes from CSS. */
+@layer components {
+  .plate {
+    letter-spacing: 0.12em;
+  }
+  .plate > [data-plate-shape] {
+    flex: none;
+    box-sizing: border-box;
+    width: 8px;
+    height: 8px;
+    border: 1px solid currentColor;
+  }
+  .plate[data-plate="live"] > [data-plate-shape] {
+    border-radius: 999px;
+    background: currentColor;
+  }
+  .plate[data-plate="replay"] > [data-plate-shape] {
+    border-radius: 999px;
+    background: repeating-linear-gradient(135deg, currentColor 0 1px, transparent 1px 3px);
+  }
+  .plate[data-plate="edition"] > [data-plate-shape] {
+    background: currentColor;
+  }
+  .plate[data-plate="simulated"] > [data-plate-shape] {
+    border-radius: 2px;
+  }
+  .plate[data-plate="planned"] > [data-plate-shape] {
+    border-radius: 999px;
+    border-style: dashed;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
