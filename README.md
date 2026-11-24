@@ -545,7 +545,7 @@ it has not been re-timed.
 
    ```text
     Test Files  65 passed (65)
-         Tests  1971 passed (1971)
+         Tests  1990 passed (1990)
    ...
    out/ is ready to deploy (landing, /now, /gap-index and 49 docs pages checked)
    search index: … bytes gzipped, budget 850000
