@@ -329,4 +329,12 @@ describe("how the page reads Base", () => {
       vi.unstubAllEnvs();
     }
   });
+
+  it("says the operator exports the rationale text from the agent's journal, and that an owner-sent intent has none", () => {
+    // Both Decisions on the recorded vault were sent from the owner's address; no agent journal holds their text.
+    const { container } = render(<HowWeRead />);
+    expect(container.textContent).not.toMatch(/agent's journal export/);
+    expect(container).toHaveTextContent("The text comes from /data/rationales.json, which the operator exports from the agent's journal;");
+    expect(container).toHaveTextContent("an intent the owner sends by hand has no journal text, so the page has only its rationaleHash onchain and shows no text for it.");
+  });
 });
