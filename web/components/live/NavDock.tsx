@@ -28,7 +28,9 @@ export function NavBar({ children }: { children: ReactNode }) {
 
 /**
  * The docked mini readout (spec 6.1): once the hero has scrolled out of view, the nav repeats the page's one reading
- * as "● 60,013,066 · Saturday · NYSE closed", from xl only. It shows a live reading and nothing else. It reads the page's
+ * as "● 60,013,066 · Saturday · NYSE closed", from xl only. It keeps to one row of at most 340 px, so a longer detail
+ * ("MarketCalendar unreadable · counted closed") ends in an ellipsis instead of wrapping the bar onto a second row; the
+ * strip in the hero prints it whole. It shows a live reading and nothing else. It reads the page's
  * LiveSnapshotProvider, never a loop of its own, and it is aria-hidden, because the strip's announcer is the page's
  * one live region.
  */
@@ -52,9 +54,9 @@ export function NavDock() {
     <span
       data-nav-dock=""
       aria-hidden="true"
-      className="ml-3 hidden items-center gap-1.5 font-mono text-[11px] text-label xl:inline-flex"
+      className="ml-3 hidden max-w-[340px] items-center gap-1.5 whitespace-nowrap font-mono text-[11px] text-label xl:inline-flex"
     >
-      <span className="text-accent">●</span> {formatBlock(snapshot.block)} · {session.detail}
+      <span className="text-accent">●</span> <span className="min-w-0 truncate">{formatBlock(snapshot.block)} · {session.detail}</span>
     </span>
   );
 }

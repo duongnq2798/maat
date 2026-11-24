@@ -94,6 +94,10 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
     expect(dock()).toHaveTextContent(`● ${formatBlock(BLOCK)} · Saturday · NYSE closed`);
     expect(dock()).toHaveAttribute("aria-hidden", "true");
     expect(dock()!.className.split(" ")).toEqual(expect.arrayContaining(["hidden", "xl:inline-flex"]));
+    // One row, at most 340 px: a longer detail ("MarketCalendar unreadable · counted closed") is cut short with an
+    // ellipsis instead of wrapping the bar onto a second row.
+    expect(dock()!.className.split(" ")).toEqual(expect.arrayContaining(["max-w-[340px]", "whitespace-nowrap"]));
+    expect(dock()!.lastElementChild!.className.split(" ")).toEqual(expect.arrayContaining(["min-w-0", "truncate"]));
     observing(top).report(top, true);
     expect(dock()).toBeNull();
     expect(fake.multicalls()).toBe(1);

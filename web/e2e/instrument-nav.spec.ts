@@ -1,4 +1,5 @@
 import { expect, type Page, test } from "@playwright/test";
+import { SELECTORS } from "../lib/live/abi";
 import { LIVE_RPCS } from "../lib/live/rpc";
 import { routeLiveRpc, WEEKEND_TS } from "./fake-live-rpc";
 
@@ -44,6 +45,39 @@ test("on the landing the nav docks the live reading once the hero has gone, from
   await page.setViewportSize({ width: 1440, height: 900 });
   await scrollHome(page);
   await expect(dock(page)).toHaveCount(0);
+});
+
+// The deployments table names a MarketCalendar, and a failed isOpen call gives a reading that is still LIVE its longest
+// detail, "MarketCalendar unreadable · counted closed" (lib/live/verdict.ts). At xl's narrowest width the docked reading
+// must not wrap the bar onto a second row, which would move the page under it.
+test("at 1280 px the docked reading keeps the bar on one row, even with the longest detail", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.clock.install({ time: (WEEKEND_TS + 5) * 1000 });
+  await routeLiveRpc(page, "weekend");
+  // Routed after the fake, so this handler runs first: an isOpen call gets a JSON-RPC error, anything else goes on to
+  // the fake.
+  for (const url of LIVE_RPCS) {
+    await page.route(`${url}/**`, async (route) => {
+      const request = route.request();
+      const rpc = request.method() === "POST" ? ((request.postDataJSON() ?? {}) as { id?: unknown; params?: [{ data?: string }?] }) : {};
+      if (!(rpc.params?.[0]?.data ?? "").startsWith(SELECTORS.isOpen)) return route.fallback();
+      await route.fulfill({
+        status: 200,
+        headers: { "access-control-allow-origin": "*" },
+        contentType: "application/json",
+        body: JSON.stringify({ jsonrpc: "2.0", id: rpc.id ?? null, error: { code: -32000, message: "execution reverted" } }),
+      });
+    });
+  }
+  await page.goto("/");
+  const strip = page.locator("#top [data-live-strip]");
+  await expect(strip).toHaveAttribute("data-live-strip", "live");
+  await expect(strip).toContainText("MarketCalendar unreadable · counted closed");
+  const before = await navBar(page).evaluate((el) => el.getBoundingClientRect().height);
+  await scrollTo(page, "#how");
+  await expect(dock(page)).toBeVisible();
+  await expect(dock(page)).toHaveText("● 60,013,066 · MarketCalendar unreadable · counted closed");
+  expect(await navBar(page).evaluate((el) => el.getBoundingClientRect().height)).toBe(before);
 });
 
 // Below lg the nav can wrap to two rows (at 768 px it does), so it is not pinned there: on a phone, nor at 800 px.
