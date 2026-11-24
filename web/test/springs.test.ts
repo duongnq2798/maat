@@ -27,7 +27,7 @@ describe("the springs block of app/globals.css (spec 2026-11-23 section 8.2)", (
     expect(replaceSpringsBlock(css)).toBe(css);
   });
 
-  it.each(CURVES)("%s (damping ratio %s) runs 0 to 1 and overshoots within 1 point of %s%%", (name, zeta, target) => {
+  it.each(CURVES)("%s (damping ratio %s) runs 0 to 1 and overshoots within 1 point of %s percent", (name, zeta, target) => {
     const p = points(name);
     expect(p[0]).toBe(0);
     expect(p.at(-1)).toBe(1);
