@@ -4,10 +4,11 @@ description: "The npm scripts in the agent package: what each runs, the modes th
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-21
+lastReviewed: 2026-11-25
 sources:
   - agent/package.json
   - agent/src/main.ts
+  - agent/scripts/probe-fork.ts
   - agent/scripts/gen-abis.ts
   - agent/scripts/cdp-setup.ts
   - agent/scripts/smoke-claude.ts
@@ -48,6 +49,7 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | `first-decision.ts` | For the owner. Builds one `BUY` [intent](/docs/help/glossary#intent) offline and prints its calldata and `cast` commands | A vault address, a basket token, a salt or an id, and a Builder Code | None |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
 | `heartbeat.ts` | The file that `npm run agent:heartbeat` runs | See `agent:heartbeat` | None |
+| `probe-fork.ts` | Rehearses `MAAT_PROBES` on a fork: runs each probe as the executor and checks its transaction | A local fork of Base in the Base build of Anvil, a vault address and the `MockFeed` build | The RPC the fork reads, read only. No Claude call and no CDP call |
 | `restart-loop.ts` | The file that `npm run agent:loop` runs | See `agent:loop` | See `agent:loop` |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
 
@@ -275,6 +277,23 @@ The file behind `npm run gen:abi`. Its list of targets is `MandateVault`, `ICred
 <ScriptFile name="verify-decision.ts" />
 
 The file behind `npm run verify`.
+
+### probe-fork.ts
+
+<ScriptFile name="probe-fork.ts" />
+
+Rehearses [`MAAT_PROBES`](/docs/reference/agent-configuration#maat_probes) on a fork of Base mainnet on your machine. At each instant it moves the fork's clock there and runs the probe the running agent would run, sent through the agent's sender from the vault's executor, which the fork impersonates. Then it checks each transaction: the `Decision` is what the probe expected, the blob is maat:v1 with `k` set to `probe` and hashes to the `rationaleHash`, and `npm run verify` passes on it with the run's journal. The equity feeds would be stale at a moved clock, so it gives each feed the code of `contracts/test/mocks/MockFeed.sol`, with the feed's real latest answer and an `updatedAt` 60 seconds before the instant. The calldata carries the Builder Code of the agent's tests. It refuses an RPC that is not Anvil on this machine, so it never sends on a real chain.
+
+```bash
+# once, in contracts/
+forge build test/mocks/MockFeed.sol
+# in a terminal of its own
+FOUNDRY_BASE=true <BASE_ANVIL> --base --fork-url https://mainnet.base.org --port 8551
+# in agent/
+node --import tsx scripts/probe-fork.ts --vault <VAULT_ADDRESS>
+```
+
+`<BASE_ANVIL>` is the Base build of Anvil that the [fork test](/docs/guides/reproduce-the-fork-run) uses. `--at` takes the instants in the `MAAT_PROBES` format, by default `2026-11-27T17:58:00Z,2026-11-27T18:01:00Z`, each later than the fork's block, and `--rpc` is `http://127.0.0.1:8551` by default. It exits with 0 when every probe sent and passed, 1 when one did not, and 2 for a bad flag or an RPC that is not a local Anvil fork of Base. While the vault's executor is its owner, the verifier labels each transaction `owner, by hand`. It is not an npm script; `npm run typecheck` checks it and `npm test` runs a unit test of its flag checks.
 
 ### smoke-claude.ts
 
