@@ -254,7 +254,7 @@ Output:
 0x0baa4c52…57f6
 ```
 
-In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6`, the `rationaleHash` of both Decisions in command 3. So both intents committed to this text when they were sent, and it cannot have changed since without changing its hash. It does not prove that the text is the reason for the trade: the vault stores the hash without checking it. An intent the agent sends hashes its [rationale blob](/docs/help/glossary#rationale-blob) instead, which it puts in the transaction's input between the call and the suffix: [`npm run verify`](/docs/reference/agent-scripts#verify) checks that hash from the input alone, and [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) hashes the blob from its [journal](/docs/help/glossary#journal) the same way.
+In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6`, the `rationaleHash` of both Decisions in command 3. So both intents committed to this text when they were sent, and it cannot have changed since without changing its hash. It does not prove that the text is the reason for the trade: the vault stores the hash without checking it. An intent the agent sends hashes its [rationale blob](/docs/help/glossary#rationale-blob) instead, which [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) hashes from its [journal](/docs/help/glossary#journal) the same way.
 
 </Step>
 

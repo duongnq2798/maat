@@ -139,7 +139,7 @@ A request the agent sends to the vault's `execute`: an id, an [action](/docs/hel
 
 ### Journal
 
-The agent's local, append-only log: `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default). It has one JSON line per event of a [round](/docs/help/glossary#round), such as the round itself, each intent, send and reconcile, and any error, with the [rationale](/docs/help/glossary#rationale) text and the [rationale blob](/docs/help/glossary#rationale-blob) behind each `rationaleHash`. Each line carries the `hash` of its public fields and the `hash` of the line before it as `prev`, so an edited line breaks the chain, and a blob's journal hash ties a `Decision` to every line before it. It stays on the operator's machine. See [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder).
+The agent's local, append-only log: `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default). It has one JSON line per event of a [round](/docs/help/glossary#round), such as the round itself, each intent, send and reconcile, and any error, with the [rationale](/docs/help/glossary#rationale) text and [blob](/docs/help/glossary#rationale-blob) behind each `rationaleHash`. It stays on the operator's machine. See [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder).
 
 ## L
 
@@ -195,11 +195,11 @@ A read-only call, `previewIntent`, made with `eth_call` as the executor, that re
 
 ### Rationale
 
-The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. When the agent logs a `MARKET_CLOSED` refusal, it appends the closed phase to Claude's text, for example `(market closed, weekend)`. The agent puts a sanitized copy of the text in the intent's [rationale blob](/docs/help/glossary#rationale-blob), and the `rationaleHash` in the [Decision](/docs/help/glossary#decision) is the `keccak256` of that blob; the vault does not check it. The text as written stays in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
+The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. When the agent logs a `MARKET_CLOSED` refusal, it appends the closed phase to Claude's text, for example `(market closed, weekend)`. A sanitized copy goes onchain in its [rationale blob](/docs/help/glossary#rationale-blob), whose `keccak256` is the `rationaleHash` in the [Decision](/docs/help/glossary#decision), and the vault does not check it; the text as written is in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
 
 ### Rationale blob
 
-The bytes the agent puts in every `execute` transaction between the call and the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix: `maat:v1:` and a canonical JSON object of at most 1,024 bytes in all. It holds the block the round read, the agent's git commit, the [journal](/docs/help/glossary#journal)'s last row hash, the model or `k: "bill"` for the agent's own text, the round's id, each stock's feed round, update time and pool [premium](/docs/help/glossary#premium), and the sanitized [rationale](/docs/help/glossary#rationale) text, with links, hex strings and key-like words replaced. The intent's `rationaleHash` is its `keccak256`, so anyone can check the reasoning from the transaction alone. The vault ignores the bytes. An intent the owner sends by hand with `first-decision.ts` has no blob: its `rationaleHash` is the `keccak256` of the text itself. `npm run verify` re-derives the hash from a transaction's input ([Agent scripts](/docs/reference/agent-scripts#verify)).
+The bytes the agent puts in every `execute` before the [Builder Code](/docs/help/glossary#builder-code-erc-8021): `maat:v1:` and a JSON object with the sanitized [rationale](/docs/help/glossary#rationale) and what the round read. The intent's `rationaleHash` is its `keccak256`.
 
 ### Raw amount
 

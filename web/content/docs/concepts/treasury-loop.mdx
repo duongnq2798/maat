@@ -143,7 +143,7 @@ The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate 
 
 Once at least the bill minimum is owed, the agent puts a bill payment at the front of the round's queue. The minimum is <Fact name="liveBillMinUsd" /> in live mode and <Fact name="billMinUsd" /> in dry-run, unless `MAAT_BILL_MIN_USD` sets another amount for both:
 
-```typescript title="agent/src/loop/runOnce.ts#L287-L292"
+```typescript title="agent/src/loop/runOnce.ts#L292-L297"
     const queue: { p: Proposal; by: Pick<BlobContext, "k" | "m"> }[] = [];
     if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
@@ -151,8 +151,6 @@ Once at least the bill minimum is owed, the agent puts a bill payment at the fro
       queue.push({ p: { action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale }, by: { k: "bill" } });
     }
 ```
-
-The bill's [rationale blob](/docs/help/glossary#rationale-blob) carries `k: "bill"`, which marks a text the agent's code wrote, and names no model.
 
 - **Claude does not propose it.** The proposal schema has no `PAY_EXPENSE` action, and the system prompt says bills are settled automatically.
 - **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list, with an optional second payee from `MAAT_EXPENSE_PAYEE_2`. The agent pays only the address in its own setting. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
