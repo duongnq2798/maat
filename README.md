@@ -564,10 +564,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  119 passed (119)
-         Tests  2621 passed (2621)
+    Test Files  121 passed (121)
+         Tests  2666 passed (2666)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 52 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 
