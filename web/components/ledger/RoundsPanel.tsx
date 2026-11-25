@@ -160,6 +160,7 @@ function Status({ journal, onReload }: { journal: JournalView; onReload: () => v
           <a href={JOURNAL_BRANCH_URL} className="self-start text-sm font-medium">
             The agent-journal branch on GitHub<span aria-hidden="true"> ↗</span>
           </a>
+          {retry}
         </div>
       );
     }

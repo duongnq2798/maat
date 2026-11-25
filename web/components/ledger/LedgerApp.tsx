@@ -76,9 +76,10 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
   const [roundsOpened, setRoundsOpened] = useState(false);
   const mode = state.mode === "loading-config" ? initial : state.mode;
   const snapshot = state.mode === "mainnet" ? state.snapshot : null;
-  // GitHub is asked for the journal only when the Rounds tab opens or a Decision carries a blob to anchor in it.
-  const hasBlob = snapshot ? [...snapshot.trails.values()].some((t) => t.call?.blob.status === "v1") : false;
-  const journal = useJournal(roundsOpened || hasBlob);
+  // GitHub is asked for the journal only when the Rounds tab opens or a Decision carries a blob to anchor in it, and
+  // asked again when a refresh brings more blobs.
+  const blobs = snapshot ? [...snapshot.trails.values()].filter((t) => t.call?.blob.status === "v1").length : 0;
+  const journal = useJournal(roundsOpened || blobs > 0, blobs);
   const openTab = (t: TrailTab) => {
     setTab(t);
     if (t === "rounds") setRoundsOpened(true);

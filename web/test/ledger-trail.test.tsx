@@ -256,6 +256,14 @@ describe("the Rounds tab", () => {
     );
   });
 
+  it("offers to read again once the journal has been read, for rows pushed since", () => {
+    const onReload = vi.fn();
+    const chainOk = verifyJournal([{ name: "2026-11-24.jsonl", text: JOURNAL_LINES.map((l) => `${l}\n`).join("") }]);
+    render(<RoundsPanel journal={{ state: "read", files: ["2026-11-24.jsonl"], ...chainOk }} onReload={onReload} />);
+    fireEvent.click(screen.getByRole("button", { name: "Read again" }));
+    expect(onReload).toHaveBeenCalledOnce();
+  });
+
   it("offers to read again after an error", () => {
     const onReload = vi.fn();
     render(<RoundsPanel journal={{ state: "error", message: "GitHub answered HTTP 500 for journal/index.json" }} onReload={onReload} />);
@@ -278,6 +286,24 @@ describe("/ledger with the agent trail", () => {
     expect(screen.getByRole("list", { name: "Mainnet decisions" })).toBeVisible();
     await waitFor(() => expect(within(rowOf(2)).getByText(/no journal published yet/)).toBeInTheDocument());
     expect(String((fetchMock.mock.calls[0] as unknown[])[0])).toBe(`${JOURNAL_RAW_URL}index.json`);
+  });
+
+  it("reads the journal again when a refresh brings more Decisions with a blob, and not when it brings none", async () => {
+    const fetchMock = vi.fn(async () => new Response("404: Not Found", { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const indexReads = () => fetchMock.mock.calls.filter((c) => String((c as unknown[])[0]) === `${JOURNAL_RAW_URL}index.json`).length;
+    const mainnet = (trails: LedgerSnapshot["trails"]): LedgerState => ({ mode: "mainnet", snapshot: { ...snapshot, trails }, endpoints: [], loading: false, refreshError: null });
+    // The first load holds the blob of Decision 2 only.
+    hook.state = mainnet(new Map([...snapshot.trails].filter(([key, t]) => t.call?.blob.status !== "v1" || key === `${hash32(2)}:0`)));
+    const { rerender } = render(<LedgerApp initial="loading" />);
+    await waitFor(() => expect(indexReads()).toBe(1));
+    hook.state = mainnet(snapshot.trails);
+    rerender(<LedgerApp initial="loading" />);
+    await waitFor(() => expect(indexReads()).toBe(2));
+    hook.state = mainnet(new Map(snapshot.trails));
+    rerender(<LedgerApp initial="loading" />);
+    await waitFor(() => expect(within(rowOf(4)).getByText(/no journal published yet/)).toBeInTheDocument());
+    expect(indexReads()).toBe(2);
   });
 
   it("does not call GitHub when no Decision carries a blob and the Rounds tab stays closed", () => {
