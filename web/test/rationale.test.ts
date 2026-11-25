@@ -53,6 +53,13 @@ describe("exportRationales", () => {
     ]);
   });
 
+  it("exports a row's maat:v1 blob, the bytes its rationaleHash commits to, and never its raw rationale", () => {
+    const blob = 'maat:v1:{"b":1,"c":"unknown","j":"0x00","m":"fixed","r":"r1","s":[],"t":"Buy - see [url]."}';
+    const sent = line({ kind: "sent", index: 0, intentId: id(5), rationale: "Buy - see https://example.com/x.", blob, rationaleHash: hash(blob), txHash: tx(5) });
+    expect(exportRationales([sent])).toEqual([{ intentId: id(5), rationaleHash: hash(blob), text: blob, txHash: tx(5), ts: "2026-11-26T15:30:00.000Z" }]);
+    expect(() => exportRationales([{ ...sent, blob: `${blob} ` }])).toThrow(`rationale hash mismatch for ${id(5)}`);
+  });
+
   it("refuses a row whose text does not hash to its rationaleHash", () => {
     const bad = line({ kind: "intent", index: 0, intentId: id(4), rationale: "edited", rationaleHash: hash("original"), txHash: tx(4) });
     expect(() => exportRationales([bad])).toThrow(`rationale hash mismatch for ${id(4)}`);
