@@ -782,6 +782,15 @@
   "contracts/test/fork/DeployFork.t.sol": {
     "test_deployWiresEverything": 15
   },
+  "contracts/test/fork/LiveVault.t.sol": {
+    "test_compromisedExecutorIsBounded": 44,
+    "testFuzz_previewMatchesExecute": 122
+  },
+  "contracts/test/fork/LiveVaultTrailingRationaleFork.t.sol": {
+    "test_refusedBuyCarriesTheBlobHash": 28,
+    "test_allowedExpenseCarriesTheBlobHash": 34,
+    "test_blobAtExactly1024Bytes": 48
+  },
   "contracts/test/fork/MaatInboxFork.t.sol": {
     "test_deployThenBriefWithSuffix": 13
   },
@@ -796,10 +805,10 @@
     "test_compromisedExecutorIsBounded": 83
   },
   "contracts/test/fork/MandateVaultTrailingRationaleFork.t.sol": {
-    "test_refusedBuyCarriesTheBlobHash": 49,
-    "test_allowedExpenseCarriesTheBlobHash": 57,
-    "test_blobAtExactly1024Bytes": 69,
-    "test_suffixMatchesTheAgentTestVector": 84
+    "test_refusedBuyCarriesTheBlobHash": 54,
+    "test_allowedExpenseCarriesTheBlobHash": 62,
+    "test_blobAtExactly1024Bytes": 74,
+    "test_suffixMatchesTheAgentTestVector": 89
   },
   "contracts/test/fork/PriceLibFork.t.sol": {
     "test_liveBasketTradesNearNav": 20
