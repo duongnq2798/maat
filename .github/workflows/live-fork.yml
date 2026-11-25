@@ -33,7 +33,9 @@ jobs:
   live-fork:
     name: live fork adversarial
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    # Room for two forge attempts (the test step below), each of which a stalling RPC can slow to several times its
+    # usual length.
+    timeout-minutes: 45
     defaults:
       run:
         shell: bash
@@ -66,12 +68,17 @@ jobs:
         run: node "$GITHUB_WORKSPACE/.github/scripts/live-fork.mjs" pick
       - id: build
         run: forge build
-      # The block is also the fuzz seed, so the summary's command reruns a failed run with the same inputs.
+      # forge test --match-path "test/fork/LiveVault*" --fuzz-seed <block> -vv, through the picked RPC. The block is
+      # also the fuzz seed, so the summary's command reruns a failed run with the same inputs. A fork read that fails
+      # makes the call that needed it revert, which a suite reads as a broken property, so live-fork.mjs tells the two
+      # apart: when a failed attempt's log has RPC errors, it warns that the RPC failed and reruns the failed suites
+      # once, at the same block and seed, through the other RPC. The run fails on a failure with a clean log, or with no
+      # verdict and no report when the rerun hits RPC errors too. The summary says which attempt hit RPC errors.
       - id: test
         env:
           BASE_RPC_URL: ${{ steps.pick.outputs.rpc }}
           LIVE_FORK_BLOCK: ${{ steps.pick.outputs.block }}
-        run: forge test --match-path "test/fork/LiveVault*" --fuzz-seed "$LIVE_FORK_BLOCK" -vv --json-file "$RUNNER_TEMP/forge.json"
+        run: node "$GITHUB_WORKSPACE/.github/scripts/live-fork.mjs" test "$RUNNER_TEMP/forge.json"
       - id: counts
         if: ${{ !cancelled() && steps.pick.outcome == 'success' }}
         env:
