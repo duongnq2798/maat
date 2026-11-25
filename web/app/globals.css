@@ -5,10 +5,9 @@
    A new landing folder under components/ must be added here. */
 @source "./(site)";
 @source "../components/*.tsx";
-@source "../components/{charts,gap,ledger,live,sections,ui}";
+@source "../components/{charts,gap,instrument,ledger,live,sections,ui}";
 @source "../content/*.ts";
 @source "../lib/site.ts";
-@source "../components/instrument";
 @source not inline("ring transform"); /* prose and SVG attribute words in the part files, never used as classes */
 
 @theme {
