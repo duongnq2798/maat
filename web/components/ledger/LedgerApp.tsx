@@ -12,8 +12,11 @@ import type { Treasury } from "@/lib/chain/treasury";
 import { DecisionTimeline } from "./DecisionTimeline";
 import { KpiTiles } from "./KpiTiles";
 import { MandatePanel } from "./MandatePanel";
+import { RoundsPanel } from "./RoundsPanel";
 import { ConnectingStrip, ErrorStrip, MainnetStrip, WaitingStrip } from "./StatusStrip";
+import { TrailTabs, type TrailTab } from "./TrailTabs";
 import { TreasuryTable } from "./TreasuryTable";
+import { useJournal } from "./useJournal";
 import { useLedger } from "./useLedger";
 
 const WAD = 1e18;
@@ -69,8 +72,17 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
   const state = useLedger();
   const [reason, setReason] = useState<RefusalCode | null>(null);
+  const [tab, setTab] = useState<TrailTab>("decisions");
+  const [roundsOpened, setRoundsOpened] = useState(false);
   const mode = state.mode === "loading-config" ? initial : state.mode;
   const snapshot = state.mode === "mainnet" ? state.snapshot : null;
+  // GitHub is asked for the journal only when the Rounds tab opens or a Decision carries a blob to anchor in it.
+  const hasBlob = snapshot ? [...snapshot.trails.values()].some((t) => t.call?.blob.status === "v1") : false;
+  const journal = useJournal(roundsOpened || hasBlob);
+  const openTab = (t: TrailTab) => {
+    setTab(t);
+    if (t === "rounds") setRoundsOpened(true);
+  };
 
   return (
     <div className="wrap flex flex-col gap-10 py-12 md:py-20">
@@ -101,14 +113,24 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
       ) : null}
 
       {snapshot ? (
-        <Block title="Decisions">
-          <DecisionTimeline
-            decisions={snapshot.decisions}
-            rationales={snapshot.rationales}
-            rationaleState={snapshot.rationaleState}
-            reason={reason}
-            onReason={setReason}
-            scanning={state.mode === "mainnet" && state.loading && !snapshot.scan.done}
+        <Block title="Decisions and rounds">
+          <TrailTabs
+            tab={tab}
+            onTab={openTab}
+            decisions={
+              <DecisionTimeline
+                decisions={snapshot.decisions}
+                rationales={snapshot.rationales}
+                rationaleState={snapshot.rationaleState}
+                trails={snapshot.trails}
+                txState={snapshot.txState}
+                journal={journal}
+                reason={reason}
+                onReason={setReason}
+                scanning={state.mode === "mainnet" && state.loading && !snapshot.scan.done}
+              />
+            }
+            rounds={<RoundsPanel journal={journal} onReload={journal.reload} />}
           />
         </Block>
       ) : null}
