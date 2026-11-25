@@ -80,10 +80,25 @@ async function setup(
   const set = (iso: string) => {
     now = ms(iso);
   };
-  const probe = (at: string) => runProbe(deps, ms(at), clock);
+  // A retry's pause moves the clock instead of waiting.
+  const sleeps: number[] = [];
+  const sleep = async (d: number) => {
+    sleeps.push(d);
+    now += d;
+  };
+  const probe = (at: string) => runProbe(deps, ms(at), clock, sleep);
   const rows = async () => journal.read();
   const probeRows = async () => (await rows()).filter((r) => r.kind === "probe");
-  return { dir, deps, inner, receipts, store, journal, scene, previews, clock, set, probe, rows, probeRows };
+  return { dir, deps, inner, receipts, store, journal, scene, previews, clock, set, sleeps, probe, rows, probeRows };
+}
+
+/** The state client with the first `n` calls of `method` (or of the calendar read at an instant) failing. */
+function failFirst(c: RunDeps["stateClient"], n: number, what: "getBlock" | "calendarAt"): RunDeps["stateClient"] {
+  let left = n;
+  if (what === "getBlock") return { ...c, getBlock: ((a: never) => (left-- > 0 ? Promise.reject(new Error("rpc down")) : c.getBlock(a))) as never };
+  type Call = { contracts: readonly { functionName: string }[] };
+  const calendarAt = (p: Call) => p.contracts.length === 6 && p.contracts[0]!.functionName === "isOpen";
+  return { ...c, multicall: ((p: Call) => (calendarAt(p) && left-- > 0 ? Promise.reject(new Error("rpc down")) : c.multicall(p as never))) as never };
 }
 
 type IntentRow = Extract<JournalRow, { kind: "intent" | "sent" }>;
@@ -193,12 +208,70 @@ describe("runProbe at Friday 27 November 18:01 UTC (13:01 ET, after the early cl
     expect(t.inner.sent).toHaveLength(1);
   });
 
+  it("logs MARKET_CLOSED even when less than $1 of the daily cap is left, since the vault checks the market first", async () => {
+    const spent = (clock: () => number) => sceneAt(clock).set(VAULT, "spentOnDay", 99_500_000n);
+    const t = await setup({ clock: F1801, scene: spent });
+    expect(await t.probe(F1801)).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+    expect(intentRows(await t.rows()).at(-1)).toMatchObject({ preview: "MARKET_CLOSED", gate: "log-refusal", decision: { allowed: false, reason: "MARKET_CLOSED" } });
+
+    // An OK probe with the same headroom has no candidate: the vault would refuse it SIZE_LIMIT.
+    const ok = await setup({ clock: F1758, scene: spent });
+    expect(await ok.probe(F1758)).toMatchObject({ outcome: "skipped", expected: "OK", proposals: 0 });
+    expect(ok.previews).toEqual([]);
+  });
+
   it("sends nothing when the preview says OK although the calendar is closed at the probe's time", async () => {
     const t = await setup({ clock: F1801, preview: () => 0 });
     const r = await t.probe(F1801);
     expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED" });
     expect(r.why).toBe("no candidate previewed MARKET_CLOSED: BUY NVDAc: the probe expects MARKET_CLOSED; the preview is OK");
     expect(t.previews).toHaveLength(1);
+    expect(t.inner.sent).toEqual([]);
+  });
+});
+
+describe("runProbe just before Monday 30 November's 09:30 ET open (14:30 UTC)", () => {
+  // The vault judges a send at the block it is mined in: mined after the open, a MARKET_CLOSED probe would trade.
+  const mon = (hms: string) => `2026-11-30T${hms}Z`;
+
+  it("sends no MARKET_CLOSED probe 30 s or less before the open, and says why", async () => {
+    const t = await setup({ clock: mon("14:29:58") });
+    const r = await t.probe(mon("14:29:58"));
+    expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED", sent: [] });
+    expect(r.why).toBe(
+      "the calendar is open at 2026-11-30T14:30:28Z, 30 s after 2026-11-30T14:29:58Z; a MARKET_CLOSED probe sends nothing that close to an open",
+    );
+    expect(t.previews).toEqual([]);
+    expect(t.inner.sent).toEqual([]);
+    expect(t.store.hasLoggedRefusal({ day: "2026-11-30", reason: "MARKET_CLOSED:overnight" })).toBe(false);
+    expect(await t.probeRows()).toEqual([expect.objectContaining({ at: mon("14:29:58"), expected: "MARKET_CLOSED", outcome: "skipped", note: r.why })]);
+
+    // 14:29:29 is 31 s before the open: the refusal goes out.
+    const early = await setup({ clock: mon("14:29:29") });
+    expect(await early.probe(mon("14:29:29"))).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+  });
+
+  it("checks again after its gas estimate, before anything is stored or sent", async () => {
+    const t = await setup({ clock: mon("14:29:00") });
+    t.receipts.estimate = () => (t.set(mon("14:29:31")), 200_000n);
+    const r = await t.probe(mon("14:29:00"));
+    expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED" });
+    expect(r.why).toBe(
+      "the calendar is open at 2026-11-30T14:30:01Z, 30 s after 2026-11-30T14:29:31Z; a MARKET_CLOSED probe sends nothing that close to an open",
+    );
+    expect(t.previews).toHaveLength(1);
+    expect(t.receipts.estimates).toHaveLength(1);
+    expect(t.inner.sent).toEqual([]);
+    expect(t.store.pending()).toEqual([]);
+    expect(intentRows(await t.rows())).toEqual([expect.objectContaining({ preview: "MARKET_CLOSED", gate: r.why })]);
+  });
+
+  it("sends nothing when the calendar 30 s on cannot be read", async () => {
+    const t = await setup({ clock: mon("14:00:00") });
+    t.receipts.estimate = () => ((t.deps.stateClient = failFirst(t.deps.stateClient, 1, "calendarAt")), 200_000n);
+    const r = await t.probe(mon("14:00:00"));
+    expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED" });
+    expect(r.why).toBe("the calendar could not be read at 2026-11-30T14:00:30Z; a MARKET_CLOSED probe sends nothing it cannot place before an open");
     expect(t.inner.sent).toEqual([]);
   });
 });
@@ -354,15 +427,79 @@ describe("runProbe's own limits", () => {
     expect((await t.probe("2026-11-28T00:30:00Z")).outcome).not.toBe("capped");
   });
 
-  it("is skipped when the vault state or the calendar at its time cannot be read", async () => {
+  it("is skipped when the vault state or the calendar at its time cannot be read in 3 tries, 5 s apart", async () => {
     const noCal = await setup({ clock: F1758, scene: (c) => sceneAt(c).fail(CALENDAR, "localTime") });
-    expect(await noCal.probe(F1758)).toMatchObject({ outcome: "skipped", why: "the calendar could not be read at the probe's time" });
+    expect(await noCal.probe(F1758)).toMatchObject({ outcome: "skipped", why: "the calendar could not be read at the probe's time, after 3 tries" });
     expect(noCal.previews).toEqual([]);
+    expect(noCal.sleeps).toEqual([5_000, 5_000]);
 
     const noState = await setup({ clock: F1758 });
     noState.deps.stateClient = { ...noState.deps.stateClient, getBlock: () => Promise.reject(new Error("rpc down")) };
     const r = await noState.probe(F1758);
-    expect(r).toMatchObject({ status: "no-state", outcome: "skipped", why: "state unavailable: getBlock failed" });
+    expect(r).toMatchObject({ status: "no-state", outcome: "skipped", why: "state unavailable: getBlock failed, after 3 tries" });
+    expect((await noState.rows()).filter((e) => e.kind === "error").map((e) => (e as { message: string }).message)).toEqual([
+      "state unavailable: getBlock failed (try 1 of 3, again in 5 s)",
+      "state unavailable: getBlock failed (try 2 of 3, again in 5 s)",
+      "state unavailable: getBlock failed (try 3 of 3)",
+    ]);
+    expect(await noState.probeRows()).toEqual([expect.objectContaining({ at: F1758, outcome: "skipped", note: r.why })]);
+  });
+
+  it("tries a failed state or calendar read again 5 s later, so one RPC failure does not use up its instant", async () => {
+    const state = await setup({ clock: F1758 });
+    state.deps.stateClient = failFirst(state.deps.stateClient, 2, "getBlock");
+    expect(await state.probe(F1758)).toMatchObject({ status: "done", outcome: "sent", expected: "OK" });
+    expect(state.sleeps).toEqual([5_000, 5_000]);
+    expect(state.inner.sent).toHaveLength(1);
+
+    const cal = await setup({ clock: F1801 });
+    cal.deps.stateClient = failFirst(cal.deps.stateClient, 1, "calendarAt");
+    expect(await cal.probe(F1801)).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+    expect(cal.sleeps).toEqual([5_000]);
+    expect((await cal.rows()).filter((e) => e.kind === "error")).toEqual([
+      expect.objectContaining({ message: "the calendar could not be read at the probe's time (try 1 of 3, again in 5 s)" }),
+    ]);
+  });
+
+  it("tries again only while the next try is at most 10 minutes after its instant, and an OK probe still keeps its deadline", async () => {
+    const at = async (clock: string, probeAt: string) => {
+      const t = await setup({ clock });
+      t.deps.stateClient = { ...t.deps.stateClient, getBlock: () => Promise.reject(new Error("rpc down")) };
+      return { r: await t.probe(probeAt), sleeps: t.sleeps };
+    };
+    // 18:10:55 + 5 s is 10 minutes after 18:01: one more try. From 18:10:56 there is none.
+    expect(await at("2026-11-27T18:10:55Z", F1801)).toMatchObject({ r: { why: "state unavailable: getBlock failed, after 2 tries" }, sleeps: [5_000] });
+    expect(await at("2026-11-27T18:10:56Z", F1801)).toMatchObject({ r: { why: "state unavailable: getBlock failed, after 1 try" }, sleeps: [] });
+
+    // The try that works lands at 17:59:33, past the 17:59:30 deadline: nothing is previewed or sent.
+    const late = await setup({ clock: "2026-11-27T17:59:28Z" });
+    late.deps.stateClient = failFirst(late.deps.stateClient, 1, "getBlock");
+    const r = await late.probe(F1758);
+    expect(r).toMatchObject({ outcome: "skipped", expected: "OK" });
+    expect(r.why).toMatch(/^probe deadline 2026-11-27T17:59:30Z .* passed at 2026-11-27T17:59:33Z/);
+    expect(late.previews).toEqual([]);
+    expect(late.inner.sent).toEqual([]);
+  });
+
+  it("records a halted probe with one state.json save at a time, so its last save holds the outcome", async () => {
+    const t = await setup({ clock: F1758, maxTxPerDay: 1 });
+    t.store.recordTx(BigInt(Math.floor(ms(F1758) / 86_400_000)));
+    // Each save takes a while, so two saves that overlap show up as two in flight.
+    const save = t.store.save.bind(t.store);
+    let inFlight = 0;
+    let most = 0;
+    t.store.save = async () => {
+      most = Math.max(most, ++inFlight);
+      try {
+        await new Promise((r) => setTimeout(r, 30));
+        await save();
+      } finally {
+        inFlight--;
+      }
+    };
+    expect(await t.probe(F1758)).toMatchObject({ outcome: "halted" });
+    expect(most).toBe(1);
+    expect((await Store.open(t.dir)).probeOutcome(F1758)).toBe("halted");
   });
 
   it("does nothing for an instant the store already recorded", async () => {
@@ -474,6 +611,32 @@ describe("runProbes", () => {
     expect(order).toEqual(["round done", "probe 1", "probe 2"]);
     expect(log[0]).toMatch(/^probe 1970-01-01T00:00:00Z failed: /);
     expect(log.join("\n")).not.toContain("fake-key");
+  });
+
+  it("fires no probe that gets the round lock after the agent was stopped", async () => {
+    const lock = new RoundLock();
+    const ac = new AbortController();
+    let releaseRound!: () => void;
+    const round = lock.run(() => new Promise<void>((r) => (releaseRound = r)));
+    const fired: number[] = [];
+    const log: string[] = [];
+    const done = runProbes({
+      due: [F1758, F1801].map(ms),
+      fire: async (at) => (fired.push(at), report(at, "sent")),
+      lock,
+      signal: ac.signal,
+      now: () => ms(F1801),
+      log: (m) => log.push(m),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lock.waiting).toBe(1);
+    // Ctrl-C while the probe waits for the round: the round ends, and the probe must not start after the stop.
+    ac.abort();
+    releaseRound();
+    await round;
+    expect(await done).toBe(0);
+    expect(fired).toEqual([]);
+    expect(log).toEqual([`probe ${F1758}: not run, the agent is stopping`]);
   });
 
   it("stops waiting when the agent is stopped", async () => {

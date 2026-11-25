@@ -1,3 +1,4 @@
+import { setTimeout as delay } from "node:timers/promises";
 import { getAddress } from "viem";
 import { readCalendarAt, readVaultState, StateUnavailable, type VaultState } from "../chain/state.js";
 import {
@@ -6,6 +7,8 @@ import {
   planProbes,
   PROBE_DEADLINE_MARGIN_S,
   PROBE_LATE_LIMIT_MS,
+  PROBE_READ_TRIES,
+  PROBE_RETRY_MS,
   probeCandidates,
   probeDeadline,
   probeIso,
@@ -24,6 +27,8 @@ import { roundKit, type Gating, type RunDeps, type RunReport } from "./runOnce.j
  * actions dropped, the preview, the refusal key, MAAT_MAX_TX_PER_DAY, the gas estimate, the pending entry stored before
  * the send. On top of that, a probe sends only the candidate whose preview is what the calendar at its instant
  * expects: OK in session, MARKET_CLOSED outside it, which the vault then logs once per NYSE date and closed phase.
+ * The vault judges a send at the block that mines it, so an OK probe stops PROBE_DEADLINE_MARGIN_S before the close
+ * and a MARKET_CLOSED probe stops when the calendar is open PROBE_DEADLINE_MARGIN_S on.
  */
 
 /** A waiting probe looks at the clock at least this often, so a PC that slept past an instant notices on waking. */
@@ -40,13 +45,23 @@ export interface ProbeReport extends RunReport {
 }
 
 const isoOfSeconds = (s: bigint) => probeIso(Number(s) * 1000);
+const UNPLACED = "a MARKET_CLOSED probe sends nothing it cannot place before an open";
+
+/** A read that worked, or why it did not. */
+type Read<T> = { ok: true; value: T } | { ok: false; why: string };
 
 /**
- * Runs the probe of instant `atMs` once; `now` is the clock it judges lateness and its deadline by. Every outcome is
- * journaled as a `probe` row and recorded in state.json, except for an instant state.json already holds, which it
- * leaves alone. It never throws for a failed read or send: that ends the probe `halted`, as a round halts.
+ * Runs the probe of instant `atMs` once; `now` is the clock it judges lateness and its deadline by, and `sleep` the
+ * wait between the tries of a failed read. Every outcome is journaled as a `probe` row and recorded in state.json,
+ * except for an instant state.json already holds, which it leaves alone. It never throws for a failed read or send:
+ * that ends the probe `halted`, as a round halts.
  */
-export async function runProbe(d: RunDeps, atMs: number, now: () => number = Date.now): Promise<ProbeReport> {
+export async function runProbe(
+  d: RunDeps,
+  atMs: number,
+  now: () => number = Date.now,
+  sleep: (ms: number) => Promise<void> = (ms) => delay(ms),
+): Promise<ProbeReport> {
   const at = probeIso(atMs);
   const runId = `probe-${at}`;
   const report: RunReport = { runId, status: "done", sent: [], skipped: 0, proposals: 0 };
@@ -63,6 +78,21 @@ export async function runProbe(d: RunDeps, atMs: number, now: () => number = Dat
     return { ...report, at, outcome, ...(expected ? { expected } : {}), ...(why ? { why } : {}) };
   };
 
+  /**
+   * One failed read does not use up the instant: it is tried again PROBE_RETRY_MS later, up to PROBE_READ_TRIES tries
+   * in all, while the next try is at most PROBE_LATE_LIMIT_MS after the instant. Each failed try is an error row.
+   */
+  const tryRead = async <T>(read: () => Promise<Read<T>>): Promise<Read<T>> => {
+    for (let n = 1; ; n++) {
+      const r = await read();
+      if (r.ok) return r;
+      const again = n < PROBE_READ_TRIES && now() + PROBE_RETRY_MS - atMs <= PROBE_LATE_LIMIT_MS;
+      await j.append({ kind: "error", runId, message: `${r.why} (try ${n} of ${PROBE_READ_TRIES}${again ? `, again in ${PROBE_RETRY_MS / 1000} s` : ""})` });
+      if (!again) return { ok: false, why: `${r.why}, after ${n} ${n === 1 ? "try" : "tries"}` };
+      await sleep(PROBE_RETRY_MS);
+    }
+  };
+
   if (now() - atMs > PROBE_LATE_LIMIT_MS) {
     return finish("missed", `it got the round lock at ${probeIso(now())}, more than ${PROBE_LATE_LIMIT_MS / 60_000} minutes after its time; a probe is never run late`);
   }
@@ -75,15 +105,19 @@ export async function runProbe(d: RunDeps, atMs: number, now: () => number = Dat
   await d.store.save();
 
   try {
-    let s: VaultState;
-    try {
-      s = await readVaultState(d.stateClient, d.vault);
-    } catch (e) {
-      if (!(e instanceof StateUnavailable)) throw e;
-      await j.append({ kind: "error", runId, message: `state unavailable: ${e.message}` });
+    const state = await tryRead(async (): Promise<Read<VaultState>> => {
+      try {
+        return { ok: true, value: await readVaultState(d.stateClient, d.vault) };
+      } catch (e) {
+        if (!(e instanceof StateUnavailable)) throw e;
+        return { ok: false, why: `state unavailable: ${e.message}` };
+      }
+    });
+    if (!state.ok) {
       report.status = "no-state";
-      return await finish("skipped", `state unavailable: ${e.message}`);
+      return await finish("skipped", state.why);
     }
+    const s = state.value;
     report.block = s.blockNumber;
     report.marketOpen = s.marketOpen;
     if (getAddress(s.executor) !== getAddress(d.executor)) {
@@ -95,34 +129,67 @@ export async function runProbe(d: RunDeps, atMs: number, now: () => number = Dat
 
     // The probe's expectation is the calendar's at its instant, not at the block it gets to run at.
     const atS = BigInt(Math.floor(atMs / 1000));
-    const cal = await readCalendarAt(d.stateClient, s.mandate.calendar, s.mandate.sessionMode, atS, s.blockNumber);
-    if (!cal) return await finish("skipped", "the calendar could not be read at the probe's time");
+    const calendar = await tryRead(async () => {
+      const c = await readCalendarAt(d.stateClient, s.mandate.calendar, s.mandate.sessionMode, atS, s.blockNumber);
+      return c ? { ok: true as const, value: c } : { ok: false as const, why: "the calendar could not be read at the probe's time" };
+    });
+    if (!calendar.ok) return await finish("skipped", calendar.why);
+    const cal = calendar.value;
     const want: ProbeExpectation = cal.open ? "OK" : "MARKET_CLOSED";
     expected = want;
     const deadline = cal.open ? probeDeadline(atS, cal.day, s.mandate.sessionMode) : null;
 
     const k = roundKit(d, runId, report, s);
+    /** Unix seconds: the later of the clock and the chain, which the deadline and the open check go by. */
+    const latest = (): bigint => {
+      const chain = k.state().timestamp;
+      const clock = BigInt(Math.floor(now() / 1000));
+      return clock > chain ? clock : chain;
+    };
     /** Why an OK probe may no longer send: the later of the clock and the chain is past its deadline. */
     const pastDeadline = (): string | null => {
       if (!deadline) return null;
-      const chain = k.state().timestamp;
-      const clock = BigInt(Math.floor(now() / 1000));
-      const t = clock > chain ? clock : chain;
+      const t = latest();
       if (t <= deadline.by) return null;
       const margin = `${PROBE_DEADLINE_MARGIN_S} s before ${deadline.close}`;
       return `probe deadline ${isoOfSeconds(deadline.by)} (${margin}) passed at ${isoOfSeconds(t)}; an OK probe is never sent late`;
     };
+    /** Why a MARKET_CLOSED probe may no longer send: the calendar is open PROBE_DEADLINE_MARGIN_S from now. */
+    const nearOpen = async (): Promise<Read<string | null>> => {
+      const t = latest();
+      const ahead = t + BigInt(PROBE_DEADLINE_MARGIN_S);
+      const c = await readCalendarAt(d.stateClient, s.mandate.calendar, s.mandate.sessionMode, ahead, k.state().blockNumber);
+      if (!c) return { ok: false, why: `the calendar could not be read at ${isoOfSeconds(ahead)}` };
+      const why = `the calendar is open at ${isoOfSeconds(ahead)}, ${PROBE_DEADLINE_MARGIN_S} s after ${isoOfSeconds(t)}; a MARKET_CLOSED probe sends nothing that close to an open`;
+      return { ok: true, value: c.open ? why : null };
+    };
+    /** Asked again after the gas estimate, just before the pending entry is stored: a failed read stops the send. */
+    const beforeSend = async (): Promise<string | null> => {
+      if (want === "OK") return pastDeadline();
+      const r = await nearOpen();
+      return r.ok ? r.value : `${r.why}; ${UNPLACED}`;
+    };
 
-    const late = pastDeadline();
-    if (late) return await finish("skipped", late);
+    if (want === "OK") {
+      const late = pastDeadline();
+      if (late) return await finish("skipped", late);
+    } else {
+      const near = await tryRead(nearOpen);
+      if (!near.ok) return await finish("skipped", `${near.why}; ${UNPLACED}`);
+      if (near.value) return await finish("skipped", near.value);
+    }
     if (!(await k.reconcileAll())) {
       report.status = "pending-tx";
       return await finish("skipped", "a send from an earlier round may still land; a probe sends nothing until it is settled");
     }
-    const candidates = probeCandidates(k.state(), probeText(want, deadline?.close));
+    const candidates = probeCandidates(k.state(), want, probeText(want, deadline?.close));
     report.proposals = candidates.length;
     if (candidates.length === 0) {
-      return await finish("skipped", "no $1 BUY or SELL fits the vault: the caps, the USDC balance, the holdings and maxWeightBps leave none");
+      const none =
+        want === "OK"
+          ? "no $1 BUY or SELL fits the vault: the caps, the USDC balance, the holdings and maxWeightBps leave none"
+          : "no BUY or SELL can be built: no USDC for a BUY of a token the vault lets it buy, and no priced holding to SELL";
+      return await finish("skipped", none);
     }
 
     const gating: Gating = (preview, key, logged) => {
@@ -135,7 +202,7 @@ export async function runProbe(d: RunDeps, atMs: number, now: () => number = Dat
     };
     const tried: string[] = [];
     for (const [index, p] of candidates.entries()) {
-      const h = await k.handle(index, p, { k: "probe" }, { gating, beforeSend: pastDeadline });
+      const h = await k.handle(index, p, { k: "probe" }, { gating, beforeSend });
       if (h.outcome !== "skipped") return await finish(h.outcome);
       // The preview the probe wanted, refused by the gate (a refusal already logged) or by the deadline: stop there.
       if (h.preview === want || pastDeadline()) return await finish("skipped", h.why);
@@ -146,7 +213,8 @@ export async function runProbe(d: RunDeps, atMs: number, now: () => number = Dat
     report.status = "halted";
     report.haltReason = oneLine(e);
     await j.append({ kind: "error", runId, message: `halted: ${report.haltReason}` });
-    return finish("halted", report.haltReason);
+    // Awaited, so the save below never runs beside finish's own: two saves at once share state.json.tmp.
+    return await finish("halted", report.haltReason);
   } finally {
     await d.store.save();
   }
@@ -204,7 +272,13 @@ export async function runProbes(o: {
     while (!o.signal.aborted && now() < at) await sleep(Math.min(at - now(), PROBE_WAKE_MS), o.signal);
     if (o.signal.aborted) break;
     try {
-      log(probeLine(await o.lock.run(() => o.fire(at))));
+      // A stop (Ctrl-C) that came while it waited for the lock: it does not start, and the next start journals it missed.
+      const r = await o.lock.run<ProbeReport | null>(async () => (o.signal.aborted ? null : o.fire(at)));
+      if (r === null) {
+        log(`probe ${probeIso(at)}: not run, the agent is stopping`);
+        break;
+      }
+      log(probeLine(r));
     } catch (e) {
       log(`probe ${probeIso(at)} failed: ${oneLine(e)}`);
     }

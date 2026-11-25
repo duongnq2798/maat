@@ -125,7 +125,7 @@ export interface RoundKit {
    * A credit proposal is dropped before the preview while credit actions are off. `beforeSend` is asked once more just
    * before the pending entry is stored, after the gas estimate; a reason it returns stops the send.
    */
-  handle(index: number, p: Proposal, by: Pick<BlobContext, "k" | "m">, o?: { gating?: Gating; beforeSend?: () => string | null }): Promise<Handled>;
+  handle(index: number, p: Proposal, by: Pick<BlobContext, "k" | "m">, o?: { gating?: Gating; beforeSend?: () => string | null | Promise<string | null> }): Promise<Handled>;
 }
 
 /** The kit for a round that read the vault at `first`. A failed step throws; the caller journals a halted round. */
@@ -327,7 +327,7 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
     };
     if (!g.send) return notSent(g.why);
     if (!sender) {
-      const stop = o.beforeSend?.();
+      const stop = await o.beforeSend?.();
       return stop ? notSent(`dry-run: ${stop}`) : notSent(`dry-run: would ${g.kind}`, "dry-run");
     }
 
@@ -338,7 +338,7 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
     // Gas is estimated on the bytes the sender will broadcast: the call, the blob and the Builder Code. A refusal
     // here is the sender's, not a failed estimate.
     const gas = await gasFor("execute", sender.calldata({ to: d.vault, data, blob: blob.blob }));
-    const stop = o.beforeSend?.();
+    const stop = await o.beforeSend?.();
     if (stop) return notSent(stop);
     const entry: PendingTx = {
       intentId: intent.id,

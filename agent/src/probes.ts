@@ -18,6 +18,12 @@ export const MAX_PROBES_PER_DAY = 3;
 export const PROBE_DEADLINE_MARGIN_S = 30;
 /** A probe that gets the round lock more than this long after its instant is journaled as missed and not run. */
 export const PROBE_LATE_LIMIT_MS = 10 * 60_000;
+/**
+ * A failed read of the vault state or of the calendar is tried this many times in all, PROBE_RETRY_MS apart, while
+ * the next try is at most PROBE_LATE_LIMIT_MS after the instant: one RPC failure does not use up a probe.
+ */
+export const PROBE_READ_TRIES = 3;
+export const PROBE_RETRY_MS = 5_000;
 /** The size of a probe intent in US dollars: a BUY of $1, or a SELL of $1 of a holding (all of it if it is worth less). */
 export const PROBE_USD = 1;
 
@@ -137,17 +143,23 @@ const byValue = (a: bigint, b: bigint) => (a < b ? -1 : a > b ? 1 : 0);
 type Priced = TokenState & { symbol: TokenSymbol; price8: bigint };
 
 /**
- * What a probe asks the vault about, in order, from the state alone: a $1 BUY of the least held listed token that $1
- * more keeps within its maxWeightBps (the vault's CONCENTRATION rule), then a $1 SELL of the largest holding. None
- * when $1 does not fit the mandate's per-trade cap or what the vault's daily cap has left.
+ * What a probe asks the vault about, in order, from the state alone: a $1 BUY of the least held listed token it may
+ * buy, then a $1 SELL of the largest holding. A probe that expects OK needs a BUY every check passes: $1 of USDC, $1
+ * more within the token's maxWeightBps (the vault's CONCENTRATION rule), and none at all when $1 does not fit the
+ * per-trade cap or what the daily cap has left. The vault answers MARKET_CLOSED before its balance, cap and weight
+ * checks (MandateVault._check), so a probe that expects it only needs an intent buildIntent can size: any USDC for
+ * the BUY. The preview still decides what is sent.
  */
-export function probeCandidates(s: VaultState, text: string): Proposal[] {
-  if (PROBE_USD6 > s.mandate.perTradeCapUsd || s.spentToday + PROBE_USD6 > s.mandate.dailyCapUsd) return [];
-  const priced = s.tokens.filter((t): t is Priced => t.symbol !== undefined && t.price8 !== null);
+export function probeCandidates(s: VaultState, expected: ProbeExpectation, text: string): Proposal[] {
+  const ok = expected === "OK";
+  if (ok && (PROBE_USD6 > s.mandate.perTradeCapUsd || s.spentToday + PROBE_USD6 > s.mandate.dailyCapUsd)) return [];
+  const listed = s.tokens.filter((t): t is TokenState & { symbol: TokenSymbol } => t.symbol !== undefined);
+  const priced = listed.filter((t): t is Priced => t.price8 !== null);
   const out: Proposal[] = [];
   const fits = (t: Priced) => t.config.allowed && (t.valueUsd6 + PROBE_USD6) * 10_000n <= BigInt(t.config.maxWeightBps) * s.equityUsd6;
+  const buyable = ok ? (s.usdcBalance >= PROBE_USD6 ? priced.filter(fits) : []) : s.usdcBalance > 0n ? listed.filter((t) => t.config.allowed) : [];
   // Array sort is stable: on a tie, tokens() order decides.
-  const buy = s.usdcBalance >= PROBE_USD6 ? priced.filter(fits).sort((a, b) => byValue(a.valueUsd6, b.valueUsd6))[0] : undefined;
+  const buy = buyable.sort((a, b) => byValue(a.valueUsd6, b.valueUsd6))[0];
   if (buy) out.push({ action: "BUY", symbol: buy.symbol, amountUsd: PROBE_USD, rationale: text });
   const held = (t: Priced) => valueUsd6(t.balance, t.price8, t.decimals);
   const sell = priced.filter((t) => held(t) > 0n).sort((a, b) => byValue(held(b), held(a)))[0];

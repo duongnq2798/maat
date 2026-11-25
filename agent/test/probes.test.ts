@@ -1,7 +1,7 @@
 import { getAddress, type Address } from "viem";
 import { describe, expect, it } from "vitest";
 import { addressOf, BASKET, USDC } from "../src/addresses.js";
-import { readVaultState, type CalendarDay } from "../src/chain/state.js";
+import { readVaultState, type CalendarDay, type VaultState } from "../src/chain/state.js";
 import { loadConfig } from "../src/config.js";
 import { PROBE_TEXT_PREFIX } from "../src/rationale/blob.js";
 import {
@@ -125,7 +125,10 @@ describe("probeText", () => {
 
 describe("probeCandidates", () => {
   const state = (f: FakeChain) => readVaultState(f.client(), VAULT);
-  const text = probeText("MARKET_CLOSED");
+  const text = probeText("OK", "the 16:00 ET close");
+  const ok = (st: VaultState) => probeCandidates(st, "OK", text);
+  const closedText = probeText("MARKET_CLOSED");
+  const closed = (st: VaultState) => probeCandidates(st, "MARKET_CLOSED", closedText).map((p) => [p.action, p.symbol, p.amountUsd]);
   /** Every token listed with its own feed and the given allowed flag and maxWeightBps. */
   const configs = (allowed: (sym: string) => boolean, maxWeightBps = 4000) => (args: readonly unknown[]) => {
     const i = BASKET.findIndex((t) => getAddress(t.address) === getAddress(args[0] as Address));
@@ -133,35 +136,56 @@ describe("probeCandidates", () => {
   };
 
   it("buys $1 of the least held token, in tokens() order on a tie, with nothing to sell in an all-USDC vault", async () => {
-    expect(probeCandidates(await state(standardScene()), text)).toEqual([{ action: "BUY", symbol: "NVDAc", amountUsd: 1, rationale: text }]);
+    expect(ok(await state(standardScene()))).toEqual([{ action: "BUY", symbol: "NVDAc", amountUsd: 1, rationale: text }]);
   });
 
   it("buys the most underweight token that $1 more keeps within its maxWeightBps, then sells $1 of the largest holding", async () => {
     // NVDAc 0.25 tokens ($46.67), AAPLc 0.01 tokens ($2.70), no GOOGLc, $100 USDC.
     const f = standardScene().set(addressOf("NVDAc"), "balanceOf", 25_000_000n).set(addressOf("AAPLc"), "balanceOf", 1_000_000n);
-    expect(probeCandidates(await state(f), text).map((p) => [p.action, p.symbol, p.amountUsd])).toEqual([
+    expect(ok(await state(f)).map((p) => [p.action, p.symbol, p.amountUsd])).toEqual([
       ["BUY", "GOOGLc", 1],
       ["SELL", "NVDAc", 1],
     ]);
     // GOOGLc not allowed to buy: the next least held, AAPLc, is the buy.
     f.set(VAULT, "tokenConfig", configs((sym) => sym !== "GOOGLc"));
-    expect(probeCandidates(await state(f), text)[0]).toMatchObject({ action: "BUY", symbol: "AAPLc" });
+    expect(ok(await state(f))[0]).toMatchObject({ action: "BUY", symbol: "AAPLc" });
   });
 
   it("does not buy a token that $1 more would push over its maxWeightBps", async () => {
     const f = standardScene().set(VAULT, "tokenConfig", configs(() => true, 1));
-    expect(probeCandidates(await state(f), text)).toEqual([]);
+    expect(ok(await state(f))).toEqual([]);
     f.set(addressOf("AAPLc"), "balanceOf", 1_000_000n);
-    expect(probeCandidates(await state(f), text).map((p) => [p.action, p.symbol])).toEqual([["SELL", "AAPLc"]]);
+    expect(ok(await state(f)).map((p) => [p.action, p.symbol])).toEqual([["SELL", "AAPLc"]]);
   });
 
   it("has no candidate when $1 does not fit the per-trade cap or what is left of the daily cap", async () => {
-    expect(probeCandidates(await state(standardScene().set(VAULT, "mandate", { ...MANDATE, perTradeCapUsd: 999_999n })), text)).toEqual([]);
-    expect(probeCandidates(await state(standardScene().set(VAULT, "spentOnDay", 99_000_001n)), text)).toEqual([]);
-    expect(probeCandidates(await state(standardScene().set(VAULT, "spentOnDay", 99_000_000n)), text)).toHaveLength(1);
+    expect(ok(await state(standardScene().set(VAULT, "mandate", { ...MANDATE, perTradeCapUsd: 999_999n })))).toEqual([]);
+    expect(ok(await state(standardScene().set(VAULT, "spentOnDay", 99_000_001n)))).toEqual([]);
+    expect(ok(await state(standardScene().set(VAULT, "spentOnDay", 99_000_000n)))).toHaveLength(1);
   });
 
   it("does not buy with less than $1 of USDC", async () => {
-    expect(probeCandidates(await state(standardScene().set(USDC, "balanceOf", 999_999n)), text)).toEqual([]);
+    expect(ok(await state(standardScene().set(USDC, "balanceOf", 999_999n)))).toEqual([]);
+  });
+
+  describe("for a probe that expects MARKET_CLOSED, which the vault answers before its balance, cap and weight checks", () => {
+    it("ignores the per-trade cap, the daily cap's headroom and maxWeightBps", async () => {
+      const want = [["BUY", "NVDAc", 1]];
+      expect(closed(await state(standardScene().set(VAULT, "mandate", { ...MANDATE, perTradeCapUsd: 999_999n })))).toEqual(want);
+      expect(closed(await state(standardScene().set(VAULT, "spentOnDay", 99_500_000n)))).toEqual(want);
+      expect(closed(await state(standardScene().set(VAULT, "tokenConfig", configs(() => true, 1))))).toEqual(want);
+    });
+
+    it("buys with any USDC at all, and only a token the vault lets it buy", async () => {
+      expect(closed(await state(standardScene().set(USDC, "balanceOf", 1n)))).toEqual([["BUY", "NVDAc", 1]]);
+      expect(closed(await state(standardScene().set(USDC, "balanceOf", 0n)))).toEqual([]);
+      // The vault answers TOKEN_NOT_ALLOWED before MARKET_CLOSED for a BUY of a token that is not allowed.
+      expect(closed(await state(standardScene().set(VAULT, "tokenConfig", configs((sym) => sym === "AAPLc"))))).toEqual([["BUY", "AAPLc", 1]]);
+    });
+
+    it("sells $1 of the largest priced holding after the BUY", async () => {
+      const f = standardScene().set(USDC, "balanceOf", 0n).set(addressOf("GOOGLc"), "balanceOf", 1_000_000n);
+      expect(closed(await state(f))).toEqual([["SELL", "GOOGLc", 1]]);
+    });
   });
 });
