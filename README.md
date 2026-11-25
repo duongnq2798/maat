@@ -513,15 +513,15 @@ it has not been re-timed.
    `reason: 6` is `MARKET_CLOSED` in [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the
    vault still holds its 200 USDC, and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list,
-   and the invariant suite, which takes most of the run's time):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the briefs inbox, the deploy
+   script's payee list, and the invariant suite, which takes most of the run's time):
 
    ```bash
    forge test --no-match-path "test/fork/*"
    ```
 
    ```text
-   Ran 12 test suites in …: 247 tests passed, 0 failed, 0 skipped (247 total tests)
+   Ran 13 test suites in …: 265 tests passed, 0 failed, 0 skipped (265 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -767,6 +767,7 @@ SECURITY.md                how to report a security problem privately
 | [Live strip spec](docs/superpowers/specs/2026-11-20-maat-web-live-strip-design.md) | The live line under the landing H1 and `/now`: one keyless multicall from the browser reads the 13 B20s with a NAV, judged in `MandateVault`'s order for a BUY |
 | [Weekend Gap Index spec](docs/superpowers/specs/2026-11-21-weekend-gap-index-design.md) | How long each B20's Chainlink feed stays frozen in each closed NYSE window, the Aerodrome swaps meanwhile and the largest pool-vs-feed gap, measured from Base logs and published as dated editions |
 | [Web instrument spec](docs/superpowers/specs/2026-11-23-maat-web-instrument-design.md) | The site redrawn as one weighing instrument: the Balance hero, the live Readout, the annunciator with a lamp per refusal code, the Weekend Scope and the verdict tape, with its motion, type, colour, sources and phases |
+| [MaatInbox spec](docs/superpowers/specs/2026-11-25-maat-inbox-design.md) | Briefs to the agent: the inbox contract, what the agent reads from it, the `/ask` notice and the `/proof` counting rule |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
 | [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, the agent loop and its Base fork test |
