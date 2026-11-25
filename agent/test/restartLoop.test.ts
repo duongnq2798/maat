@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import type { Heartbeat } from "../src/loop/heartbeat.js";
-import { BACKOFF, backoffMs, CHECK_EVERY_MS, main, restartLoop, staleFor, STOP_GRACE_MS, type AgentProcess, type LoopDeps } from "../scripts/restart-loop.js";
+import { BACKOFF, backoffMs, CHECK_EVERY_MS, killTree, main, restartLoop, staleFor, STOP_GRACE_MS, type AgentProcess, type LoopDeps } from "../scripts/restart-loop.js";
 
 const MIN = 60_000;
 const flush = () => new Promise<void>((ok) => setImmediate(ok));
@@ -49,7 +49,7 @@ class Clock {
   }
 }
 
-function harness(beat: () => Heartbeat | null = () => null) {
+function harness(beat: () => Heartbeat | null = () => null, onStart: (c: FakeAgent) => void = () => {}) {
   const clock = new Clock();
   const ac = new AbortController();
   const children: FakeAgent[] = [];
@@ -60,6 +60,7 @@ function harness(beat: () => Heartbeat | null = () => null) {
     start: () => {
       const c = new FakeAgent(1000 + children.length);
       children.push(c);
+      onStart(c);
       return c;
     },
     sleep: clock.sleep,
@@ -68,6 +69,7 @@ function harness(beat: () => Heartbeat | null = () => null) {
     readHeartbeat: async () => beat(),
     notify: (n) => notes.push(n),
     interrupt: (p) => interrupted.push(p as FakeAgent),
+    forceKill: (p) => p.kill("SIGKILL"),
     signal: ac.signal,
   };
   const done = restartLoop(deps);
@@ -167,6 +169,51 @@ describe("restart loop", () => {
     await h.done;
   });
 
+  it("alerts when the agent keeps exiting at startup: once after 3 quick exits, once when no round has ended for 90 min", async () => {
+    const old = beatAt(-10 * 60 * MIN); // the last round ended 10 h before the loop started
+    // Every start fails within a second, as with a config error or a refused data dir.
+    const h = harness(() => old, (c) => queueMicrotask(() => c.exit(1)));
+    await h.clock.advance(30_000); // starts at 0 s, 10 s and 30 s
+    expect(h.children).toHaveLength(3);
+    expect(h.notes).toEqual(["Maat agent keeps exiting: 3 starts in a row ended within 10 min (last: code 1). Check the agent window."]);
+    expect(h.lines).toContain("restart-loop: FAILING: 3 starts in a row ended within 10 min (last: code 1)");
+    await h.clock.advance(90 * MIN - 30_000);
+    expect(h.notes).toHaveLength(1);
+    await h.clock.advance(CHECK_EVERY_MS); // 95 min after the loop started, across about a dozen starts
+    expect(h.children.length).toBeGreaterThan(10);
+    expect(h.notes).toEqual([
+      "Maat agent keeps exiting: 3 starts in a row ended within 10 min (last: code 1). Check the agent window.",
+      "Maat agent: no round has ended for 1 h 35 min. Check the agent window.",
+    ]);
+    await h.clock.advance(60 * MIN);
+    expect(h.notes).toHaveLength(2);
+    h.ac.abort();
+    await h.done;
+  });
+
+  it("alerts on quick exits again only after a run of 10 min has ended the stretch", async () => {
+    let quick = true;
+    const h = harness(() => null, (c) => quick && queueMicrotask(() => c.exit(1)));
+    await h.clock.advance(70_000); // four quick exits: 0 s, 10 s, 30 s, 70 s
+    expect(h.children).toHaveLength(4);
+    expect(h.notes).toHaveLength(1);
+    quick = false;
+    await h.clock.advance(80_000); // start 5 (at 150 s) stays up
+    expect(h.children).toHaveLength(5);
+    await h.clock.advance(10 * MIN);
+    quick = true;
+    h.last().exit(1); // a healthy run ends: the stretch is over
+    await h.clock.advance(10_000 + 20_000); // two quick exits: one short of an alert
+    expect(h.notes).toHaveLength(1);
+    await h.clock.advance(40_000);
+    expect(h.notes).toEqual([
+      "Maat agent keeps exiting: 3 starts in a row ended within 10 min (last: code 1). Check the agent window.",
+      "Maat agent keeps exiting: 3 starts in a row ended within 10 min (last: code 1). Check the agent window.",
+    ]);
+    h.ac.abort();
+    await h.done;
+  });
+
   it("logs an unreadable heartbeat and counts from the start", async () => {
     const clockless = harness(() => {
       throw new Error("Unexpected end of JSON input");
@@ -179,7 +226,7 @@ describe("restart loop", () => {
     await clockless.done;
   });
 
-  it("measures staleness from the later of the last round and this start", () => {
+  it("measures staleness from the later of the last round and the loop's start", () => {
     expect(staleFor(null, 0, 90 * MIN)).toBeNull();
     expect(staleFor(null, 0, 90 * MIN + 1)).toBe(90 * MIN + 1);
     expect(staleFor(beatAt(-5 * 60 * MIN), 0, 60 * MIN)).toBeNull();
@@ -205,11 +252,28 @@ describe("restart loop", () => {
       readHeartbeat: async () => null,
       notify: () => {},
       interrupt: () => {},
+      forceKill: () => {},
       signal: ac.signal,
     });
     expect(starts).toBe(2);
     expect(pauses).toEqual([10_000, 20_000]);
     expect(lines.filter((l) => l.includes("agent exited (code 3)"))).toHaveLength(2);
+  });
+
+  it("force-kills the whole process tree on Windows, where npm's child would outlive a kill of npm", () => {
+    const runs: string[][] = [];
+    const onError: ((e: Error) => void)[] = [];
+    const run = (cmd: string, args: string[]) => (runs.push([cmd, ...args]), { once: (_e: "error", cb: (e: Error) => void) => onError.push(cb) });
+    const win = new FakeAgent(4242);
+    killTree(win, "win32", run);
+    expect(runs).toEqual([["taskkill", "/pid", "4242", "/T", "/F"]]);
+    expect(win.kills).toEqual([]);
+    onError[0]!(new Error("spawn taskkill ENOENT"));
+    expect(win.kills).toEqual(["SIGKILL"]);
+    const linux = new FakeAgent(4243);
+    killTree(linux, "linux", run);
+    expect(runs).toHaveLength(1);
+    expect(linux.kills).toEqual(["SIGKILL"]);
   });
 
   it("refuses --once, which would end after every round", async () => {
