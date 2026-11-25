@@ -22,6 +22,13 @@ interface IAaveV4HubViews {
         bool halted;
     }
 
+    struct AssetConfig {
+        address feeReceiver;
+        uint16 liquidityFee;
+        address irStrategy;
+        address reinvestmentController;
+    }
+
     error InvalidAmount();
 
     function getSpokeConfig(uint256 assetId, address spoke) external view returns (SpokeConfig memory);
@@ -29,6 +36,10 @@ interface IAaveV4HubViews {
     function getAddedAssets(uint256 assetId) external view returns (uint256);
     function getAssetLiquidity(uint256 assetId) external view returns (uint256);
     function previewAddByAssets(uint256 assetId, uint256 assets) external view returns (uint256);
+    function getSpokeCount(uint256 assetId) external view returns (uint256);
+    function getSpokeAddress(uint256 assetId, uint256 index) external view returns (address);
+    function getAssetConfig(uint256 assetId) external view returns (AssetConfig memory);
+    function getAssetSwept(uint256 assetId) external view returns (uint256);
 }
 
 /// @notice SUPPLY then WITHDRAW_COLLATERAL of $5 of NVDAc on the deployed Base mainnet vault, through its own
@@ -38,23 +49,31 @@ interface IAaveV4HubViews {
 /// MAAT_CREDIT_ACTIONS setting (agent/src/config.ts) must be "on" for it to suggest or send them.
 /// The gas logged is a receipt's gasUsed for plain execute(intent) calldata: the agent's trailing rationale blob
 /// and Builder Code suffix add calldata gas on top, and Base's L1 data fee is charged apart from gas.
+/// To re-run it at another block, for example after the executor changes or the agent has traded, from contracts/
+/// with BASE_RPC_URL set: CREDIT_FORK_BLOCK=<block> forge test --match-path test/fork/CreditSupplyWithdrawFork.t.sol
+/// It acts as whatever executor() the vault names at that block, and it fails if anything is supplied there.
 contract CreditSupplyWithdrawForkTest is Test {
     /// Records in deployments/README.md (deployed 2026-11-24).
     MandateVault internal constant VAULT = MandateVault(0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b);
     AaveV4CreditAdapter internal constant ADAPTER =
         AaveV4CreditAdapter(0x45dEA6BBeD30c120794115FeC8b01C346564aB2C);
-    /// executor() at FORK_BLOCK.
-    address internal constant EXECUTOR = 0x3c3a66f713DAE7e4A03Bbd81dB79FF65F42C1D6a;
+    /// executor() at FORK_BLOCK: the owner's wallet, before the switch to the CDP Server Wallet
+    /// (deployments/README.md).
+    address internal constant EXECUTOR_AT_FORK_BLOCK = 0x3c3a66f713DAE7e4A03Bbd81dB79FF65F42C1D6a;
 
     /// Wed 2026-11-25 15:22:01 UTC (10:22 ET, in session), read with `cast block-number` on a public RPC. The vault
     /// holds the 3,311,718 raw NVDAc of the owner's smoke-test BUY and nothing is supplied; the NVDA feed reads
-    /// 144.33510181, so $5 is 3,464,160 raw.
+    /// 144.33510181, so $5 is 3,464,160 raw. CREDIT_FORK_BLOCK replaces it.
     uint256 internal constant FORK_BLOCK = 62_148_729;
     uint256 internal constant SUPPLY_USD = 5e6;
     uint256 internal constant TOP_UP_USD = 1e6;
-    uint256 internal constant SAT_1800_UTC = 1_795_888_800; // Sat 2026-11-28 18:00 UTC, NYSE closed
     /// agent/src/exec/calls.ts EXECUTE_GAS_FLOOR: the smallest gas limit the agent sends execute() with.
     uint256 internal constant AGENT_EXECUTE_GAS_FLOOR = 2_500_000;
+    /// An address with no code: a call to it spends gas only as a transaction of its own (see _assertIsolated).
+    address internal constant NO_CODE = address(uint160(uint256(keccak256("maat.credit-fork.no-code"))));
+
+    /// executor() at the fork block, read in setUp.
+    address internal executor;
 
     struct Decided {
         bool allowed;
@@ -74,26 +93,33 @@ contract CreditSupplyWithdrawForkTest is Test {
     IAaveV4Spoke internal spoke = IAaveV4Spoke(A.AAVE_MAG7_SPOKE);
 
     function setUp() public {
-        vm.createSelectFork("base", FORK_BLOCK);
-        assertEq(VAULT.executor(), EXECUTOR);
+        uint256 forkBlock = vm.envOr("CREDIT_FORK_BLOCK", FORK_BLOCK);
+        vm.createSelectFork("base", forkBlock);
+        executor = VAULT.executor();
+        assertTrue(executor != address(0));
+        if (forkBlock == FORK_BLOCK) assertEq(executor, EXECUTOR_AT_FORK_BLOCK);
         assertEq(VAULT.mandate().creditAdapter, address(ADAPTER));
         assertFalse(VAULT.paused());
         assertFalse(ADAPTER.hasPosition());
+        console2.log(
+            string.concat("fork block ", vm.toString(forkBlock), ", executor ", vm.toString(executor))
+        );
     }
 
     /// forge-config: default.isolate = true
     function test_supplyThenWithdrawFiveDollarsOfNvdac() public {
         uint256 amount = _rawForUsd(SUPPLY_USD);
-        // The owner's smoke-test BUY left less than $5 of NVDAc at this price: SUPPLY of $5 is refused as is.
-        assertLt(nvdac.balanceOf(address(VAULT)), amount);
-        vm.prank(EXECUTOR, EXECUTOR);
-        assertEq(
-            uint8(VAULT.previewIntent(_intent("b5-supply", Action.SUPPLY, amount))),
-            uint8(Reason.INSUFFICIENT_BALANCE)
-        );
-        // so the executor buys $1 more first, through the same execute() path
-        Decided memory b = _execute(_buy("b5-top-up", TOP_UP_USD));
-        assertTrue(b.allowed);
+        // At FORK_BLOCK the owner's smoke-test BUY left less than $5 of NVDAc: SUPPLY of $5 is refused as is,
+        if (nvdac.balanceOf(address(VAULT)) < amount) {
+            vm.prank(executor, executor);
+            assertEq(
+                uint8(VAULT.previewIntent(_intent("b5-supply", Action.SUPPLY, amount))),
+                uint8(Reason.INSUFFICIENT_BALANCE)
+            );
+            // so the executor buys $1 more first, through the same execute() path
+            Decided memory b = _execute(_buy("b5-top-up", TOP_UP_USD));
+            assertTrue(b.allowed);
+        }
         assertGe(nvdac.balanceOf(address(VAULT)), amount);
         Holdings memory before = _holdings();
         uint256 spentBefore = VAULT.spentOnDay(VAULT.today());
@@ -119,7 +145,7 @@ contract CreditSupplyWithdrawForkTest is Test {
         assertEq(VAULT.spentOnDay(VAULT.today()), spentBefore); // credit actions are not capped trades
 
         // Supplied stock is not in the vault's wallet, so it cannot be sold until it is withdrawn.
-        vm.prank(EXECUTOR, EXECUTOR);
+        vm.prank(executor, executor);
         assertEq(
             uint8(VAULT.previewIntent(_intent("b5-sell", Action.SELL, amount))),
             uint8(Reason.INSUFFICIENT_BALANCE)
@@ -138,10 +164,8 @@ contract CreditSupplyWithdrawForkTest is Test {
         assertFalse(ADAPTER.hasPosition());
         assertEq(VAULT.spentOnDay(VAULT.today()), spentBefore);
 
-        // Both fit in the agent's execute gas limit floor, and isolation counts the 21,000 intrinsic gas.
-        assertGt(s.gasUsed, 21_000);
+        // Both fit in the agent's execute gas limit floor (_execute checks that the figures are isolated).
         assertLt(s.gasUsed, AGENT_EXECUTE_GAS_FLOOR);
-        assertGt(w.gasUsed, 21_000);
         assertLt(w.gasUsed, AGENT_EXECUTE_GAS_FLOOR);
     }
 
@@ -181,8 +205,12 @@ contract CreditSupplyWithdrawForkTest is Test {
         assertFalse(ADAPTER.hasPosition());
     }
 
-    /// What the market allows at FORK_BLOCK: the reserve and the spoke are open, there is room under the add
-    /// cap, and NVDAc cannot be borrowed, so the hub holds every unit supplied and a withdrawal cannot run short.
+    /// What the market allows at the fork block: the reserve and the spoke are open, there is room under the add
+    /// cap, and nothing but a withdrawal can take NVDAc out of the hub, so a withdrawal cannot run short. In
+    /// aave/aave-v4 a3ef63ea Hub.sol an asset's liquidity falls only in remove(), draw() and sweep(). draw() needs a
+    /// spoke of the asset with a drawCap above 0 (on the MAG7 spoke, also the borrowable flag), and sweep() needs
+    /// the asset's reinvestment controller. Either would let remove() revert with InsufficientLiquidity, and the
+    /// vault would then return CREDIT_FAILED for a WITHDRAW_COLLATERAL.
     function test_marketLimitsAtTheForkBlock() public view {
         IAaveV4HubViews hub = IAaveV4HubViews(A.AAVE_EQUITIES_HUB);
         IAaveV4Spoke.Reserve memory r = spoke.getReserve(A.AAVE_RESERVE_NVDAC);
@@ -201,6 +229,16 @@ contract CreditSupplyWithdrawForkTest is Test {
         uint256 added = hub.getSpokeAddedAssets(r.assetId, A.AAVE_MAG7_SPOKE);
         assertGt(cap, added + _rawForUsd(SUPPLY_USD));
         assertEq(hub.getAssetLiquidity(r.assetId), hub.getAddedAssets(r.assetId));
+
+        // No spoke of the asset can draw it, and no reinvestment controller can sweep it.
+        uint256 spokes = hub.getSpokeCount(r.assetId);
+        for (uint256 k; k < spokes; ++k) {
+            address s = hub.getSpokeAddress(r.assetId, k);
+            assertEq(hub.getSpokeConfig(r.assetId, s).drawCap, 0, "a spoke can draw NVDAc from the hub");
+        }
+        assertEq(hub.getAssetConfig(r.assetId).reinvestmentController, address(0), "NVDAc can be swept");
+        assertEq(hub.getAssetSwept(r.assetId), 0);
+        console2.log(string.concat("NVDAc spokes at the hub ", vm.toString(spokes), ", all with drawCap 0"));
         console2.log(
             string.concat(
                 "MAG7 spoke NVDAc add cap ",
@@ -221,8 +259,10 @@ contract CreditSupplyWithdrawForkTest is Test {
     /// forge-config: default.isolate = true
     function test_supplyAndWithdrawWhileTheMarketIsClosed() public {
         uint256 held = nvdac.balanceOf(address(VAULT));
-        vm.warp(SAT_1800_UTC);
-        vm.prank(EXECUTOR, EXECUTOR);
+        uint256 saturday = _nextSaturday1800Utc();
+        console2.log(string.concat("warped to ", vm.toString(saturday), " (a Saturday, 18:00 UTC)"));
+        vm.warp(saturday);
+        vm.prank(executor, executor);
         assertEq(uint8(VAULT.previewIntent(_buy("b5-closed-buy", TOP_UP_USD))), uint8(Reason.MARKET_CLOSED));
 
         Decided memory s = _execute(_intent("b5-closed-supply", Action.SUPPLY, held));
@@ -271,12 +311,30 @@ contract CreditSupplyWithdrawForkTest is Test {
         });
     }
 
+    /// The first Saturday 18:00 UTC after the fork block (Sat 2026-11-28 at FORK_BLOCK), when NYSE is closed.
+    function _nextSaturday1800Utc() internal view returns (uint256 t) {
+        uint256 day = block.timestamp / 1 days;
+        // 1970-01-01, day 0, was a Thursday, so (day + 4) % 7 is 0 on a Sunday and 6 on a Saturday.
+        t = (day + (13 - (day + 4) % 7) % 7) * 1 days + 18 hours;
+        if (t <= block.timestamp) t += 7 days;
+    }
+
+    /// A call to an account with no code spends no gas in its own frame, unless forge runs it as a transaction of
+    /// its own (isolation), which pays the 21,000 intrinsic gas. So this fails when the figures are not isolated.
+    function _assertIsolated() internal {
+        assertEq(NO_CODE.code.length, 0);
+        (bool ok,) = NO_CODE.call("");
+        assertTrue(ok);
+        assertEq(vm.lastFrameGas().gasTotalUsed, 21_000, "gas is not measured under isolation");
+    }
+
     /// Previews, then executes as the executor; the one Decision must match the preview and the return values.
     function _execute(Intent memory i) internal returns (Decided memory d) {
-        vm.prank(EXECUTOR, EXECUTOR);
+        _assertIsolated();
+        vm.prank(executor, executor);
         Reason previewed = VAULT.previewIntent(i);
         vm.recordLogs();
-        vm.prank(EXECUTOR, EXECUTOR);
+        vm.prank(executor, executor);
         (bool allowed, Reason reason) = VAULT.execute(i);
         Vm.Gas memory g = vm.lastFrameGas();
         d = _onlyDecision(vm.getRecordedLogs(), i);
