@@ -43,6 +43,17 @@ function errorsWithUrl(page: Page): { text: string; url: string }[] {
 
 const originOf = (url: string) => (URL.canParse(url) ? new URL(url).origin : "");
 
+/**
+ * The landing also reads the mainnet vault over the same two hosts (components/sections/VaultReader.tsx, with /ledger's
+ * loader). Served a deployments table with no vault, that read sends nothing, so the 503s a test counts are the strip's.
+ * The strip reads the table from the build, not from this file.
+ */
+async function withoutVaultRead(page: Page) {
+  await page.route("**/data/deployments.json", (route) =>
+    route.fulfill({ json: { network: "Base mainnet", chainId: 8453, vault: null, deployTx: null, contracts: [] } }),
+  );
+}
+
 test("the landing's strip reads a weekend block as LIVE, refuses with Market closed, and links /now", async ({ page }) => {
   const errors = collectErrors(page);
   await clockAfter(page, WEEKEND_TS);
@@ -106,6 +117,7 @@ test("in session the strip passes the market checks for two basket tokens and re
 
 test("the strip says so when both RPCs fail, and reads again on Retry", async ({ page }) => {
   const errors = errorsWithUrl(page);
+  await withoutVaultRead(page);
   await clockAfter(page, WEEKEND_TS);
   const rpc = await routeLiveRpc(page, "down");
   await page.goto("/");
@@ -135,6 +147,7 @@ test("the strip says so when both RPCs fail, and reads again on Retry", async ({
 // The two timers of the hook run on the clock the tests install: runFor moves it on without waiting in real time.
 test("on the page's clock the strip reads again every 30 s, and says NOT LIVE when a refresh fails", async ({ page }) => {
   const errors = errorsWithUrl(page);
+  await withoutVaultRead(page);
   await clockAfter(page, WEEKEND_TS);
   const rpc = await routeLiveRpc(page, "weekend");
   await page.goto("/");

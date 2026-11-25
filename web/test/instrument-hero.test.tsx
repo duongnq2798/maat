@@ -28,11 +28,11 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
     expect(h1).toHaveTextContent("The AI agent that knows when not to trade.");
   });
 
-  it("puts both CTAs right after the lead: 52 px and stacked on phones, 44 px in a row from sm", () => {
+  it("puts both CTAs right after the lead, the ledger first: 52 px and stacked on phones, 44 px in a row from sm", () => {
     render(<Hero />);
     const ctas = [...hero().querySelectorAll<HTMLAnchorElement>("[data-hero-cta]")];
     expect(ctas.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["Verify it in 5 minutes", SITE.quickstartUrl],
+      ["See the vault's last decision", "/ledger"],
       ["Try to make it say no", "#try"],
     ]);
     for (const a of ctas) expect(classes(a)).toEqual(expect.arrayContaining(["min-h-[52px]", "sm:min-h-11", "justify-center"]));

@@ -144,7 +144,7 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
     expect(document.querySelector("[data-nav-dock]")).toBeNull();
   });
 
-  it("wraps the nav in the bar, keeps PR #15's links, and docks the reading on the landing only", () => {
+  it("wraps the nav in the bar, keeps PR #15's links with the phone menu's, and docks the reading on the landing only", () => {
     render(<Nav />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(nav.parentElement).toHaveAttribute("data-nav-bar");
@@ -155,6 +155,10 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
       ["Try it", "#try"],
       ["Ledger", "/ledger"],
       ["Mandate", "#mandate"],
+      ["Ledger", "/ledger"],
+      ["Now", "/now"],
+      ["Gap Index", "/gap-index"],
+      ["Docs", SITE.docsUrl],
       ["Docs", SITE.docsUrl],
       ["View on GitHub ↗", SITE.repoUrl],
     ]);
