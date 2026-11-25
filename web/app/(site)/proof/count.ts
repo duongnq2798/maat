@@ -1,7 +1,9 @@
 import type { Hex } from "viem";
+import { teamLines, type TeamTrace } from "./team";
 
-// The brief lines of the /proof counting rule (inbox spec §5), from Brief logs and the three committed lists.
-// scripts/recount.mjs counts the same way in plain JavaScript; test/proof-recount.test.ts runs both on one fixture.
+// The brief lines of the /proof counting rule (inbox spec §5), from Brief logs, the traced team set (team.ts) and the
+// committed lists. scripts/recount.mjs counts the same way in plain JavaScript and runs team.ts itself;
+// test/proof-recount.test.ts runs the page and the script on one fixture.
 
 /** The two fields of a Brief log the rule reads. */
 export interface CountedBrief {
@@ -9,14 +11,33 @@ export interface CountedBrief {
   from: string;
 }
 
-export interface ProofLists {
-  /** content/proof-team.ts. */
+/** What countBriefs splits the briefs by. `team` is the whole team set: the trace's members, or a fixture. */
+export interface CountLists {
   team: readonly { address: string }[];
   /** content/ask-hidden.ts: ids the owner hid from the /ask feed. */
   hidden: readonly number[];
   /** content/proof-bounty.ts. */
   bounty: readonly { address: string; evidence: string }[];
 }
+
+/** The five committed lists the page and the recount read. */
+export interface ProofLists extends CountLists {
+  /** content/proof-team.ts, where the team trace starts. */
+  team: readonly { address: string; role: string }[];
+  /** content/proof-sends.ts. */
+  sends: readonly { wallet: string; txs: readonly string[] }[];
+  /** content/proof-stops.ts. */
+  stops: readonly { address: string; name: string; source: string }[];
+}
+
+/**
+ * How the brief lines stand: counted from a complete read; incomplete, when a log chunk or the team trace fell short,
+ * so no brief line has a number; or not deployed, before deployments/README.md records the inbox.
+ */
+export type LinesState = "counted" | "incomplete" | "not-deployed";
+
+/** What a brief line says in place of a number, by state. */
+export const STATE_TEXT: Record<Exclude<LinesState, "counted">, string> = { incomplete: "incomplete", "not-deployed": "not deployed" };
 
 /** One sender: its lowercased address and how many of its briefs were read. */
 export interface WalletLine {
@@ -63,7 +84,7 @@ export function emptyCount(): ProofCount {
  * is an outside brief, hidden or not; a hidden brief is an outside brief whose id is on the hide-list, listed again on
  * its own line; bounty claimants come from their list alone. Briefs are taken in id order.
  */
-export function countBriefs(briefs: readonly CountedBrief[], lists: ProofLists): ProofCount {
+export function countBriefs(briefs: readonly CountedBrief[], lists: CountLists): ProofCount {
   const team = new Set(addresses(lists.team, "team"));
   const claimants = addresses(lists.bounty, "bounty");
   const hidden = new Set(lists.hidden);
@@ -94,18 +115,20 @@ export interface ProofLine {
   label: string;
   /** Null while it has not been read. */
   value: number | null;
+  /** True for a line counted from Brief logs; the bounty line comes from its committed list. */
+  brief: boolean;
 }
 
 /** The lines of the rule that the page and the recount give, in this order. `verified` is null until it is read. */
 export function proofLines(count: ProofCount, verified: VerifiedColumn | null): ProofLine[] {
   const holders = verified ? count.outsideWallets.filter((w) => verified.get(w.address)).length : null;
   return [
-    { key: "outside-briefs", label: "Outside briefs", value: count.outsideBriefs },
-    { key: "outside-wallets", label: "Outside wallets", value: count.outsideWallets.length },
-    { key: "verified", label: "Outside wallets with a Verified Account", value: holders },
-    { key: "team-briefs", label: "Team briefs", value: count.teamBriefs },
-    { key: "hidden-briefs", label: "Hidden briefs", value: count.hidden.length },
-    { key: "bounty-claimants", label: "Bounty claimants", value: count.bounty.length },
+    { key: "outside-briefs", label: "Outside briefs", value: count.outsideBriefs, brief: true },
+    { key: "outside-wallets", label: "Outside wallets", value: count.outsideWallets.length, brief: true },
+    { key: "verified", label: "Outside wallets with a Verified Account", value: holders, brief: true },
+    { key: "team-briefs", label: "Team briefs", value: count.teamBriefs, brief: true },
+    { key: "hidden-briefs", label: "Hidden briefs", value: count.hidden.length, brief: true },
+    { key: "bounty-claimants", label: "Bounty claimants", value: count.bounty.length, brief: false },
   ];
 }
 
@@ -118,20 +141,29 @@ export function verifiedText(verified: VerifiedColumn | null, address: string): 
   return verified.get(address) ?? "none";
 }
 
+/** What a line says: its number, "not read", or the state's word for a brief line that has no number. */
+export function lineText(l: ProofLine, state: LinesState): string {
+  if (l.brief && state !== "counted") return STATE_TEXT[state];
+  return l.value === null ? "not read" : formatCount(l.value);
+}
+
 /**
- * The report as text, one line each: the six lines, then every outside wallet with its Verified Account, every team
- * wallet, every hidden brief and every bounty claimant. scripts/recount.mjs prints exactly these lines.
+ * The report as text, one line each: the six lines, then, when counted, every outside wallet with its Verified
+ * Account, every team wallet and every hidden brief; every bounty claimant; and the traced team set, when there is one.
+ * scripts/recount.mjs prints exactly these lines.
  */
-export function reportLines(count: ProofCount, verified: VerifiedColumn | null): string[] {
+export function reportLines(count: ProofCount, verified: VerifiedColumn | null, state: LinesState = "counted", team?: TeamTrace): string[] {
+  const counted = state === "counted";
   return [
-    ...proofLines(count, verified).map((l) => `${l.label}: ${l.value === null ? "not read" : formatCount(l.value)}`),
-    ...count.outsideWallets.map((w) => {
+    ...proofLines(count, verified).map((l) => `${l.label}: ${lineText(l, state)}`),
+    ...(counted ? count.outsideWallets : []).map((w) => {
       const uid = verifiedText(verified, w.address);
       const va = uid === "none" ? "no Verified Account" : uid === "not read" ? "Verified Account not read" : `Verified Account ${uid}`;
       return `Outside wallet ${w.address}: ${briefsText(w.briefs)}, ${va}`;
     }),
-    ...count.teamWallets.map((w) => `Team wallet ${w.address}: ${briefsText(w.briefs)}`),
-    ...count.hidden.map((h) => `Hidden brief #${h.id} from ${h.from}`),
+    ...(counted ? count.teamWallets : []).map((w) => `Team wallet ${w.address}: ${briefsText(w.briefs)}`),
+    ...(counted ? count.hidden : []).map((h) => `Hidden brief #${h.id} from ${h.from}`),
     ...count.bounty.map((c) => `Bounty claimant ${c.address}: ${c.evidence}`),
+    ...(team ? teamLines(team) : []),
   ];
 }

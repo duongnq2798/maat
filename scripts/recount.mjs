@@ -1,14 +1,18 @@
 #!/usr/bin/env node
-// Rebuilds the numbers of the site's /proof page from Base mainnet alone, by the counting rule of
-// docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5. It reads the MaatInbox address from
-// deployments/README.md and the team list, the hide-list and the bounty claimants from web/content/, then every Brief
-// log of the inbox and the Coinbase Verified Account of each outside wallet over a keyless JSON-RPC.
+// Rebuilds the brief lines of the site's /proof page from Base mainnet alone, by the counting rule of
+// docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5. It reads the deployments table from
+// deployments/README.md and the five lists from web/content/ (the team list, each team wallet's sent transactions, the
+// hop stops, the hide-list and the bounty claimants), then every Brief log of the inbox, the team set traced at the
+// block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless JSON-RPC. The Decision
+// lines of the rule are not rebuilt yet, and it says so.
 //
 //   node scripts/recount.mjs [--rpc <url>] [--to-block <n>] [--root <dir>]
+//   node scripts/recount.mjs --sends <wallet> [--rpc <url>] [--to-block <n>]
 //
-// No dependency: Node's built-ins and fetch only. It reads the TypeScript lists with Node's own type stripping, which
-// Node.js 24 has on by default. web/app/(site)/proof/count.ts is the page's copy of the same rule, and
-// web/test/proof-recount.test.ts runs the page and this script on one fixture and wants the same lines.
+// No dependency: Node's built-ins and fetch only. It reads the TypeScript lists, and the team trace
+// web/app/(site)/proof/team.ts that the page runs too, with Node's own type stripping, which Node.js 24 has on by
+// default. web/app/(site)/proof/count.ts is the page's copy of the counting steps, and web/test/proof-recount.test.ts
+// runs the page and this script on one fixture and wants the same lines.
 
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -43,14 +47,21 @@ const RETRIES = 5;
 const ZERO32 = `0x${"0".repeat(64)}`;
 const RULE = "docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5";
 
-const USAGE = `Rebuilds the /proof numbers from Base mainnet logs alone.
+const USAGE = `Rebuilds the /proof brief lines from Base mainnet alone.
 
   node scripts/recount.mjs [--rpc <url>] [--to-block <n>] [--root <dir>]
+  node scripts/recount.mjs --sends <wallet> [--rpc <url>] [--to-block <n>]
 
-  --rpc <url>      a Base mainnet JSON-RPC (default ${DEFAULT_RPC})
-  --to-block <n>   count to block n, the block /proof says it counted to (default: the head)
-  --root <dir>     read deployments/README.md and web/content/ from this checkout (default: this script's)
+  --rpc <url>        a Base mainnet JSON-RPC (default ${DEFAULT_RPC})
+  --to-block <n>     count to block n, the block /proof says it counted to, as it prints it or as digits (default: the head)
+  --root <dir>       read deployments/README.md and web/content/ from this checkout (default: this script's)
+  --sends <wallet>   print the wallet's sent transactions to block n, in nonce order, as an entry of
+                     web/content/proof-sends.ts. It reads the wallet's nonce at past blocks, which takes an archive
+                     RPC such as https://mainnet.base.org.
 `;
+
+/** The team trace the page runs, from this script's own checkout. */
+const TEAM_MODULE = new URL("../web/app/(site)/proof/team.ts", import.meta.url);
 
 // ---------------------------------------------------------------------------------------------------------------
 // deployments/README.md, read as web/lib/docs/docs-data.ts parseDeployments reads it.
@@ -126,7 +137,10 @@ function wallets(briefs) {
   return [...by.entries()].map(([address, n]) => ({ address, briefs: n }));
 }
 
-/** Team briefs apart; every other brief is an outside brief, hidden or not; bounty claimants from their list alone. */
+/**
+ * Team briefs apart; every other brief is an outside brief, hidden or not; bounty claimants from their list alone.
+ * `lists.team` is the whole team set: the members of the team trace.
+ */
 export function countBriefs(briefs, lists) {
   const team = new Set(addresses(lists.team, "team"));
   const claimants = addresses(lists.bounty, "bounty");
@@ -155,23 +169,32 @@ export function countBriefs(briefs, lists) {
 const formatCount = (n) => n.toLocaleString("en-US");
 const briefsText = (n) => `${formatCount(n)} ${n === 1 ? "brief" : "briefs"}`;
 
-/** The lines /proof shows, in its words: the six lines, then the rows behind them. */
-export function reportLines(count, verified) {
+/** What a brief line says in place of a number when the count is incomplete or the inbox is not recorded. */
+const STATE_TEXT = { incomplete: "incomplete", "not-deployed": "not deployed" };
+
+/**
+ * The lines /proof shows, in its words: the six lines; when `state` is "counted", the rows behind them; the bounty
+ * claimants; then `teamText`, the trace's lines. Otherwise each brief line gives the state's word in place of a number.
+ */
+export function reportLines(count, verified, state = "counted", teamText = []) {
+  const counted = state === "counted";
+  const brief = (n) => (counted ? formatCount(n) : STATE_TEXT[state]);
   const holders = count.outsideWallets.filter((w) => verified.get(w.address)).length;
   return [
-    `Outside briefs: ${formatCount(count.outsideBriefs)}`,
-    `Outside wallets: ${formatCount(count.outsideWallets.length)}`,
-    `Outside wallets with a Verified Account: ${formatCount(holders)}`,
-    `Team briefs: ${formatCount(count.teamBriefs)}`,
-    `Hidden briefs: ${formatCount(count.hidden.length)}`,
+    `Outside briefs: ${brief(count.outsideBriefs)}`,
+    `Outside wallets: ${brief(count.outsideWallets.length)}`,
+    `Outside wallets with a Verified Account: ${brief(holders)}`,
+    `Team briefs: ${brief(count.teamBriefs)}`,
+    `Hidden briefs: ${brief(count.hidden.length)}`,
     `Bounty claimants: ${formatCount(count.bounty.length)}`,
-    ...count.outsideWallets.map((w) => {
+    ...(counted ? count.outsideWallets : []).map((w) => {
       const uid = verified.get(w.address);
       return `Outside wallet ${w.address}: ${briefsText(w.briefs)}, ${uid ? `Verified Account ${uid}` : "no Verified Account"}`;
     }),
-    ...count.teamWallets.map((w) => `Team wallet ${w.address}: ${briefsText(w.briefs)}`),
-    ...count.hidden.map((h) => `Hidden brief #${h.id} from ${h.from}`),
+    ...(counted ? count.teamWallets : []).map((w) => `Team wallet ${w.address}: ${briefsText(w.briefs)}`),
+    ...(counted ? count.hidden : []).map((h) => `Hidden brief #${h.id} from ${h.from}`),
     ...count.bounty.map((c) => `Bounty claimant ${c.address}: ${c.evidence}`),
+    ...teamText,
   ];
 }
 
@@ -309,6 +332,31 @@ export async function verifiedAccounts(call, list, blockTag, now) {
   return out;
 }
 
+/**
+ * The transactions `wallet` sent by `head`, in nonce order: for each nonce, the first block whose nonce is past it,
+ * found by bisection, then the wallet's transaction in that block. Every read but the last block's needs an RPC that
+ * answers for past blocks (an archive node).
+ */
+export async function sentTransactions(call, wallet, head) {
+  const nonceAt = async (block) => BigInt(await call("eth_getTransactionCount", [wallet, hex(block)]));
+  const n = await nonceAt(head);
+  const out = [];
+  let lo = 0n;
+  for (let k = 0n; k < n; k++) {
+    let hi = head;
+    while (lo < hi) {
+      const mid = (lo + hi) / 2n;
+      if ((await nonceAt(mid)) > k) hi = mid;
+      else lo = mid + 1n;
+    }
+    const block = await call("eth_getBlockByNumber", [hex(lo), true]);
+    const tx = (block?.transactions ?? []).find((t) => typeof t === "object" && String(t.from).toLowerCase() === wallet && BigInt(t.nonce) === k);
+    if (!tx) throw new Error(`block ${lo} has no transaction ${k} of ${wallet}`);
+    out.push(String(tx.hash).toLowerCase());
+  }
+  return out;
+}
+
 // ---------------------------------------------------------------------------------------------------------------
 
 async function list(root, file, name) {
@@ -323,7 +371,11 @@ const plural = (n, one, many) => `${formatCount(n)} ${n === 1 ? one : many}`;
 export async function main(argv, out = process.stdout, err = process.stderr) {
   let args;
   try {
-    args = parseArgs({ args: argv, options: { rpc: { type: "string" }, "to-block": { type: "string" }, root: { type: "string" }, help: { type: "boolean" } }, strict: true }).values;
+    args = parseArgs({
+      args: argv,
+      options: { rpc: { type: "string" }, "to-block": { type: "string" }, root: { type: "string" }, sends: { type: "string" }, help: { type: "boolean" } },
+      strict: true,
+    }).values;
   } catch (e) {
     err.write(`${e instanceof Error ? e.message : String(e)}\n\n${USAGE}`);
     return 2;
@@ -335,36 +387,52 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
   const say = (line) => out.write(`${line}\n`);
   try {
     if (!process.features.typescript) throw new Error("this Node.js cannot read the TypeScript lists in web/content/: run it with Node.js 24");
-    const toBlock = args["to-block"];
-    if (toBlock !== undefined && !/^\d+$/.test(toBlock)) throw new Error(`--to-block ${toBlock} is not a block number`);
-    const root = args.root ? resolve(args.root) : resolve(dirname(fileURLToPath(import.meta.url)), "..");
-    const record = inboxRecord(parseDeployments(readFileSync(join(root, DEPLOYMENTS_FILE), "utf8")));
-    const lists = {
-      team: await list(root, "web/content/proof-team.ts", "PROOF_TEAM"),
-      hidden: await list(root, "web/content/ask-hidden.ts", "HIDDEN_BRIEFS"),
-      bounty: await list(root, "web/content/proof-bounty.ts", "PROOF_BOUNTY"),
-    };
-    countBriefs([], lists);
-
+    // The page prints the block with thousands separators; digits with commas or underscores are taken as it prints it.
+    const toBlock = args["to-block"]?.replace(/[,_]/g, "");
+    if (toBlock !== undefined && !/^\d+$/.test(toBlock)) throw new Error(`--to-block ${args["to-block"]} is not a block number`);
     const url = args.rpc ?? DEFAULT_RPC;
     const call = rpcClient(url);
     const chainId = Number(BigInt(await call("eth_chainId", [])));
     if (chainId !== BASE_CHAIN_ID) throw new Error(`the RPC ${url} is on chain id ${chainId}, not Base mainnet (${BASE_CHAIN_ID})`);
     const latest = BigInt(await call("eth_blockNumber", []));
+    const head = toBlock === undefined ? latest : BigInt(toBlock);
+    if (head > latest) throw new Error(`--to-block ${toBlock} is past the head block, ${latest}`);
+
+    if (args.sends !== undefined) {
+      if (!FULL_ADDRESS.test(args.sends)) throw new Error(`--sends ${args.sends} is not 0x and 40 hex digits`);
+      const wallet = args.sends.toLowerCase();
+      const txs = await sentTransactions(call, wallet, head);
+      say(`// ${plural(txs.length, "transaction", "transactions")} sent by block ${head.toLocaleString("en-US")}, in nonce order, read from ${url}:`);
+      say(`  { wallet: "${wallet}", txs: [${txs.map((h) => `"${h}"`).join(", ")}] },`);
+      return 0;
+    }
+
+    const root = args.root ? resolve(args.root) : resolve(dirname(fileURLToPath(import.meta.url)), "..");
+    const rows = parseDeployments(readFileSync(join(root, DEPLOYMENTS_FILE), "utf8"));
+    const record = inboxRecord(rows);
+    const lists = {
+      team: await list(root, "web/content/proof-team.ts", "PROOF_TEAM"),
+      sends: await list(root, "web/content/proof-sends.ts", "PROOF_SENDS"),
+      stops: await list(root, "web/content/proof-stops.ts", "PROOF_STOPS"),
+      hidden: await list(root, "web/content/ask-hidden.ts", "HIDDEN_BRIEFS"),
+      bounty: await list(root, "web/content/proof-bounty.ts", "PROOF_BOUNTY"),
+    };
+    countBriefs([], lists);
+    const { DECISION_NOTE, TEAM_SET_NOTE, teamLines, traceTeam } = await import(TEAM_MODULE.href);
 
     say(`Maat /proof recount, from Base mainnet alone, by the counting rule of ${RULE}.`);
     say(`RPC ${url}: chain id ${chainId}, head block ${latest.toLocaleString("en-US")}.`);
     say(
-      `Lists: ${plural(lists.team.length, "team wallet", "team wallets")} (web/content/proof-team.ts), ${plural(lists.hidden.length, "hidden id", "hidden ids")} (web/content/ask-hidden.ts), ${plural(lists.bounty.length, "bounty claimant", "bounty claimants")} (web/content/proof-bounty.ts).`,
+      `Lists: ${plural(lists.team.length, "team wallet", "team wallets")} (web/content/proof-team.ts), ${plural(lists.sends.length, "wallet's sent transactions", "wallets' sent transactions")} (web/content/proof-sends.ts), ${plural(lists.stops.length, "hop stop", "hop stops")} (web/content/proof-stops.ts), ${plural(lists.hidden.length, "hidden id", "hidden ids")} (web/content/ask-hidden.ts), ${plural(lists.bounty.length, "bounty claimant", "bounty claimants")} (web/content/proof-bounty.ts).`,
     );
     if (!record) {
       say("MaatInbox is not recorded in deployments/README.md yet, so there is no brief to count. Counting starts when the inbox is recorded.");
-      for (const line of reportLines(countBriefs([], lists), new Map())) say(line);
+      say(TEAM_SET_NOTE);
+      say(DECISION_NOTE);
+      for (const line of reportLines(countBriefs([], lists), new Map(), "not-deployed")) say(line);
       return 0;
     }
 
-    const head = toBlock === undefined ? latest : BigInt(toBlock);
-    if (head > latest) throw new Error(`--to-block ${toBlock} is past the head block, ${latest}`);
     let from = SCAN_FLOOR_BLOCK;
     if (record.deployTx) {
       const receipt = await call("eth_getTransactionReceipt", [record.deployTx]);
@@ -376,9 +444,12 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
       if (b) byKey.set(`${b.txHash}:${b.logIndex}`, b);
     }
     const briefs = [...byKey.values()].sort((a, b) => a.id - b.id);
-    const count = countBriefs(briefs, lists);
+    const deployments = rows.filter((r) => r.network === "Base mainnet").map(({ contract, address, tx }) => ({ contract, address, tx }));
+    const trace = await traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments }, head);
+    const count = countBriefs(briefs, { ...lists, team: trace.members });
+    const complete = trace.gaps.length === 0;
     let verified = new Map();
-    if (count.outsideWallets.length > 0) {
+    if (complete && count.outsideWallets.length > 0) {
       const block = await call("eth_getBlockByNumber", [hex(head), false]);
       if (!block?.timestamp) throw new Error(`block ${head} has no timestamp`);
       verified = await verifiedAccounts(
@@ -388,8 +459,16 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
         BigInt(block.timestamp),
       );
     }
-    say(`MaatInbox ${record.inbox}: Brief logs from block ${from.toLocaleString("en-US")} to block ${head.toLocaleString("en-US")}, Verified Accounts read at block ${head.toLocaleString("en-US")}.`);
-    for (const line of reportLines(count, verified)) say(line);
+    say(
+      `MaatInbox ${record.inbox}: Brief logs from block ${from.toLocaleString("en-US")} to block ${head.toLocaleString("en-US")}, team set and Verified Accounts read at block ${head.toLocaleString("en-US")}.`,
+    );
+    say(TEAM_SET_NOTE);
+    say(DECISION_NOTE);
+    for (const line of reportLines(count, verified, complete ? "counted" : "incomplete", teamLines(trace))) say(line);
+    if (!complete) {
+      err.write(`recount: the count is incomplete: ${trace.gaps.join(" ")}\n`);
+      return 1;
+    }
     return 0;
   } catch (e) {
     err.write(`recount: ${e instanceof Error ? e.message : String(e)}\n`);

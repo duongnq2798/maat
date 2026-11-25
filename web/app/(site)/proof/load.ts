@@ -1,34 +1,53 @@
-import type { Hex } from "viem";
+import type { Hex, PublicClient } from "viem";
 import { readBriefs, type InboxDeployment } from "@/lib/chain/inbox";
 import { errorText, type LedgerClient } from "@/lib/chain/load";
 import { countBriefs, type ProofCount, type ProofLists } from "./count";
+import { traceTeam, type Rpc, type TeamInputs, type TeamTrace } from "./team";
 import { readVerifiedAccounts } from "./verified";
+
+/** The reads /proof makes: the ledger's, plus raw JSON-RPC requests for the team trace. A viem PublicClient has both. */
+export type ProofClient = LedgerClient & Pick<PublicClient, "request">;
+
+/** What a failed chunk of the Brief log scan leaves. */
+export const SCAN_GAP = "Some blocks of the Brief logs could not be read, so briefs may be missing.";
 
 export interface ProofRead {
   count: ProofCount;
   /** The Verified Account column, or null when it could not be read (`verifiedError` says why). */
   verified: Map<string, Hex | null> | null;
   verifiedError: string | null;
-  /** False when a chunk of the log scan failed, so briefs may be missing. */
+  /** False when a chunk of the log scan failed or the team trace has a gap; no brief line has a number then. */
   complete: boolean;
-  /** The block the briefs were read to; the column is read at this block too. */
+  /** Why the read is not complete, one sentence each. */
+  problems: string[];
+  /** The block the briefs were read to; the team set and the column are read at this block too. */
   head: bigint;
+  team: TeamTrace;
 }
 
+/** Raw JSON-RPC over the page's client, for team.ts, which the recount runs over fetch. */
+export const clientRpc =
+  (client: Pick<PublicClient, "request">): Rpc =>
+  (method, params) =>
+    client.request({ method, params } as never) as Promise<unknown>;
+
 /**
- * Everything /proof shows, from the chain: every Brief log of the inbox up to the head (the /ask reader), counted by
- * the rule, then the Verified Account of each outside wallet, read at the head block and judged at its timestamp.
+ * Everything /proof shows, from the chain: every Brief log of the inbox up to the head (the /ask reader), the team set
+ * traced at the head, the briefs counted by the rule, then the Verified Account of each outside wallet, read at the
+ * head block and judged at its timestamp. An incomplete read gives no column, since its lines show no number.
  */
 export async function readProof(
-  client: LedgerClient,
-  inbox: Pick<InboxDeployment, "inbox" | "deployTx">,
+  client: ProofClient,
+  config: { inbox: Pick<InboxDeployment, "inbox" | "deployTx">; deployments: TeamInputs["deployments"] },
   lists: ProofLists,
   signal?: AbortSignal,
 ): Promise<ProofRead> {
-  const read = await readBriefs(client, { inbox: inbox.inbox, deployTx: inbox.deployTx, signal });
-  const count = countBriefs(read.briefs, lists);
-  const base = { count, complete: read.complete, head: read.head };
-  if (count.outsideWallets.length === 0) return { ...base, verified: new Map(), verifiedError: null };
+  const read = await readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, signal });
+  const team = await traceTeam(clientRpc(client), { team: lists.team, sends: lists.sends, stops: lists.stops, deployments: config.deployments }, read.head, signal);
+  const count = countBriefs(read.briefs, { ...lists, team: team.members });
+  const problems = [...(read.complete ? [] : [SCAN_GAP]), ...team.gaps];
+  const base = { count, complete: problems.length === 0, problems, head: read.head, team };
+  if (!base.complete || count.outsideWallets.length === 0) return { ...base, verified: new Map(), verifiedError: null };
   try {
     const block = await client.getBlock({ blockNumber: read.head });
     const verified = await readVerifiedAccounts(

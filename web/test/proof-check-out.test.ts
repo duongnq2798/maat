@@ -17,7 +17,9 @@ describe("checkProofPage", () => {
   const URL_ = "https://maat.example/proof";
   const SITEMAP = `<url><loc>${URL_}</loc></url>`;
   const check = (html: string, inbox: boolean, sitemap = SITEMAP) => checkProofPage({ html, inboxRecorded: inbox, sitemap, url: URL_ });
-  const NOT_RECORDED = page('<div data-proof-state="not-recorded"><p>Counting starts when the inbox is recorded.</p></div><dd data-testid="proof-outside-briefs">0</dd>');
+  const NOT_RECORDED = page(
+    '<div data-proof-state="not-recorded"><p>Counting starts when the inbox is recorded.</p></div><dd data-testid="proof-outside-briefs">not deployed</dd>',
+  );
   const READING = page('<div data-proof-state="reading"><p>Reading briefs from Base…</p></div><dd data-testid="proof-outside-briefs">…</dd>');
 
   it("passes the not-recorded page before the inbox is recorded, and the reading page after", () => {
@@ -35,9 +37,11 @@ describe("checkProofPage", () => {
     expect(check(baked, true)).toEqual(["out/proof.html has a count in its HTML, read at build time"]);
   });
 
-  it("fails a not-recorded page with a count other than zero or a row, since there is nothing to count yet", () => {
-    const counted = NOT_RECORDED.replace('data-testid="proof-outside-briefs">0<', 'data-testid="proof-outside-briefs">2<');
-    expect(check(counted, false)).toEqual(["out/proof.html shows a count other than 0, but no MaatInbox is recorded"]);
+  it("fails a not-recorded page with a number on a brief line or a row, since there is nothing to count yet", () => {
+    for (const n of ["2", "0"]) {
+      const counted = NOT_RECORDED.replace('data-testid="proof-outside-briefs">not deployed<', `data-testid="proof-outside-briefs">${n}<`);
+      expect(check(counted, false)).toEqual(["out/proof.html shows a brief line other than not deployed, but no MaatInbox is recorded"]);
+    }
     const row = NOT_RECORDED.replace("</main>", '<table><tr data-proof-row="outside"><td>0xabc</td></tr></table></main>');
     expect(check(row, false)).toEqual(["out/proof.html lists a wallet or a brief, but no MaatInbox is recorded"]);
   });

@@ -3,7 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 import { getAddress, type Address, type Hash, type Hex } from "viem";
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { VERIFIED_ACCOUNT_SCHEMA } from "../app/(site)/proof/verified";
-import { answerBody, newRpcLog, type ProofChain, type ProofRpcLog } from "../test/helpers/fake-proof-chain";
+import { PROOF_SENDS } from "../content/proof-sends";
+import { answerBody, newRpcLog, plainSends, type ProofChain, type ProofRpcLog } from "../test/helpers/fake-proof-chain";
 import { RPC_HOSTS } from "./fake-rpc";
 import { collectErrors } from "./helpers";
 
@@ -21,9 +22,16 @@ const INBOX = getAddress("0x00000000000000000000000000000000000b0001");
 const INBOX_TX: Hash = `0x${"d1".repeat(32)}`;
 const UID: Hex = `0x${"a1".repeat(32)}`;
 const ZERO32: Hex = `0x${"0".repeat(64)}`;
+const VAULT = getAddress(deployments.find((r) => r.network === "Base mainnet" && r.contract === "MandateVault")!.address);
 
+/**
+ * A chain for `briefs`, with the committed team lists as its own record: the owner's committed transactions are its
+ * only ones, and the vault gives the owner as owner(), executor() and its one payee.
+ */
 function chain(inbox: Address, deployTx: Hash | null, briefs: ProofChain["briefs"]): ProofChain {
   return {
+    vault: { address: VAULT, owner: OWNER, executor: OWNER, payees: [OWNER] },
+    txs: plainSends(PROOF_SENDS, DEPLOY),
     chainId: 8453,
     head: HEAD,
     headTime: 1_795_619_778n,
@@ -91,7 +99,7 @@ test.describe("/proof with the committed deployments table", () => {
 
     if (RECORDED === null) {
       await expect(page.locator('[data-proof-state="not-recorded"]')).toContainText("Counting starts when the inbox is recorded.");
-      for (const key of LINES.slice(0, 5)) await expect(page.getByTestId(`proof-${key}`)).toHaveText("0");
+      for (const key of LINES.slice(0, 5)) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not deployed");
       await expect(page.locator("[data-proof-row]")).toHaveCount(0);
       expect(seen.methods).not.toContain("eth_getLogs");
     } else {
@@ -146,10 +154,15 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
     await expect(wallets.locator("tbody tr").nth(0).locator("td")).toHaveText([ALICE.toLowerCase(), "2", UID]);
     await expect(wallets.locator("tbody tr").nth(1).locator("td")).toHaveText([BOB.toLowerCase(), "1", "none"]);
     await expect(page.getByRole("table", { name: "Team wallets" }).locator("tbody td").first()).toHaveText(OWNER.toLowerCase());
+    // The team set traced at the head: the owner and the agent executor, with the vault as a hop stop.
+    await expect(page.getByRole("table", { name: "Team set" }).locator("tbody tr")).toHaveCount(2);
+    await expect(page.getByRole("table", { name: "Hop stops" })).toContainText(VAULT.toLowerCase());
     // The page shows no brief text, so nothing a sender wrote is ever rendered here.
     await expect(page.getByText("unique-brief-text")).toHaveCount(0);
 
-    expect(seen.calls.map((c) => c.functionName).sort()).toEqual(["getAttestation", "getAttestationUid", "getAttestationUid"]);
+    const verified = seen.calls.filter((c) => c.to !== VAULT.toLowerCase());
+    expect(verified.map((c) => c.functionName).sort()).toEqual(["getAttestation", "getAttestationUid", "getAttestationUid"]);
+    expect(seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName)).toEqual(["owner", "executor", "payees"]);
     expect(new Set(seen.calls.map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);

@@ -509,8 +509,8 @@ const PROOF_BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "tea
 /**
  * Problems with out/proof.html. It is a public page, so it may not ask not to be indexed and the sitemap lists it. Its
  * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then and
- * every brief line is 0, with no wallet or brief row; after, it shows the reading state and no count, since the browser
- * reads the logs. Its markup holds the counting rule.
+ * every brief line says "not deployed", with no number and no wallet or brief row; after, it shows the reading state
+ * and no count, since the browser reads the logs. Its markup holds the counting rule.
  */
 export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sitemap: string; url: string }): string[] {
   const { html, inboxRecorded, sitemap, url } = opts;
@@ -537,7 +537,7 @@ export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sit
     const waiting = markup.includes('data-proof-state="not-recorded"') && markup.includes("Counting starts when the inbox is recorded.");
     need(waiting, " does not say counting starts when the inbox is recorded, but no MaatInbox is recorded");
     if (waiting) {
-      need(values.every((v) => v === undefined || v === "0"), " shows a count other than 0, but no MaatInbox is recorded");
+      need(values.every((v) => v === undefined || v === "not deployed"), " shows a brief line other than not deployed, but no MaatInbox is recorded");
       need(!/data-proof-row="(?:outside|team|hidden)"/.test(markup), " lists a wallet or a brief, but no MaatInbox is recorded");
     }
   }

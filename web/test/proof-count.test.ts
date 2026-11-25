@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { getAddress, type Address, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
-import { countBriefs, emptyCount, proofLines, reportLines, type ProofLists } from "@/app/(site)/proof/count";
+import { countBriefs, emptyCount, proofLines, reportLines, type CountLists } from "@/app/(site)/proof/count";
 import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
 import { PROOF_BOUNTY } from "@/content/proof-bounty";
 import { PROOF_TEAM } from "@/content/proof-team";
@@ -28,7 +28,7 @@ const BRIEFS = [
   { id: 7, from: lower(EXECUTOR) as Address },
 ];
 
-const LISTS: ProofLists = {
+const LISTS: CountLists = {
   team: [{ address: OWNER }, { address: EXECUTOR }],
   // 6 is Carol's; 4 is the owner's, a team brief; 99 was never sent.
   hidden: [6, 4, 99, 6],
@@ -131,6 +131,24 @@ describe("the counting rule of inbox spec §5, on fixture Brief logs", () => {
       "Hidden briefs: 0",
       "Bounty claimants: 0",
     ]);
+  });
+
+  it("gives no number and no row on a brief line while the count is incomplete or the inbox is not deployed", () => {
+    for (const [state, word] of [
+      ["incomplete", "incomplete"],
+      ["not-deployed", "not deployed"],
+    ] as const) {
+      expect(reportLines(count, new Map(), state)).toEqual([
+        `Outside briefs: ${word}`,
+        `Outside wallets: ${word}`,
+        `Outside wallets with a Verified Account: ${word}`,
+        `Team briefs: ${word}`,
+        `Hidden briefs: ${word}`,
+        "Bounty claimants: 2",
+        `Bounty claimant ${lower(BOB)}: https://github.com/duongnq2798/maat/issues/1`,
+        `Bounty claimant ${lower(CAROL)}: a fork test`,
+      ]);
+    }
   });
 
   it("refuses a list address that is not 0x and 40 hex digits", () => {

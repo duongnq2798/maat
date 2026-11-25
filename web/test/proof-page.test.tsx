@@ -4,10 +4,16 @@ import { describe, expect, it } from "vitest";
 import { ProofApp } from "@/app/(site)/proof/ProofApp";
 import ProofPage, { metadata } from "@/app/(site)/proof/page";
 import { proofConfig } from "@/app/(site)/proof/config";
+import { DECISION_NOTE, TEAM_SET_NOTE } from "@/app/(site)/proof/team";
 import { VERIFIED_ACCOUNT_SCHEMA, type Attestation } from "@/app/(site)/proof/verified";
+import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
+import { PROOF_BOUNTY } from "@/content/proof-bounty";
+import { PROOF_SENDS } from "@/content/proof-sends";
+import { PROOF_STOPS } from "@/content/proof-stops";
+import { PROOF_TEAM } from "@/content/proof-team";
 import { inboxDeployment } from "@/lib/chain/inbox";
 import { docsData } from "@/lib/docs/generated";
-import { proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
+import { plainSends, proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
 
 const INBOX: Address = "0x00000000000000000000000000000000000B0001";
 const DEPLOY_TX: Hash = `0x${"d1".repeat(32)}`;
@@ -36,6 +42,13 @@ const ALICE_VA: Attestation = {
   data: `0x${"0".repeat(63)}1`,
 };
 
+const VAULT = docsData.deployments.find((r) => r.contract === "MandateVault")!.address as Address;
+
+/**
+ * The committed lists as the chain's own record: the owner's committed transactions are its only ones, so its nonce
+ * matches its list, and the vault gives the owner as owner(), executor() and its one payee, as it did at block
+ * 62,146,556. The test inbox's deploy tx is not among them, so the fake chain has the zero address send it.
+ */
 const CHAIN: ProofChain = {
   chainId: 8453,
   head: DEPLOY + 1_000n,
@@ -51,23 +64,36 @@ const CHAIN: ProofChain = {
   ],
   uids: { [ALICE.toLowerCase()]: UID },
   attestations: { [UID]: ALICE_VA },
+  vault: { address: VAULT, owner: OWNER, executor: OWNER, payees: [OWNER] },
+  txs: plainSends(PROOF_SENDS, DEPLOY),
 };
+const LISTS = { team: PROOF_TEAM, hidden: HIDDEN_BRIEFS, bounty: PROOF_BOUNTY, sends: PROOF_SENDS, stops: PROOF_STOPS };
+const BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
 
 const value = (label: string) => screen.getByTestId(`proof-${label}`).textContent;
 
 describe("/proof while deployments/README.md records no MaatInbox", () => {
-  it("shows the rule, says counting starts when the inbox is recorded, and gives zero on every line with no row", () => {
+  it("shows the rule, says counting starts when the inbox is recorded, and gives no number on a brief line", () => {
     render(<ProofApp initial={proofConfig(ROWS(false))} deps={{ fetchConfig: never }} />);
     expect(screen.getByRole("heading", { level: 1, name: "Proof" })).toBeInTheDocument();
     const state = document.querySelector('[data-proof-state="not-recorded"]');
     expect(state?.textContent).toContain("Counting starts when the inbox is recorded.");
-    for (const key of ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs", "bounty-claimants"]) {
-      expect(value(key)).toBe("0");
-    }
+    for (const key of BRIEF_LINES) expect(value(key)).toBe("not deployed");
+    // The bounty line comes from its committed list, which needs no inbox.
+    expect(value("bounty-claimants")).toBe(String(PROOF_BOUNTY.length));
     expect(screen.queryByRole("table", { name: "Outside wallets" })).toBeNull();
+    expect(screen.queryByRole("table", { name: "Team set" })).toBeNull();
     expect(screen.getByRole("heading", { name: "The counting rule" })).toBeInTheDocument();
     expect(screen.getByText(/No line is ever added to another\./)).toBeInTheDocument();
     expect(screen.getByText("node scripts/recount.mjs")).toBeInTheDocument();
+  });
+
+  it("puts the team-set note and the Decision note right before the brief lines", () => {
+    render(<ProofApp initial={proofConfig(ROWS(false))} deps={{ fetchConfig: never }} />);
+    const notes = document.querySelector("[data-proof-notes]");
+    expect([...notes!.querySelectorAll("p")].map((p) => p.textContent)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
+    const lines = screen.getByTestId("proof-outside-briefs");
+    expect(notes!.compareDocumentPosition(lines) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("builds its static state from the committed deployments table", () => {
@@ -106,6 +132,46 @@ describe("/proof with a MaatInbox recorded", () => {
     ]);
     expect(table.querySelectorAll("a")).toHaveLength(0);
     expect(within(screen.getByRole("table", { name: "Team wallets" })).getAllByRole("row")).toHaveLength(2);
+
+    // The team set the trace found, with why, and the stops with their source.
+    const team = within(screen.getByRole("table", { name: "Team set" })).getAllByRole("row").slice(1);
+    expect(team.map((r) => r.querySelector("td")?.textContent)).toEqual([OWNER.toLowerCase(), "0x9bc6e49d42e0659f3ef667b09b67506b348e115a"]);
+    expect(team[0]?.textContent).toContain("the vault's payees()");
+    expect(team[0]?.textContent).toContain("deployer of MandateVault");
+    const stops = within(screen.getByRole("table", { name: "Hop stops" })).getAllByRole("row").slice(1);
+    expect(stops.map((r) => r.querySelector("td")?.textContent)).toEqual(["0x0000000000000000000000000000000000000000", VAULT.toLowerCase()]);
+  });
+
+  it("gives no brief number and no 'Counted to block' when a chunk of the log scan fails", async () => {
+    // Three outside briefs over three 50,000-block chunks; every read of the middle chunk fails.
+    const head = DEPLOY + 120_000n;
+    const chain: ProofChain = {
+      ...CHAIN,
+      head,
+      briefs: [
+        { id: 1, from: ALICE, text: "a", block: DEPLOY + 10n },
+        { id: 2, from: BOB, text: "b", block: DEPLOY + 60_000n },
+        { id: 3, from: "0x000000000000000000000000000000000000ca01", text: "c", block: DEPLOY + 70_000n },
+      ],
+      failLogs: [{ from: DEPLOY + 50_000n, to: DEPLOY + 99_999n }],
+    };
+    render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never }} />);
+    await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
+    for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
+    expect(value("bounty-claimants")).toBe("0");
+    expect(screen.queryByText(/Counted to block/)).toBeNull();
+    expect(screen.getByText("Some blocks of the Brief logs could not be read, so briefs may be missing.")).toBeInTheDocument();
+    expect(screen.queryByRole("table", { name: "Outside wallets" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();
+  });
+
+  it("gives no brief number when a team wallet sent a transaction its committed list does not hold", async () => {
+    const lists = { ...LISTS, sends: PROOF_SENDS.map((s) => ({ ...s, txs: s.txs.slice(0, -1) })) };
+    render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never, lists }} />);
+    await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
+    for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
+    expect(screen.getByText(/web\/content\/proof-sends\.ts lists 8 of the 9 transactions 0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent by block 62,001,000/)).toBeInTheDocument();
+    expect(screen.queryByText(/Counted to block/)).toBeNull();
   });
 
   it("switches to the table /data/deployments.json serves at runtime", async () => {
