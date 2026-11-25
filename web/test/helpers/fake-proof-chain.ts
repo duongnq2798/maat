@@ -127,11 +127,12 @@ const TOKEN_ABI = parseAbi([
   "event Approval(address indexed owner, address indexed spender, uint256 value)",
 ]);
 const VAULT_ABI = parseAbi(["function owner() view returns (address)", "function executor() view returns (address)", "function payees() view returns (address[])"]);
-// Three events of contracts/src/IMandateVaultEvents.sol, with Action and Reason as the uint8 the ABI gives them.
+// Four events of contracts/src/IMandateVaultEvents.sol, with Action and Reason as the uint8 the ABI gives them.
 const VAULT_EVENTS = parseAbi([
   "event Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)",
   "event ExecutorSet(address indexed executor)",
   "event RevenueReceived(uint256 amount)",
+  "event MultiplierChangeDetected(address indexed token, uint256 oldMultiplier, uint256 newMultiplier)",
 ]);
 
 /** The vault's Decision log for intent `id`, as execute() emits it: an allowed BUY of 1 unit of `token`. */
@@ -159,6 +160,18 @@ export function revenueLog(vault: Address, amount = 1n): FakeLog {
     data: encodeAbiParameters([{ type: "uint256" }], [amount]),
   };
 }
+
+/** The vault's MultiplierChangeDetected log, as syncMultiplier emits it when `token`'s multiplier changed. */
+export function multiplierLog(vault: Address, token: Address): FakeLog {
+  return {
+    address: vault,
+    topics: encodeEventTopics({ abi: VAULT_EVENTS, eventName: "MultiplierChangeDetected", args: { token } }) as Hex[],
+    data: encodeAbiParameters([{ type: "uint256" }, { type: "uint256" }], [10n ** 18n, 2n * 10n ** 18n]),
+  };
+}
+
+/** How many transactions and receipts were read: the reads a send costs. */
+export const txReads = (seen: ProofRpcLog) => seen.methods.filter((m) => m === "eth_getTransactionByHash" || m === "eth_getTransactionReceipt").length;
 
 /** An ERC-20 Transfer log of `token` from `from` to `to`. */
 export function transferLog(token: Address, from: Address, to: Address, amount = 1n): FakeLog {

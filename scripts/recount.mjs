@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 // Rebuilds the brief lines of the site's /proof page from Base mainnet alone, by the counting rule of
 // docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5. It reads the deployments table from
-// deployments/README.md and the five lists from web/content/ (the team list, the team sends that left no vault or inbox
-// log, the hop stops, the hide-list and the bounty claimants), then every Brief log of the inbox, the team set traced
-// at the block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless JSON-RPC. The
-// Decision lines of the rule are not rebuilt yet, and it says so.
+// deployments/README.md and the five lists from web/content/ (the team list, the team sends that no vault or inbox log
+// the trace reads gives, the hop stops, the hide-list and the bounty claimants), then every Brief log of the inbox, the
+// team set traced at the block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless
+// JSON-RPC. The Decision lines of the rule are not rebuilt yet, and it says so.
 //
 //   node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 //   node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
@@ -57,10 +57,11 @@ const USAGE = `Rebuilds the /proof brief lines from Base mainnet alone.
   --to-block <n>     count to block n, the block /proof says it counted to, as it prints it or as digits (default: the head)
   --root <dir>       read deployments/README.md and web/content/ from this checkout (default: this script's)
   --sends <wallet>   print the entry of web/content/proof-sends.ts the wallet needs at block n: the transactions it
-                     sent that left no vault log and no Brief of MaatInbox, which the team trace reads instead, in
-                     nonce order. It reads the wallet's nonce at past blocks, which takes an archive RPC such as
-                     https://mainnet.base.org, and the vault's logs, which that RPC serves 200 blocks at a time:
-                     --logs-rpc ${DEFAULT_RPC} reads them 50,000 at a time.
+                     sent that left no vault log the team trace reads (it skips RevenueReceived, which anyone can
+                     make the vault emit) and no Brief of MaatInbox, in nonce order. It reads the wallet's nonce at
+                     past blocks, which takes an archive RPC such as https://mainnet.base.org, and the vault's logs,
+                     which that RPC serves 200 blocks at a time: --logs-rpc ${DEFAULT_RPC} reads them 50,000
+                     at a time.
 `;
 
 /** The team trace the page runs, from this script's own checkout. */
@@ -373,7 +374,10 @@ export async function sentTransactions(call, wallet, head, known = []) {
   return { sent: n, txs: out };
 }
 
-/** Every Brief of the recorded inbox to `head`, in id order, each read once, from the inbox's deploy block on. */
+/**
+ * Every Brief of the recorded inbox to `head`, in id order, each read once, from the inbox's deploy block on. Any chunk
+ * that cannot be read stops the recount, so the scan it gives the team trace is complete.
+ */
 async function inboxBriefs(call, record, head) {
   let from = SCAN_FLOOR_BLOCK;
   if (record.deployTx) {
@@ -385,7 +389,7 @@ async function inboxBriefs(call, record, head) {
     const b = decodeBrief(log, record.inbox);
     if (b) byKey.set(`${b.txHash}:${b.logIndex}`, b);
   }
-  return { from, briefs: [...byKey.values()].sort((a, b) => a.id - b.id) };
+  return { from, briefs: [...byKey.values()].sort((a, b) => a.id - b.id), complete: true };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -452,14 +456,14 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
       const wallet = args.sends.toLowerCase();
       // The sends the trace reads from the vault's logs and the wallet's briefs, by the same code as the trace.
       const { loggedSends } = await import(TEAM_MODULE.href);
-      const briefs = record ? (await inboxBriefs(call, record, head)).briefs : [];
-      const known = await loggedSends(call, { deployments, briefs }, wallet, head);
+      const briefScan = record ? await inboxBriefs(call, record, head) : undefined;
+      const known = await loggedSends(call, { deployments, briefScan }, wallet, head);
       const { sent, txs } = await sentTransactions(call, wallet, head, known);
       say(`// ${plural(Number(sent), "transaction", "transactions")} sent by block ${head.toLocaleString("en-US")}, read from ${source}.`);
       if (txs.length === 0) {
-        say(`// ${formatCount(known.length)} left a vault or MaatInbox log, which the team trace reads, so the wallet needs no entry in web/content/proof-sends.ts.`);
+        say(`// ${formatCount(known.length)} left a vault or MaatInbox log the team trace reads, so the wallet needs no entry in web/content/proof-sends.ts.`);
       } else {
-        say(`// ${formatCount(known.length)} left a vault or MaatInbox log, which the team trace reads; the other ${formatCount(txs.length)} go in web/content/proof-sends.ts, in nonce order:`);
+        say(`// ${formatCount(known.length)} left a vault or MaatInbox log the team trace reads; the other ${formatCount(txs.length)} go in web/content/proof-sends.ts, in nonce order:`);
         say(`  { wallet: "${wallet}", txs: [${txs.map((h) => `"${h}"`).join(", ")}] },`);
       }
       return 0;
@@ -488,9 +492,10 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
       return 0;
     }
 
-    const { from, briefs } = await inboxBriefs(call, record, head);
-    // As on the page, the trace takes a team wallet's briefs as its sends from these Brief logs.
-    const trace = await traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments, briefs }, head);
+    // As on the page, the trace reads the vault's logs while the Brief logs are read, and takes a team wallet's briefs
+    // as its sends from them.
+    const scan = inboxBriefs(call, record, head);
+    const [{ from, briefs }, trace] = await Promise.all([scan, traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments, briefScan: scan }, head)]);
     const count = countBriefs(briefs, { ...lists, team: trace.members });
     const complete = trace.gaps.length === 0;
     let verified = new Map();

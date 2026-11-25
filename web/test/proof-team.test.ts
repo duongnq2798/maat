@@ -1,22 +1,25 @@
 // @vitest-environment node
-import { getAddress, keccak256, parseAbi, toBytes, toFunctionSelector, type Address } from "viem";
+import { getAddress, keccak256, parseAbi, toBytes, toEventSelector, toFunctionSelector, type Abi, type AbiEvent, type Address } from "viem";
 import { describe, expect, it } from "vitest";
 import * as team from "@/app/(site)/proof/team";
 import { teamLines, traceTeam, type TeamInputs } from "@/app/(site)/proof/team";
 import { PROOF_SENDS } from "@/content/proof-sends";
 import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
+import abi from "@/content/generated/abi.json";
 import addresses from "@/content/generated/base-addresses.json";
 import { docsData } from "@/lib/docs/generated";
 import {
   approvalLog,
   decisionLog,
   executorSetLog,
+  multiplierLog,
   newRpcLog,
   proofChainRpc,
   revenueLog,
   transferLog,
   txHash,
+  txReads,
   type FakeTx,
   type ProofChain,
 } from "./helpers/fake-proof-chain";
@@ -150,7 +153,7 @@ describe("the team set of inbox spec §5, traced from the chain", () => {
     const short = { ...INPUTS, sends: INPUTS.sends.filter((s) => s.wallet !== FUNDED) };
     const t = await trace(CHAIN, short);
     expect(t.gaps).toEqual([
-      `${lower(FUNDED)} sent 1 transaction by block 62,120,000, and 1 is missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(FUNDED)} prints it.`,
+      `${lower(FUNDED)} sent 1 transaction by block 62,120,000, and 1 is missing: in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(FUNDED)} --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com prints it.`,
     ]);
     expect(teamLines(t)).toContain(`Incomplete: ${t.gaps[0]}`);
     // Without FUNDED's list its token is not seen, so TOKEN_KID is not reached.
@@ -184,6 +187,17 @@ describe("the team set of inbox spec §5, traced from the chain", () => {
     expect(t.gaps).toEqual([]);
   });
 
+  it("names a gap for a wallet with an EIP-7702 delegation, whose code can send ETH inside its own transactions", async () => {
+    const delegated = `0xef0100${"ab".repeat(20)}`;
+    const t = await trace({ ...CHAIN, code: { [lower(OWNER)]: delegated as `0x${string}` } });
+    expect(t.gaps).toEqual([
+      `${lower(OWNER)} is delegated to code by EIP-7702 at block 62,120,000: that code can send ETH inside the wallet's own transactions, which no log shows, and its nonce counts authorizations as well as sends, so its sends cannot be checked.`,
+    ]);
+    expect(t.notes).toEqual([]);
+    // Its sends are still read, so the wallets it funded stay on the team.
+    expect(byAddress(t)[lower(FUNDED)]).toMatchObject({ hop: 1 });
+  });
+
   it("names the gap for a recorded contract with no deploy transaction", async () => {
     const t = await trace(CHAIN, { ...INPUTS, deployments: [...INPUTS.deployments, { contract: "MarketCalendar", address: ROUTER, tx: "" }] });
     expect(t.gaps).toEqual(["deployments/README.md gives no transaction for MarketCalendar, so its deployer is not known."]);
@@ -202,7 +216,7 @@ const OUTSIDER: Address = "0x00000000000000000000000000000000000f0008";
 const OUTSIDER_KID: Address = "0x00000000000000000000000000000000000f0009";
 const NEWBIE: Address = "0x00000000000000000000000000000000000f000a";
 const PLAIN: Address = "0x00000000000000000000000000000000000f000b";
-/** A contract the owner calls, which calls the vault's notifyRevenue and moves the owner's TOKEN. */
+/** A contract the owner calls, which calls the vault's syncMultiplier on a multiplier change and moves the owner's TOKEN. */
 const MULTI: Address = "0x00000000000000000000000000000000000c0002";
 
 /** After the owner's six committed transactions: it hands the executor the role, and the executor sends 3 Decisions. */
@@ -220,12 +234,23 @@ const OUTSIDE_CALL: FakeTx = {
   logs: [revenueLog(VAULT), transferLog(TOKEN, OUTSIDER, OUTSIDER_KID)],
 };
 /** The owner's call through MULTI: a vault log and a Transfer of the owner's TOKEN to NEWBIE. */
-const MULTI_CALL: FakeTx = { hash: txHash(25), from: OWNER, nonce: 7, to: MULTI, block: 62_000_120n, logs: [revenueLog(VAULT), transferLog(TOKEN, OWNER, NEWBIE)] };
+const MULTI_CALL: FakeTx = {
+  hash: txHash(25),
+  from: OWNER,
+  nonce: 7,
+  to: MULTI,
+  block: 62_000_120n,
+  logs: [multiplierLog(VAULT, TOKEN), transferLog(TOKEN, OWNER, NEWBIE)],
+};
 /** The owner sends ETH to PLAIN: no log at all. */
 const plainSend = (nonce: number): FakeTx => ({ hash: txHash(26), from: OWNER, nonce, to: PLAIN, value: 1n, block: 62_000_130n });
+/** `n` outsiders each send 1 USDC unit to the vault and call notifyRevenue: one RevenueReceived log each. */
+const revenueSpam = (n: number): FakeTx[] =>
+  Array.from({ length: n }, (_, i) => ({ hash: txHash(1000 + i), from: `0x${(0x5000 + i).toString(16).padStart(40, "0")}` as Address, nonce: 0, to: VAULT, block: 62_000_200n + BigInt(i), logs: [revenueLog(VAULT)] }));
 const withTxs = (...extra: FakeTx[]): ProofChain => ({ ...CHAIN, vault: { ...CHAIN.vault!, executor: EXECUTOR }, txs: [...TXS, ...extra] });
+const SENDS_COMMAND = (w: Address) => `node scripts/recount.mjs --sends ${lower(w)} --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com`;
 const missing = (w: Address, n: number, k: number) =>
-  `${lower(w)} sent ${n} transactions by block 62,120,000, and ${k} ${k === 1 ? "is" : "are"} missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(w)} prints ${k === 1 ? "it" : "them"}.`;
+  `${lower(w)} sent ${n} transactions by block 62,120,000, and ${k} ${k === 1 ? "is" : "are"} missing: in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. ${SENDS_COMMAND(w)} prints ${k === 1 ? "it" : "them"}.`;
 
 describe("the sends the trace finds from the vault's logs and the inbox's briefs", () => {
   it("is complete with the committed lists as they are while the executor sends Decisions and the owner sent setExecutor", async () => {
@@ -251,6 +276,24 @@ describe("the sends the trace finds from the vault's logs and the inbox's briefs
     expect(teamLines(t).join("\n")).not.toContain(txHash(24));
   });
 
+  it("reads no transaction of an outsider's notifyRevenue, however many there are", async () => {
+    const reads = async (n: number) => {
+      const seen = newRpcLog();
+      const t = await traceTeam(proofChainRpc(withTxs(...HANDOVER, ...revenueSpam(n)), seen), INPUTS, HEAD);
+      expect(t.gaps).toEqual([]);
+      return txReads(seen);
+    };
+    // Anyone may make the vault emit RevenueReceived, so its logs are not read: spam costs the trace nothing.
+    expect(await reads(50)).toBe(await reads(0));
+  });
+
+  it("takes a team send whose only vault log is RevenueReceived from the committed list alone", async () => {
+    const revenue: FakeTx = { hash: txHash(29), from: OWNER, nonce: 7, to: VAULT, block: 62_000_125n, logs: [revenueLog(VAULT)] };
+    expect((await trace(withTxs(...HANDOVER, revenue))).gaps).toEqual([missing(OWNER, 8, 1)]);
+    const listed = { ...INPUTS, sends: [{ wallet: OWNER, txs: [...[1, 2, 3, 4, 5, 6].map(txHash), txHash(29)] }, ...INPUTS.sends.slice(1)] };
+    expect((await trace(withTxs(...HANDOVER, revenue), listed)).gaps).toEqual([]);
+  });
+
   it("reads a send found from the vault's logs like a committed one, so a Transfer in it adds a wallet at hop 1", async () => {
     const t = await trace(withTxs(...HANDOVER, MULTI_CALL));
     expect(t.gaps).toEqual([]);
@@ -274,8 +317,16 @@ describe("the sends the trace finds from the vault's logs and the inbox's briefs
       // A Brief that names the owner, in a transaction another wallet sent: it is not one of the owner's sends.
       { from: OWNER, txHash: txHash(28) },
     ];
-    const t = await trace(chain, { ...INPUTS, briefs });
+    // The caller may hand the trace its Brief scan while that scan is still being read.
+    const t = await trace(chain, { ...INPUTS, briefScan: Promise.resolve({ briefs, complete: true }) });
     expect(t.gaps).toEqual([missing(OWNER, 8, 1)]);
+  });
+
+  it("says a missing send may be a brief in the Brief logs that could not be read", async () => {
+    const t = await trace(withTxs(...HANDOVER, plainSend(7)), { ...INPUTS, briefScan: { briefs: [], complete: false } });
+    expect(t.gaps).toEqual([
+      `${lower(OWNER)} sent 8 transactions by block 62,120,000, and 1 is missing: in no vault log the trace reads, in no Brief log that could be read, and not in web/content/proof-sends.ts. It may be a brief in the blocks that could not be read; ${SENDS_COMMAND(OWNER)} reads every Brief log and prints any send the list needs.`,
+    ]);
   });
 
   it("stops on a chunk of the vault's logs it cannot read", async () => {
@@ -284,7 +335,7 @@ describe("the sends the trace finds from the vault's logs and the inbox's briefs
   });
 
   it("gives --sends the sends the logs cover, in nonce order, from the same reads", async () => {
-    const chain = withTxs(...HANDOVER, MULTI_CALL, plainSend(8));
+    const chain = withTxs(...HANDOVER, MULTI_CALL, plainSend(8), OUTSIDE_CALL);
     const covered = await team.loggedSends(proofChainRpc(chain), INPUTS, OWNER, HEAD);
     expect(covered).toEqual([
       { hash: txHash(20), nonce: 6n, block: 62_000_095n },
@@ -305,6 +356,12 @@ describe("what the trace hard-codes, since the script has no keccak", () => {
     expect(team.TRANSFER_TOPIC).toBe(keccak256(toBytes("Transfer(address,address,uint256)")));
     expect(team.APPROVAL_TOPIC).toBe(keccak256(toBytes("Approval(address,address,uint256)")));
     expect(team.APPROVAL_FOR_ALL_TOPIC).toBe(keccak256(toBytes("ApprovalForAll(address,address,bool)")));
+  });
+
+  it("reads every event of MandateVault's ABI but RevenueReceived, which anyone can make the vault emit", () => {
+    const events = (abi.MandateVault as unknown as Abi).filter((e): e is AbiEvent => e.type === "event");
+    expect(events.map((e) => e.name)).toContain("RevenueReceived");
+    expect([...team.VAULT_TOPICS].sort()).toEqual(events.filter((e) => e.name !== "RevenueReceived").map((e) => toEventSelector(e)).sort());
   });
 });
 

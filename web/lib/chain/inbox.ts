@@ -132,9 +132,12 @@ function toBrief(log: { blockNumber: bigint | null; transactionHash: Hash | null
   }
 }
 
-/** Every Brief the inbox emitted, from its deploy block (or SCAN_FLOOR_BLOCK when the deploy tx is unknown) to the head. */
-export async function readBriefs(client: LedgerClient, opts: { inbox: Address; deployTx: Hash | null; signal?: AbortSignal }): Promise<BriefRead> {
-  const head = await client.getBlockNumber();
+/**
+ * Every Brief the inbox emitted, from its deploy block (or SCAN_FLOOR_BLOCK when the deploy tx is unknown) to `head`,
+ * the head block when it is not given.
+ */
+export async function readBriefs(client: LedgerClient, opts: { inbox: Address; deployTx: Hash | null; head?: bigint; signal?: AbortSignal }): Promise<BriefRead> {
+  const head = opts.head ?? (await client.getBlockNumber());
   const from = await deployBlock(client, opts.deployTx);
   const result = await scanLogs({
     from,

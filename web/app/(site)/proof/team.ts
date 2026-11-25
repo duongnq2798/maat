@@ -16,11 +16,17 @@ export interface TeamInputs {
   /** The Base mainnet rows of deployments/README.md. */
   deployments: readonly { contract: string; address: string; tx: string }[];
   /**
-   * The inbox's Brief logs to the block traced to, as the caller already read them (the page with the /ask reader, the
-   * recount with its own scan); none before the inbox is recorded. A brief is a send of the wallet it names when that
-   * wallet sent its transaction.
+   * The inbox's Brief logs to the block traced to, as the caller reads them (the page with the /ask reader, the recount
+   * with its own scan); none before the inbox is recorded. It may still be reading: the trace reads the vault's logs
+   * first and waits for it only then. A brief is a send of the wallet it names when that wallet sent its transaction.
    */
-  briefs?: readonly { from: string; txHash: string }[];
+  briefScan?: BriefScan | PromiseLike<BriefScan>;
+}
+
+export interface BriefScan {
+  briefs: readonly { from: string; txHash: string }[];
+  /** False when some blocks of the Brief logs could not be read. */
+  complete: boolean;
 }
 
 export interface TeamMember {
@@ -58,20 +64,48 @@ export const TRANSFER_TOPIC = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11
 /** Approval(address,address,uint256) and ApprovalForAll(address,address,bool): a spender may move the owner's tokens. */
 export const APPROVAL_TOPIC = "0x8c5be1e5ebec7d5bd14f71427d1e84f3dd0314c0f7b2291e5b200ac8c7c3b925";
 export const APPROVAL_FOR_ALL_TOPIC = "0x17307eab39ab6107e8899845ad3d59bd9653f200f220920489ca2b5937696c31";
+/**
+ * The vault logs the trace reads: every event of contracts/src/IMandateVaultEvents.sol but RevenueReceived. These come
+ * only from the vault's deploy, an onlyOwner call, the executor's execute(), or syncMultiplier when a token's
+ * multiplier really changed. notifyRevenue() emits RevenueReceived for anyone who sent the vault some USDC, so reading
+ * those transactions would let anyone add reads to every count; a team send whose only vault log is RevenueReceived
+ * goes in web/content/proof-sends.ts, and the nonce check asks for it.
+ */
+export const VAULT_TOPICS = [
+  "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322", // Decision
+  "0x3e3c5e6d5b512eaa5d5a80669846cfbaf8bde70fc6f7a3be9828cffc9ba5f1db", // ExecutorSet
+  "0x40db37ff5c0bdc2c427fbb2078c8f24afea940abac0e3c23bb4ea3bf2da2b212", // PausedSet
+  "0x7fa3c0bb17162e829120b28266b7550061c3b40db9435802b3b81b4be2f1d4b1", // MandateChangeQueued
+  "0x52c7e79abff67f340ea03b262ee706f9f7b59fd984c52ae45155eaef031057d9", // TokenConfigChangeQueued
+  "0x423f006fc8dc13dda4a71fe928443739e83a14faa2810b7fcb4a8bd4706eb9c5", // PayeeChangeQueued
+  "0xef2393afd41f32c607a123de95d703349edd33ea1d86af21535ea8040ec7d984", // ChangeCancelled
+  "0x48a58304e6581974b55d2169e131804a3984e0168c1086504cd7a1d19185d994", // PolicyHashUpdated
+  "0xc4c14883ae9fd8e26d5d59e3485ed29fd126d781d7e498a4ca5c54c8268e4936", // Funded
+  "0xaea77b7649e3343e5d89ceb4132fd66a08e73f20f496e5d7161eadd9ec790065", // MandateApplied
+  "0xa2c02b8677f11c939af7c4a0d31d7f0d60a5e8bf8596a909d6948b9205189cd1", // TokenConfigApplied
+  "0x88e8dfde3169975f3002ffc3ae3d6f4f98cd78b415c780b4102860a39de5189c", // PayeeApplied
+  "0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5", // Withdrawn
+  "0xd2e626325a6f2abbc5f3e654cf4b4bb4221fd1ceb5bdb212fc4d136398943ac9", // MultiplierChangeDetected
+] as const;
 /** Hop 1 and hop 2. */
 export const MAX_HOPS = 2;
 
 /** Printed next to the Outside lines, on /proof and by the recount. */
 export const TEAM_SET_NOTE =
-  "The team set is traced from Base at the block counted to: the wallets in web/content/proof-team.ts, the vault's owner(), executor() and payees(), the deployer of every contract in deployments/README.md, and every wallet those funded within 2 hops. ETH funding comes from each wallet's sent transactions, checked against its nonce: those that left a log of the vault, or a Brief of MaatInbox that names the wallet, are read from those logs, and the rest are committed in web/content/proof-sends.ts. Token funding comes from the Transfer logs of those transactions and of each token they approved. A token moved by a signature alone, and ETH a wallet with code sends inside another wallet's transaction, are not seen.";
+  "The team set is traced from Base at the block counted to: the wallets in web/content/proof-team.ts, the vault's owner(), executor() and payees(), the deployer of every contract in deployments/README.md, and every wallet those funded within 2 hops. ETH funding comes from each wallet's sent transactions, checked against its nonce: those that left a log of the vault other than RevenueReceived, which anyone can make it emit, or a Brief of MaatInbox that names the wallet, are read from those logs, and the rest are committed in web/content/proof-sends.ts. Token funding comes from the Transfer logs of those transactions and of each token they approved. A token moved by a signature alone, and ETH a wallet with code sends inside another wallet's transaction, are not seen.";
 /** Printed next to the brief lines, on /proof and by the recount, until the Decision lines are counted. */
 export const DECISION_NOTE =
   "The Decision lines of the rule (owner by hand, agent, probe, brief-driven) are not counted on /proof or by scripts/recount.mjs yet; the ledger labels each Decision with them.";
 
 const VAULT_CONTRACT = "MandateVault";
 const ZERO_ADDRESS = `0x${"0".repeat(40)}`;
-/** EIP-7702: an account delegated to code keeps its own nonce, so its committed list is still checked. */
+/**
+ * EIP-7702: an account delegated to code. That code can send ETH inside the account's own transactions, which neither a
+ * log nor the transaction shows, and its nonce counts authorizations as well as sends.
+ */
 const DELEGATION_PREFIX = "0xef0100";
+/** The recount's --sends, with an RPC that answers for past blocks and one that serves eth_getLogs 50,000 blocks at a time. */
+const sendsCommand = (wallet: string) => `node scripts/recount.mjs --sends ${wallet} --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com`;
 const FULL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const FULL_HASH = /^0x[0-9a-fA-F]{64}$/;
 /** The widest eth_getLogs range tried first: base-rpc.publicnode.com's limit (web/lib/chain/scan.ts LOG_CHUNK). */
@@ -237,20 +271,20 @@ async function vaultOf(rows: TeamInputs["deployments"], txOf: (hash: string) => 
 }
 
 /**
- * The sends the logs give, wallet by wallet: every transaction with a log of the vault from its deploy block to `block`,
- * by its sender, whoever that is (anyone may call notifyRevenue and syncMultiplier); and each brief's transaction, for
- * the wallet the Brief names, only when that wallet sent it. All vault transactions are read here, at most
- * READ_WORKERS at a time; a wallet's briefs are read when its sends are. A send counts only toward the wallet that
- * sent it, so a log never covers another wallet's send.
+ * The sends the logs give, wallet by wallet: every transaction with a vault log of VAULT_TOPICS from its deploy block to
+ * `block`, by its sender, whoever that is (anyone may call syncMultiplier); and each brief's transaction, for the wallet
+ * the Brief names, only when that wallet sent it. All vault transactions are read here, at most READ_WORKERS at a time,
+ * before the Brief scan is waited for; a wallet's briefs are read when its sends are. A send counts only toward the
+ * wallet that sent it, so a log never covers another wallet's send.
  */
 async function logSends(
   rpc: Rpc,
   read: (hash: string) => Promise<Read>,
   vault: { address: string; from: bigint } | null,
-  briefs: NonNullable<TeamInputs["briefs"]>,
+  briefScan: TeamInputs["briefScan"],
   block: bigint,
   signal?: AbortSignal,
-): Promise<(wallet: string) => Promise<Send[]>> {
+): Promise<{ of: (wallet: string) => Promise<Send[]>; briefsComplete: boolean }> {
   const sent = (r: Read, source: string): Send => {
     const { tx, receipt } = r;
     if (!tx || !receipt) throw new Error(`the RPC has no transaction or no receipt for ${r.hash}, ${source}`);
@@ -260,7 +294,7 @@ async function logSends(
   };
   const byVault = new Map<string, Send[]>();
   if (vault && vault.from <= block) {
-    const logs = await logsIn(rpc, { address: vault.address }, vault.from, block, signal);
+    const logs = await logsIn(rpc, { address: vault.address, topics: [[...VAULT_TOPICS]] }, vault.from, block, signal);
     const hashes = [...new Set(logs.map((l) => l.transactionHash.toLowerCase()))];
     for (const r of await mapLimit(hashes, READ_WORKERS, read)) {
       const s = sent(r, `which left a log of ${VAULT_CONTRACT}`);
@@ -268,12 +302,13 @@ async function logSends(
       byVault.set(from, [...(byVault.get(from) ?? []), s]);
     }
   }
+  const { briefs, complete } = (await briefScan) ?? { briefs: [], complete: true };
   const briefsOf = new Map<string, Set<string>>();
   for (const b of briefs) {
     const from = checked(b.from, "a Brief log");
     briefsOf.set(from, (briefsOf.get(from) ?? new Set()).add(String(b.txHash).toLowerCase()));
   }
-  return async (wallet) => {
+  const of = async (wallet: string) => {
     const out = new Map((byVault.get(wallet) ?? []).map((s) => [s.hash, s]));
     for (const r of await mapLimit([...(briefsOf.get(wallet) ?? [])], READ_WORKERS, read)) {
       const s = sent(r, `the transaction of a Brief from ${wallet}`);
@@ -281,16 +316,17 @@ async function logSends(
     }
     return [...out.values()].sort(byNonce);
   };
+  return { of, briefsComplete: complete };
 }
 
 /**
- * The sends of `wallet` by `block` that the trace reads from logs, in nonce order: those that left a log of the vault,
- * and its briefs. `node scripts/recount.mjs --sends` prints the wallet's other sends, the ones web/content/proof-sends.ts
- * must hold. Same reads as traceTeam.
+ * The sends of `wallet` by `block` that the trace reads from logs, in nonce order: those that left a vault log of
+ * VAULT_TOPICS, and its briefs. `node scripts/recount.mjs --sends` prints the wallet's other sends, the ones
+ * web/content/proof-sends.ts must hold. Same reads as traceTeam.
  */
 export async function loggedSends(
   rpc: Rpc,
-  inputs: Pick<TeamInputs, "deployments" | "briefs">,
+  inputs: Pick<TeamInputs, "deployments" | "briefScan">,
   wallet: string,
   block: bigint,
   signal?: AbortSignal,
@@ -298,7 +334,7 @@ export async function loggedSends(
   const w = checked(wallet, "the wallet asked for");
   const { txOf, read } = reader(rpc);
   const vault = await vaultOf(inputs.deployments, txOf);
-  const sends = await (await logSends(rpc, read, vault, inputs.briefs ?? [], block, signal))(w);
+  const sends = await (await logSends(rpc, read, vault, inputs.briefScan, block, signal)).of(w);
   return sends.map((s) => ({ hash: s.hash, nonce: BigInt(s.tx.nonce), block: BigInt(s.tx.blockNumber) }));
 }
 
@@ -367,7 +403,7 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     if (from) add(from, 0, `deployer of ${row.contract}`);
     else gaps.push(`deployments/README.md gives no transaction for ${row.contract}, so its deployer is not known.`);
   }
-  const logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs.briefs ?? [], block, signal);
+  const logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs.briefScan, block, signal);
 
   /** What one wallet's own transactions show: whom it funded, which tokens it approved, and what is missing. */
   const fundingOf = async (w: string) => {
@@ -375,9 +411,18 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     const out = { funded: [] as { to: string; why: string }[], approvals: [] as { token: string; at: bigint }[], notes: [] as string[], gaps: [] as string[] };
     const [code, nonce] = await Promise.all([rpc("eth_getCode", [w, tag]), rpc("eth_getTransactionCount", [w, tag])]);
     const bytecode = String(code).toLowerCase();
-    if (bytecode !== "0x") out.notes.push(`${w} has code at block ${fmt(block)}, so ETH it sends inside a transaction another wallet sent is not seen.`);
+    const delegated = bytecode.startsWith(DELEGATION_PREFIX);
     // A contract's nonce counts the contracts it created, not transactions it sent: it sends none of its own.
-    if (bytecode !== "0x" && !bytecode.startsWith(DELEGATION_PREFIX)) return out;
+    if (bytecode !== "0x" && !delegated) {
+      out.notes.push(`${w} has code at block ${fmt(block)}, so ETH it sends inside a transaction another wallet sent is not seen.`);
+      return out;
+    }
+    // A delegated wallet's sends are still read for whom they funded, but they cannot make it complete.
+    if (delegated) {
+      out.gaps.push(
+        `${w} is delegated to code by EIP-7702 at block ${fmt(block)}: that code can send ETH inside the wallet's own transactions, which no log shows, and its nonce counts authorizations as well as sends, so its sends cannot be checked.`,
+      );
+    }
     const n = BigInt(String(nonce));
     // The committed list, in nonce order; a send after `block` is past the count. Then the sends the logs give. A hash
     // in both is one send.
@@ -390,7 +435,7 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
       last = at;
       if (r.tx.blockNumber !== null && BigInt(r.tx.blockNumber) <= block) known.set(r.hash, { ...r, tx: { ...r.tx, blockNumber: r.tx.blockNumber } });
     }
-    for (const s of await logged(w)) known.set(s.hash, s);
+    for (const s of await logged.of(w)) known.set(s.hash, s);
     const sends = [...known.values()].sort(byNonce);
     // Each of them takes one nonce below the wallet's nonce at `block`, so they are all its sends when they are as many.
     for (const [i, s] of sends.entries()) {
@@ -400,10 +445,13 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
       if (before && at === BigInt(before.tx.nonce)) throw new Error(`the RPC gives ${before.hash} and ${s.hash} the same nonce of ${w}, ${at}`);
     }
     const missing = Number(n) - sends.length;
-    if (missing > 0) {
+    if (missing > 0 && !delegated) {
       const one = missing === 1;
+      const sent = `${w} sent ${n} ${n === 1n ? "transaction" : "transactions"} by block ${fmt(block)}, and ${missing} ${one ? "is" : "are"} missing:`;
       out.gaps.push(
-        `${w} sent ${n} ${n === 1n ? "transaction" : "transactions"} by block ${fmt(block)}, and ${missing} ${one ? "is" : "are"} missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${w} prints ${one ? "it" : "them"}.`,
+        logged.briefsComplete
+          ? `${sent} in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. ${sendsCommand(w)} prints ${one ? "it" : "them"}.`
+          : `${sent} in no vault log the trace reads, in no Brief log that could be read, and not in web/content/proof-sends.ts. ${one ? "It may be a brief" : "They may be briefs"} in the blocks that could not be read; ${sendsCommand(w)} reads every Brief log and prints any send the list needs.`,
       );
     }
     for (const { hash, tx, receipt } of sends) {

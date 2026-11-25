@@ -1,9 +1,11 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
-import type { Address, Hash, Hex } from "viem";
+import { createPublicClient, custom, type Address, type Hash, type Hex } from "viem";
+import { base } from "viem/chains";
 import { describe, expect, it } from "vitest";
 import { ProofApp } from "@/app/(site)/proof/ProofApp";
 import ProofPage, { metadata } from "@/app/(site)/proof/page";
 import { proofConfig } from "@/app/(site)/proof/config";
+import { readProof, type ProofClient } from "@/app/(site)/proof/load";
 import { DECISION_NOTE, TEAM_SET_NOTE } from "@/app/(site)/proof/team";
 import { VERIFIED_ACCOUNT_SCHEMA, type Attestation } from "@/app/(site)/proof/verified";
 import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
@@ -13,7 +15,7 @@ import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
 import { inboxDeployment } from "@/lib/chain/inbox";
 import { docsData } from "@/lib/docs/generated";
-import { decisionLog, executorSetLog, plainSends, proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
+import { answer, decisionLog, executorSetLog, newRpcLog, plainSends, proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
 
 const INBOX: Address = "0x00000000000000000000000000000000000B0001";
 const DEPLOY_TX: Hash = `0x${"d1".repeat(32)}`;
@@ -166,6 +168,56 @@ describe("/proof with a MaatInbox recorded", () => {
     expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();
   });
 
+  it("says a missing team send may be a brief in a chunk of the Brief logs that could not be read", async () => {
+    // The owner's brief, its tenth send, is in the inbox's middle chunk, which every read fails.
+    const chain: ProofChain = {
+      ...CHAIN,
+      head: DEPLOY + 120_000n,
+      briefs: [
+        { id: 1, from: ALICE, text: "a", block: DEPLOY + 10n },
+        { id: 2, from: OWNER, text: "b", block: DEPLOY + 60_000n },
+      ],
+      failLogs: [{ from: DEPLOY + 50_000n, to: DEPLOY + 99_999n, address: INBOX }],
+    };
+    render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never }} />);
+    await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
+    const items = [...document.querySelectorAll('[data-proof-state="incomplete"] li')].map((li) => li.textContent);
+    expect(items).toEqual([
+      "Some blocks of the Brief logs could not be read, so briefs may be missing.",
+      "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 10 transactions by block 62,120,000, and 1 is missing: in no vault log the trace reads, in no Brief log that could be read, and not in web/content/proof-sends.ts. It may be a brief in the blocks that could not be read; node scripts/recount.mjs --sends 0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com reads every Brief log and prints any send the list needs.",
+    ]);
+  });
+
+  it("reads the vault's logs while it reads the Brief logs, not after them", async () => {
+    // Each read of the Brief logs waits until the vault's logs are asked for, and fails after a second without.
+    let asked: () => void = () => {};
+    const vaultAsked = new Promise<void>((resolve) => (asked = resolve));
+    const seen = newRpcLog();
+    const client = createPublicClient({
+      chain: base,
+      transport: custom(
+        {
+          request: async ({ method, params }: { method: string; params?: unknown }) => {
+            const p = (params as unknown[] | undefined) ?? [];
+            if (method === "eth_getLogs") {
+              const address = String((p[0] as { address?: unknown }).address).toLowerCase();
+              if (address === VAULT.toLowerCase()) asked();
+              if (address === INBOX.toLowerCase()) {
+                const late = new Promise<"late">((resolve) => setTimeout(() => resolve("late"), 1_000));
+                if ((await Promise.race([vaultAsked, late])) === "late") throw new Error("the vault's logs were not asked for while the Brief logs were read");
+              }
+            }
+            return answer(CHAIN, seen, method, p);
+          },
+        },
+        { retryCount: 0 },
+      ),
+    }) as unknown as ProofClient;
+    const proof = await readProof(client, { inbox: { inbox: INBOX, deployTx: DEPLOY_TX }, deployments: ROWS(true) }, LISTS);
+    expect(proof.problems).toEqual([]);
+    expect(proof.count.outsideBriefs).toBe(3);
+  }, 20_000);
+
   it("counts with today's committed lists while the executor sends Decisions and the owner sent setExecutor", async () => {
     // The owner's brief (id 2) is its tenth send; setExecutor its eleventh. The executor's three Decisions follow.
     const chain: ProofChain = {
@@ -202,7 +254,7 @@ describe("/proof with a MaatInbox recorded", () => {
     // Nine plain sends and the owner's brief; the brief is in the inbox's logs, the last plain send nowhere.
     expect(
       screen.getByText(
-        "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 10 transactions by block 62,001,000, and 1 is missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends 0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a prints it.",
+        "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 10 transactions by block 62,001,000, and 1 is missing: in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends 0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com prints it.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Counted to block/)).toBeNull();

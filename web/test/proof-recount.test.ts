@@ -17,10 +17,12 @@ import * as recount from "../../scripts/recount.mjs";
 import {
   decisionLog,
   executorSetLog,
+  multiplierLog,
   proofChainClient,
   revenueLog,
   serveProofChain,
   transferLog,
+  txReads,
   type FakeTx,
   type ProofChain,
 } from "./helpers/fake-proof-chain";
@@ -53,7 +55,7 @@ const PAYEE: Address = "0x00000000000000000000000000000000000e0001";
 /** An outsider who calls the vault's notifyRevenue, which anyone may call. */
 const DAVE: Address = "0x000000000000000000000000000000000000da7e";
 const TOKEN: Address = "0x00000000000000000000000000000000000c0001";
-/** A contract the owner calls, which calls the vault and moves the owner's TOKEN. */
+/** A contract the owner calls, which calls the vault's syncMultiplier on a multiplier change and moves the owner's TOKEN. */
 const MULTI: Address = "0x00000000000000000000000000000000000c0002";
 const SET_EXECUTOR_TX: Hash = `0x${"e1".repeat(32)}`;
 const MULTI_TX: Hash = `0x${"e2".repeat(32)}`;
@@ -89,7 +91,7 @@ const TXS: FakeTx[] = [
   { hash: DEPLOY_TX, from: OWNER, nonce: 1, to: null, block: DEPLOY, contractAddress: INBOX },
   { hash: FUND_TX, from: OWNER, nonce: 2, to: FUNDED, value: 10n ** 15n, block: DEPLOY + 5n },
   { hash: SET_EXECUTOR_TX, from: OWNER, nonce: 3, to: VAULT, block: DEPLOY + 6n, logs: [executorSetLog(VAULT, EXECUTOR)] },
-  { hash: MULTI_TX, from: OWNER, nonce: 4, to: MULTI, block: DEPLOY + 7n, logs: [revenueLog(VAULT), transferLog(TOKEN, OWNER, KID)] },
+  { hash: MULTI_TX, from: OWNER, nonce: 4, to: MULTI, block: DEPLOY + 7n, logs: [multiplierLog(VAULT, TOKEN), transferLog(TOKEN, OWNER, KID)] },
   ...DECISION_TXS.map((hash, i) => ({ hash, from: EXECUTOR, nonce: i, to: VAULT, block: DEPLOY + 100n + BigInt(i), logs: [decisionLog(VAULT, i + 1)] })),
   { hash: REVENUE_TX, from: DAVE, nonce: 0, to: VAULT, block: DEPLOY + 200n, logs: [revenueLog(VAULT)] },
 ];
@@ -253,6 +255,38 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     expect(new Set(rpc.seen.calls.slice(before).map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
   });
 
+  it("reads no transaction of an outsider's notifyRevenue, on the page or in the recount, and still gives the same report", async () => {
+    // 40 outsiders each make the vault emit RevenueReceived, as anyone may for a unit of USDC and the gas.
+    const spam: FakeTx[] = Array.from({ length: 40 }, (_, i) => ({
+      hash: `0x${(0x7000 + i).toString(16).padStart(64, "0")}` as Hash,
+      from: `0x${(0x7000 + i).toString(16).padStart(40, "0")}` as Address,
+      nonce: 0,
+      to: VAULT,
+      block: DEPLOY + 300n + BigInt(i),
+      logs: [revenueLog(VAULT)],
+    }));
+    const spammed: ProofChain = { ...CHAIN, txs: [...TXS, ...spam] };
+    const pageReads = async (c: ProofChain) => {
+      const client = proofChainClient(c);
+      const page = await readProof(client, CONFIG, LISTS);
+      return { page, reads: txReads(client.seen) };
+    };
+    const [clean, noisy] = [await pageReads(CHAIN), await pageReads(spammed)];
+    expect(noisy.page.complete).toBe(true);
+    expect(noisy.reads).toBe(clean.reads);
+    const [quiet, loud] = [await serveProofChain(CHAIN), await serveProofChain(spammed)];
+    try {
+      const out = await recountRun(["--rpc", loud.url, "--root", root]);
+      expect(out.code).toBe(0);
+      expect(reportOf(out.stdout)).toEqual(reportLines(noisy.page.count, noisy.page.verified!, "counted", noisy.page.team));
+      expect((await recountRun(["--rpc", quiet.url, "--root", root])).code).toBe(0);
+      expect(txReads(quiet.seen)).toBeGreaterThan(0);
+      expect(txReads(loud.seen)).toBe(txReads(quiet.seen));
+    } finally {
+      await Promise.all([quiet.close(), loud.close()]);
+    }
+  });
+
   it("counts to --to-block and no further, and takes the block as the page prints it", async () => {
     for (const block of [String(HEAD - 2n), (HEAD - 2n).toLocaleString("en-US"), "62_119_998"]) {
       const out = await recountRun(["--rpc", rpc.url, "--root", root, "--to-block", block]);
@@ -271,7 +305,7 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
 });
 
 /** The gap of a team wallet one send short, as the page and the recount word it. */
-const ONE_MISSING = `${lower(OWNER)} sent 7 transactions by block 62,120,000, and 1 is missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(OWNER)} prints it.`;
+const ONE_MISSING = `${lower(OWNER)} sent 7 transactions by block 62,120,000, and 1 is missing: in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(OWNER)} --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com prints it.`;
 
 describe("the recount when a team wallet sent a transaction that no vault or inbox log gives and its committed list does not hold", () => {
   it("prints the gap, naming the wallet and how many sends are missing, gives no number on a brief line, as the page does, and exits 1", async () => {
@@ -301,6 +335,32 @@ describe("the recount when a team wallet sent a transaction that no vault or inb
     }
   });
 
+  it("takes a team send whose only vault log is RevenueReceived from the committed list alone, as the page does, and --sends prints it", async () => {
+    // The owner calls notifyRevenue itself: its RevenueReceived log is one the trace does not read.
+    const revenueTx: Hash = `0x${"e7".repeat(32)}`;
+    const chain: ProofChain = { ...CHAIN, txs: [...TXS, { hash: revenueTx, from: OWNER, nonce: 5, to: VAULT, block: DEPLOY + 8n, logs: [revenueLog(VAULT)] }] };
+    const gap = `${lower(OWNER)} sent 8 transactions by block 62,120,000, and 1 is missing: in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(OWNER)} --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com prints it.`;
+    const listed: ProofLists = { ...LISTS, sends: [{ wallet: OWNER, txs: [VAULT_TX, DEPLOY_TX, FUND_TX, revenueTx] }] };
+    const rpc = await serveProofChain(chain);
+    try {
+      const page = await readProof(proofChainClient(chain), CONFIG, LISTS);
+      expect(page.problems).toEqual([gap]);
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true)]);
+      expect(out.code).toBe(1);
+      expect(reportOf(out.stdout)).toEqual(reportLines(page.count, page.verified, "incomplete", page.team));
+      const sends = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true), "--sends", OWNER]);
+      expect(sends.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n")).toEqual([
+        `// 8 transactions sent by block 62,120,000, read from ${rpc.url}.`,
+        "// 4 left a vault or MaatInbox log the team trace reads; the other 4 go in web/content/proof-sends.ts, in nonce order:",
+        `  { wallet: "${lower(OWNER)}", txs: ["${VAULT_TX}", "${DEPLOY_TX}", "${FUND_TX}", "${revenueTx}"] },`,
+      ]);
+      expect((await readProof(proofChainClient(chain), CONFIG, listed)).complete).toBe(true);
+      expect((await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, listed)])).code).toBe(0);
+    } finally {
+      await rpc.close();
+    }
+  });
+
   it("counts a send that is both committed and in the vault's logs once, so it hides no missing send", async () => {
     const both: ProofLists = { ...LISTS, sends: [{ wallet: OWNER, txs: [VAULT_TX, DEPLOY_TX, SET_EXECUTOR_TX] }] };
     const rpc = await serveProofChain(CHAIN);
@@ -325,7 +385,7 @@ describe("node scripts/recount.mjs --sends", () => {
       expect(out.code).toBe(0);
       expect(out.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n")).toEqual([
         `// 7 transactions sent by block 62,120,000, read from ${rpc.url}.`,
-        "// 4 left a vault or MaatInbox log, which the team trace reads; the other 3 go in web/content/proof-sends.ts, in nonce order:",
+        "// 4 left a vault or MaatInbox log the team trace reads; the other 3 go in web/content/proof-sends.ts, in nonce order:",
         `  { wallet: "${lower(OWNER)}", txs: ["${VAULT_TX}", "${DEPLOY_TX}", "${FUND_TX}"] },`,
       ]);
     } finally {
@@ -359,7 +419,7 @@ describe("node scripts/recount.mjs --sends", () => {
       expect(out.code).toBe(0);
       expect(out.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n")).toEqual([
         `// 4 transactions sent by block 62,120,000, read from ${rpc.url}.`,
-        "// 4 left a vault or MaatInbox log, which the team trace reads, so the wallet needs no entry in web/content/proof-sends.ts.",
+        "// 4 left a vault or MaatInbox log the team trace reads, so the wallet needs no entry in web/content/proof-sends.ts.",
       ]);
     } finally {
       await rpc.close();

@@ -43,10 +43,12 @@ export async function readProof(
   lists: ProofLists,
   signal?: AbortSignal,
 ): Promise<ProofRead> {
-  const read = await readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, signal });
+  // The head first, so the trace reads the vault's logs to it while the Brief logs are read.
+  const head = await client.getBlockNumber();
+  const scan = readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, head, signal });
   // The trace takes a team wallet's briefs as its sends from the Brief logs read here, so it reads none twice.
-  const inputs = { team: lists.team, sends: lists.sends, stops: lists.stops, deployments: config.deployments, briefs: read.briefs };
-  const team = await traceTeam(clientRpc(client), inputs, read.head, signal);
+  const inputs = { team: lists.team, sends: lists.sends, stops: lists.stops, deployments: config.deployments, briefScan: scan };
+  const [read, team] = await Promise.all([scan, traceTeam(clientRpc(client), inputs, head, signal)]);
   const count = countBriefs(read.briefs, { ...lists, team: team.members });
   const problems = [...(read.complete ? [] : [SCAN_GAP]), ...team.gaps];
   const base = { count, complete: problems.length === 0, problems, head: read.head, team };
