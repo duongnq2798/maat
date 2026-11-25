@@ -433,7 +433,7 @@ The folder belongs to one vault. `state.json` does not record which, so when `MA
 
 Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
 
-```typescript title="agent/src/ledger/journal.ts#L11-L22"
+```typescript title="agent/src/ledger/journal.ts#L12-L25"
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
   /** `rationale` is the text as written; `blob` the maat:v1 blob whose keccak256 is `rationaleHash`. */
@@ -445,7 +445,9 @@ export type JournalEntry =
   | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
   | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
-  | { kind: "error"; runId: string; message: string };
+  | { kind: "error"; runId: string; message: string }
+  /** One MAAT_PROBES instant: what the calendar there led it to expect and what became of it; `note` says why. */
+  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string };
 ```
 
 - Every `bigint` field is written as a decimal string.
@@ -457,7 +459,7 @@ export type JournalEntry =
 
 `state.json` holds one object of the `Data` shape below, and `pending` holds the sends that are not settled yet:
 
-```typescript title="agent/src/ledger/store.ts#L6-L31"
+```typescript title="agent/src/ledger/store.ts#L6-L32"
 /** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
 export interface PendingTx {
   intentId: Hex;
@@ -483,6 +485,7 @@ interface Data {
   refusals: Record<string, string[]>; // RefusalKey day (NYSE date, or UTC day number) -> reasons logged onchain
   txByDay: Record<string, number>;
   pending: PendingTx[];
+  probes: Record<string, string>; // MAAT_PROBES instant -> outcome, "started" while it runs
 }
 ```
 

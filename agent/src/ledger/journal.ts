@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { keccak256, toBytes, type Address, type Hex } from "viem";
 import type { PreviewResult } from "../chain/preview.js";
+import type { ProbeExpectation, ProbeOutcome } from "../probes.js";
 import { GENESIS, MAX_TEXT_CHARS } from "../rationale/blob.js";
 import { canon } from "../rationale/canon.js";
 import { clean, sanitize } from "../rationale/sanitize.js";
@@ -19,7 +20,9 @@ export type JournalEntry =
   | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
   | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
-  | { kind: "error"; runId: string; message: string };
+  | { kind: "error"; runId: string; message: string }
+  /** One MAAT_PROBES instant: what the calendar there led it to expect and what became of it; `note` says why. */
+  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string };
 
 type Stringified<T> = {
   [K in keyof T]: T[K] extends bigint ? string : T[K] extends bigint | undefined ? string | undefined : T[K];
@@ -46,6 +49,7 @@ const BY_KIND: Readonly<Record<string, readonly string[]>> = {
   mismatch: ["intentId", "preview", "decision"],
   housekeeping: ["call", "token", "txHash", "gas", "gasUsed"],
   skip: ["index", "symbol", "action"],
+  probe: ["at", "expected", "outcome"],
 };
 /** How a `run` row's error starts when the daily LLM cap stopped the round before Claude was called (runOnce.ts). */
 const LLM_CAP_ERROR = "llm cap: ";
