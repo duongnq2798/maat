@@ -170,6 +170,40 @@ describe("publishOnce when the push itself is refused or fails", () => {
   });
 });
 
+describe("publishOnce when the remote branch was deleted, or moved on while a commit waited", () => {
+  let w;
+  before(() => {
+    w = world();
+  });
+  after(() => w.cleanup());
+  const commitOnRemote = (message) => {
+    const parent = w.remoteGit("rev-parse", BRANCH);
+    return spawnSync("git", ["--git-dir", w.remote, "commit-tree", `${parent}^{tree}`, "-p", parent, "-m", message], { encoding: "utf8", env: { ...process.env, ...w.env } }).stdout.trim();
+  };
+
+  it("stops when a commit could not be pushed and the remote branch has moved on since: they diverged", async () => {
+    writeFileSync(w.journalFile, jsonl(rows1));
+    await publishOnce(w.o);
+    appendFileSync(w.journalFile, jsonl(rows2));
+    const real = w.o.git;
+    const offline = (args, cwd) => (args[0] === "push" ? { code: 128, stdout: "", stderr: "fatal: Could not resolve host\n" } : real(args, cwd));
+    await assert.rejects(publishOnce({ ...w.o, git: offline }), PublishRetry);
+    // Someone else appends a commit to the branch on the remote meanwhile, by a plain fast-forward.
+    const theirs = commitOnRemote("appended elsewhere");
+    w.remoteGit("update-ref", BRANCH, theirs);
+    const e = await stopOf(publishOnce(w.o));
+    assert.match(e.message, /have diverged/);
+    assert.equal(w.remoteGit("rev-parse", BRANCH), theirs);
+  });
+
+  it("stops when the branch it pushed before is gone from the remote, and pushes nothing", async () => {
+    w.remoteGit("update-ref", "-d", BRANCH);
+    const e = await stopOf(publishOnce(w.o));
+    assert.match(e.message, /no agent-journal branch any more/);
+    assert.equal(w.remoteGit("for-each-ref"), "");
+  });
+});
+
 describe("publishOnce refuses before it commits", () => {
   let w;
   before(() => {
