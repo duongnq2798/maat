@@ -457,8 +457,9 @@ export type AnchorState = "pending" | "anchored" | "broken";
 
 /**
  * "pending" while no verified `sent` or `reconcile` row names the transaction (the publisher has not caught up).
- * Otherwise "anchored" when the blob's `j` is GENESIS or the hash of an earlier row and, for a `sent` row, the row's
- * blob is the onchain blob; "broken" when not.
+ * Otherwise "anchored" when the blob's `j` is the hash of an earlier row, or `j` is GENESIS and no row precedes the
+ * found one, and, for a `sent` row, the row's blob is the onchain blob; "broken" when not. A GENESIS `j` says the
+ * journal was empty when the blob was built, which a row before the found one contradicts.
  */
 export function anchorState(txHash: Hash, blob: { text: string; j: Hash }, rows: readonly JournalRow[]): AnchorState {
   const at = rows.findIndex(
@@ -466,7 +467,8 @@ export function anchorState(txHash: Hash, blob: { text: string; j: Hash }, rows:
   );
   if (at < 0) return "pending";
   const row = rows[at]!;
-  const jOk = blob.j === GENESIS || rows.slice(0, at).some((r) => r.hash === blob.j);
+  // Every verified row is chained (verifyJournal requires a hash on each), so "no chained row precedes" is at === 0.
+  const jOk = blob.j === GENESIS ? at === 0 : rows.slice(0, at).some((r) => r.hash === blob.j);
   const blobOk = row.fields.kind !== "sent" || row.fields.blob === blob.text;
   return jOk && blobOk ? "anchored" : "broken";
 }

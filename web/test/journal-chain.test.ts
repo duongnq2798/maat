@@ -121,9 +121,20 @@ describe("anchorState (§3.6 step 4)", () => {
     expect(anchorState(TX, { ...V1_ANCHOR, j: `0x${"cd".repeat(32)}` }, rowsWith(sentRow().line))).toBe("broken");
   });
 
-  it("accepts GENESIS as j, and a reconcile row, which carries no blob", () => {
+  it("accepts a reconcile row, which carries no blob", () => {
     const reconcile = publish({ kind: "reconcile", ts: "2026-11-24T17:00:00.000Z", runId: "r2", intentId: "0x01", action: "BUY", txHash: TX, outcome: "applied" }, JOURNAL_HASHES[1]!);
-    expect(anchorState(TX, { ...V1_ANCHOR, j: GENESIS }, rowsWith(reconcile.line))).toBe("anchored");
+    expect(anchorState(TX, V1_ANCHOR, rowsWith(reconcile.line))).toBe("anchored");
+  });
+
+  it("accepts GENESIS as j only when no row precedes the found one: the journal was empty when the blob was built", () => {
+    const fields = { kind: "reconcile", ts: "2026-11-24T17:00:00.000Z", runId: "r2", intentId: "0x01", action: "BUY", txHash: TX, outcome: "applied" };
+    const first = publish(fields, GENESIS);
+    const alone = verifyJournal([{ name: "d.jsonl", text: file(first.line) }]).rows;
+    expect(alone).toHaveLength(1);
+    expect(anchorState(TX, { ...V1_ANCHOR, j: GENESIS }, alone)).toBe("anchored");
+    // After the spec's two lines, a GENESIS j contradicts the rows before the reconcile row.
+    const reconcile = publish(fields, JOURNAL_HASHES[1]!);
+    expect(anchorState(TX, { ...V1_ANCHOR, j: GENESIS }, rowsWith(reconcile.line))).toBe("broken");
   });
 });
 
