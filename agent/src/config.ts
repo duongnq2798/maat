@@ -18,6 +18,7 @@ const address = (name: string) =>
 const schema = z
   .object({
     BASE_RPC_URL: field(z.string({ error: "BASE_RPC_URL is required" }).pipe(z.url())),
+    BASE_RPC_URL_FALLBACK: field(z.url().optional()),
     MAAT_VAULT: address("MAAT_VAULT"),
     MAAT_EXECUTOR: address("MAAT_EXECUTOR"),
     MAAT_EXPENSE_PAYEE: address("MAAT_EXPENSE_PAYEE"),
@@ -27,6 +28,9 @@ const schema = z
     MAAT_DATA_DIR: field(z.string().default("./data")),
     MAAT_MAX_TX_PER_DAY: field(z.coerce.number().int().positive().default(40)),
     MAAT_DEFAULT_DAILY_COMPUTE_USD: field(z.coerce.number().positive().default(0.5)),
+    MAAT_CREDIT_ACTIONS: field(z.enum(["off", "on"]).default("off")),
+    MAAT_MAX_LLM_USD_PER_DAY: field(z.coerce.number().nonnegative().default(0.75)),
+    MAAT_BILL_MIN_USD: field(z.coerce.number().positive().optional()),
     CDP_ACCOUNT_NAME: field(z.string().default("maat-executor")),
   })
   .superRefine((v, ctx) => {
@@ -37,6 +41,8 @@ const schema = z
 
 export interface AgentConfig {
   rpcUrl: string;
+  /** A second RPC, tried when `rpcUrl` fails. */
+  rpcFallbackUrl: string | undefined;
   vault: Address;
   executor: Address;
   expensePayee: Address;
@@ -46,6 +52,12 @@ export interface AgentConfig {
   dataDir: string;
   maxTxPerDay: number;
   defaultDailyComputeUsd: number;
+  /** SUPPLY, WITHDRAW_COLLATERAL, BORROW and REPAY: suggested, asked for and sent only when true. */
+  creditActions: boolean;
+  /** Claude is not called once the UTC day's Claude spend reaches this; 0 never calls it. */
+  maxLlmUsdPerDay: number;
+  /** The smallest compute bill a round pays back. Unset, it is 1.00 in live mode and 0.10 in dry-run (runtime.ts). */
+  billMinUsd: number | undefined;
   cdpAccountName: string;
 }
 
@@ -58,6 +70,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
   const v = r.data;
   return {
     rpcUrl: v.BASE_RPC_URL,
+    rpcFallbackUrl: v.BASE_RPC_URL_FALLBACK,
     vault: v.MAAT_VAULT,
     executor: v.MAAT_EXECUTOR,
     expensePayee: v.MAAT_EXPENSE_PAYEE,
@@ -67,6 +80,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     dataDir: v.MAAT_DATA_DIR,
     maxTxPerDay: v.MAAT_MAX_TX_PER_DAY,
     defaultDailyComputeUsd: v.MAAT_DEFAULT_DAILY_COMPUTE_USD,
+    creditActions: v.MAAT_CREDIT_ACTIONS === "on",
+    maxLlmUsdPerDay: v.MAAT_MAX_LLM_USD_PER_DAY,
+    billMinUsd: v.MAAT_BILL_MIN_USD,
     cdpAccountName: v.CDP_ACCOUNT_NAME,
   };
 }

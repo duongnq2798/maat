@@ -3,13 +3,15 @@
 "LLM proposes, contract decides." Each cycle, the agent does the following:
 
 1. Read the state of `MandateVault` at a fixed block.
-2. Compute the policy: an equal-weight basket of NVDAc/GOOGLc/AAPLc, keep 30% in USDC, rebalance when a stock's weight drifts more than 5 percentage points from its target, borrow when there is less than 7 days of compute runway, repay debt when revenue arrives.
+2. Compute the policy: an equal-weight basket of NVDAc/GOOGLc/AAPLc, keep 30% in USDC, rebalance when a stock's weight drifts more than 5 percentage points from its target. With `MAAT_CREDIT_ACTIONS=on` it also supplies idle stock, borrows when there is less than 7 days of compute runway and repays debt when revenue arrives.
 3. Ask Claude (`claude-sonnet-5-5`, structured output). Claude may only propose.
 4. Call `previewIntent` with `eth_call`, using `from = executor`.
 5. Send `execute` through the CDP Server Wallet. Every tx carries the Builder Code (ERC-8021).
 6. Write to the journal.
 
-Refusals that are "worth recording", such as `MARKET_CLOSED` or `FEED_STALE`, are also sent onchain so that a public `Decision(allowed=false)` exists. Each reason is sent at most once per UTC day.
+Credit actions are off by default (`MAAT_CREDIT_ACTIONS=off`): the policy suggests no `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY`, the prompt tells Claude never to propose one, and a credit proposal is journaled as a `skip` before the preview.
+
+Refusals that are "worth recording", such as `MARKET_CLOSED` or `FEED_STALE`, are also sent onchain so that a public `Decision(allowed=false)` exists. Each reason is sent at most once per NYSE date, the New York date that the vault's calendar contract reports. `MARKET_CLOSED` is also split by why the market is closed: a holiday, the weekend, the time between an early close and 16:00 ET, or outside regular hours, which covers both the time before the open and the time after the close of a date. So in Thanksgiving week 2026 it can log `MARKET_CLOSED` once outside regular hours on Wednesday (before the open or after the close), once on Thanksgiving Day, once outside regular hours on Friday and once after Friday's 13:00 ET early close, and it appends the case to the rationale of a `MARKET_CLOSED` log, for example "NYSE holiday: Thanksgiving". A `MARKET_CLOSED` that the preview returns while the calendar still reports the session open at the state block has no phase yet, so the agent leaves its log to a later round. When the calendar cannot be read, the agent falls back to one log per reason per UTC day and says so in the journal. The daily tx cap and the compute bill still count UTC days.
 
 Cadence: 15 minutes in session, 1 hour out of session.
 
@@ -24,6 +26,10 @@ npm run agent -- --once --dry-run
 
 The dry run reads the chain, calls Claude (this costs real API fees, about 1 cent per cycle), runs the preview, then writes `data/journal.jsonl`. It never sends a tx.
 
+Give the dry run and the live agent separate data directories (`MAAT_DATA_DIR`). Live mode refuses to start on a directory whose journal holds dry-run rows, so the vault never pays a dry run's Claude bill, and a dry run refuses a directory whose journal holds live rows, so the live agent can start there again.
+
+Claude is called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. If `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, the agent prints one warning at startup and ignores it. `MAAT_MAX_LLM_USD_PER_DAY` (default 0.75) caps the Claude cost of one UTC day: once it is reached, the day's later rounds skip Claude and still settle bills.
+
 ## Live run (owner only)
 
 1. **Builder Code:** register the project at https://dashboard.base.org, go to Settings → Builder Code, then set `MAAT_BUILDER_CODE=bc_...`. The code must match `^[a-z0-9_]{1,32}$`.
@@ -34,20 +40,21 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
    node --env-file=.env --import tsx scripts/cdp-setup.ts <MAAT_VAULT>
    ```
 
-   The policy accepts sending a tx only on Base, with `to` = the vault and `value` = 0. It accepts signing a tx with `to` = the vault and `value` = 0, but that rule names no network. Raw hash signing (`signEvmHash`) is rejected. The policy has no rule for message or typed-data signing.
+   The policy accepts sending a tx only on Base, with `to` = the vault and `value` = 0. It accepts signing a tx with `to` = the vault and `value` = 0, but that rule names no network. It does not limit which vault function is called. Hash, message and typed-data signing (`signEvmHash`, `signEvmMessage`, `signEvmTypedData`) are rejected. The script creates the policy before the account, so a policy CDP refuses leaves no account behind.
 4. **Point the vault at the new executor.** You sign this one yourself with the owner wallet; see `deployments/README.md`, section "Switch the executor to the CDP Server Wallet".
 5. **Fund gas:** send about 0.002 ETH on Base to the executor address. A paymaster cannot be used, because it only supports smart accounts.
 6. Set `MAAT_EXECUTOR=<executor address>` and `MAAT_MODE=live`, run `npm run agent -- --once`, then check the tx on Basescan. The input data must end with the Builder Code (`...0080218021...8021`).
-7. Run continuously: `npm run agent`. Stop it with Ctrl+C.
+7. Run continuously: `npm run agent`. Stop it with Ctrl+C. On the owner's PC, `npm run agent:loop` starts `npm run agent` and starts it again each time it exits, after a pause that doubles from 10 s up to 15 min. Every 5 min it reads the heartbeat the agent writes after each round, and prints a `STALE` line (with a Windows notification) when no round has ended for more than 90 min. After 3 exits in a row that each came less than 10 min after their start, it prints a `FAILING` line and notifies once. `npm run agent:heartbeat` prints the age of the last round and exits 1 when it is older than 90 min.
 
 ## Safety
 
 - The contract is the final gate: $50 per-trade cap, $100 daily cap, slippage floor, session hours, feed, premium, HF. The agent cannot exceed these limits.
-- `GuardedSender` sends only `execute`, `syncMultiplier` and `notifyRevenue` to the vault, and always attaches the Builder Code. The CDP policy adds one more layer of blocking.
+- `GuardedSender` sends only `execute`, `syncMultiplier` and `notifyRevenue` to the vault, and always attaches the Builder Code. The CDP policy adds one more layer, for the target and the value (and the network when sending), not for the function.
 - `MAAT_MAX_TX_PER_DAY` (default 40) stops gas from being burned on a repeating error.
 - If the RPC fails, that cycle does nothing. If a tx fails or reverts, the cycle stops immediately.
+- `BASE_RPC_URL_FALLBACK` (optional) is a second RPC, best from another provider. Each request goes to `BASE_RPC_URL` first and moves to the fallback only when it fails. Neither URL is printed or journaled: a halt keeps only the first line of an RPC error, because viem lists the URL, and any key in it, below that line.
 - Every tx has an explicit gas limit: `min(3,000,000, max(floor, estimate × 1.3))`. The floor is 2,500,000 for `execute` and 300,000 for `syncMultiplier`. The agent does not use `eth_estimateGas` directly, because the vault swallows inner errors (swap, transfer, credit), so the estimate can be too low and the vault would record `SWAP_FAILED`. If the estimate fails, the cycle stops.
-- Every `execute` is recorded in `pending` in `data/state.json` before it is sent. The next cycle reconciles against `usedIntent(id)` before doing anything else, so even a lost receipt cannot cause a bill to be paid twice.
+- Every `execute` is recorded in `pending` in `data/state.json` before it is sent. The next cycle reconciles it before doing anything else, from the tx receipt once the tx is mined, otherwise against `usedIntent(id)`, so even a lost receipt cannot cause a bill to be paid twice.
 - If the preview reports OK but the vault refuses, or the receipt has no `Decision`, the agent records `mismatch` and stops the cycle.
 - Each `data/` directory allows only one agent process at a time (the `agent.lock` file). The agent takes the lock before it opens the Store or connects to CDP. A lock file that is empty or corrupt but newer than 60 seconds is treated as held.
 
@@ -55,17 +62,19 @@ The dry run reads the chain, calls Claude (this costs real API fees, about 1 cen
 
 1. Read `data/journal.jsonl` (the `error`, `mismatch`, `sent` and `reconcile` lines), then look up the tx hash on Basescan.
 2. `pending-tx` means a tx was sent and its outcome is still unknown. The next cycle reconciles it first, on its own:
-   - the intent was used: apply its `Decision`;
-   - the tx is still in the mempool, or no more than 300 blocks have passed: keep waiting and send nothing;
-   - more than 300 blocks have passed with no trace of it: record `dropped` and continue.
+   - the tx is mined and its receipt holds the intent's `Decision`: apply it, with no log search;
+   - otherwise, the intent was used: find its `Decision` in the vault's logs, from the block the send was prepared at to the latest block, and apply it. Each `eth_getLogs` covers at most 9,000 blocks, and the window halves down to 200 blocks when an RPC refuses the range;
+   - the tx is still in the mempool, or less than 10 minutes of chain time have passed since the block the send was prepared at: keep waiting and send nothing;
+   - 10 minutes or more have passed with no trace of it: record `dropped` and continue.
 
-   No manual fix is needed.
+   The window is measured with block timestamps, not block counts, so a change in Base's block interval does not change it. A `pending` entry written by an older agent has no timestamp, so it is aged in blocks instead and dropped after 3,000 blocks, 10 minutes at 200 ms. No manual fix is needed.
 3. `halted` because of `mismatch` or a missing `Decision`: read the tx on Basescan before you run again. If a `pending` entry keeps halting the cycle, remove it from `data/state.json` only when you are sure that tx can no longer take effect.
 4. Emergency stop (the owner signs it): call `setPaused(true)` on the vault, or `setExecutor(owner)` to take back the executor role.
 
 ## Data
 
-- `data/state.json`: compute bills, refusal records per day, tx count per day, and `pending` txs not yet reconciled.
+- `data/state.json`: compute bills, refusal records per NYSE date (per UTC day in files from older agents, or while the calendar cannot be read), tx count per UTC day, and `pending` txs not yet reconciled.
+- `data/heartbeat.json`: when the last round ended and how, written after every round; `agent:loop` and `agent:heartbeat` read it.
 - `data/journal.jsonl`: for each cycle, the intent, the rationale (the original text behind `rationaleHash`), the preview, the tx (`sent`, gas, `gasUsed`) and the Decision. Plan 3 (diary/dashboard) reads this file.
 
 ## Test

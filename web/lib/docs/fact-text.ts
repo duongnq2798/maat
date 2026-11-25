@@ -189,16 +189,22 @@ export const FACT_TEXT = {
     id(POLICY, "DEFAULT_POLICY.driftBps"),
   ),
   targetWeightPct: t(`${F.targetWeightPct.value}%`, "targetWeightPct", "Target weight of each stock"),
-  pendingWindowBlocks: t(
-    `${F.pendingWindowBlocks.value} blocks`,
-    "pendingWindowBlocks",
-    "Blocks before a send with no trace is dropped",
-    id(RUN_ONCE, "PENDING_WINDOW_BLOCKS"),
+  pendingWindowMinutes: t(
+    `${F.pendingWindowMinutes.value} minutes`,
+    "pendingWindowMinutes",
+    "Chain time before a send with no trace is dropped",
+    id(RUN_ONCE, "PENDING_WINDOW_SECONDS"),
   ),
   executorGasEth: t(`about ${F.executorGasEth.value} ETH`, "executorGasEth", "ETH for the executor's gas (estimate)"),
   cashReservePct: t(`${F.cashReservePct.value}%`, "cashReservePct", "Cash target", id(POLICY, "DEFAULT_POLICY.cashReserveBps")),
   runwayDays: t(`${F.runwayDays.value} days`, "runwayDays", "Compute runway kept in USDC", id(POLICY, "DEFAULT_POLICY.runwayDays")),
-  billMinUsd: t(usd(F.billMinUsd.value), "billMinUsd", "Smallest compute bill paid", id(RUN_ONCE, "BILL_MIN_USD6")),
+  billMinUsd: t(usd(F.billMinUsd.value), "billMinUsd", "Smallest compute bill paid in dry-run", id(RUN_ONCE, "BILL_MIN_USD6")),
+  liveBillMinUsd: t(
+    usd(F.liveBillMinUsd.value),
+    "liveBillMinUsd",
+    "Smallest compute bill paid in live mode",
+    id(RUN_ONCE, "LIVE_BILL_MIN_USD6"),
+  ),
   minTradeUsd: t(usd(F.minTradeUsd.value), "minTradeUsd", "Smallest suggestion kept", id(POLICY, "DEFAULT_POLICY.minTradeUsd6")),
   maxTxPerDay: t(String(F.maxTxPerDay.value), "maxTxPerDay", "Most transactions per UTC day", id(CONFIG, "MAAT_MAX_TX_PER_DAY")),
   dailyComputeUsd: t(
@@ -206,6 +212,12 @@ export const FACT_TEXT = {
     "dailyComputeUsd",
     "Daily compute cost assumed before any history",
     id(CONFIG, "MAAT_DEFAULT_DAILY_COMPUTE_USD"),
+  ),
+  maxLlmUsdPerDay: t(
+    cents(F.maxLlmUsdPerDay.value),
+    "maxLlmUsdPerDay",
+    "Most Claude spend per UTC day",
+    id(CONFIG, "MAAT_MAX_LLM_USD_PER_DAY"),
   ),
   maxIntents: t(String(F.maxIntents.value), "maxIntents", "Most intents in one Claude answer", id(SCHEMA, "MAX_INTENTS")),
   maxRationaleChars: t(
