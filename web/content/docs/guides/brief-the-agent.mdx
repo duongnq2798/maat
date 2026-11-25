@@ -1,0 +1,70 @@
+---
+title: Brief the agent
+description: Send Maat's agent a public brief through MaatInbox from a browser wallet or a Base Account, and ask the live vault for free what it would answer.
+type: guide
+audience: [watcher, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-25
+sources:
+  - contracts/src/MaatInbox.sol
+  - contracts/script/DeployMaatInbox.s.sol
+  - contracts/test/fork/MaatInboxFork.t.sol
+  - docs/superpowers/specs/2026-11-25-maat-inbox-design.md
+  - web/app/(site)/ask/AskApp.tsx
+  - web/lib/chain/inbox.ts
+  - web/lib/chain/preview.ts
+  - web/lib/wallet/send.ts
+  - web/lib/wallet/builder-code.ts
+  - web/content/ask-hidden.ts
+next: [guides/watch-decisions-onchain, concepts/refusal-codes]
+---
+
+A brief is a short public message to Maat's agent, sent as one zero-value transaction to the `MaatInbox` contract on [Base](/docs/help/glossary#base). The agent reads it as untrusted data. Claude may be persuaded by it; the [vault](/docs/help/glossary#vault) still checks every [intent](/docs/help/glossary#intent) against its [mandate](/docs/help/glossary#mandate) and has the last word. The site's `/ask` page sends briefs, lists them, and lets anyone ask the live vault what it would answer, for free.
+
+<Callout type="fork" title="What has run">
+
+The contract's [fork test](/docs/help/glossary#fork-test) [`test_deployThenBriefWithSuffix`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MaatInboxFork.t.sol) deploys `MaatInbox` with its deploy script on a Base mainnet fork and sends a brief that ends with a [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The page's send path is tested in the browser with a mocked wallet and a mocked RPC. Until the table in `deployments/README.md` records a `MaatInbox` address, `/ask` says the inbox is not open yet and offers only the preview.
+
+</Callout>
+
+## What the inbox accepts
+
+`brief(text)` takes 1 to 280 bytes of text, counted as UTF-8 bytes, not characters, and emits `Brief(id, from, text)`. Ids start at 1 and grow by 1. The contract has no owner, holds no funds and refuses any call that carries ether. Calldata after the encoded text is ignored, so a transaction can end with an ERC-8021 suffix. `/ask` checks the byte count before it asks your wallet for anything.
+
+## Send a brief
+
+<Steps>
+
+<Step>
+
+### Write it
+
+A brief is public and stays onchain for good, so put nothing private in it. The counter under the box gives its size in bytes.
+
+</Step>
+
+<Step>
+
+### Pick a wallet
+
+The page lists every browser wallet that announces itself through EIP-6963, and Base Account, which needs no extension. A browser wallet is switched to Base mainnet first, and the brief goes out through viem's `writeContract` with the suffix as `dataSuffix`. Base Account gets a `wallet_sendCalls` request with the suffix as the `dataSuffix` capability, the shape docs.base.org gives for Builder Codes.
+
+</Step>
+
+<Step>
+
+### Check the Builder Code line
+
+The page reads the Builder Code from the vault's first [Decision](/docs/help/glossary#decision), the one the [owner](/docs/help/glossary#owner) sent, as the [mainnet ledger](/ledger) does. No code is written into the site. When it cannot be read, one line says why and the brief is sent without a suffix.
+
+</Step>
+
+</Steps>
+
+## Ask the real vault
+
+Pick an action, a token and an amount, and the page calls `previewIntent` on the live vault at the latest block over the site's public RPCs. It runs the same checks as `execute` and returns the [reason](/docs/help/glossary#reason) the vault would give. It is an `eth_call`: nothing is signed or sent, and no brief is needed.
+
+## Read the feed
+
+The feed lists every `Brief` event of the inbox, newest first: its id, the sender's short address and its text. The text is shown as plain text with no links, no markdown and no HTML, after the same control, zero-width and direction code points the agent's prompt replaces are turned into U+FFFD. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.
