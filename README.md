@@ -606,6 +606,8 @@ detail: [Run the tests](https://maatonbase.xyz/docs/guides/run-the-tests).
 
 Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` and `web/`, `npm run verify` in
 `web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/` after a contract change.
+`npm test` in `ops/journal/` runs the journal publisher's tests, which need git and no network and run by hand;
+CI's web unit tests check the chain it writes, on its fixtures.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
@@ -752,6 +754,8 @@ web/                       Next.js landing page, /now, /gap-index, /ledger, docs
                            tests, Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            Base mainnet address table
+ops/journal/               the journal publisher the owner starts beside the agent: it appends the public fields
+                           of the agent's journal to the public agent-journal branch every 15 min, never by force
 docs/superpowers/          design specs and implementation plans
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately
@@ -788,6 +792,7 @@ SECURITY.md                how to report a security problem privately
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/go-live.md`](deployments/go-live.md) | The owner's go-live runbook: deploy, fund, the first-decision BUY intents built by `agent/scripts/first-decision.ts`, and the executor handover to the CDP Server Wallet |
 | [`deployments/README.md`](deployments/README.md) | The mainnet deploy reference (environment, dry run, checklist, smoke tests, unwind, executor switch) and the address table |
+| [`ops/journal/README.md`](ops/journal/README.md) | The journal publisher: the fields it copies from the agent's journal to the public `agent-journal` branch, how the owner starts and stops it on Windows, what it prints, and when and why it stops |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
 | [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
 
