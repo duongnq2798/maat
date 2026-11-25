@@ -18,7 +18,8 @@ import { decodeExecuteInput } from "../src/rationale/calldata.js";
 import { verifyDecision } from "../src/rationale/verify.js";
 import { ACTIONS, REASONS, type OnchainIntent, type ReasonName } from "../src/types.js";
 import { main as verifyMain } from "../scripts/verify-decision.js";
-import { CALENDAR, CALENDAR_MATH, EXECUTOR, FEEDS, PRICES, VAULT, standardScene, withCalendar, type FakeChain } from "./fakes/fakeChain.js";
+import { reasonByCalendar as byCalendar, sceneAt } from "./fakes/clockScene.js";
+import { CALENDAR, EXECUTOR, VAULT, type FakeChain } from "./fakes/fakeChain.js";
 import { FakeReceipts } from "./fakes/fakeReceipts.js";
 import { FakeSender } from "./fakes/fakeSender.js";
 
@@ -31,17 +32,6 @@ const code = (r: ReasonName) => REASONS.indexOf(r);
 const F1758 = "2026-11-27T17:58:00Z";
 const F1801 = "2026-11-27T18:01:00Z";
 const T1431 = "2026-11-26T14:31:00Z";
-
-/** The standard scene with the real calendar, its block at the clock, and feeds that are always 30 s old. */
-function sceneAt(clock: () => number): FakeChain {
-  const f = withCalendar(standardScene());
-  Object.defineProperty(f, "block", { get: () => ({ number: 100n, timestamp: BigInt(Math.floor(clock() / 1000)) }) });
-  FEEDS.forEach((feed, i) => f.set(feed, "latestRoundData", () => [1n, PRICES[i]!, 0n, f.block.timestamp - 30n, 1n]));
-  return f;
-}
-
-/** The vault's verdict at the clock: open → OK; closed → MARKET_CLOSED, as MarketCalendar decides it. */
-const byCalendar = (clock: () => number) => () => (CALENDAR_MATH.isOpen(Math.floor(clock() / 1000), 0) ? 0 : code("MARKET_CLOSED"));
 
 async function setup(
   o: {
