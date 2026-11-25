@@ -176,6 +176,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "Configure and start the agent loop: dry-run and live modes, its settings, the CDP wallet, the Builder Code and its daily limits.",
       ),
       page(
+        "guides/run-the-agent-on-windows",
+        "Run the agent on Windows",
+        "Keep the agent running on a Windows PC: power, updates and clock, a separate dry-run folder, the restart loop, the heartbeat, the journal and the stop.",
+      ),
+      page(
         "guides/change-a-rule",
         "Change a rule",
         "Queue a mandate, token or payee change, wait out the timelock, then apply or cancel it and check the new policy hash.",
@@ -189,6 +194,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "guides/watch-decisions-onchain",
         "Watch decisions onchain",
         "Read a vault's Decision events with cast, decode them as the agent does with viem, match them to the agent's journal, and watch the owner's actions.",
+      ),
+      page(
+        "guides/verify-by-hand",
+        "Verify Maat by hand",
+        "Five read-only cast commands to check the mainnet vault yourself: its source, owner, executor and mandate, both Decisions, the calendar and a rationale hash.",
       ),
     ],
   },

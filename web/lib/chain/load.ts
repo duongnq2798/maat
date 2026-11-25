@@ -4,7 +4,7 @@ import { vaultAbi } from "./abi";
 import { CACHE_SAFETY_BLOCKS, loadCache, saveCache, type CachedLog, type LedgerCache } from "./cache";
 import { SCAN_FLOOR_BLOCK } from "./config";
 import { decodeVaultLogs, type VaultEvent } from "./events";
-import { summarize, toMainnetDecisions, type MainnetDecision, type Summary } from "./ledger";
+import { decisionTrails, summarize, toMainnetDecisions, type DecisionTrail, type MainnetDecision, type Summary, type TxInput } from "./ledger";
 import type { RationaleSource } from "./rationale";
 import { scanLogs, type BlockRange } from "./scan";
 import { readTreasury, type Treasury } from "./treasury";
@@ -12,7 +12,7 @@ import { readTreasury, type Treasury } from "./treasury";
 /** The client calls the ledger makes; a viem PublicClient satisfies it, and tests pass a fake. */
 export type LedgerClient = Pick<
   PublicClient,
-  "getBlockNumber" | "getBytecode" | "readContract" | "multicall" | "getBlock" | "getLogs" | "getTransactionReceipt"
+  "getBlockNumber" | "getBytecode" | "readContract" | "multicall" | "getBlock" | "getLogs" | "getTransactionReceipt" | "getTransaction"
 >;
 
 /** MandateVault.TIMELOCK, 24 hours: how the page tells a MandateVault from any other contract at the address. */
@@ -69,6 +69,12 @@ export interface LedgerSnapshot {
   rationales: Map<Hex, string>;
   /** "checking" until the rationale source has been asked, "unavailable" when asking it failed. */
   rationaleState: "checking" | "read" | "unavailable";
+  /** Each Decision transaction that was read, by lowercased hash: its sender, target and input. */
+  txs: ReadonlyMap<string, TxInput>;
+  /** "checking" until the Decision transactions have been asked for; a transaction whose read failed is then absent. */
+  txState: "checking" | "read";
+  /** Sender label, decoded calldata and Builder Code check of each Decision whose transaction was read, by its key. */
+  trails: ReadonlyMap<string, DecisionTrail>;
   scan: ScanState;
   /** Milliseconds, from `now`. */
   updatedAt: number;
@@ -82,6 +88,11 @@ export interface LoadOptions {
   storage?: Storage | null;
   /** The floor a previous load found, which saves reading the deploy receipt again. */
   floor?: bigint;
+  /**
+   * Decision transactions a previous load read, by lowercased hash. The load adds the ones it reads to this map, so a
+   * refresh asks only for new transactions. A transaction never changes, so nothing in it goes stale.
+   */
+  txs?: Map<string, TxInput>;
   now?: () => number;
   signal?: AbortSignal;
   onProgress?: (snapshot: LedgerSnapshot) => void;
@@ -162,19 +173,27 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
   );
   let rationales = new Map<Hex, string>();
   let rationaleState: LedgerSnapshot["rationaleState"] = "checking";
+  const txs = opts.txs ?? new Map<string, TxInput>();
+  let txState: LedgerSnapshot["txState"] = "checking";
 
   const snapshot = (): LedgerSnapshot => {
     const events = decodeVaultLogs([...logs.values()]);
+    const decisions = toMainnetDecisions(events, { blockTimes, gasUsed, decimals, usdc });
+    const scan = scanState(floor, head, covered);
+    const read = new Map(txs);
     return {
       vault,
       treasury,
       treasuryError,
       events,
-      decisions: toMainnetDecisions(events, { blockTimes, gasUsed, decimals, usdc }),
+      decisions,
       summary: summarize(events, { blockTimes, usdc, nowSec: Math.floor(now() / 1000) }),
       rationales,
       rationaleState,
-      scan: scanState(floor, head, covered),
+      txs: read,
+      txState,
+      trails: decisionTrails(decisions, read, { vault, owner: treasury?.owner ?? null, complete: scan.done }),
+      scan,
       updatedAt: now(),
     };
   };
@@ -210,15 +229,24 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
   // Block times and gas for decisions this browser has not seen yet; a failed read leaves the row without it.
   const decisionEvents = decodeVaultLogs([...logs.values()]).filter((e) => e.name === "Decision");
   const blocks = [...new Set(decisionEvents.map((e) => e.blockNumber.toString()))].filter((b) => blockTimes[b] === undefined);
-  const txs = [...new Set(decisionEvents.map((e) => e.txHash))].filter((h) => gasUsed[h] === undefined);
+  const unreceipted = [...new Set(decisionEvents.map((e) => e.txHash))].filter((h) => gasUsed[h] === undefined);
+  // The input of each Decision transaction carries its blob and Builder Code (spec §1); the receipt carries neither.
+  const unread = [...new Set(decisionEvents.map((e) => e.txHash.toLowerCase() as Hash))].filter((h) => !txs.has(h));
   await inBatches(blocks, async (b) => {
     const block = await client.getBlock({ blockNumber: BigInt(b) });
     blockTimes[b] = Number(block.timestamp);
   });
-  await inBatches(txs, async (h) => {
-    const receipt = await client.getTransactionReceipt({ hash: h });
-    gasUsed[h] = receipt.gasUsed.toString();
-  });
+  await Promise.all([
+    inBatches(unreceipted, async (h) => {
+      const receipt = await client.getTransactionReceipt({ hash: h });
+      gasUsed[h] = receipt.gasUsed.toString();
+    }),
+    inBatches(unread, async (h) => {
+      const tx = await client.getTransaction({ hash: h });
+      txs.set(h, { from: getAddress(tx.from), to: tx.to ? getAddress(tx.to) : null, input: tx.input });
+    }),
+  ]);
+  txState = "read";
   if (signal?.aborted) throw new DOMException("The ledger load was aborted.", "AbortError");
 
   try {

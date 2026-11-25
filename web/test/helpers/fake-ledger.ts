@@ -41,6 +41,10 @@ export interface FakeChain {
   times?: Record<string, number>;
   /** Tx → gas used. */
   gas?: Record<string, bigint>;
+  /** Tx → its sender, target and input; a tx not listed is not found. */
+  txs?: Record<string, { from: Address; to: Address | null; input: Hex }>;
+  /** The vault's owner() as the treasury multicall reads it. */
+  owner?: Address;
   deployTx?: { hash: Hash; block: bigint };
   bytecode?: Hex;
   timelock?: bigint;
@@ -69,7 +73,7 @@ export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: {
     deriskWindow: 28_800,
   };
   const answers: Record<string, unknown> = {
-    owner: "0x0000000000000000000000000000000000000001",
+    owner: chain.owner ?? "0x0000000000000000000000000000000000000001",
     executor: "0x0000000000000000000000000000000000000002",
     paused: false,
     mandate,
@@ -109,6 +113,11 @@ export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: {
       const g = chain.gas?.[hash];
       if (g === undefined) throw new Error(`no receipt ${hash}`);
       return { blockNumber: 0n, gasUsed: g };
+    },
+    getTransaction: async ({ hash }: { hash: Hash }) => {
+      const tx = Object.entries(chain.txs ?? {}).find(([h]) => h.toLowerCase() === hash.toLowerCase())?.[1];
+      if (!tx) throw new Error(`no transaction ${hash}`);
+      return { hash, ...tx };
     },
   };
   return client as unknown as LedgerClient & { logCalls: { from: bigint; to: bigint }[] };
