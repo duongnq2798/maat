@@ -100,6 +100,7 @@ const BY_KIND = new Map([
   ["mismatch", ["intentId", "preview", "decision"]],
   ["housekeeping", ["call", "token", "txHash", "gas", "gasUsed"]],
   ["skip", ["index", "symbol", "action"]],
+  ["probe", ["at", "expected", "outcome"]],
 ]);
 
 /**

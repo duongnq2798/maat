@@ -220,6 +220,7 @@ change have none.
 | `mismatch` | `intentId`, `preview`, `decision` |
 | `housekeeping` | `call`, `token`, `txHash`, `gas`, `gasUsed` |
 | `skip` | `index`, `symbol`, `action` |
+| `probe` | `at`, `expected`, `outcome` (one MAAT_PROBES instant: `at` as `YYYY-MM-DDTHH:MM:SSZ`, `expected` `OK` or `MARKET_CLOSED` when the calendar was read, `outcome` one of `sent`, `dry-run`, `skipped`, `halted`, `missed`, `capped`) |
 | `error` and any other kind | none |
 
 Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error` (a

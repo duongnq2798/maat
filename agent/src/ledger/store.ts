@@ -28,9 +28,10 @@ interface Data {
   refusals: Record<string, string[]>; // RefusalKey day (NYSE date, or UTC day number) -> reasons logged onchain
   txByDay: Record<string, number>;
   pending: PendingTx[];
+  probes: Record<string, string>; // MAAT_PROBES instant -> outcome, "started" while it runs
 }
 
-const empty = (): Data => ({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {}, pending: [] });
+const empty = (): Data => ({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {}, pending: [], probes: {} });
 
 /** Agent memory that must survive restarts: compute bill, refusal-log rate limit, daily tx count, unsettled sends. */
 export class Store {
@@ -114,6 +115,20 @@ export class Store {
 
   clearPending(intentId: Hex): void {
     this.data.pending = this.data.pending.filter((x) => x.intentId !== intentId);
+  }
+
+  /** What became of the probe at `at` (its ISO instant), or "started" if the agent stopped while it ran. */
+  probeOutcome(at: string): string | undefined {
+    return this.data.probes[at];
+  }
+
+  recordProbe(at: string, outcome: string): void {
+    this.data.probes[at] = outcome;
+  }
+
+  /** The probes that ran on UTC day `day` (YYYY-MM-DD): every record but a missed or capped one, which never ran. */
+  probesRunOn(day: string): number {
+    return Object.entries(this.data.probes).filter(([at, o]) => at.startsWith(`${day}T`) && o !== "missed" && o !== "capped").length;
   }
 
   async save(): Promise<void> {

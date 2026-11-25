@@ -13,7 +13,7 @@ import {
 } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
 import { firstInLogWindows } from "../chain/logWindows.js";
-import { previewIntent, type PreviewClient } from "../chain/preview.js";
+import { previewIntent, type PreviewClient, type PreviewResult } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
 import { SendRefused, type GuardedSender } from "../exec/sender.js";
@@ -24,7 +24,7 @@ import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
 import { encodeBlob, type EncodedBlob } from "../rationale/blob.js";
 import { oneLine } from "../redact.js";
-import { closedNote, gate, LOGGABLE_REASONS, refusalKey } from "../refusals.js";
+import { closedNote, gate, LOGGABLE_REASONS, refusalKey, type Gate, type RefusalKey } from "../refusals.js";
 import { CREDIT_ACTIONS, REASONS } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
@@ -100,26 +100,39 @@ function multiplierSynced(receipt: TransactionReceipt, vault: Address, token: Ad
   return logs.some((x) => getAddress(x.address) === getAddress(vault) && getAddress(x.args.token) === getAddress(token));
 }
 
-export async function runOnce(d: RunDeps): Promise<RunReport> {
-  if (d.mode === "live" && d.sender === null) throw new Error("live mode needs a sender");
-  const runId = d.runId ?? `${Date.now()}-${randomUUID().slice(0, 8)}`;
-  const report: RunReport = { runId, status: "done", sent: [], skipped: 0, proposals: 0 };
-  const j = d.journal;
+/** How one proposal's preview decides its send: gate() in a round, the probe's own rule in a probe (loop/probeRound.ts). */
+export type Gating = (preview: PreviewResult, key: RefusalKey | null, logged: boolean) => Gate;
 
-  let s: VaultState;
-  try {
-    s = await readVaultState(d.stateClient, d.vault);
-  } catch (e) {
-    if (!(e instanceof StateUnavailable)) throw e;
-    await j.append({ kind: "error", runId, message: `state unavailable: ${e.message}` });
-    return { ...report, status: "no-state" };
-  }
-  report.block = s.blockNumber;
-  report.marketOpen = s.marketOpen;
-  if (getAddress(s.executor) !== getAddress(d.executor)) {
-    await j.append({ kind: "error", runId, message: `vault executor is ${s.executor}, agent is ${d.executor}` });
-    return { ...report, status: "wrong-executor" };
-  }
+/** What became of one proposal: its preview (null when it never reached one) and whether it went out. */
+export interface Handled {
+  preview: PreviewResult | null;
+  /** "sent": a transaction went out; "dry-run": in live mode it would have; "skipped": it did not, `why` says why. */
+  outcome: "sent" | "dry-run" | "skipped";
+  why?: string;
+}
+
+/** The steps runOnce and a probe round (loop/probeRound.ts) share once the round has read the vault. */
+export interface RoundKit {
+  /** The state the next step works from: the round's first read, read again after a transaction. */
+  state(): VaultState;
+  /** Settles the sends earlier rounds left pending; false when one may still land, so the round must send nothing. */
+  reconcileAll(): Promise<boolean>;
+  /** Sends the syncMultiplier calls the vault's multipliers need, and only journals them in dry-run. */
+  housekeeping(): Promise<void>;
+  /**
+   * Takes one proposal through its blob, its preview and its gate (`gating`, gate() when unset), then in live mode
+   * through the daily tx cap, the gas estimate, the pending entry stored before the send, the receipt and the Decision.
+   * A credit proposal is dropped before the preview while credit actions are off. `beforeSend` is asked once more just
+   * before the pending entry is stored, after the gas estimate; a reason it returns stops the send.
+   */
+  handle(index: number, p: Proposal, by: Pick<BlobContext, "k" | "m">, o?: { gating?: Gating; beforeSend?: () => string | null | Promise<string | null> }): Promise<Handled>;
+}
+
+/** The kit for a round that read the vault at `first`. A failed step throws; the caller journals a halted round. */
+export function roundKit(d: RunDeps, runId: string, report: RunReport, first: VaultState): RoundKit {
+  const j = d.journal;
+  let s = first;
+  let dirty = false;
   const day = s.day;
   const sender = d.mode === "live" ? d.sender : null;
 
@@ -233,15 +246,15 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     return drop(`intent not used and no tx found after ${age} ${unit}`);
   };
 
-  try {
+  const reconcileAll = async (): Promise<boolean> => {
     for (const p of [...d.store.pending()]) {
-      if ((await reconcile(p)) === "pending") {
-        report.status = "pending-tx";
-        return report;
-      }
+      if ((await reconcile(p)) === "pending") return false;
     }
+    return true;
+  };
 
-    // Housekeeping: record multiplier changes the vault would otherwise only see on a trade of that token.
+  // Records multiplier changes the vault would otherwise only see on a trade of that token.
+  const housekeeping = async (): Promise<void> => {
     for (const t of s.tokens) {
       const hasMarket = t.config.feed !== zeroAddress || t.config.pool !== zeroAddress;
       if (!hasMarket || t.uiMultiplier === null || t.lastMultiplier === null || t.uiMultiplier === t.lastMultiplier) continue;
@@ -260,11 +273,145 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await j.append({ kind: "housekeeping", runId, call: "syncMultiplier", token: t.address, txHash: hash, gas, gasUsed: r.gasUsed });
       if (!multiplierSynced(r, d.vault, t.address)) throw new Halt(`syncMultiplier ${t.address}: no MultiplierChangeDetected in ${hash}`);
     }
-    let dirty = report.sent.length > 0;
+    if (report.sent.length > 0) s = await reread();
+  };
+
+  const handle: RoundKit["handle"] = async (index, p, by, o = {}) => {
+    // Credit off: Claude's credit proposal never reaches the preview, whatever the prompt and the policy said.
+    if (!(d.policy ?? DEFAULT_POLICY).creditActions && CREDIT_ACTIONS.has(p.action)) {
+      const error = `credit actions are off: ${p.action} dropped before the preview`;
+      await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error });
+      report.skipped++;
+      return { preview: null, outcome: "skipped", why: error };
+    }
     if (dirty) {
       s = await reread();
       dirty = false;
     }
+    // j is the journal head when this blob is built: the last row written before it, this round's or an earlier one's.
+    const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...by } });
+    if (!b.ok) {
+      await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: b.error });
+      report.skipped++;
+      return { preview: null, outcome: "skipped", why: b.error };
+    }
+    const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
+    const preview = pv.result;
+    const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
+    const g = (o.gating ?? gate)(preview, key, key !== null && d.store.hasLoggedRefusal(key));
+    // A MARKET_CLOSED log names the closed phase: the blob is rebuilt with the note (every other field kept, j
+    // included) and the intent hashes the final blob. The vault's checks never read rationaleHash, so the preview stands.
+    const note = g.send && g.kind === "log-refusal" && preview === "MARKET_CLOSED" ? closedNote(s) : null;
+    const rationale = note ? `${p.rationale} (market closed, ${note})` : p.rationale;
+    const blob: EncodedBlob = note ? encodeBlob({ ...b.blobInput, closed: note }) : b.blob;
+    const intent = { ...b.intent, rationaleHash: blob.hash };
+    const row = {
+      kind: "intent" as const,
+      runId,
+      index,
+      intentId: intent.id,
+      action: p.action,
+      symbol: p.symbol,
+      amountUsd6: b.amountUsd6,
+      rationale,
+      rationaleHash: intent.rationaleHash,
+      blob: blob.blob,
+      preview,
+      ...(pv.error === undefined ? {} : { previewError: pv.error }),
+      ...(key && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
+    };
+    const notSent = async (why: string, outcome: "dry-run" | "skipped" = "skipped"): Promise<Handled> => {
+      await j.append({ ...row, gate: why });
+      report.skipped++;
+      return { preview, outcome, why };
+    };
+    if (!g.send) return notSent(g.why);
+    if (!sender) {
+      const stop = await o.beforeSend?.();
+      return stop ? notSent(`dry-run: ${stop}`) : notSent(`dry-run: would ${g.kind}`, "dry-run");
+    }
+
+    // Persist the intent as pending before it can leave the process, so a crash, a receipt timeout or a send that
+    // fails after broadcast is reconciled next round instead of being billed or logged twice.
+    checkCap();
+    const data = encodeExecute(intent);
+    // Gas is estimated on the bytes the sender will broadcast: the call, the blob and the Builder Code. A refusal
+    // here is the sender's, not a failed estimate.
+    const gas = await gasFor("execute", sender.calldata({ to: d.vault, data, blob: blob.blob }));
+    const stop = await o.beforeSend?.();
+    if (stop) return notSent(stop);
+    const entry: PendingTx = {
+      intentId: intent.id,
+      action: p.action,
+      amount: intent.amount.toString(),
+      gateKind: g.kind,
+      preview,
+      day: day.toString(),
+      ...(g.kind === "log-refusal" && key ? { refusal: key } : {}),
+      block: s.blockNumber.toString(),
+      timestamp: s.timestamp.toString(),
+    };
+    d.store.addPending(entry);
+    d.store.recordTx(day);
+    await d.store.save();
+    let hash: Hex;
+    try {
+      hash = await sender.send({ to: d.vault, data, blob: blob.blob, idempotencyKey: intent.id, gas });
+    } catch (e) {
+      if (e instanceof SendRefused) d.store.clearPending(entry.intentId); // refused before anything was broadcast
+      throw e;
+    }
+    report.sent.push(hash);
+    d.store.setPendingHash(entry.intentId, hash);
+    await d.store.save();
+    await j.append({ ...row, kind: "sent", gate: g.kind, txHash: hash, gas });
+
+    const receipt = await receiptOf(hash);
+    dirty = true;
+    if (receipt.status !== "success") {
+      d.store.clearPending(entry.intentId); // a reverted execute() leaves the intent unused
+      throw new Halt(`tx ${hash} reverted`);
+    }
+    const decision = decisionIn(receipt.logs, d.vault, intent.id);
+    if (!decision) throw new Halt(`no Decision for intent ${intent.id} in tx ${hash}`);
+    await j.append({ ...row, gate: g.kind, txHash: hash, gasUsed: receipt.gasUsed, decision });
+    await settle(entry, decision);
+    return { preview, outcome: "sent" };
+  };
+
+  return { state: () => s, reconcileAll, housekeeping, handle };
+}
+
+export async function runOnce(d: RunDeps): Promise<RunReport> {
+  if (d.mode === "live" && d.sender === null) throw new Error("live mode needs a sender");
+  const runId = d.runId ?? `${Date.now()}-${randomUUID().slice(0, 8)}`;
+  const report: RunReport = { runId, status: "done", sent: [], skipped: 0, proposals: 0 };
+  const j = d.journal;
+
+  let s: VaultState;
+  try {
+    s = await readVaultState(d.stateClient, d.vault);
+  } catch (e) {
+    if (!(e instanceof StateUnavailable)) throw e;
+    await j.append({ kind: "error", runId, message: `state unavailable: ${e.message}` });
+    return { ...report, status: "no-state" };
+  }
+  report.block = s.blockNumber;
+  report.marketOpen = s.marketOpen;
+  if (getAddress(s.executor) !== getAddress(d.executor)) {
+    await j.append({ kind: "error", runId, message: `vault executor is ${s.executor}, agent is ${d.executor}` });
+    return { ...report, status: "wrong-executor" };
+  }
+  const day = s.day;
+  const k = roundKit(d, runId, report, s);
+
+  try {
+    if (!(await k.reconcileAll())) {
+      report.status = "pending-tx";
+      return report;
+    }
+    await k.housekeeping();
+    s = k.state();
 
     const unpaid = d.store.unpaidUsd6();
     const params = d.policy ?? DEFAULT_POLICY;
@@ -301,99 +448,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     if (out.ok) queue.push(...out.proposals.map((p) => ({ p, by: { m: out.model } })));
     report.proposals = queue.length;
 
-    for (const [index, { p, by }] of queue.entries()) {
-      // Credit off: Claude's credit proposal never reaches the preview, whatever the prompt and the policy said.
-      if (!params.creditActions && CREDIT_ACTIONS.has(p.action)) {
-        await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: `credit actions are off: ${p.action} dropped before the preview` });
-        report.skipped++;
-        continue;
-      }
-      if (dirty) {
-        s = await reread();
-        dirty = false;
-      }
-      // j is the journal head when this blob is built: the last row written before it, this round's or an earlier one's.
-      const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...by } });
-      if (!b.ok) {
-        await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: b.error });
-        report.skipped++;
-        continue;
-      }
-      const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
-      const preview = pv.result;
-      const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
-      const g = gate(preview, key, key !== null && d.store.hasLoggedRefusal(key));
-      // A MARKET_CLOSED log names the closed phase: the blob is rebuilt with the note (every other field kept, j
-      // included) and the intent hashes the final blob. The vault's checks never read rationaleHash, so the preview stands.
-      const note = g.send && g.kind === "log-refusal" && preview === "MARKET_CLOSED" ? closedNote(s) : null;
-      const rationale = note ? `${p.rationale} (market closed, ${note})` : p.rationale;
-      const blob: EncodedBlob = note ? encodeBlob({ ...b.blobInput, closed: note }) : b.blob;
-      const intent = { ...b.intent, rationaleHash: blob.hash };
-      const row = {
-        kind: "intent" as const,
-        runId,
-        index,
-        intentId: intent.id,
-        action: p.action,
-        symbol: p.symbol,
-        amountUsd6: b.amountUsd6,
-        rationale,
-        rationaleHash: intent.rationaleHash,
-        blob: blob.blob,
-        preview,
-        ...(pv.error === undefined ? {} : { previewError: pv.error }),
-        ...(key && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
-      };
-      if (!g.send || !sender) {
-        await j.append({ ...row, gate: g.send ? `dry-run: would ${g.kind}` : g.why });
-        report.skipped++;
-        continue;
-      }
-
-      // Persist the intent as pending before it can leave the process, so a crash, a receipt timeout or a send that
-      // fails after broadcast is reconciled next round instead of being billed or logged twice.
-      checkCap();
-      const data = encodeExecute(intent);
-      // Gas is estimated on the bytes the sender will broadcast: the call, the blob and the Builder Code. A refusal
-      // here is the sender's, not a failed estimate.
-      const gas = await gasFor("execute", sender.calldata({ to: d.vault, data, blob: blob.blob }));
-      const entry: PendingTx = {
-        intentId: intent.id,
-        action: p.action,
-        amount: intent.amount.toString(),
-        gateKind: g.kind,
-        preview,
-        day: day.toString(),
-        ...(g.kind === "log-refusal" && key ? { refusal: key } : {}),
-        block: s.blockNumber.toString(),
-        timestamp: s.timestamp.toString(),
-      };
-      d.store.addPending(entry);
-      d.store.recordTx(day);
-      await d.store.save();
-      let hash: Hex;
-      try {
-        hash = await sender.send({ to: d.vault, data, blob: blob.blob, idempotencyKey: intent.id, gas });
-      } catch (e) {
-        if (e instanceof SendRefused) d.store.clearPending(entry.intentId); // refused before anything was broadcast
-        throw e;
-      }
-      report.sent.push(hash);
-      d.store.setPendingHash(entry.intentId, hash);
-      await d.store.save();
-      await j.append({ ...row, kind: "sent", gate: g.kind, txHash: hash, gas });
-
-      const receipt = await receiptOf(hash);
-      dirty = true;
-      if (receipt.status !== "success") {
-        d.store.clearPending(entry.intentId); // a reverted execute() leaves the intent unused
-        throw new Halt(`tx ${hash} reverted`);
-      }
-      const decision = decisionIn(receipt.logs, d.vault, intent.id);
-      if (!decision) throw new Halt(`no Decision for intent ${intent.id} in tx ${hash}`);
-      await j.append({ ...row, gate: g.kind, txHash: hash, gasUsed: receipt.gasUsed, decision });
-      await settle(entry, decision);
-    }
+    for (const [index, { p, by }] of queue.entries()) await k.handle(index, p, by);
   } catch (e) {
     report.status = "halted";
     // The first line only, redacted: viem lists the RPC URL, which may carry a key, on the lines below it.
