@@ -47,7 +47,7 @@ A brief is public and stays onchain for good, so put nothing private in it. The 
 
 ### Pick a wallet
 
-The page lists every browser wallet that announces itself through EIP-6963, and Base Account, which needs no extension. A browser wallet is switched to Base mainnet first, and the brief goes out through viem's `writeContract` with the suffix as `dataSuffix`. Base Account gets a `wallet_sendCalls` request with the suffix as the `dataSuffix` capability, the shape docs.base.org gives for Builder Codes.
+The page lists every browser wallet that announces itself through EIP-6963, and Base Account, which needs no extension. A browser wallet is switched to Base mainnet first, and the brief goes out through viem's `writeContract` with the suffix as `dataSuffix`. Base Account gets a `wallet_sendCalls` request with the suffix as the optional `dataSuffix` capability, the shape docs.base.org gives for Builder Codes, which a wallet may leave out.
 
 </Step>
 
@@ -55,7 +55,7 @@ The page lists every browser wallet that announces itself through EIP-6963, and 
 
 ### Check the Builder Code line
 
-The page reads the Builder Code from the vault's first [Decision](/docs/help/glossary#decision), the one the [owner](/docs/help/glossary#owner) sent, as the [mainnet ledger](/ledger) does. No code is written into the site. When it cannot be read, one line says why and the brief is sent without a suffix.
+The page reads the Builder Code from the vault's first [Decision](/docs/help/glossary#decision), the one the [owner](/docs/help/glossary#owner) sent, as the [mainnet ledger](/ledger) does. No code is written into the site. When it cannot be read, one line says why and the brief is sent without a suffix. Once the brief is included, the page reads the transaction's input and says whether the suffix ends it, sits inside the wallet's call, or is missing. It says the brief is in the feed only when the receipt holds its `Brief` log.
 
 </Step>
 
