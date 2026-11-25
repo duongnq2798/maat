@@ -1,4 +1,5 @@
-# Updates the actions that .github/workflows/ci.yml pins by commit SHA, once a month, all in one pull request.
+# Updates the actions that .github/workflows/ci.yml and live-fork.yml pin by commit SHA, once a month, all in one pull
+# request, so the two workflows keep the same commits (.github/scripts/live-fork.test.mjs checks that they do).
 # Why monthly, and why npm waits: docs/superpowers/specs/2026-11-18-maat-ci-design.md, section 7.2.
 version: 2
 updates:
