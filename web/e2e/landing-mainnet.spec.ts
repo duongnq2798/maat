@@ -64,8 +64,9 @@ const scenario: FakeScenario = {
 };
 
 /**
- * Sends the vault reader's batched calls (viem's http batch posts an array) to the fake chain; every other request goes
- * on to the strip's fake. Routed after that fake, so this handler runs first.
+ * Sends the vault reader's calls to the fake chain: its batched calls (viem's http batch posts an array) and its
+ * eth_getLogs, which lib/chain/rpc.ts sends in a request of its own. Every other request goes on to the strip's fake,
+ * which reads no logs. Routed after that fake, so this handler runs first.
  */
 async function routeVault(page: Page) {
   let answer: ((route: Route) => Promise<void>) | undefined;
@@ -75,7 +76,9 @@ async function routeVault(page: Page) {
     (url) => RPC_HOSTS.includes(url.host),
     async (route) => {
       const request = route.request();
-      if (request.method() === "POST" && Array.isArray(request.postDataJSON())) return answer!(route);
+      if (request.method() !== "POST") return route.fallback();
+      const body = request.postDataJSON() as { method?: string } | unknown[] | null;
+      if (Array.isArray(body) || (body as { method?: string } | null)?.method === "eth_getLogs") return answer!(route);
       return route.fallback();
     },
   );
