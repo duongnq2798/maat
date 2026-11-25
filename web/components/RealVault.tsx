@@ -52,15 +52,16 @@ type Ask =
 /** What the vault is asked: the token and the amount. The moment and the tape are not part of the call. */
 const keyOf = (i: SimIntent) => `${i.token}:${i.usd6}`;
 
-function Answer({ who, code }: { who: string; code: ReasonCode }) {
+/** One side of the comparison: who answered, then Allowed or Refused and the typed reason. */
+function Answer({ side, who, code }: { side: "simulation" | "vault"; who: string; code: ReasonCode }) {
   return (
-    <>
+    <dl data-answer={side} className="m-0">
       <dt className="font-mono text-[11px] text-ink-2">{who}</dt>
       <dd className="m-0 mt-1 flex flex-col gap-0.5">
         <span className="text-sm font-semibold">{code === "OK" ? "Allowed" : "Refused"}</span>
         <ReasonTag code={code} tone={code === "OK" ? "neutral" : "refuse"} layout="inline" className="text-sm" />
       </dd>
-    </>
+    </dl>
   );
 }
 
@@ -121,16 +122,26 @@ export function RealVault({
       {intent.token === "OTHER" ? (
         <p className="m-0 mt-1 text-[13px] leading-normal text-ink-2">USDC stands in for the other token: the mandate does not list it for BUY.</p>
       ) : null}
-      {/* Its own polite region, so the simulated verdict stays the section's only status. */}
-      <div aria-live="polite" aria-atomic="true">
-        {view.state === "asking" ? <p className="m-0 mt-3 text-[13px] text-ink-2">Asking the vault on Base…</p> : null}
-        {view.state === "error" ? (
-          <p className="m-0 mt-3 text-[13px] leading-normal text-refuse [overflow-wrap:anywhere]">
-            {VAULT_UNREACHABLE} <span className="font-mono text-xs">{view.message}</span>
-          </p>
-        ) : null}
-        {view.state === "answer" ? <Compared sim={sim} vault={view.reason} blockNumber={view.blockNumber} etDay={etDay} minute={intent.minute} /> : null}
+      <div className={view.state === "idle" ? undefined : "mt-3 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3"}>
+        {view.state === "answer" ? <Answer side="simulation" who="SIMULATION" code={sim} /> : null}
+        {/*
+          Its own polite region, so the simulated verdict stays the section's only status. It holds only what an ask
+          changes: the asking line, the error, or the vault's side. The simulation's side and the comparison follow the
+          slider, so they sit outside it, and moving the moment announces nothing here. The region never remounts.
+        */}
+        <div aria-live="polite" aria-atomic="true">
+          {view.state === "asking" ? <p className="m-0 text-[13px] text-ink-2">Asking the vault on Base…</p> : null}
+          {view.state === "error" ? (
+            <p className="m-0 text-[13px] leading-normal text-refuse [overflow-wrap:anywhere]">
+              {VAULT_UNREACHABLE} <span className="font-mono text-xs">{view.message}</span>
+            </p>
+          ) : null}
+          {view.state === "answer" ? (
+            <Answer side="vault" who={`REAL VAULT · BLOCK ${formatInt(Number(view.blockNumber))}`} code={view.reason} />
+          ) : null}
+        </div>
       </div>
+      {view.state === "answer" ? <Compared sim={sim} vault={view.reason} blockNumber={view.blockNumber} etDay={etDay} minute={intent.minute} /> : null}
     </div>
   );
 }
@@ -138,18 +149,8 @@ export function RealVault({
 function Compared({ sim, vault, blockNumber, etDay, minute }: { sim: ReasonCode; vault: ReasonCode; blockNumber: bigint; etDay: number; minute: number }) {
   const c = vaultComparison({ sim, vault, etDay, minute, blockNumber });
   return (
-    <>
-      <dl className="m-0 mt-3 grid grid-cols-[repeat(auto-fit,minmax(150px,1fr))] gap-3">
-        <div data-answer="simulation">
-          <Answer who="SIMULATION" code={sim} />
-        </div>
-        <div data-answer="vault">
-          <Answer who={`REAL VAULT · BLOCK ${formatInt(Number(blockNumber))}`} code={vault} />
-        </div>
-      </dl>
-      <p data-vault-match={c.same ? "same" : "differ"} className="m-0 mt-3 text-[13px] leading-normal text-ink-2">
-        {c.text}
-      </p>
-    </>
+    <p data-vault-match={c.same ? "same" : "differ"} className="m-0 mt-3 text-[13px] leading-normal text-ink-2">
+      {c.text}
+    </p>
   );
 }

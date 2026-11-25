@@ -420,6 +420,29 @@ describe("Simulator: asking the real vault", () => {
     expect(live).toContainElement(side("vault"));
   });
 
+  it("announces the vault's answer alone: the simulation's side and the comparison follow the slider, outside the live region", async () => {
+    const ui = setup(fakeVault(6).deps); // MARKET_CLOSED
+    const live = panel().querySelector<HTMLElement>("[aria-live]");
+    expect(live).toHaveAttribute("aria-live", "polite");
+    expect(live).toBeEmptyDOMElement();
+    await ui.user.click(ask());
+    await settles("answer");
+    // The same node from idle to answer, so the answer is announced; it holds the vault's side and nothing else.
+    expect(panel().querySelectorAll("[aria-live]")).toHaveLength(1);
+    expect(panel().querySelector("[aria-live]")).toBe(live);
+    expect(live).toContainElement(side("vault"));
+    expect(live).not.toContainElement(side("simulation"));
+    expect(live).not.toContainElement(panel().querySelector<HTMLElement>("[data-vault-match]"));
+    const said = live?.textContent;
+    expect(said).toBe(side("vault")?.textContent);
+    for (const minute of ["631", "632", "633"]) {
+      fireEvent.change(screen.getByLabelText("Time"), { target: { value: minute } });
+      expect(live?.textContent).toBe(said);
+    }
+    expect(state()).toBe("answer");
+    expect(panel().querySelector("[data-vault-match]")).toHaveTextContent(/^They differ\. The simulation is a model: it answers for Thu 5 Nov · 10:33 ET/);
+  });
+
   it("says so when the vault gives the simulation's answer", async () => {
     const ui = setup(fakeVault(0).deps);
     await ui.user.click(ask());
@@ -434,8 +457,11 @@ describe("Simulator: asking the real vault", () => {
     const ui = setup(fakeVault(0).deps);
     await ui.user.click(ask());
     await settles("answer");
+    const said = panel().querySelector("[aria-live]")?.textContent;
     await ui.user.click(ui.button("Sat 7 Nov"));
     expect(state()).toBe("answer");
+    // The vault's answer is not announced again: only the simulation's side and the comparison change.
+    expect(panel().querySelector("[aria-live]")?.textContent).toBe(said);
     expect(side("simulation")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
     expect(side("vault")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "OK");
     expect(panel().querySelector("[data-vault-match]")).toHaveTextContent(/^They differ\. The simulation is a model: it answers for Sat 7 Nov · 10:30 ET/);
