@@ -1,7 +1,7 @@
 # MaatInbox: Briefs to the Agent. Design Spec
 
 - **Date:** 2026-11-25
-- **Status:** the outsider path (decision D2 of the 2026-11-25 plan) was approved by the owner on 2026-11-25. The team set in §5 and the bounty terms in §6 are **for owner approval**.
+- **Status:** the outsider path and the bounty terms in §6 were approved by the owner on 2026-11-25. The team set in §5 is **for owner approval**.
 - **Lives at:** `contracts/src/MaatInbox.sol` and `contracts/script/DeployMaatInbox.s.sol`; read by the agent (branch `feat/agent-briefs`) and by the site's `/ask` and `/proof` pages
 - **Related:** `docs/superpowers/specs/2026-11-06-mandate-treasury-design.md` (the vault)
 
@@ -19,19 +19,19 @@ error BadLength(uint256 length);
 function brief(string calldata text) external returns (uint256 id);
 ```
 
-- `brief` accepts 1 to 280 bytes of `text` and reverts with `BadLength(length)` otherwise. The limit is in bytes, not characters, and the contract does not check UTF-8, so readers decode leniently and render plain text.
+- `brief` accepts 1 to 280 bytes of `text` and reverts with `BadLength(length)` otherwise. The limit is in bytes, not characters, and the contract does not check UTF-8, so readers decode leniently and render plain text. The `/ask` feed replaces the same control and direction code points as the agent's prompt (§3) before it shows a brief.
 - Ids start at 1 and grow by exactly 1 across all senders. `lastId` is the last id given, so it is also the number of briefs. It is the only storage slot.
 - `from` is `msg.sender`. For a Base Account it is the smart wallet; a brief relayed through another contract counts as that contract's.
 - No owner, no pause, no upgrade, no funds: `brief` is not payable and there is no `receive` or `fallback`, so every call that carries ether reverts.
 - Calldata after the ABI-encoded string is ignored, so the transaction can end with the ERC-8021 Builder Code suffix.
 - It cannot change. A new rule means a new contract.
 
-## 3. What the agent reads (row A7, tag `agent-r3`)
+## 3. What the agent reads (branch `feat/agent-briefs`, tag `agent-r3`)
 
-- **Source:** `Brief` logs of the inbox address recorded in `deployments/`, in id order, with the windowed `getLogs` of row A2. No recorded address, no briefs.
-- **Caps:** at most 3 briefs a round, 20 a day and 2 per sender a day. A brief over the round cap waits for the next round; a brief over the day or sender cap is journaled as skipped, with the cap's name, and never reaches Claude.
-- **Brief budget:** at most 5 brief-driven transactions a day, inside `MAAT_MAX_TX_PER_DAY` (`agent/src/config.ts:28`), and at most $0.25 a day of the $0.75 daily LLM cap (row A4). When either is spent, briefs are journaled and not sent to Claude. A flood of briefs from cheap wallets can then never halt the agent at its tx cap or starve its own rounds of Claude.
-- **Untrusted data:** each brief reaches Claude only as a quoted `{id, from, text}` field in a prompt section marked untrusted, never inside the instructions. Claude answers each in at most 200 characters (`replies` in the output schema) and may adopt one into an intent that cites it as `q`.
+- **Source:** `Brief` logs of the inbox address recorded in `deployments/`, in id order, read only up to the `safe` block tag with the windowed `getLogs` of `fix/refusal-log-per-session` (#40). No recorded address, no briefs. A brief is identified by (id, txHash, logIndex), so a reorg cannot attach an earlier reply or refusal to another brief, and a journal row whose log no longer exists is dropped.
+- **Caps:** at most 3 briefs a round, 20 a day and 2 per sender a day. A brief over the round cap waits for the next round; a brief over the day or sender cap is journaled as skipped, with the cap's name, and never reaches Claude. Every "a day" in this section is a UTC day (block timestamp / 86,400), the same day the tx cap and the vault's daily cap use.
+- **Brief budget:** at most 5 brief-driven transactions a day, inside `MAAT_MAX_TX_PER_DAY` (`agent/src/config.ts:28`), and at most $0.25 a day of the $0.75 daily LLM cap (`MAAT_MAX_LLM_USD_PER_DAY`, added in `feat/agent-guardrails`, #47). When either is spent, briefs are journaled and not sent to Claude. A flood of briefs from cheap wallets can then never halt the agent at its tx cap or starve its own rounds of Claude.
+- **Untrusted data:** each brief reaches Claude only as a quoted `{id, from, text}` field in a prompt section marked untrusted, never inside the instructions. `text` is one JSON string: `JSON.stringify` of the leniently decoded text, with C0 and C1 controls, U+200B to U+200F, U+202A to U+202E and U+2066 to U+2069 replaced by U+FFFD, so a brief can neither close the section nor reorder what a reader sees. Claude answers each in at most 200 characters (`replies` in the output schema) and may adopt one to three briefs into an intent that cites their ids in `q`.
 - **Templated blob text:** a brief-driven Decision's rationale blob is a fixed template filled with typed fields (`q`, action, token, amount). Neither the brief nor Claude's free text reaches Maat's calldata; replies go to the journal only.
 - **Refusals:** keyed by brief id, not by the once-a-day refusal key, so "vault refused" counts real attempts.
 - **Bounds that still hold:** Claude's action set has no transfer (`agent/src/llm/schema.ts:3`); payees are an onchain allowlist; an adopted brief is still held to $50 a trade, $100 a day (`contracts/script/MaatConfig.sol:35-36`), the allowlisted tokens and 150 bps slippage (`:27`).
@@ -49,15 +49,15 @@ The feed shows briefs and Claude's answers as plain text with no links. The owne
 
 Merged at least 24 h before `/ask` opens. `scripts/recount.mjs` rebuilds every number from public logs over a keyless RPC.
 
-**Lines kept apart.** No line is ever added to another.
+**Lines kept apart.** No line is ever added to another. Each Decision gets one label, first match wins: owner by hand, probe, brief-driven, agent. The order and the blob fields `k` and `q` are those of §4 (Sender labels) of the maat:v1 rationale blob spec, `docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md`.
 
 | Line | Counts |
 |---|---|
-| Owner by hand | Transactions the owner signed: deploys, funding, mandate changes, the first decisions |
-| Agent | Decisions the executor sent in its own rounds |
-| Probe | The agent's labeled probe Decisions |
+| Owner by hand | Transactions the owner signed (`tx.from == owner()`, checked first): deploys, funding, mandate changes, the first decisions |
+| Agent | Every other executor Decision: not sent by the owner, not a probe (blob `k == "probe"`), not brief-driven (blob `q` present) |
+| Probe | The agent's labeled probe Decisions (blob `k == "probe"`) |
 | Outside briefs | `Brief` events from senders outside the team set: briefs, distinct wallets, and how many of those wallets hold a Verified Account |
-| Brief-driven Decisions | Agent Decisions whose blob `q` cites a brief id: vault allowed, vault refused |
+| Brief-driven Decisions | Executor Decisions, not probes, whose blob `q` cites brief ids: vault allowed, vault refused |
 | Team briefs | `Brief` events from the team set, never added to outside briefs |
 | Hidden briefs | Outside briefs the owner hid from the feed. They stay in the outside count and are also listed here, so hiding never changes a number |
 | Bounty claimants | §6 |
@@ -72,7 +72,7 @@ Merged at least 24 h before `/ask` opens. `scripts/recount.mjs` rebuilds every n
 
 **Never a user:** owner, agent, probe or team transactions. Briefs are never paid, rewarded or reciprocated, and outreach never asks anyone to send a brief to help a count.
 
-## 6. Bounty (for owner approval)
+## 6. Bounty
 
 - At most $100, paid by the owner.
 - Only for a reproduced vault false ALLOW: an intent outside the published mandate that `previewIntent` or `execute` on the live vault allows.
@@ -89,6 +89,6 @@ forge script script/DeployMaatInbox.s.sol --rpc-url "$BASE_RPC_URL"
 forge script script/DeployMaatInbox.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
 ```
 
-If the deploy lands but verification fails, do not redeploy: run the second command with `--resume` in place of `--broadcast`. Lane D then records the address in `deployments/`, and `/ask` stays hidden until it does.
+If the deploy lands but verification fails, do not redeploy: run the second command with `--resume` in place of `--broadcast`. The address is then recorded in `deployments/`, and `/ask` stays hidden until it is.
 
-Schedule from the plan: inbox, agent briefs and `/ask` green on a Base fork by Sun 29 Nov 23:59 UTC, or no deploy (`/ask` then ships as a free "ask the real vault" preview and traction stays agent-only); deploy and contract freeze Mon 30 Nov; `/ask` Tue 1 Dec.
+Schedule: inbox, agent briefs and `/ask` green on a Base fork by Sun 29 Nov 23:59 UTC, or no deploy (`/ask` then ships as a free "ask the real vault" preview and traction stays agent-only); deploy and contract freeze Mon 30 Nov; `/ask` Tue 1 Dec.
