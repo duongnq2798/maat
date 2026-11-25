@@ -29,7 +29,7 @@
 > No Maat contract is on a testnet. The agent has run in live mode **only on a local fork of Base mainnet**, with
 > a scripted proposer in place of Claude and a local test account as the sender. The real Claude API and the
 > Coinbase CDP Server Wallet have been tested **only against fakes**. The website and its docs are **online** at [maatonbase.xyz](https://maatonbase.xyz).
-> x402 revenue, the Guard Service API, MCP, the Bankr Skill and `MandateFactory` are **planned, not built** on
+> x402 revenue, the Guard Service API, MCP and `MandateFactory` are **planned, not built** on
 > `main` (an x402 Guard Service is in PR #2, open and unmerged). See [Status](#status).
 
 ## Maat in 60 seconds
@@ -103,7 +103,11 @@ novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-19:
 | Stock-backed credit for agents | Supplies stocks to the Aave V4 MAG7 Spoke, borrows USDC against them, repays and withdraws. A borrow needs an open market and a health factor of 1.5, or 2.0 in the de-risk window | **Built and fork-tested** | [`AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol), [`MandateVaultCreditFork.t.sol`](contracts/test/fork/MandateVaultCreditFork.t.sol) |
 | Agent-managed rebalancing | Equal weights after a 30% USDC reserve (23.3% per stock), rebalanced past a 5-point drift. The vault refuses a buy that takes one stock above 40% | **Built**, unit-tested; the fork run's trades came from a scripted proposer | [`policy.ts`](agent/src/policy.ts#L14), [`test_concentration`](contracts/test/MandateVault.t.sol#L106) |
 
-Bankr is a partner of this track. Nothing is built for it yet; a Bankr Skill is planned.
+Bankr is a partner of this track. [`skills/maat-market-guard`](skills/maat-market-guard/SKILL.md) is a skill in
+BankrBot's skills format that other agents call before they trade: read-only, it asks the vault's calendar whether
+the session is open, or the deployed vault's `previewIntent` whether it would accept an intent, and answers with a
+typed reason. Its `SKILL.md` is served at [`/skill.md`](https://maatonbase.xyz/skill.md). It is not yet submitted to
+BankrBot's skills repository.
 
 ## Tested, in numbers
 
@@ -335,7 +339,8 @@ on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `449
 | Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Fork replay. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the mainnet ledger, the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
 | A rationale store the agent writes as it runs, read by the mainnet ledger (W2 follow-up); daily diary and replay page (W3) | **Planned** | [W2 spec §10](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md), [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
-| Guard Service HTTP API, MCP server, Bankr Skill | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
+| Market-guard skill, the Bankr Skill: the vault's calendar and `previewIntent`, read-only, with a typed reason, for other agents to call | **Built**, with an offline selftest on answers recorded from Base mainnet, which a web unit test runs. Its `SKILL.md` is served at `/skill.md`. Not yet submitted to BankrBot's skills repository | [`skills/maat-market-guard`](skills/maat-market-guard) |
+| Guard Service HTTP API, MCP server | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | `MandateFactory`: any agent deploys its own vault | **Planned** (stretch goal) | [spec §3.7](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Third-party audit | **None**. Treat the contracts as unaudited | |
 
@@ -559,8 +564,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  116 passed (116)
-         Tests  2593 passed (2593)
+    Test Files  119 passed (119)
+         Tests  2616 passed (2616)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
    search index: … bytes gzipped, budget 935000
@@ -676,7 +681,7 @@ Planned, roughly in this order. None of this is on `main`, and no dates are prom
 2. A rationale store the agent writes as it runs, read by `/ledger` (W2 follow-up).
 3. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
    progress in PR #2, open and unmerged.
-4. MCP server and Bankr Skill exposing the same check.
+4. MCP server exposing the same check, and the market-guard skill submitted to BankrBot's skills repository.
 5. `MandateFactory`: any agent deploys its own vault with its own mandate.
 6. Daily diary and replay page (W3).
 
@@ -754,6 +759,8 @@ web/                       Next.js landing page, /now, /gap-index, /ledger, docs
                            tests, Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            Base mainnet address table
+skills/maat-market-guard/  the read-only guard other agents call, in BankrBot's skills format: SKILL.md (served
+                           at /skill.md), catalog.json, scripts/check.mjs and its offline selftest
 ops/journal/               the journal publisher the owner starts beside the agent: it appends the public fields
                            of the agent's journal to the public agent-journal branch every 15 min, never by force
 docs/superpowers/          design specs and implementation plans
@@ -796,6 +803,7 @@ SECURITY.md                how to report a security problem privately
 | [`deployments/README.md`](deployments/README.md) | The mainnet deploy reference (environment, dry run, checklist, smoke tests, unwind, executor switch) and the address table |
 | [`ops/journal/README.md`](ops/journal/README.md) | The journal publisher: the fields it copies from the agent's journal to the public `agent-journal` branch, how the owner starts and stops it on Windows, what it prints, and when and why it stops |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
+| [`skills/maat-market-guard/SKILL.md`](skills/maat-market-guard/SKILL.md) | The market-guard skill for other agents: when to call it, its commands, its JSON output and exit codes, the typed reasons, its addresses and limits |
 | [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
 
 Online: [maatonbase.xyz/docs](https://maatonbase.xyz/docs), as plain text at

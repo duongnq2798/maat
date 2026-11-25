@@ -6,6 +6,7 @@ import { ABI_NAMES, abiFile, abiUrl } from "@/lib/docs/abi";
 import {
   generateAbis,
   generateDocsData,
+  generateSkillCopy,
   parseAbis,
   parseAgentEnv,
   parseBaseAddresses,
@@ -369,8 +370,20 @@ describe("committed data is current", () => {
     ["web/content/generated/abi.json", generateAbis(REPO_ROOT)],
     // A test that moves changes its line, so the links that remarkTestAnchors points at it need a regeneration too.
     ["web/content/generated/tests.json", collectTestLines(REPO_ROOT)],
+    // The market-guard skill's SKILL.md, which /skill.md serves: the build reads this copy, never skills/.
+    ["web/content/generated/skill.json", generateSkillCopy(REPO_ROOT)],
   ] as const)("%s matches the sources (run `npm run docs:gen` in web/ if this fails)", (file, value) => {
     expect(readRepo(file).replace(/\r\n/g, "\n")).toBe(serialize(value));
+  });
+});
+
+describe("generateSkillCopy", () => {
+  it("copies the market-guard skill's SKILL.md with its path, with LF line ends from any checkout", () => {
+    const copy = generateSkillCopy(REPO_ROOT);
+    expect(copy.source).toBe("skills/maat-market-guard/SKILL.md");
+    expect(copy.text).toBe(readRepo(copy.source).replace(/\r\n/g, "\n"));
+    expect(copy.text).not.toContain("\r");
+    expect(copy.text.startsWith("---\nname: maat-market-guard\n")).toBe(true);
   });
 });
 

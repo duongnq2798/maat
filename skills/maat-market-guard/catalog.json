@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "slug": "maat-market-guard",
+  "provider": "Maat",
+  "providerUrl": "https://maatonbase.xyz",
+  "logo": "logo.svg",
+  "demo": {
+    "title": "market-guard.txt",
+    "language": "text",
+    "code": "$ node scripts/check.mjs market --block 62087947 --at 2026-11-26T15:00:00Z\n{\n  \"check\": \"market\",\n  \"allowed\": false,\n  \"reason\": 6,\n  \"reasonName\": \"MARKET_CLOSED\",\n  \"closedBecause\": \"holiday\",\n  \"session\": \"REGULAR\",\n  ...\n}\n\n$ node scripts/check.mjs preview --block 62087947 --action BUY --token NVDAc --amount 5\n{\n  \"check\": \"preview\",\n  \"allowed\": false,\n  \"reason\": 6,\n  \"reasonName\": \"MARKET_CLOSED\",\n  \"label\": \"Market closed\",\n  \"group\": \"Market\",\n  ...\n}"
+  },
+  "setup": [
+    "Install the skill with the button below",
+    "Nothing to configure: no key, wallet or account. It reads Base mainnet through the public RPC https://mainnet.base.org; set MAAT_GUARD_RPC_URL to use your own",
+    "Ask: \"is the US stock market open right now?\" or \"would Maat's vault accept a $5 NVDAc buy now?\"",
+    "Trade only on \"allowed\": true. A refusal names its typed reason, such as MARKET_CLOSED, FEED_STALE or PREMIUM_TOO_HIGH, and a failed read exits 2: treat it as a no"
+  ],
+  "install": {
+    "type": "bankr",
+    "repoPath": "maat-market-guard",
+    "command": "install the maat-market-guard skill from https://github.com/BankrBot/skills/tree/main/maat-market-guard"
+  }
+}
