@@ -31,7 +31,7 @@ function ForkIcon() {
 }
 
 /**
- * The docs callout: note (information), warning, or fork (true on a mainnet fork, not yet on mainnet).
+ * The docs callout: note (information), warning, or fork (what has run on a Base mainnet fork).
  * MDX props are not type-checked, so an unknown type fails the build instead of rendering as a note.
  */
 export function Callout({ type = "note", title, children }: CalloutProps) {

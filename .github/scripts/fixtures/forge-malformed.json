@@ -1,0 +1,7 @@
+{
+  "test/MandateVault.t.sol:MandateVaultTest": {
+    "duration": "9ms 530µs 100ns",
+    "test_results": {
+      "test_buyInSessionIsAllowed()": {
+        "status": "Success",
+        "reason": null,

@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
-import { REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
+import { REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
 function setup() {
@@ -21,7 +21,8 @@ describe("landing page", () => {
   it("every in-page link has a target", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
-    expect([...ids].sort()).toEqual(["how", "ledger", "main", "mandate", "reasons", "top", "try"]);
+    // The nav's "Ledger" opens /ledger; the landing's #ledger section links there too.
+    expect([...ids].sort()).toEqual(["how", "main", "mandate", "reasons", "top", "try"]);
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
   });
 
@@ -31,14 +32,22 @@ describe("landing page", () => {
     expect(ids).toEqual(["top", "how", "reasons", "try", "ledger", "mandate"]);
   });
 
-  it("lists all nineteen refusals once and highlights only MARKET_CLOSED", () => {
+  it("lists all nineteen refusals once, each titled by its plain label, and highlights only MARKET_CLOSED", () => {
     const c = setup();
     const section = c.querySelector("#reasons") as HTMLElement;
     expect(within(section).getByRole("heading", { level: 2 })).toHaveTextContent("Nineteen typed ways to say no.");
     const items = [...section.querySelectorAll<HTMLElement>("li[data-code]")];
     expect(items.map((li) => li.dataset.code).sort()).toEqual([...REASONS].sort());
-    // Each code is followed by its plain-English meaning.
-    for (const li of items) expect(li).toHaveTextContent(`${li.dataset.code}${REASON_MEANING[li.dataset.code as RefusalCode]}`);
+    // Each item reads its plain label first, then its code as a tag, then the plain-English meaning.
+    for (const li of items) {
+      const code = li.dataset.code as RefusalCode;
+      expect(li.children).toHaveLength(2);
+      const [tag, meaning] = [...li.children];
+      expect(tag).toHaveAttribute("data-reason-tag", code);
+      expect(tag!.firstElementChild!.textContent).toBe(REASON_LABEL[code]);
+      expect(tag!.lastElementChild!.textContent).toBe(code);
+      expect(meaning!.textContent).toBe(REASON_MEANING[code]);
+    }
     expect([...section.querySelectorAll<HTMLElement>("li[data-hot]")].map((li) => li.dataset.code)).toEqual(["MARKET_CLOSED"]);
   });
 
@@ -49,7 +58,9 @@ describe("landing page", () => {
     expect(section).toHaveTextContent("A simulation of the default mandate, running in your browser.");
     expect(section).toHaveTextContent("The contract is the source of truth.");
     expect(within(section).getByText("default mandate · not the contract")).toBeInTheDocument();
-    expect(section).toHaveTextContent("Thanksgiving on Thu 26 Nov, Christmas on Fri 25 Dec and New Year on Fri 1 Jan");
+    expect(section).toHaveTextContent(
+      "weekends, and the 12 holidays and 3 early closes the calendar lists, up to Fri 24 Dec 2027)",
+    );
     expect(section).toHaveTextContent("53 bps for NVDAc, 49 bps for GOOGLc and 29 bps for AAPLc");
     expect(section).toHaveTextContent(
       "an NVDAc feed answer 14 s old (the GOOGLc and AAPLc feeds are assumed fresh), multiplier unchanged",
@@ -71,10 +82,10 @@ describe("landing page", () => {
     const section = c.querySelector("#mandate") as HTMLElement;
     expect(section.querySelectorAll("dl > div")).toHaveLength(12);
     expect(within(section).getByText("timelock 24h")).toBeInTheDocument();
-    expect(within(section).getByText("mandateHash [after deploy]")).toBeInTheDocument();
-    // Nothing is deployed yet, so the sheet must not claim a network.
-    expect(within(section).getByText("default · not deployed yet")).toBeInTheDocument();
-    expect(section).not.toHaveTextContent("Base mainnet");
+    // The sheet is the default mandate (contracts/script/MaatConfig.sol) the owner deployed on Base mainnet, and the chip
+    // is that vault's mandateHash(), shortened.
+    expect(within(section).getByText("mandateHash 0x77a277…661b")).toBeInTheDocument();
+    expect(within(section).getByText("default · Base mainnet")).toBeInTheDocument();
     expect(within(section).getByText(/waits 24 hours/)).toBeInTheDocument();
   });
 
@@ -92,6 +103,7 @@ describe("landing page", () => {
       .getAllByRole("link")
       .map((a) => [a.textContent, a.getAttribute("href")]);
     expect(links).toEqual([
+      ["Mainnet ledger", "/ledger"],
       ["Docs", SITE.docsUrl],
       ["Source on GitHub", SITE.repoUrl],
       ["Verify in 5 minutes", SITE.quickstartUrl],
@@ -103,10 +115,9 @@ describe("landing page", () => {
     expect(screen.getByText(SITE.tagline)).toBeInTheDocument();
   });
 
-  it("never shows a made-up hash and keeps the mainnet placeholders", () => {
+  it("never shows a made-up hash and keeps the mainnet tx placeholder", () => {
     const text = setup().textContent ?? "";
     expect(text).not.toMatch(/0x[0-9a-fA-F]{40,}/);
-    expect(text).toContain("[after deploy]");
     expect(text).toContain("[from mainnet tx]");
   });
 

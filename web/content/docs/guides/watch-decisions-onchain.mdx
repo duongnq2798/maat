@@ -1,10 +1,10 @@
 ---
 title: Watch decisions onchain
-description: Read Decision events from a vault with cast or viem, decode the action and reason, and match them to the agent's journal.
+description: Read a vault's Decision events with cast, decode them as the agent does with viem, match them to the agent's journal, and watch the owner's actions.
 type: guide
 audience: [watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-21
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -19,6 +19,8 @@ sources:
   - agent/src/ledger/journal.ts
   - agent/test/integration/agent.fork.test.ts
   - deployments/README.md
+  - deployments/go-live.md
+  - agent/scripts/first-decision.ts
 next: [get-started/read-a-decision, concepts/refusal-codes]
 ---
 
@@ -26,23 +28,25 @@ Every [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/g
 
 <Callout type="fork" title="What has run">
 
-No Maat vault is deployed, so there are no mainnet `Decision` events to read, and every command below uses `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault, and the Maat team has not run them. It has not run the `jq` line in [step 5](#match-a-decision-to-the-journal) either. The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
+Maat's own vault is on Base mainnet, at the address in the `MandateVault` row of the table in `deployments/README.md`, and every `Decision` it emits is public in its events, which [step 1](#read-the-events-with-cast) reads. The commands below that need a vault's address take it from `VAULT`, which step 1 sets to the placeholder `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault, and these docs record no run of them, or of the `jq` line in [step 5](#match-a-decision-to-the-journal). The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
 
 </Callout>
+
+The site's [mainnet ledger](/ledger) does this reading for you in the browser. It reads the vault that `deployments/README.md` records: its events from its deploy block, decoded with the vault's ABI, each exported rationale checked against its `rationaleHash`, and the balances, prices and health factor at the latest block. Below them it keeps the fork run, labeled as a fork. The steps below are for checking it yourself, or for building on the events.
 
 ## Before you start
 
 | Need | Detail |
 | --- | --- |
-| A vault address | Written `<VAULT_ADDRESS>` here. The Maat team has deployed none ([Status and roadmap](/docs/get-started/status#next-mainnet)). Once an [owner](/docs/help/glossary#owner) deploys one, its address goes in the table in `deployments/README.md`. |
+| A vault address | Written `<VAULT_ADDRESS>` here. Maat's own vault is at the address in the `MandateVault` row of the table in `deployments/README.md`, which [Status and roadmap](/docs/get-started/status#next-mainnet) also shows. A vault you deploy yourself has its own address, which goes in your copy of that table. |
 | A Base RPC URL | Written `<BASE_RPC_URL>` here. Reading logs needs no key and no wallet. |
 | `cast` | From [Foundry](https://getfoundry.sh). The help text of `cast logs` in Foundry 1.9.0, the version checked while writing this guide, says that an event declaration with `indexed` markers decodes the matching logs in text output. |
-| The deploy block | Written `<DEPLOY_BLOCK>`. It is where to start the search. |
+| The deploy block | Written `<DEPLOY_BLOCK>`. It is where to start the search. For Maat's own vault, it is the block that includes the `MandateVault` transaction in `deployments/README.md`. |
 | For the journal match | The agent's `data/journal.jsonl`. It is a file on the operator's machine, so only the operator, or someone the operator shares it with, can do the last step. |
 | `jq` | For the journal match only. It hands a journal line's `rationale` to `cast` without the shell touching the text. |
 | bash | Linux, macOS, or Git Bash on Windows. The commands are written for bash (`export`, `printf` and pipes into `cast`), as in the [Quickstart](/docs/get-started/quickstart#prerequisites), and do not run in PowerShell or cmd. |
 
-Time: not measured. No vault is deployed, so no log query has been timed.
+Time: not measured. These docs record no timed log query.
 
 ## The event you are reading
 
@@ -69,7 +73,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
   "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)"
 ```
 
-No vault is deployed, so this page shows no output. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, [the table in step 3](#turn-the-numbers-into-names) shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` in Foundry 1.9.0 splits the range into chunks of that many blocks to work around such limits.
+No output from a vault is recorded for this command, so this page shows none. For each log, `cast` prints the decoded fields. If your `cast` prints raw logs instead, [the table in step 3](#turn-the-numbers-into-names) shows where each field sits. A provider can limit how many blocks one query may cover. The `--query-size` option of `cast logs` in Foundry 1.9.0 splits the range into chunks of that many blocks to work around such limits.
 
 To check that you typed the signature right without any network, compute the hash that every `Decision` log carries as its first topic. The plain form without names gives the same hash as the declaration:
 
@@ -98,7 +102,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 cast call "$VAULT" "usedIntent(bytes32)(bool)" "$INTENT_ID" --rpc-url "$BASE_RPC_URL"
 ```
 
-An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts (`NotExecutor` or `IntentAlreadyUsed`) emits nothing.
+An intent id that `usedIntent` calls unused has no `Decision`. An `execute` that reverts emits nothing: a call from another address (`NotExecutor`), a used id (`IntentAlreadyUsed`), or a failure of a dependency that the vault does not catch, which [Fail closed](/docs/security/model#fail-closed) lists.
 
 </Step>
 
@@ -218,7 +222,7 @@ If the hash of the journal's `rationale` equals the `rationaleHash` in the log, 
 
 ## Read the vault now
 
-The events say what happened. These calls say where the vault stands at the latest block. They only read and need no key, and like the rest of the page they have not been run against a vault. They use `VAULT` and `BASE_RPC_URL` from [step 1](#read-the-events-with-cast). `MANDATE_TYPE` is the [mandate](/docs/help/glossary#mandate) struct written as a tuple, in the field order of [Types](/docs/reference/types#mandate), the same variable as in [Change a rule](/docs/guides/change-a-rule#read-the-current-rules).
+The events say what happened. These calls say where the vault stands at the latest block. They only read and need no key, and like the rest of the page, these docs record no run of them against a vault. They use `VAULT` and `BASE_RPC_URL` from [step 1](#read-the-events-with-cast). `MANDATE_TYPE` is the [mandate](/docs/help/glossary#mandate) struct written as a tuple, in the field order of [Types](/docs/reference/types#mandate), the same variable as in [Change a rule](/docs/guides/change-a-rule#read-the-current-rules).
 
 ```bash
 MANDATE_TYPE='(uint8,uint16,uint16,uint32,uint32,uint32,uint128,uint128,address,address,address,uint64,uint64,uint32)'
@@ -233,7 +237,7 @@ cast call "$VAULT" "today()(uint256)" --rpc-url "$BASE_RPC_URL"
 cast call "$VAULT" "spentOnDay(uint256)(uint256)" <DAY> --rpc-url "$BASE_RPC_URL"   # <DAY>: the number today() returns
 ```
 
-These calls read what the vault holds. Stock the vault has supplied as collateral sits in the credit adapter's [Aave V4](/docs/help/glossary#aave-v4) position, not in the vault ([The adapter holds the position](/docs/concepts/credit-and-health-factor#the-adapter-holds-the-position)), so read that amount from the adapter:
+The two `balanceOf` calls below read what the vault itself holds. Stock the vault has supplied as collateral sits in the credit adapter's [Aave V4](/docs/help/glossary#aave-v4) position, not in the vault ([The adapter holds the position](/docs/concepts/credit-and-health-factor#the-adapter-holds-the-position)), so the last three calls read the adapter's position:
 
 ```bash
 export USDC=$(cast call "$VAULT" "usdc()(address)" --rpc-url "$BASE_RPC_URL")
@@ -253,14 +257,14 @@ cast call "$ADAPTER" "healthFactor()(uint256)" --rpc-url "$BASE_RPC_URL"
 | `mandate()` | The rules in force, in the order of `MANDATE_TYPE`. The ninth field is the calendar and the eleventh is the credit adapter. A zero credit adapter means the credit actions are off. |
 | `tokens()`, `tokenConfig(token)` | Every stock the vault has listed, delisted ones included, then one stock's `allowed`, `feed`, `pool` and `maxWeightBps`. |
 | `payees()` | The [payees](/docs/help/glossary#payee) that `PAY_EXPENSE` may pay now. |
-| `today()`, `spentOnDay(day)` | The UTC day number, which is the `<DAY>` to pass to `spentOnDay`, then how much of that day's cap the buys, sells and bill payments used, in USDC units. Credit actions do not count. |
+| `today()`, `spentOnDay(day)` | The UTC day number, which is the `<DAY>` to pass to `spentOnDay`, then how much of that day's cap the buys, sells and `PAY_EXPENSE` payments (such as the agent's bill payments) used, in USDC units. Credit actions do not count. |
 | `balanceOf(vault)` | What the vault itself holds, in raw units: USDC has <Fact name="usdcDecimals" />, and a stock has its own `decimals()`. |
 | `suppliedOf(token)` | The stock supplied as collateral, in the stock's raw units. |
 | `debt()`, `healthFactor()` | The USDC owed, and the position's [health factor](/docs/help/glossary#health-factor) in [WAD](/docs/help/glossary#wad). [What to watch while it runs](/docs/guides/run-the-agent#what-to-watch-while-it-runs) explains the floor and the target. |
 
 ## Watch the owner's actions
 
-The owner changes the vault in two ways, and a watcher learns of them at different times. Nothing in this repository watches these events, and like the rest of the page the commands below have not been run against a vault. [Events](/docs/reference/events#mandatevault) explains every field.
+The owner changes the vault in two ways, and a watcher learns of them at different times. Nothing in this repository watches these events, and like the rest of the page, these docs record no run of the commands below against a vault. [Events](/docs/reference/events#mandatevault) explains every field.
 
 ### Queued changes give notice
 
@@ -286,7 +290,7 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 
 <Callout type="note" title="Unverified: the two tuple declarations">
 
-They were checked offline only. With Foundry 1.9.0, `cast sig-event` on each tuple form gives the topic 0 shown below, the same value as viem's `toEventSelector` for that event in `mandateVaultAbi`, and `cast decode-event` decodes hand-encoded data with each declaration. The Maat team has not run `cast logs` with them against a vault's logs.
+They were checked offline only. With Foundry 1.9.0, `cast sig-event` on each tuple form gives the topic 0 shown below, the same value as viem's `toEventSelector` for that event in `mandateVaultAbi`, and `cast decode-event` decodes hand-encoded data with each declaration. These docs record no run of `cast logs` with them against a vault's logs.
 
 </Callout>
 
@@ -323,8 +327,8 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
 | Event | What already changed |
 | --- | --- |
 | `PausedSet` | With `true`, every action except `REPAY` is refused with `VAULT_PAUSED`, and `REPAY` still runs its own checks ([Repay while paused](/docs/concepts/credit-and-health-factor#repay-while-paused)). The event is emitted even when the flag did not change. |
-| `ExecutorSet` | A new address can call `execute` from then on, and the old one gets `NotExecutor`. The constructor does not emit it, so read the first executor from `executor()`. |
-| `Withdrawn` | The owner took `amount` of `token`, in the token's raw units, out of the vault. `withdraw` can send only to the owner address. |
+| `ExecutorSet` | The address in the event can call `execute` until the next `ExecutorSet`, and any other address gets `NotExecutor`. It is emitted even when the address did not change. The constructor does not emit it, so read the first executor from the deploy's constructor arguments, or from `executor()` while no `ExecutorSet` has followed. |
+| `Withdrawn` | The owner took `amount` of `token`, in the token's raw units, out of the vault. `withdraw` can send only to the owner address. For a `token` that is a plain account with no code, the event is emitted although nothing moved ([Events](/docs/reference/events#withdrawn)). |
 
 Adding a holiday or an earlier close to the vault's calendar is instant too, for the calendar's owner (the vault owner in the runbook's deploy). The calendar logs it, not the vault: the calendar's address is the ninth field of `mandate()`, and [Events](/docs/reference/events#marketcalendar) lists its two events. So the timelock gives notice of a rule change, but it is not a lock on the funds: the owner can pause, rotate the executor and withdraw at once ([If a key leaks](/docs/concepts/timelock-and-roles#if-a-key-leaks)).
 
@@ -344,13 +348,13 @@ Adding a holiday or an earlier close to the vault's calendar is instant too, for
 - **Reading `amount` as dollars.** It is in raw units. For a `BUY` it is USDC, which has <Fact name="usdcDecimals" />, even though `token` is the stock. For a `SELL` it is in the stock's own decimals.
 - **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per UTC day, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
 - **Expecting a `Decision` from a reverted `execute`.** A call from another address reverts with `NotExecutor`, and a used id reverts with `IntentAlreadyUsed`. Neither emits anything.
-- **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator. Intents the owner sent by hand, such as the runbook's smoke tests, carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke`), and no journal holds text for them.
+- **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator, and no journal holds text for the intents the owner sent by hand. The runbook's credit smoke test and unwind carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke` or `unwind`). The owner's first two BUYs in the go-live runbook, `deployments/go-live.md`, hash the rationale text that `agent/scripts/first-decision.ts` prints, which that runbook has the owner keep in its record table.
 - **Hashing altered text.** A trailing newline, a re-typed quote, a `$` the shell expanded inside double quotes, a line break turned into CRLF (a native Windows `jq.exe` without `-b`), or text that was not decoded from JSON gives another hash.
 - **Treating the match as proof of the reason.** It shows what the intent committed to, nothing more.
 - **Reading `eta` as the time a change takes effect.** It is the earliest time. The change takes effect only when the owner sends the apply, with the same values, before the window closes.
 - **Waiting for notice of a withdrawal.** `withdraw`, `setPaused` and `setExecutor` are instant, so their events come after the fact.
 - **Querying too wide a range at once.** A provider may refuse it. Use `--query-size` (in Foundry 1.9.0), or start from the deploy block.
-- **Looking for mainnet events today.** Nothing is deployed. The ledger on the site shows the decisions of the fork run only.
+- **Taking the landing page's ledger for mainnet events.** The ledger on the landing page shows the decisions of the fork run only. Read a mainnet vault's own events with [step 1](#read-the-events-with-cast), or Maat's vault on the [mainnet ledger](/ledger).
 
 ## Next steps
 

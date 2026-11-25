@@ -1,6 +1,6 @@
 import { FACTS } from "./facts";
 import { dayLabel, formatInt } from "./format";
-import type { ReasonCode } from "./reasons";
+import { REASON_LABEL, type ReasonCode } from "./reasons";
 
 /** enum Action in contracts/src/Types.sol, in order (parity-tested). */
 export const ACTIONS = ["BUY", "SELL", "SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY", "PAY_EXPENSE"] as const;
@@ -96,8 +96,9 @@ export function intentLabel(r: DecisionRow): string {
   return `${r.action} ${r.symbol} · $${r.amountUsd}`;
 }
 
+/** The verdict, then the plain label of its reason: "Refused · Market closed", "Allowed · All checks passed". */
 export function decisionLabel(r: DecisionRow): string {
-  return `${r.allowed ? "ALLOWED" : "REFUSED"} · ${r.reason}`;
+  return `${r.allowed ? "Allowed" : "Refused"} · ${REASON_LABEL[r.reason]}`;
 }
 
 export function gasLabel(r: DecisionRow): string {

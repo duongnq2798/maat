@@ -1,11 +1,12 @@
 "use client";
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
 import type { CheckMark } from "@/content/engine";
 import { FACTS } from "@/content/facts";
-import { clockLabel, dayLabel } from "@/content/format";
-import { REASON_MEANING } from "@/content/reasons";
+import { clockLabel, dayLabel, formatInt } from "@/content/format";
+import { REASON_MEANING, reasonText } from "@/content/reasons";
 import {
   AMOUNT_CHIPS_USD,
   amountPending,
@@ -41,6 +42,11 @@ const LEGEND = "mb-3 p-0 font-mono text-[11px] text-ink-2";
 const DAY_MINUTES = 1440;
 const USD6 = 1_000_000;
 const pct = (bps: number) => `${bps / 100}%`;
+/** The window spans a year end, so its bounds carry the year: "Thu 5 Nov 2026". */
+function withYear(dayNumber: number): string {
+  const iso = isoOfDay(dayNumber);
+  return `${dayLabel(iso)} ${iso.slice(0, 4)}`;
+}
 
 function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; children: ReactNode }) {
   return (
@@ -48,7 +54,7 @@ function Chip({ on, onClick, children }: { on: boolean; onClick: () => void; chi
       type="button"
       aria-pressed={on}
       onClick={onClick}
-      className={`min-h-10 cursor-pointer rounded-full border px-3.5 py-2 text-[13px] font-medium ${
+      className={`tick-colour min-h-10 cursor-pointer rounded-full border px-3.5 py-2 text-[13px] font-medium ${
         on ? "border-ink bg-ink text-white" : "border-line-strong bg-white text-ink hover:border-ink"
       }`}
     >
@@ -64,9 +70,11 @@ interface RowProps {
   mark: CheckMark;
   check: string;
   fixed?: boolean;
+  /** Under Now, a fixed row's tag says it holds a fork value, not one read now. */
+  forkTag?: "fork" | "fork value";
 }
 
-function Row({ n, label, detail, mark, check, fixed = false }: RowProps) {
+function Row({ n, label, detail, mark, check, fixed = false, forkTag = "fork" }: RowProps) {
   return (
     <li
       data-check={check}
@@ -83,8 +91,8 @@ function Row({ n, label, detail, mark, check, fixed = false }: RowProps) {
         <span className={`text-sm font-medium ${mark === "SKIP" ? "text-ink-2" : ""}`}>
           {label}
           {fixed ? (
-            <span className="ml-2 rounded border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-2">
-              fork
+            <span data-fork-tag className="ml-2 rounded border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-2">
+              {forkTag}
             </span>
           ) : null}
         </span>
@@ -138,6 +146,8 @@ export function Simulator() {
   const full = s.tape.length >= MAX_TAPE;
   const session = sessionWindow(s.etDay);
   const dayInvalid = dayDraft !== undefined && dayDraft !== isoOfDay(s.etDay);
+  // The Now chip is the selected moment: the clock sets the time, while the rows tagged fork keep the fork's values.
+  const atNow = now !== undefined && s.etDay === now.etDay && s.intent.minute === now.minute;
 
   // A new link ends the copy state, and the notice that went with it.
   useEffect(() => {
@@ -176,7 +186,7 @@ export function Simulator() {
     if (!parsed || full) return;
     setS((p) => (p.tape.length >= MAX_TAPE ? p : { ...p, tape: [...p.tape, p.intent] }));
     setNotice(
-      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${result.reason}`}`,
+      `Executed ${clockLabel(s.intent.minute)} ${simIntentLabel(s.intent)}: ${result.allowed ? "Allowed" : `Refused · ${reasonText(result.reason)}`}`,
     );
   };
   async function copyLink() {
@@ -251,10 +261,7 @@ export function Simulator() {
               </Chip>
             ))}
             {now ? (
-              <Chip
-                on={s.etDay === now.etDay && s.intent.minute === now.minute}
-                onClick={goNow}
-              >
+              <Chip on={atNow} onClick={goNow}>
                 Now
               </Chip>
             ) : null}
@@ -279,7 +286,7 @@ export function Simulator() {
           </div>
           {dayInvalid ? (
             <p id="sim-day-hint" className="m-0 mt-2 text-[13px] text-refuse">
-              Pick a date from {dayLabel(isoOfDay(WINDOW.first))} to {dayLabel(isoOfDay(WINDOW.last))}.
+              Pick a date from {withYear(WINDOW.first)} to {withYear(WINDOW.last)}.
             </p>
           ) : null}
           <div className="mt-5 flex flex-col gap-2">
@@ -345,10 +352,22 @@ export function Simulator() {
                 mark={c.mark}
                 check={String(i + 1)}
                 fixed={c.fixed}
+                forkTag={atNow ? "fork value" : "fork"}
               />
             </Fragment>
           ))}
         </ol>
+
+        {atNow ? (
+          <p className="m-0 mx-5 mb-3 text-[13px] leading-normal text-ink-2">
+            Now sets the time only. The rows tagged fork value hold Base block {formatInt(FACTS.forkBlock.value)} (
+            {dayLabel(FACTS.forkDay.value)}, {FACTS.forkTimeEt.value} ET), not now.{" "}
+            <a href="/now" className="font-medium">
+              Read the live values on Right now on Base
+            </a>
+            .
+          </p>
+        ) : null}
 
         {/* The live region itself never remounts; only its text changes. */}
         <div role="status" aria-live="polite" aria-atomic="true" className="mx-3 mb-3">
@@ -362,7 +381,7 @@ export function Simulator() {
                 <span className="font-mono text-[11px] opacity-80">IF EXECUTED NOW · SIMULATED</span>
                 <span className="text-[26px] font-semibold tracking-[-0.03em]">{result.allowed ? "Allowed" : "Refused"}</span>
               </div>
-              <span className="font-mono text-[13px] font-semibold [overflow-wrap:anywhere]">{result.reason}</span>
+              <ReasonTag code={result.reason} tone="verdict" layout="stacked" className="ml-auto text-right [overflow-wrap:anywhere]" />
             </div>
             <p className="m-0 text-sm leading-normal opacity-90">
               {result.reason === "OK" ? "It says yes. Change one thing to make it say no." : REASON_MEANING[result.reason]}
@@ -432,9 +451,16 @@ export function Simulator() {
                   <span className="[overflow-wrap:anywhere]">
                     <span className="text-ink-2">{clockLabel(e.intent.minute)}</span> {simIntentLabel(e.intent)}
                   </span>
-                  <span className={e.allowed ? "text-accent" : "font-semibold text-refuse"}>
-                    {e.allowed ? "Allowed" : `Refused · ${e.reason}`}
-                  </span>
+                  {e.allowed ? (
+                    <span className="text-accent">Allowed</span>
+                  ) : (
+                    // A flex row, so the label stays on the line of "Refused ·" and only the code wraps under it.
+                    <span className="flex items-baseline gap-x-1.5 font-semibold text-refuse">
+                      <span className="shrink-0">{"Refused · "}</span>
+                      {/* The code is the muted tag: it drops the semibold of the words before it. */}
+                      <ReasonTag code={e.reason} tone="refuse" layout="inline" className="[&>:last-child]:font-normal" />
+                    </span>
+                  )}
                 </li>
               ))}
             </ol>

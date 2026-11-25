@@ -4,10 +4,11 @@ description: Run the contract unit and fork suites, the agent unit and fork test
 type: guide
 audience: [developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-19
 sources:
   - README.md
   - contracts/foundry.toml
+  - contracts/test/invariant/MandateVaultInvariants.t.sol
   - agent/package.json
   - web/package.json
   - web/playwright.config.ts
@@ -20,7 +21,7 @@ sources:
 next: [guides/reproduce-the-fork-run, security/testing]
 ---
 
-This guide runs every test suite in the Maat repository, one at a time, and says what each one needs. The suites that touch no chain run offline against mocks and fakes. The [fork tests](/docs/help/glossary#fork-test) need a Base archive RPC, and the agent's also needs a special build of Anvil. Nothing is deployed and the agent has not run live, so these suites are the evidence behind the claims in these docs, and running them yourself is how you check that evidence.
+This guide runs every test suite in the Maat repository, one at a time, and says what each one needs. The suites that touch no chain run offline against mocks and fakes. The [fork tests](/docs/help/glossary#fork-test) need a [Base](/docs/help/glossary#base) archive RPC, and the agent's also needs a special build of Anvil. The owner deployed the four Maat contracts to Base mainnet, but the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), so apart from the deploy record in `deployments/README.md`, these suites are the evidence behind the claims in these docs, and running them yourself is how you check that evidence.
 
 ## Before you start
 
@@ -28,7 +29,7 @@ This guide is for developers and evaluators who have cloned the repository. It a
 
 | Tool | Version | Needed for |
 | --- | --- | --- |
-| [Foundry](https://getfoundry.sh) | 1.8.4 or newer | The contract suites. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock precompiles need. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer | The contract suites. `contracts/foundry.toml` sets `hardfork = "base:Cobalt"`, which the [B20](/docs/help/glossary#b20) stock [precompiles](/docs/help/glossary#precompile) need. |
 | Node.js with npm | 24 | The website needs 24.x (`web/package.json`). The agent needs 22.9 or newer (`agent/package.json`). |
 | A Base archive RPC | Your own URL, written `<BASE_RPC_URL>` here, or the public endpoint in `contracts/.env.example`, which served archive state when it was tested on 2026-11-06 | The fork suites only. |
 | `base-anvil` | v1.5.1, installed as [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#install-the-base-build-of-anvil) shows | The agent's fork test only. |
@@ -36,9 +37,9 @@ This guide is for developers and evaluators who have cloned the repository. It a
 
 The fork tests ask Foundry for the `base` endpoint, which `contracts/foundry.toml` maps to the `BASE_RPC_URL` environment variable.
 
-Time: the offline contract, agent and website suites are the Quickstart's path, about five minutes on a fresh clone, and most of that is compiling and installing packages. The contract fork suite took about a minute in the README's run. The agent's fork test takes 3 to 5 minutes on a public RPC (agent/README.md).
+Time: the Quickstart's five steps run every offline suite except the website's end-to-end tests, and build the site. Timed by hand on 2026-11-07 at commit `4492eed`, before the docs center, they took about 4 minutes on a fresh clone, most of it compiling and installing packages, and they have not been re-timed. The contract fork suite took about 50 seconds at the same commit. The agent's fork test takes 3 to 5 minutes on a public RPC (agent/README.md).
 
-There is no CI in this repository yet (README.md, Development). Nothing runs these suites for you, so you run them locally, and a number or claim in these docs is only as fresh as the last time someone did.
+On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs the offline contract, agent and website suites, the website's end-to-end tests among them (README.md, Development). The two fork suites need an archive RPC, so CI does not run them: you run them yourself, and a fork claim in these docs is only as fresh as the last time someone did.
 
 ## The suites at a glance
 
@@ -61,7 +62,7 @@ This is the Development table of the README, with a Folder column and without it
 
 ### Contract unit tests
 
-Needs nothing. This runs the vault, the guards, the calendar, the price math and both adapters against mocks. The first run compiles the contracts.
+Needs nothing. This runs the [vault](/docs/help/glossary#vault), the guards, the calendar, the price math, both adapters and the deploy script's payee list against mocks, and the [invariant suite](/docs/security/testing#invariant-tests) on the same mocks, which takes most of the run's time, about 30 to 40 seconds. The first run compiles the contracts.
 
 ```bash
 cd contracts
@@ -104,7 +105,7 @@ Trimmed output from the run at commit `1c1dc4d`. An ellipsis marks removed rows.
 
 ### Contract fork tests
 
-These tests run the real B20 tokens, feeds, pools and Aave V4 at two pinned Base mainnet blocks. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your archive RPC URL, or the one in `contracts/.env.example`, in place of the placeholder.
+These tests run the real B20 tokens, feeds, pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned Base mainnet blocks. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your archive RPC URL, or the one in `contracts/.env.example`, in place of the placeholder.
 
 ```bash title="contracts/"
 export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
@@ -123,7 +124,7 @@ Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tes
 
 ### Agent unit tests
 
-Needs nothing. Claude, the [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) and the chain are all fakes here, so nothing is sent and nothing is billed. The type check runs the TypeScript compiler without writing files.
+Needs nothing. Claude, the Coinbase CDP Server Wallet and the chain are all fakes here, so nothing is sent and nothing is billed. The type check runs the TypeScript compiler without writing files.
 
 ```bash
 cd ../agent
@@ -148,7 +149,7 @@ Trimmed output from the run at commit `1c1dc4d`, with the counts replaced. The t
 
 ### Agent fork test
 
-This test needs a Base archive RPC and `base-anvil` v1.5.1. It starts a local fork, deploys the compiled contracts from `contracts/out` onto it, which steps 1 and 2 have just built, and runs the agent's round against it with a scripted proposer in place of Claude. Run it from `agent/`.
+This test needs a Base archive RPC and `base-anvil` v1.5.1. It starts a local fork, deploys the compiled contracts from `contracts/out` onto it, which steps 1 and 2 have just built, and runs the agent's [round](/docs/help/glossary#round) against it with a scripted proposer in place of Claude. Run it from `agent/`.
 
 ```bash title="agent/"
 export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
@@ -207,15 +208,15 @@ Trimmed output from the same run, with the counts replaced:
 
 To write your own tests against the vault, start from the setup the existing suites use. The repository has no sandbox that keeps a vault running between calls.
 
-- **`contracts/test/utils/VaultFixture.sol`.** The base of `MandateVault.t.sol` and `MandateVaultAdmin.t.sol`. Its `setUp` sets the clock to a Thursday in session and deploys a vault for one mock stock, with mocks for USDC, the stock, its feed, its pool, the swap adapter and the transfer-policy registry, and the real `MarketCalendar`. Its helpers build an [intent](/docs/help/glossary#intent) (`_intent`), send it as the [executor](/docs/help/glossary#executor) (`_exec`), and queue a [timelocked](/docs/help/glossary#timelock) change and wait out the delay (`_queueMandateAndWait`, `_queueTokenAndWait`, `_queuePayeeAndWait`).
-- **`contracts/test/utils/CreditFixture.sol`.** `VaultFixture` with credit turned on through a mock credit adapter. `MandateVaultCredit.t.sol` builds on it.
+- **`contracts/test/utils/VaultFixture.sol`.** The base of `MandateVault.t.sol`, `MandateVaultAdmin.t.sol` and `Deploy.t.sol`. Its `setUp` sets the clock to a Thursday in [session](/docs/help/glossary#nyse-session) and deploys a vault for one mock stock, with mocks for USDC, the stock, its feed, its pool, the swap adapter and the transfer-policy registry, and the real `MarketCalendar`. Its helpers deploy a vault under a given mandate and, optionally, a given payee list (`_deployVault`), build an [intent](/docs/help/glossary#intent) (`_intent`), send it as the [executor](/docs/help/glossary#executor) (`_exec`), and queue a [timelocked](/docs/help/glossary#timelock) change and wait out the delay (`_queueMandateAndWait`, `_queueTokenAndWait`, `_queuePayeeAndWait`).
+- **`contracts/test/utils/CreditFixture.sol`.** `VaultFixture` with credit turned on through a mock credit adapter. `MandateVaultCredit.t.sol` and `MandateVaultMalformed.t.sol` build on it.
 - **`deployStack` in `agent/test/integration/deploy.ts`.** The deploy-and-fund sequence of the agent's fork test: the calendar, the swap adapter, the credit adapter, then the vault, which the [owner](/docs/help/glossary#owner) funds with `approve` and `fund`. It is a test helper, not a deploy tool. It refuses any host other than `127.0.0.1` or `localhost`, it uses the local node's unlocked accounts as owner, executor and [payee](/docs/help/glossary#payee), and only `agent.fork.test.ts` runs it. That test starts its own `base-anvil` node and stops it when it ends, and no script in the repository keeps a node running.
 
 ## Check it worked
 
 - Every Foundry run ends with `0 failed`, and the size table shows a positive margin for `MandateVault`.
 - Vitest prints only `passed` counts when every test passes. A `failed` count appears next to them when one does not.
-- The last line of the website check starts with `out/ is ready to deploy`.
+- The website check prints a line that starts with `out/ is ready to deploy`, then the size of the search index.
 - Playwright ends with a `passed` count and no `failed` line.
 - A fork suite that shows as skipped did not run. The agent's fork test is skipped, not failed, when `BASE_RPC_URL` is not set.
 
@@ -223,7 +224,7 @@ To write your own tests against the vault, start from the setup the existing sui
 
 - **A bare `forge test`.** It also runs the fork tests under `test/fork/`, which need the RPC. Use the `--no-match-path` form for the offline run.
 - **A fork suite that looks green.** The agent's fork test reads `BASE_RPC_URL` from your shell, not from a `.env` file, and without it the whole suite is skipped. Export it in the same shell that runs `npm run test:integration`.
-- **The wrong Anvil.** Upstream Anvil 1.9 reverts on the B20 `uiMultiplier()` call, so the agent's fork test cannot deploy the vault on it. Use `base-anvil` v1.5.1, as [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) shows.
+- **The wrong Anvil.** Upstream Anvil 1.9 [reverts](/docs/help/glossary#revert) on the B20 `uiMultiplier()` call, so the agent's fork test cannot deploy the vault on it. Use `base-anvil` v1.5.1, as [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) shows.
 - **An RPC that is not an archive node.** The fork tests pin old blocks, so the RPC has to serve historical state. The README asks for an archive RPC for both fork suites.
 - **End-to-end tests before a build.** Playwright serves the `out/` folder that `npm run build` writes, so build first. It serves it on port `4173` and does not switch ports, so stop whatever else holds that port or wait for it to finish.
 - **Overwriting the committed gas log.** `MAAT_GAS_LOG` can write to any file. Do not point it at `agent/test/integration/fork-gas.json` unless you also update `web/content/facts.ts`, because the website's parity test compares the two.

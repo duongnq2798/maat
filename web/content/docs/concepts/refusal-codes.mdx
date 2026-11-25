@@ -4,7 +4,7 @@ description: "All refusal reasons the vault can record: what each means, which a
 type: reference
 audience: [watcher, developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/Types.sol
   - contracts/src/MandateVault.sol
@@ -77,7 +77,7 @@ The token's [uiMultiplier](/docs/help/glossary#uimultiplier) changed within the 
 - **Id:** `9`
 - **Returned by:** `BUY`, `SELL`, `BORROW`, and `WITHDRAW_COLLATERAL` against debt.
 - **Raised in:** `GuardLib.multiplierBlocked`, called from `GuardLib.checkMarket` and `GuardLib.collateralHealthy`.
-- **What clears it:** for a `BUY` or a `SELL`, all three conditions below together, and never while `uiMultiplier()` or `effectiveAt()` reverts. A `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the same for every stock still supplied, and have the same two more ways out as [`FEED_STALE`](#feed_stale): a `WITHDRAW_COLLATERAL` can go through once the whole debt is repaid, and a `BORROW` once the blocked stock's collateral is withdrawn.
+- **What clears it:** for a `BUY` or a `SELL`, all three conditions below together, and never while `uiMultiplier()` or `effectiveAt()` reverts. A `BORROW` and a `WITHDRAW_COLLATERAL` against debt need the same for every stock still supplied, and have the same two more ways out as [`FEED_STALE`](#feed_stale): a `WITHDRAW_COLLATERAL` can go through once the whole debt is repaid, and a `BORROW` once the blocked stock's collateral is withdrawn, which, while debt is open, needs the debt repaid first.
   - The vault's snapshot, `lastMultiplier`, equals the token's current multiplier. An `execute` of that stock records a change, and so does a `syncMultiplier(token)` call from anyone. An `execute` records only its own token, so for a stock held as collateral, call `syncMultiplier` ([Anyone can sync](/docs/concepts/splits-and-multiplier#anyone-can-sync)).
   - The cooldown has passed since the vault recorded the change (`multiplierChangedAt`).
   - A non-zero `effectiveAt()` is in the past by at least the cooldown.
@@ -133,7 +133,7 @@ The token's own transfer policy does not allow a leg of the path, or the policy 
 - **Id:** `5`
 - **Returned by:** `BUY`, `SELL`, `SUPPLY` and `WITHDRAW_COLLATERAL`.
 - **Raised in:** `GuardLib.transferPathAuthorized` for trades, and `GuardLib.transferable` (through `MandateVault._creditPathAuthorized`) for collateral moves.
-- **What clears it:** if a preview returns it and you expect a pass, check who the preview is from. The policy also checks `tx.origin`, the account that signs the transaction, so preview with `from` set to that account: the [executor](/docs/help/glossary#executor) itself when it is a plain account (an EOA), as the agent's [CDP](/docs/help/glossary#cdp-server-wallet) account is ([tx.origin in the policy check](/docs/security/not-claimed#txorigin-in-the-policy-check)). Otherwise the blocked leg has to change, or the token's own policy has to let it through, and that policy is outside the vault. The owner can replace the pool (`queueTokenConfig`, then `applyTokenConfig`) or an adapter (`queueMandate`, then `applyMandate`) through the timelock (a credit adapter only while the current one holds no position). The `tx.origin` leg is whichever account signs, and the owner can name a new executor at once with `setExecutor`. The vault's own address cannot change.
+- **What clears it:** if a preview returns it and you expect a pass, check who the preview is from. The policy also checks `tx.origin`, the account that signs the transaction, so preview with `from` set to that account: the [executor](/docs/help/glossary#executor) itself when it is a plain account with no code, as the agent's [CDP](/docs/help/glossary#cdp-server-wallet) account is ([tx.origin in the policy check](/docs/security/not-claimed#txorigin-in-the-policy-check)). Otherwise the blocked leg has to change, or the token's own policy has to let it through, and that policy is outside the vault. The owner can replace the pool (`queueTokenConfig`, then `applyTokenConfig`) or an adapter (`queueMandate`, then `applyMandate`) through the timelock (a credit adapter only while the current one holds no position). The `tx.origin` leg is whichever account signs, and the owner can name a new executor at once with `setExecutor`. The vault's own address cannot change.
 
 ## Limits
 
@@ -227,7 +227,7 @@ A token transfer or an approval failed.
 
 ## How the agent reacts
 
-The agent is built to preview every intent before it sends anything, and then to look at the preview's reason. The agent is built and fork-tested only: no Maat vault is deployed, and the real Claude API and the CDP Server Wallet have never run in a Maat test. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, it sends nothing, so what follows is what it is built to do when it does send. The rule is all in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
+The agent is built to preview every intent before it sends anything, and then to look at the preview's reason. The agent is built and fork-tested: it has run in live mode only on a fork, and the real Claude API and the CDP Server Wallet have never run in a Maat test. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, it sends nothing, so what follows is what it is built to do when it does send. The rule is all in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
 
 ```typescript title="agent/src/refusals.ts#L5-L17"
 export const LOGGABLE_REASONS: ReadonlySet<ReasonName> = new Set<ReasonName>([
@@ -275,4 +275,4 @@ Two copies of the list are kept in step with `Types.sol` by tests: the agent's (
 
 ## A refused or failed intent needs a new id
 
-`execute` marks an intent's id as used before it runs any check, so a refused or failed intent has spent its id. Sending the same id again reverts with [`IntentAlreadyUsed`](/docs/reference/errors#intentalreadyused) and records nothing (`test_replayReverts`). `previewIntent` does not look at the id, so a reused id still previews normally ([previewIntent](/docs/reference/mandate-vault#previewintent)). Only an `execute` that reverts, such as one that runs out of gas, leaves its id unused, because a revert undoes the whole transaction. Every retry of a refused or failed intent needs a new intent id.
+`execute` marks an intent's id as used before it runs any of the checks that return a reason, so a refused or failed intent has spent its id. Sending the same id again reverts with [`IntentAlreadyUsed`](/docs/reference/errors#intentalreadyused) and records nothing (`test_replayReverts`). `previewIntent` does not look at the id, so a reused id still previews normally ([previewIntent](/docs/reference/mandate-vault#previewintent)). Only an `execute` that reverts, such as one that runs out of gas, leaves its id unused, because a revert undoes the whole transaction. Every retry of a refused or failed intent needs a new intent id.
