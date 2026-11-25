@@ -39,7 +39,7 @@ This page says what Maat protects, who can touch it, and what an attacker gets f
 | **The rules** | The [mandate](/docs/help/glossary#mandate), each stock's settings and the [payee](/docs/help/glossary#payee) list | Owner-only, and changed only through the [timelock](/docs/help/glossary#timelock) of <Fact name="timelockHours" /> |
 | **The owner role** | One address, set when the vault is created | It is immutable and no function transfers it |
 | **The [executor](/docs/help/glossary#executor)'s gas** | A little ETH in the executor account. The agent README suggests sending <Fact name="executorGasEth" />, an estimate | The CDP account policy, which is untested against the real CDP. The vault's funds are not in this account |
-| **The secrets** | The owner key, the executor key (held by the CDP wallet), the Claude API key, the CDP API key and wallet secret, and the RPC URL | Outside the repository. The agent reads the Claude key, the CDP values and the RPC URL from its environment. The owner key stays in the owner's own wallet (`--account maat-owner` in the runbook), and the agent does not need it. `.env` files are git-ignored |
+| **The secrets** | The owner key, the executor key (held by the CDP wallet), the Claude API key, the CDP API key and wallet secret, and the RPC URL (`BASE_RPC_URL`, and `BASE_RPC_URL_FALLBACK` when it is set) | Outside the repository. The agent reads the Claude key, the CDP values and the RPC URL from its environment. The owner key stays in the owner's own wallet (`--account maat-owner` in the runbook), and the agent does not need it. `.env` files are git-ignored |
 | **The agent's data folder** | `data/state.json` and `data/journal.jsonl`: unpaid bills, pending sends, the [journal](/docs/help/glossary#journal) | One agent per folder, enforced by a lock file. Tampering can make the agent skip or repeat a bill, not change what the vault allows |
 
 ## Actors
@@ -137,11 +137,11 @@ The agent reads three values for the CDP Server Wallet: `CDP_API_KEY_ID`, `CDP_A
 
 | The attacker can | but cannot |
 | --- | --- |
-| Act as the executor: ask CDP to send or sign transactions from the executor account, which is the same position as the executor-key row above | While the account policy holds: send a transaction anywhere but the vault, on any network but Base, or with any value; sign a transaction to any address but the vault, or with any value (the sign rule has no network limit); or sign a raw hash |
-| Ask CDP to sign a message or typed data from the executor account. The policy has no rule for `signEvmMessage` or `signEvmTypedData`, and the repository does not show whether CDP allows them | Use such a signature on the vault. No vault function reads a signature: `execute` checks only that the caller is the executor |
+| Act as the executor: ask CDP to send or sign transactions from the executor account, which is the same position as the executor-key row above | While the account policy holds: send a transaction anywhere but the vault, on any network but Base, or with any value; sign a transaction to any address but the vault, or with any value (the sign rule has no network limit); or sign a hash, a message or typed data |
+| Get a signature from the executor account in any way CDP enforces the policy differently from what its rules say. The policy rejects `signEvmHash`, `signEvmMessage` and `signEvmTypedData`, and no test shows that CDP enforces it | Use such a signature on the vault. No vault function reads a signature: `execute` checks only that the caller is the executor |
 | Call any function of the vault from that account | Make any function other than `execute` do more than anyone could: the rest are public and harmless, or revert `NotOwner` |
 
-The policy is attached by `cdp-setup.ts`, with the same three values. The repository does not show whether CDP would let a holder of these values change or detach the policy, and the code has never run against the real CDP: it is tested against a fake client only, and [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the shape of the rules, not that CDP enforces them. So do not count on the policy as the only barrier. If the policy could be removed, the worst case would still be the executor account's own ETH, because the vault's funds are not in that account.
+The policy is attached by `cdp-setup.ts`, with the same three values. The repository does not show whether CDP would let a holder of these values change or detach the policy, and the code has never run against the real CDP: it is tested against a fake client only, and [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the shape of the rules and parses them with the CDP SDK's own schema, not that CDP enforces them. So do not count on the policy as the only barrier. If the policy could be removed, the worst case would still be the executor account's own ETH, because the vault's funds are not in that account.
 
 **Response.** Two halves. Revoke the CDP API key and wallet secret wherever you created them (Maat's scripts cannot do this for you). In the vault, the owner replaces the executor with `setExecutor`, pointing at a new account, so that the old account can no longer call `execute`. When it is unclear whether someone else still controls the old account, the second half is the one that stops it, and it is instant.
 
@@ -152,9 +152,9 @@ The policy is attached by `cdp-setup.ts`, with the same three values. The reposi
 | Send requests on your quota, and so on your bill | Sign or send a transaction as the agent. The agent sends through CDP, and the RPC only serves its reads, estimates and receipts |
 | Make the agent's reads fail by using up the quota | Read anything that is not public chain data, or change a verdict |
 
-If the agent cannot read the vault's state, it does nothing for that round ([`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "does nothing when the vault state is unavailable"). That is a stop, not a risk to funds.
+With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to that second URL first. If the agent cannot read the vault's state, it does nothing for that round ([`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "does nothing when the vault state is unavailable"). That is a stop, not a risk to funds.
 
-**Response.** Replace the URL at your provider and update the agent's environment. This is a leaked URL. A provider that answers dishonestly is a different case, and the next section covers it.
+**Response.** Replace the URL at your provider and update the agent's environment. The optional second URL, `BASE_RPC_URL_FALLBACK`, is a secret of the same kind, and the same response applies to it. This is a leaked URL. A provider that answers dishonestly is a different case, and the next section covers it.
 
 ## Other threats
 
@@ -172,15 +172,16 @@ If the agent cannot read the vault's state, it does nothing for that round ([`ru
 
 ### What Claude reads
 
-The agent sends Claude a fixed system prompt, `SYSTEM_PROMPT`, and one user message, built by `renderUserMessage` in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts). The request gives Claude no tools. This is the whole user message:
+The agent sends Claude a system prompt and one user message, both built in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts): `systemPrompt`, fixed text apart from its credit lines, which follow `MAAT_CREDIT_ACTIONS`, and `renderUserMessage`. The request gives Claude no tools. This is the whole user message:
 
-```typescript title="agent/src/llm/prompt.ts#L29-L63"
-export function renderUserMessage({ state: s, policy: p, billUsd6 }: ProposerInput): string {
+```typescript title="agent/src/llm/prompt.ts#L49-L84"
+export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
     utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
     marketOpen: s.marketOpen,
     vaultPaused: s.paused,
+    creditActions: creditActions ? "on" : "off",
     usdc: usd(s.usdcBalance),
     newRevenue: usd(s.newRevenue),
     equity: usd(p.equityUsd6),
@@ -217,6 +218,8 @@ It holds three kinds of input, all numbers, flags, addresses, fixed names or tex
 - **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the market and pause flags, the caps and today's spend, and the Aave position.
 - **The agent's own unpaid Claude bill**, from its data folder.
 - **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers and from the Claude costs its data folder records for the week before today (`MAAT_DEFAULT_DAILY_COMPUTE_USD` when there are none). Each suggestion's `why` is built from numbers and fixed symbols.
+
+It also says whether credit actions are on, from `MAAT_CREDIT_ACTIONS`.
 
 Token names come from a fixed list (`BASKET` in `agent/src/addresses.ts`), and a token that is not on it appears as its address. The agent fetches no news, social post or web page: its only network clients are the RPC, the Claude API and, in live mode, CDP. So the way to mislead Claude is with wrong numbers, for example from a dishonest RPC, not with written instructions. Its answer must match the proposal schema, or the whole answer is rejected. This describes the code: the agent has never run against the real Claude API.
 

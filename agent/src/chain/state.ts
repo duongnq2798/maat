@@ -28,6 +28,18 @@ export interface TokenState {
   valueUsd6: bigint;
 }
 
+/** The New York local time of the state block and that date's entries, as the mandate's MarketCalendar reports them. */
+export interface CalendarDay {
+  /** Days since 1970-01-01 in New York time: the NYSE date. */
+  etDay: bigint;
+  /** 0 = Sunday ... 6 = Saturday. */
+  weekday: number;
+  minuteOfDay: number;
+  holiday: boolean;
+  /** The early close in minutes after midnight, or 0 when the session closes at 16:00. */
+  earlyCloseMin: number;
+}
+
 export interface CreditState {
   readable: boolean;
   debt: bigint;
@@ -48,6 +60,8 @@ export interface VaultState {
   spentToday: bigint;
   mandate: Mandate;
   marketOpen: boolean | null;
+  /** null when a calendar view failed, like marketOpen. */
+  calendar: CalendarDay | null;
   tokens: TokenState[];
   credit: CreditState | null;
   equityUsd6: bigint;
@@ -62,6 +76,17 @@ function must<T>(r: Result | undefined, what: string): T {
 
 function opt<T>(r: Result | undefined): T | null {
   return r && r.status === "success" ? (r.result as T) : null;
+}
+
+/** localTime's NYSE date with its holiday and early close, from [localTime, (isHoliday, earlyCloseMin) per candidate day]. */
+function calendarDay(r: Result[], etDays: bigint[]): CalendarDay | null {
+  const local = opt<readonly [bigint, bigint, bigint]>(r[0]);
+  const i = local === null ? -1 : etDays.indexOf(local[0]);
+  if (local === null || i < 0) return null;
+  const holiday = opt<boolean>(r[1 + 2 * i]);
+  const earlyCloseMin = opt<number>(r[2 + 2 * i]);
+  if (holiday === null || earlyCloseMin === null) return null;
+  return { etDay: local[0], weekday: Number(local[1]), minuteOfDay: Number(local[2]), holiday, earlyCloseMin: Number(earlyCloseMin) };
 }
 
 export async function readVaultState(client: StateClient, vault: Address): Promise<VaultState> {
@@ -109,9 +134,19 @@ export async function readVaultState(client: StateClient, vault: Address): Promi
     { address: t, abi: b20AssetAbi, functionName: "decimals" },
     { address: t, abi: b20AssetAbi, functionName: "uiMultiplier" },
   ]);
+  // etOffsetSeconds is 4 or 5 hours, so the NYSE date is the date of ts - 4 h or of ts - 5 h: read both, keep localTime's.
+  const etDays = [(timestamp - 4n * 3600n) / 86_400n, (timestamp - 5n * 3600n) / 86_400n];
+  const dayCalls = [
+    { address: mandate.calendar, abi: marketCalendarAbi, functionName: "localTime", args: [timestamp] },
+    ...etDays.flatMap((d) => [
+      { address: mandate.calendar, abi: marketCalendarAbi, functionName: "isHoliday", args: [d] },
+      { address: mandate.calendar, abi: marketCalendarAbi, functionName: "earlyCloseMin", args: [d] },
+    ]),
+  ];
   const tail = [
     { address: usdc, abi: erc20Abi, functionName: "balanceOf", args: [vault] },
     { address: mandate.calendar, abi: marketCalendarAbi, functionName: "isOpen", args: [timestamp, mandate.sessionMode] },
+    ...dayCalls,
     ...(hasCredit
       ? [
           { address: mandate.creditAdapter, abi: creditAdapterAbi, functionName: "debt" },
@@ -130,13 +165,15 @@ export async function readVaultState(client: StateClient, vault: Address): Promi
   const base = tokenList.length * PER_TOKEN;
   const usdcBalance = must<bigint>(at(base), "usdc.balanceOf(vault)");
   const marketOpen = opt<boolean>(at(base + 1));
+  const calendar = calendarDay(r2.slice(base + 2, base + 2 + dayCalls.length), etDays);
 
   let credit: CreditState | null = null;
   const supplied: bigint[] = tokenList.map(() => 0n);
   if (hasCredit) {
-    const debt = opt<bigint>(at(base + 2));
-    const hf = opt<bigint>(at(base + 3));
-    const sup = tokenList.map((_, i) => opt<bigint>(at(base + 4 + i)));
+    const cb = base + 2 + dayCalls.length;
+    const debt = opt<bigint>(at(cb));
+    const hf = opt<bigint>(at(cb + 1));
+    const sup = tokenList.map((_, i) => opt<bigint>(at(cb + 2 + i)));
     const readable = debt !== null && hf !== null && sup.every((s) => s !== null);
     credit = { readable, debt: debt ?? 0n, healthFactor: hf ?? 0n };
     sup.forEach((s, i) => (supplied[i] = s ?? 0n));
@@ -195,6 +232,7 @@ export async function readVaultState(client: StateClient, vault: Address): Promi
     spentToday,
     mandate,
     marketOpen,
+    calendar,
     tokens,
     credit,
     equityUsd6: gross > debt ? gross - debt : 0n,

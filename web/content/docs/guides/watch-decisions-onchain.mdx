@@ -14,6 +14,8 @@ sources:
   - contracts/script/Deploy.s.sol
   - agent/src/abi/generated.ts
   - agent/src/loop/runOnce.ts
+  - agent/src/chain/logWindows.ts
+  - agent/src/refusals.ts
   - agent/src/intent.ts
   - agent/src/types.ts
   - agent/src/ledger/journal.ts
@@ -143,7 +145,7 @@ The ids come from the order of the enums. The `Reason` ids are append-only: `Typ
 
 The agent decodes a `Decision` with viem, and this is the function it uses. It reads the logs of a receipt with the vault's ABI (`mandateVaultAbi`, generated from the compiled contract into `agent/src/abi/generated.ts`), keeps the log that came from the vault and carries the intent id, and turns the `reason` number into its name with the agent's own list of reasons. This is a copy of the code, and a test fails if the file changes and this page does not.
 
-```typescript title="agent/src/loop/runOnce.ts#L72-L76"
+```typescript title="agent/src/loop/runOnce.ts#L83-L87"
 function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
   const l = parsed.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId.toLowerCase() === id.toLowerCase());
@@ -151,16 +153,19 @@ function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | u
 }
 ```
 
-A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how the agent finds a `Decision` by intent id when it did not see the receipt: it asks the vault whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at.
+A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how the agent finds a `Decision` by intent id for a send an earlier round left pending. When the transaction is mined, it reads the `Decision` from the transaction's receipt first. Without one there, it reads the latest block number, asks the vault at that block whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at up to that block.
 
-```typescript title="agent/src/loop/runOnce.ts#L173-L176"
-    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
+```typescript title="agent/src/loop/runOnce.ts#L203-L207"
+    // usedIntent is read at a fresh head, so a used intent's Decision lies between the send's block and that head.
+    const head = await d.txClient.getBlockNumber({ cacheTime: 0 });
+    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId], blockNumber: head });
     if (used) {
-      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });
-      const decision = decisionIn(logs, d.vault, p.intentId);
+      const decision = await decisionInLogs(p.intentId, BigInt(p.block), head);
 ```
 
-This page does not write a viem snippet of its own, because nothing would compile it. Both excerpts are the agent's code. The first runs in the agent's fork test, which sends intents through the agent's loop on a Base fork and checks that each decoded `Decision` has the `allowed` and `reason` the test expects. The second runs when a [round](/docs/help/glossary#round) settles a send that an earlier round left pending. The agent's unit tests cover it with a fake chain client, and the fork test does not reach it.
+`decisionInLogs` asks for the logs in windows of at most 9,000 blocks, oldest first, and stops at the first `Decision` for the id. When the RPC refuses a window for spanning too many blocks, it halves the window, down to 200 blocks, the limit of `mainnet.base.org`. If the id is used and no window holds its `Decision`, the round halts.
+
+This page does not write a viem snippet of its own, because nothing would compile it. Both excerpts are the agent's code. The first runs in the agent's fork test, which sends intents through the agent's loop on a Base fork and checks that each decoded `Decision` has the `allowed` and `reason` the test expects. The second runs when a [round](/docs/help/glossary#round) settles a send that an earlier round left pending and whose receipt holds no `Decision`. The agent's unit tests cover it with a fake chain client, and the fork test does not reach it.
 
 </Step>
 
@@ -186,7 +191,7 @@ export function rationaleHash(text: string): Hex {
 }
 ```
 
-So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` also computes for text it reads from standard input. Hash the [rationale](/docs/help/glossary#rationale) exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. This pipe does that: `jq` decodes the `intent` line of the id and prints its `rationale` with no newline after it (`-j`), and `cast keccak` hashes what arrives.
+So the hash is `keccak256` of the UTF-8 bytes of the text, which `cast keccak` also computes for text it reads from standard input. Hash the [rationale](/docs/help/glossary#rationale) exactly as the journal stores it after JSON decoding, because a changed quote or a trailing newline gives another hash. This pipe does that: `jq` decodes the `intent` line of the id and prints its `rationale` with no newline after it (`-j`), and `cast keccak` hashes what arrives. The journal's `rationale` is the text the agent hashed, so it already holds anything the agent added to Claude's text: for a `MARKET_CLOSED` refusal it logs onchain, the closed phase, as in `GOOGLc underweight (market closed, weekend)`.
 
 ```bash
 jq -j --arg id "<INTENT_ID>" 'select(.kind=="intent" and (.intentId|ascii_downcase)==($id|ascii_downcase)) | .rationale' data/journal.jsonl | cast keccak
@@ -346,7 +351,7 @@ Adding a holiday or an earlier close to the vault's calendar is instant too, for
 - **Writing `Action`, `Reason`, `Mandate` or `TokenConfig` in the `cast` declaration.** `cast` works from ABI types, so write `uint8` for an enum and a tuple of field types for a struct. The numbers it prints for `action` and `reason` are positions in the enums.
 - **Leaving out the `indexed` markers.** The help text of `cast logs` says that indexed parameters must be marked in the declaration, and a wrong marking decodes the log wrongly.
 - **Reading `amount` as dollars.** It is in raw units. For a `BUY` it is USDC, which has <Fact name="usdcDecimals" />, even though `token` is the stock. For a `SELL` it is in the stock's own decimals.
-- **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per UTC day, and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
+- **Taking a missing `Decision` for no attempt.** The agent previews first. It sends a [refusal](/docs/help/glossary#refusal) onchain only for some reasons and at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and it only journals the rest ([Read a decision](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you)).
 - **Expecting a `Decision` from a reverted `execute`.** A call from another address reverts with `NotExecutor`, and a used id reverts with `IntentAlreadyUsed`. Neither emits anything.
 - **Expecting a journal line for every `Decision`.** The journal belongs to one agent and one operator, and no journal holds text for the intents the owner sent by hand. The runbook's credit smoke test and unwind carry a placeholder `rationaleHash` (the hash of a placeholder word such as `smoke` or `unwind`). The owner's first two BUYs in the go-live runbook, `deployments/go-live.md`, hash the rationale text that `agent/scripts/first-decision.ts` prints, which that runbook has the owner keep in its record table.
 - **Hashing altered text.** A trailing newline, a re-typed quote, a `$` the shell expanded inside double quotes, a line break turned into CRLF (a native Windows `jq.exe` without `-b`), or text that was not decoded from JSON gives another hash.

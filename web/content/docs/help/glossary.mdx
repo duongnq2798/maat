@@ -67,7 +67,7 @@ A short code registered for a project, which ERC-8021 appends to a transaction's
 
 ### CDP Server Wallet
 
-The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in [live mode](/docs/help/glossary#live-mode). Its account policy accepts only zero-value transactions to the vault, sending on Base only, and rejects raw hash signing ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
+The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in [live mode](/docs/help/glossary#live-mode). Its account policy accepts only zero-value transactions to the vault, sending on Base only, and rejects signing a hash, a message or typed data ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
 
 ### Chainlink equity feed
 
@@ -83,7 +83,7 @@ A function that only a test environment offers and that sets chain state directl
 
 ### Compute bill
 
-What the agent owes for its Claude usage. The agent prices each Claude answer from its token counts (`agent/src/llm/pricing.ts`), and once at least <Fact name="billMinUsd" /> is unpaid, its own code, not Claude, puts a `PAY_EXPENSE` to the expense [payee](/docs/help/glossary#payee) first in the round's queue. The vault does not pay Anthropic: the payee is the wallet that pays for the Claude usage, the owner's for Agent #1 ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)).
+What the agent owes for its Claude usage. The agent prices each Claude answer from its token counts (`agent/src/llm/pricing.ts`), and once at least <Fact name="liveBillMinUsd" /> is unpaid in live mode (<Fact name="billMinUsd" /> in dry-run, unless `MAAT_BILL_MIN_USD` sets another amount), its own code, not Claude, puts a `PAY_EXPENSE` to the expense [payee](/docs/help/glossary#payee) first in the round's queue. The vault does not pay Anthropic: the payee is the wallet that pays for the Claude usage, the owner's for Agent #1 ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)).
 
 ## D
 
@@ -97,7 +97,7 @@ The last stretch before the [feed edge](/docs/help/glossary#feed-edge) on every 
 
 ### Dry run
 
-The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude, previews every [intent](/docs/help/glossary#intent) and writes its journal, but sends no transaction ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). It still calls Claude, so the cost of that usage still accrues ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)).
+The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude, previews every [intent](/docs/help/glossary#intent) and writes its journal, but sends no transaction ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). It still calls Claude, so the cost of that usage still accrues ([Paying its own bill](/docs/concepts/treasury-loop#paying-its-own-bill)). Live mode refuses a data folder whose journal holds dry-run rows, so a dry run gets its own `MAAT_DATA_DIR` and the vault never pays its bill.
 
 ## E
 
@@ -195,7 +195,7 @@ A read-only call, `previewIntent`, made with `eth_call` as the executor, that re
 
 ### Rationale
 
-The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. Only its `keccak256` goes onchain, as `rationaleHash` in the [Decision](/docs/help/glossary#decision), and the vault does not check it; the text itself is in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
+The short text that explains an [intent](/docs/help/glossary#intent). Claude writes it for its own proposals, in at most <Fact name="maxRationaleChars" /> characters, and the agent's code writes it for a `PAY_EXPENSE`. When the agent logs a `MARKET_CLOSED` refusal, it appends the closed phase to Claude's text, for example `(market closed, weekend)`. Only its `keccak256` goes onchain, as `rationaleHash` in the [Decision](/docs/help/glossary#decision), and the vault does not check it; the text itself is in the agent's [journal](/docs/help/glossary#journal) ([From a ledger row to its reasoning](/docs/get-started/read-a-decision#from-a-ledger-row-to-its-reasoning)).
 
 ### Raw amount
 

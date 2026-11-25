@@ -12,6 +12,11 @@ sources:
   - agent/scripts/cdp-setup.ts
   - agent/scripts/smoke-claude.ts
   - agent/scripts/first-decision.ts
+  - agent/scripts/heartbeat.ts
+  - agent/scripts/restart-loop.ts
+  - agent/src/loop/heartbeat.ts
+  - agent/src/runtime.ts
+  - agent/src/redact.ts
   - agent/README.md
   - agent/src/config.ts
   - agent/src/loop/lock.ts
@@ -30,6 +35,8 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | Entry | What it does | What it needs | Outside services |
 | --- | --- | --- | --- |
 | `npm run agent` | Runs one round or the loop | The settings in [Agent configuration](/docs/reference/agent-configuration) | Your [Base](/docs/help/glossary#base) RPC, Claude (paid) in every mode, and the CDP Server Wallet in live mode |
+| `npm run agent:loop` | Runs `npm run agent` and starts it again each time it exits, and warns when rounds stop | What `npm run agent` needs | Those of `npm run agent`, and a Windows notification |
+| `npm run agent:heartbeat` | Says how long ago the agent's last round ended | The agent's data folder | None |
 | `npm test` | Runs the unit tests | Nothing | None |
 | `npm run test:integration` | Runs the [fork test](/docs/help/glossary#fork-test) | A Base archive RPC and the Base build of Anvil | Your Base RPC. No Claude call and no CDP call |
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
@@ -37,6 +44,8 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | `cdp-setup.ts` | [Owner](/docs/help/glossary#owner) only. Creates the [executor](/docs/help/glossary#executor) account and its policy | The three CDP credentials | Coinbase CDP |
 | `first-decision.ts` | For the owner. Builds one `BUY` [intent](/docs/help/glossary#intent) offline and prints its calldata and `cast` commands | A vault address, a basket token, a salt or an id, and a Builder Code | None |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
+| `heartbeat.ts` | The file that `npm run agent:heartbeat` runs | See `agent:heartbeat` | None |
+| `restart-loop.ts` | The file that `npm run agent:loop` runs | See `agent:loop` | See `agent:loop` |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
 
 ## npm scripts
@@ -61,13 +70,44 @@ npm run agent -- --once --dry-run
 
 It needs a [vault](/docs/help/glossary#vault) to read and makes a paid call to Claude, so this page shows the command and no output.
 
-At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
+When `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, the agent first prints a warning that names it and says that Claude is called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. It does not stop for it. At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
 
-- With `--once` it prints one line with the mode, the vault, the executor and the data directory, runs one round, prints the round's report as JSON, releases the lock and exits. The report includes the run id, the `status`, the block it read, `marketOpen`, the hashes in `sent`, the counts `skipped` and `proposals`, and a `haltReason` when the round halted.
+- With `--once` it prints one line with the mode, the vault, the executor, the data directory, whether credit actions are on, the daily Claude spend cap and the bill minimum, runs one round, prints the round's report as JSON, releases the lock and exits. The report includes the run id, the `status`, the block it read, `marketOpen`, the hashes in `sent`, the counts `skipped` and `proposals`, and a `haltReason` when the round halted.
 - Without `--once` it runs a round, then waits. The wait is <Fact name="loopMinutes" /> after a round that saw the market open, and <Fact name="offSessionMinutes" /> after any other round, including a round that threw an error. The agent logs a round that throws and tries again after the longer wait.
 - A stop signal (Ctrl+C, or SIGTERM) ends the wait. It does not interrupt a round in progress: the agent finishes that round, releases the lock and exits.
 
 The exit code does not tell you how a round went. `main.ts` sets no exit code, so a round that halts exits like a round that completes, and the `status` in the report is the thing to read. The process ends with an error when something throws outside the round's own handling, for example an invalid configuration, a lock held by another agent, a failed CDP lookup in live mode, or an unexpected error in a `--once` round. [Messages the agent prints](#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run) quotes the agent's own errors that stop a start. When a round halts or leaves a transaction pending, [agent/README.md](https://github.com/duongnq2798/maat/blob/main/agent/README.md#after-a-halted-or-pending-tx-cycle) says what to read and what the next round does.
+
+### agent:loop
+
+<ScriptEntry name="agent:loop" />
+
+Keeps the agent running on the owner's PC. It starts `npm run agent` in `agent/` and, each time the agent exits, starts it again after a pause that doubles from 10 s up to 15 min, and goes back to 10 s after a run of at least 10 min. Arguments after `--` go to every `npm run agent`, so `npm run agent:loop -- --dry-run` keeps a dry run going. The agent reads `agent/.env` itself, and the loop reads only `MAAT_DATA_DIR` from it, to find the heartbeat.
+
+Every 5 min it reads `heartbeat.json`, which the agent writes to its data folder after every round. When the last round ended more than 90 min ago, counted at most from the loop's own start, it prints a `STALE` line, and on Windows it shows a notification, once per stale stretch. After 3 exits in a row that each came less than 10 min after their start, it prints a `FAILING` line and notifies once; a run of at least 10 min ends that stretch. Ctrl+C stops the agent and the loop: the agent finishes its round, and the loop ends it, and on Windows its whole process tree, if it has not stopped within 150 s.
+
+```bash
+cd agent
+npm run agent:loop
+```
+
+It runs what `npm run agent` runs, so it needs the same settings, and in live mode it sends transactions round after round. The lines it prints begin `restart-loop:`, for example `restart-loop: STALE: no round has ended for <AGE>; <LAST_ROUND>` and `restart-loop: FAILING: <N> starts in a row ended within 10 min (last: <EXIT>)`.
+
+Its unit tests run it on a fake clock, with a fake agent process and a fake heartbeat (`agent/test/restartLoop.test.ts`).
+
+### agent:heartbeat
+
+<ScriptEntry name="agent:heartbeat" />
+
+Says how long ago the agent's last round ended, from the `heartbeat.json` in its data folder, and how that round ended. It reads one file and sends nothing. The data folder is `--data-dir` when given, else `MAAT_DATA_DIR` from the environment or from `agent/.env` (only that key is read), else `./data`, relative to `agent/`.
+
+```bash
+cd agent
+npm run agent:heartbeat
+npm run agent:heartbeat -- --data-dir ./data-dryrun --max-age-min 90
+```
+
+It exits with 0 when the last round is at most `--max-age-min` minutes old (90 by default), 1 when it is older, and 2 when there is no heartbeat yet, the file cannot be read, or an argument is not valid.
 
 ### test
 
@@ -137,7 +177,7 @@ wrote …\agent\src\abi\generated.ts
 
 ## Script files
 
-Only `gen-abis.ts` has an npm script, `gen:abi`. You run the other files in `agent/scripts` with Node or `npx tsx`.
+Three files have an npm script: `gen-abis.ts` (`gen:abi`), `heartbeat.ts` (`agent:heartbeat`) and `restart-loop.ts` (`agent:loop`). You run the other files in `agent/scripts` with Node or `npx tsx`.
 
 ### cdp-setup.ts
 
@@ -145,7 +185,7 @@ Only `gen-abis.ts` has an npm script, `gen:abi`. You run the other files in `age
 
 <Callout type="warning" title="Owner only">
 
-Only the vault owner runs this script, and only once. It talks to Coinbase. It creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, then creates an account policy and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects raw hash signing. Every run creates a new policy and points the account at it, so a second run creates a second policy.
+Only the vault owner runs this script, and only once. It talks to Coinbase. It first creates an account policy, so that a policy CDP refuses leaves no account behind, then creates the executor account in the CDP Server Wallet, or finds it if an account with that name exists, and attaches the policy to the account. The policy accepts sending a transaction only on Base, only to the vault you pass in and only with a value of zero. It accepts signing a transaction only to that vault with a value of zero, and it rejects signing a hash, a message or typed data. Neither rule limits which vault function a transaction calls. Every run creates a new policy and points the account at it, so a second run creates a second policy.
 
 It needs `CDP_API_KEY_ID`, `CDP_API_KEY_SECRET` and `CDP_WALLET_SECRET` in `.env`, and it reads `CDP_ACCOUNT_NAME` for the account name. Unlike the agent, it falls back to `maat-executor` only when that variable is absent. A blank `CDP_ACCOUNT_NAME=` gives it an empty name, which the CDP SDK rejects before any call to the CDP API, with `Either address or name must be provided`. The script stops with that error before it creates an account or a policy, so set a name or delete the line. It sends no transaction on Base and does not touch the vault.
 
@@ -154,7 +194,7 @@ cd agent
 node --env-file=.env --import tsx scripts/cdp-setup.ts <VAULT_ADDRESS>
 ```
 
-If the vault address is missing or is not an address, it prints its usage and exits with an error. On success it prints the account address and the policy id, then three steps that you do yourself: call `setExecutor` on the vault from the owner wallet, send a little ETH on Base to the account for gas, and set `MAAT_EXECUTOR` to the account address in `.env`. [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) has the owner's command under "Switch the executor to the CDP Server Wallet". This page shows no output for the script, because the CDP path has never run against the real CDP.
+If the vault address is missing or is not an address, it prints its usage and exits with an error. On success it prints the account address and the policy id, then three steps that you do yourself: send <Fact name="executorGasEth" /> on Base to the account for gas, call `setExecutor` on the vault from the owner wallet at go-live only, and then set `MAAT_EXECUTOR` to the account address in `.env`. Until `setExecutor` has run, a round needs the current executor in `MAAT_EXECUTOR`. [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) has the owner's command under "Switch the executor to the CDP Server Wallet". This page shows no output for the script, because the CDP path has never run against the real CDP.
 
 </Callout>
 
@@ -183,6 +223,18 @@ node --import tsx scripts/first-decision.ts --vault <VAULT_ADDRESS> --token NVDA
 The intent's `minOut` is 0, as the agent sends it for a `BUY`: the vault swaps with the larger of `minOut` and its own oracle floor, so the script needs no price. Its payee is the zero address. The amount is not capped at the vault's USDC balance, which would take a read, so a `BUY` larger than the balance gets `INSUFFICIENT_BALANCE` from the vault. The vault accepts each id once, and `execute` reverts with [`IntentAlreadyUsed`](/docs/reference/errors#intentalreadyused) on an id it has seen, so every send needs a new salt. The send template sets a gas limit of <Fact name="executeGasFloor" />, the floor the agent uses for `execute`.
 
 It exits with 0 when it prints the intent, or its usage for `--help`. It exits with 1 when a required flag is missing or a value is not valid, and with 2 when it cannot read the flags, for example an unknown one. Both print the error and the usage. It is not an npm script; `npm run typecheck` checks it and `npm test` runs its unit tests.
+
+### heartbeat.ts
+
+<ScriptFile name="heartbeat.ts" />
+
+The file behind `npm run agent:heartbeat`. It also exports `agentDataDir`, the rule both scripts use to find the agent's data folder. See [agent:heartbeat](#agentheartbeat) for its flags and exit codes.
+
+### restart-loop.ts
+
+<ScriptFile name="restart-loop.ts" />
+
+The file behind `npm run agent:loop`. It starts the agent with `npm run agent`, through a shell on Windows, and shows its notifications through the Windows PowerShell that ships with Windows; on other systems the `STALE` and `FAILING` lines are the only warning. See [agent:loop](#agentloop) for what it watches.
 
 ### gen-abis.ts
 
@@ -234,21 +286,25 @@ The start stops with one of these errors before the `maat agent: mode=` line, so
 | `could not acquire <FILE>` | The start found a stale lock file, one whose pid no longer runs or that is unreadable and older than <Fact name="lockStaleSec" />, tried to delete it, and found a stale one again on its second and last try, for example because the file could not be deleted. | [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder) | None |
 | `unsupported state version <N>` | The `version` in `data/state.json` is not 1. A `state.json` that is not valid JSON stops the start too, with the parser's error. | [State file format](/docs/guides/run-the-agent#state-file-format) | [`store.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/store.test.ts) |
 | `invalid builder code "<CODE>"` | In live mode, `MAAT_BUILDER_CODE` does not match `^[a-z0-9_]{1,32}$`. The agent checks it before any CDP call. | [MAAT_BUILDER_CODE](/docs/reference/agent-configuration#maat_builder_code) | [`builderCode.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/builderCode.test.ts), [`runtime.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runtime.test.ts) |
+| `live mode refuses data dir <DIR>: its journal holds dry-run rows (first: run <RUN_ID> at <TS>); give live its own MAAT_DATA_DIR` | In live mode, the data folder's journal holds a row a dry run wrote. The agent checks it before any CDP call. Point `MAAT_DATA_DIR` at a folder of its own for live mode. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | [`runtime.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runtime.test.ts) |
+| `dry-run refuses data dir <DIR>: its journal holds live rows (first: run <RUN_ID> at <TS>); give the dry-run its own MAAT_DATA_DIR` | In dry-run mode, from `MAAT_MODE` or `--dry-run`, the data folder's journal holds a live round or a live send. The refusal keeps that folder for live mode. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | [`runtime.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runtime.test.ts) |
 | `CDP account "<NAME>" is <ADDRESS>, which does not match MAAT_EXECUTOR <ADDRESS>` | In live mode, the CDP account that `CDP_ACCOUNT_NAME` names has another address than `MAAT_EXECUTOR`. One cause is a `MAAT_EXECUTOR` already set in your shell, which `.env` does not replace. This is tested against a fake CDP client only. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | [`cdpSender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpSender.test.ts) |
 
 ### In the journal
 
-A round writes these to its [journal](/docs/help/glossary#journal), `data/journal.jsonl`, as the `message` of an `error` or a `mismatch` line, or as the `error` of a `run` or a `skip` line. Each row says which. When a `run` line has an `error`, the round has no proposals from Claude, and a [compute bill](/docs/help/glossary#compute-bill) that is due, at least <Fact name="billMinUsd" />, is still queued as a `PAY_EXPENSE`. A `skip` line means that the proposal never became an [intent](/docs/help/glossary#intent), so nothing was previewed or sent for it.
+A round writes these to its [journal](/docs/help/glossary#journal), `data/journal.jsonl`, as the `message` of an `error` or a `mismatch` line, or as the `error` of a `run` or a `skip` line. Each row says which. When a `run` line has an `error`, the round has no proposals from Claude, and a [compute bill](/docs/help/glossary#compute-bill) that has reached the bill minimum, <Fact name="liveBillMinUsd" /> in live mode and <Fact name="billMinUsd" /> in a dry run unless `MAAT_BILL_MIN_USD` sets it, is still queued as a `PAY_EXPENSE`. A `skip` line means that the proposal never became an [intent](/docs/help/glossary#intent), so nothing was previewed or sent for it.
 
 | Message | What it means | Read | Unit test |
 | --- | --- | --- | --- |
 | `state unavailable: <ERROR>` | An `error` line. A required read of the vault failed, and the round ended `no-state` without doing anything else. | [Run one round](/docs/guides/run-the-agent#run-one-round) | None |
 | `vault executor is <ADDRESS>, agent is <ADDRESS>` | An `error` line. The vault's executor is not `MAAT_EXECUTOR`. The round ended `wrong-executor` right after it read the vault, before the policy or Claude, so it sent nothing. | [Common mistakes](/docs/guides/run-the-agent#common-mistakes), in Run the agent | None |
-| `claude: <ERROR>` | A `run` line. The request to Claude failed before an answer came back. The agent records a cost of zero for it. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
+| `llm cap: <SPENT> of <CAP> spent on UTC day <DAY>; Claude not called` | A `run` line. The Claude spend of the UTC day has reached `MAAT_MAX_LLM_USD_PER_DAY`, so the round did not call Claude. The agent records a cost of zero for it. | [MAAT_MAX_LLM_USD_PER_DAY](/docs/reference/agent-configuration#maat_max_llm_usd_per_day) | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
+| `claude: <ERROR>` | A `run` line. The request to Claude failed before an answer came back, for example with `ANTHROPIC_API_KEY is not set`. The error is cut to its first line, at most 300 characters, after URLs, keys, tokens and the values of secret settings are redacted. The agent records a cost of zero for it. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
 | `claude: malformed response: <ERROR>` | A `run` line. The answer had no usage or no content to read. The agent records a cost of zero for it. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | None |
 | `claude refused` | A `run` line. Claude declined to answer. The agent adds the answer's token cost to the compute bill. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
 | `claude output truncated` | A `run` line. The answer reached the request's token limit and was cut off. The agent adds its token cost to the compute bill. | [What happens if Claude is unavailable?](/docs/help/faq#what-happens-if-claude-is-unavailable) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts) |
 | `invalid proposal JSON: <ERROR>` | A `run` line. The answer is not JSON, or it does not fit the proposal schema. The agent adds its token cost to the compute bill. | [Step 2: the policy and Claude](/docs/get-started/how-a-decision-is-made#step-2-the-policy-and-claude) | [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts), [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
+| `credit actions are off: <ACTION> dropped before the preview` | A `skip` line. Claude proposed `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY` while `MAAT_CREDIT_ACTIONS` is `off`. | [MAAT_CREDIT_ACTIONS](/docs/reference/agent-configuration#maat_credit_actions) | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
 | `symbol <SYMBOL> does not fit <ACTION>` | A `skip` line. `BORROW`, `REPAY` and `PAY_EXPENSE` take `USDC`, and the other actions take a stock. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts), [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
 | `<SYMBOL> is not listed in the vault` | A `skip` line. The vault's token list does not hold that stock. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | None |
 | `no price for <SYMBOL>` | A `skip` line. A `SELL`, `SUPPLY` or `WITHDRAW_COLLATERAL` needs the stock's price to turn dollars into the stock's units, and the stock has no feed, or its feed's answer could not be read or is not valid. | [Read the journal](/docs/guides/run-the-agent#read-the-journal) | [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts) |

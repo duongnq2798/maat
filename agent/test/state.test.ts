@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { BASKET, USDC } from "../src/addresses.js";
 import { readVaultState, StateUnavailable } from "../src/chain/state.js";
-import { CALENDAR, CREDIT, FEEDS, PRICES, VAULT, standardScene } from "./fakes/fakeChain.js";
+import { CALENDAR, CREDIT, FEEDS, PRICES, VAULT, standardScene, withCalendar } from "./fakes/fakeChain.js";
 
 describe("readVaultState", () => {
   it("reads the standard scene", async () => {
@@ -78,6 +78,50 @@ describe("readVaultState", () => {
   it("treats an unreadable calendar as unknown", async () => {
     const s = await readVaultState(standardScene().fail(CALENDAR, "isOpen").client(), VAULT);
     expect(s.marketOpen).toBeNull();
+    expect(s.calendar).toBeNull();
+  });
+
+  const NOV26 = 1_795_651_200n; // 2026-11-26T00:00Z; New York is on EST (UTC-5)
+
+  it("reads the NYSE local day at the state block's timestamp", async () => {
+    const f = withCalendar(standardScene());
+    f.block = { number: 100n, timestamp: NOV26 + 15n * 3600n }; // Thanksgiving, 10:00 ET
+    const s = await readVaultState(f.client(), VAULT);
+    expect(s.marketOpen).toBe(false);
+    expect(s.calendar).toEqual({ etDay: 20_783n, weekday: 4, minuteOfDay: 600, holiday: true, earlyCloseMin: 0 });
+  });
+
+  it("takes the holiday and early close of the date localTime names, not of the UTC date", async () => {
+    const f = withCalendar(standardScene());
+    f.block = { number: 100n, timestamp: NOV26 + 86_400n + 4n * 3600n + 1800n }; // Friday 04:30 UTC: Thursday 23:30 ET
+    const s = await readVaultState(f.client(), VAULT);
+    expect(s.calendar).toEqual({ etDay: 20_783n, weekday: 4, minuteOfDay: 1410, holiday: true, earlyCloseMin: 0 });
+    f.block = { number: 100n, timestamp: NOV26 + 86_400n + 19n * 3600n }; // Friday 14:00 ET
+    expect((await readVaultState(f.client(), VAULT)).calendar).toEqual({ etDay: 20_784n, weekday: 5, minuteOfDay: 840, holiday: false, earlyCloseMin: 780 });
+  });
+
+  it("reads the calendar views in the multicall that reads isOpen", async () => {
+    const f = withCalendar(standardScene());
+    const client = f.client();
+    const batches: string[][] = [];
+    const orig = client.multicall;
+    client.multicall = (async (p: { contracts: { functionName: string }[] }) => {
+      batches.push(p.contracts.map((c) => c.functionName));
+      return orig(p as never);
+    }) as typeof client.multicall;
+    await readVaultState(client, VAULT);
+    const withIsOpen = batches.filter((b) => b.includes("isOpen"));
+    expect(withIsOpen).toHaveLength(1);
+    expect(withIsOpen[0]).toEqual(expect.arrayContaining(["localTime", "isHoliday", "earlyCloseMin"]));
+    expect(f.calls.filter((c) => c.functionName === "localTime").map((c) => c.args)).toEqual([[f.block.timestamp]]);
+  });
+
+  it("reports the calendar as null, not an error, when one of its views fails", async () => {
+    for (const view of ["localTime", "isHoliday", "earlyCloseMin"]) {
+      const s = await readVaultState(withCalendar(standardScene()).fail(CALENDAR, view).client(), VAULT);
+      expect(s.calendar, view).toBeNull();
+      expect(s.marketOpen, view).not.toBeNull();
+    }
   });
 
   it("throws StateUnavailable when a vault-level read fails", async () => {

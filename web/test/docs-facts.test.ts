@@ -61,6 +61,7 @@ describe("facts the docs cite (docs spec §2.4)", () => {
   it("agent settings defaults", () => {
     expect(zodDefault("MAAT_MAX_TX_PER_DAY")).toBe(DOCS_FACTS.maxTxPerDay.value);
     expect(zodDefault("MAAT_DEFAULT_DAILY_COMPUTE_USD")).toBe(DOCS_FACTS.dailyComputeUsd.value);
+    expect(zodDefault("MAAT_MAX_LLM_USD_PER_DAY")).toBe(DOCS_FACTS.maxLlmUsdPerDay.value);
   });
 
   it("Claude proposal limits", () => {
@@ -78,7 +79,7 @@ describe("facts the docs cite (docs spec §2.4)", () => {
 
   it("the receipt wait, and the window after which a pending send with no trace is dropped", () => {
     expect(tsConst("agent/src/loop/runOnce.ts", "RECEIPT_TIMEOUT_MS") / 1000).toBe(DOCS_FACTS.receiptTimeoutSec.value);
-    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_BLOCKS")).toBe(DOCS_FACTS.pendingWindowBlocks.value);
+    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_SECONDS") / 60).toBe(DOCS_FACTS.pendingWindowMinutes.value);
   });
 
   it("the age at which a lock file with no readable pid is stale", () => {
@@ -114,6 +115,7 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     const minutes = /OFF_SESSION_MS\s*=\s*(\d+)\s*\*\s*60_000/.exec(readRepo("agent/src/loop/scheduler.ts"))?.[1];
     expect(Number(minutes)).toBe(DOCS_FACTS.offSessionMinutes.value);
     expect(tsConst("agent/src/loop/runOnce.ts", "BILL_MIN_USD6") / 1e6).toBe(DOCS_FACTS.billMinUsd.value);
+    expect(tsConst("agent/src/loop/runOnce.ts", "LIVE_BILL_MIN_USD6") / 1e6).toBe(DOCS_FACTS.liveBillMinUsd.value);
   });
 
   it("the date the Base addresses were verified is the library's NatSpec date", () => {

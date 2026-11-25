@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
-import { renderUserMessage, SYSTEM_PROMPT } from "../src/llm/prompt.js";
+import { renderUserMessage, SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
 import { BatchSchema, MAX_AMOUNT_USD, MAX_INTENTS, MAX_RATIONALE_CHARS, MAX_SUMMARY_CHARS } from "../src/llm/schema.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
@@ -25,12 +25,45 @@ describe("prompt", () => {
   it("user message shows state, weights, suggestions and the bill in dollars", async () => {
     const state = await readVaultState(standardScene().client(), VAULT);
     const policy = evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 120_000n });
-    const msg = renderUserMessage({ state, policy, billUsd6: 120_000n });
+    const msg = renderUserMessage({ state, policy, billUsd6: 120_000n, creditActions: false });
     expect(msg).toContain('"usdc": 100');
     expect(msg).toContain('"marketOpen": true');
     expect(msg).toContain('"unpaidComputeBill": 0.12');
     expect(msg).toContain('"NVDAc"');
     expect(msg).toContain('"suggestions"');
+    expect(msg).toContain('"creditActions": "off"');
     expect(msg).not.toMatch(/\d+n\b/); // no raw bigint leakage
+  });
+
+  describe("credit actions", () => {
+    const off = systemPrompt({ creditActions: false });
+    const on = systemPrompt({ creditActions: true });
+    const creditPolicy = [
+      "Stocks held in the vault should be supplied as collateral",
+      "Borrow USDC only to keep 7 days of compute costs",
+      "Repay debt when new revenue arrives",
+      "can borrow USDC against them on Aave V4",
+    ];
+
+    it("off (the default prompt): says so, names every credit action, and drops the supply, borrow and repay policy", () => {
+      expect(SYSTEM_PROMPT).toBe(off);
+      expect(off).toContain("has an Aave V4 credit line, which is switched off");
+      expect(off).toContain("Credit actions are off: never propose SUPPLY, WITHDRAW_COLLATERAL, BORROW or REPAY.");
+      for (const line of creditPolicy) expect(off).not.toContain(line);
+    });
+
+    it("on: keeps the supply, borrow and repay policy, and the rest of the prompt is the same", () => {
+      for (const line of creditPolicy) expect(on).toContain(line);
+      expect(on).not.toContain("Credit actions are off");
+      const tail = (p: string) => p.slice(p.indexOf("- Never predict prices."));
+      expect(tail(on)).toBe(tail(off));
+      expect(on).toContain("at most 6 intents");
+    });
+
+    it("the user message says whether credit actions are on", async () => {
+      const state = await readVaultState(standardScene().client(), VAULT);
+      const policy = evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n });
+      expect(renderUserMessage({ state, policy, billUsd6: 0n, creditActions: true })).toContain('"creditActions": "on"');
+    });
   });
 });
