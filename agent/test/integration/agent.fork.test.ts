@@ -53,6 +53,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
         estimateGas: pub.estimateGas,
         getTransaction: pub.getTransaction,
         getLogs: pub.getLogs,
+        getBlockNumber: pub.getBlockNumber,
         readContract: pub.readContract,
         // The public RPC makes the first swap on a cold fork take minutes; RunOnce's 120 s default is too short here.
         waitForTransactionReceipt: (a) => pub.waitForTransactionReceipt({ ...a, timeout: 600_000 }),
@@ -126,7 +127,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(debt).toBeLessThanOrEqual(5_000_010n);
   });
 
-  it("logs a market-closed refusal onchain once per day, with preview == Decision", async () => {
+  it("logs a market-closed refusal onchain once per NYSE date and closed phase, with preview == Decision", async () => {
     // Saturday: market closed, equity feeds frozen.
     const test = createTestClient({ chain: base, transport: http(anvil.url, { timeout: 600_000 }), mode: "anvil" });
     const now = (await pub.getBlock()).timestamp;
@@ -143,13 +144,17 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(row?.decision?.allowed).toBe(false);
     expect(row?.decision?.reason).toBe(row?.preview); // contract verdict == off-chain preview
     expect(["MARKET_CLOSED", "FEED_STALE"]).toContain(row?.preview);
+    // A MARKET_CLOSED log names the closed phase in the rationale it hashes.
+    expect(row?.rationale).toBe(row?.preview === "MARKET_CLOSED" ? "GOOGLc underweight (market closed, weekend)" : "GOOGLc underweight");
 
     const before = await nonce();
     const second = await runOnce(await deps(batch, "fork-3"));
     expect(second).toMatchObject({ status: "done", sent: [] });
     const [again] = await intents(journal, "fork-3");
     expect(again?.preview).toBe(row?.preview);
-    expect(again?.gate).toBe(`${row?.preview} already logged today`);
+    // The fork block is Thursday 2026-11-05 10:30 ET and the clock moved 2 days ahead, so both rounds fall on Saturday, NYSE date 2026-11-07.
+    const phase = row?.preview === "MARKET_CLOSED" ? " (weekend)" : "";
+    expect(again?.gate).toBe(`${row?.preview} already logged for NYSE date 2026-11-07${phase}`);
     expect(again?.txHash).toBeUndefined();
     expect(await nonce()).toBe(before);
   });

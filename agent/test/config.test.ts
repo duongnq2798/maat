@@ -22,6 +22,13 @@ describe("loadConfig", () => {
     const c = loadConfig({ ...base, MAAT_VAULT: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" });
     expect(c.vault).toBe("0xABcdEFABcdEFabcdEfAbCdefabcdeFABcDEFabCD");
   });
+  it("takes an optional fallback RPC URL", () => {
+    expect(loadConfig(base).rpcFallbackUrl).toBeUndefined();
+    expect(loadConfig({ ...base, BASE_RPC_URL_FALLBACK: "https://fallback.example.org" }).rpcFallbackUrl).toBe("https://fallback.example.org");
+  });
+  it("rejects a fallback RPC that is not a URL", () => {
+    expect(() => loadConfig({ ...base, BASE_RPC_URL_FALLBACK: "fallback.example.org" })).toThrow(/BASE_RPC_URL_FALLBACK/);
+  });
   it("rejects a bad address", () => {
     expect(() => loadConfig({ ...base, MAAT_VAULT: "0x123" })).toThrow(/MAAT_VAULT/);
   });
@@ -32,6 +39,7 @@ describe("loadConfig", () => {
   it("treats blank env values as unset so defaults apply", () => {
     const c = loadConfig({
       ...base,
+      BASE_RPC_URL_FALLBACK: "",
       MAAT_MODE: "",
       MAAT_BUILDER_CODE: "",
       MAAT_LOOP_MODEL: "",
@@ -40,6 +48,7 @@ describe("loadConfig", () => {
       MAAT_DEFAULT_DAILY_COMPUTE_USD: "",
       CDP_ACCOUNT_NAME: "",
     });
+    expect(c.rpcFallbackUrl).toBeUndefined();
     expect(c.mode).toBe("dry-run");
     expect(c.builderCode).toBeUndefined();
     expect(c.loopModel).toBe("claude-sonnet-5-5");
