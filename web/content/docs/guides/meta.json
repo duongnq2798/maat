@@ -10,6 +10,7 @@
     "change-a-rule",
     "pause-withdraw-recover",
     "watch-decisions-onchain",
-    "verify-by-hand"
+    "verify-by-hand",
+    "brief-the-agent"
   ]
 }

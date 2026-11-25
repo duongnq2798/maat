@@ -1,0 +1,28 @@
+import { BASE_CHAIN_ID } from "@/lib/chain/config";
+import { SITE } from "@/lib/site";
+import type { Eip1193Provider } from "./eip6963";
+
+let provider: Promise<Eip1193Provider> | null = null;
+
+/**
+ * The Base Account (smart wallet) provider of @base-org/account, created on first use: the SDK is loaded only when a
+ * visitor picks Base Account, so the page does not download it otherwise. Base mainnet only; the SDK's telemetry is off.
+ * It names the package's browser entry: the build also renders this module on the server, where the default entry
+ * resolves to the node one, which pulls in @coinbase/cdp-sdk and fails to bundle.
+ */
+export function baseAccountProvider(): Promise<Eip1193Provider> {
+  provider ??= import("@base-org/account/browser")
+    .then(({ createBaseAccountSDK }) =>
+      createBaseAccountSDK({ appName: SITE.name, appLogoUrl: null, appChainIds: [BASE_CHAIN_ID], preference: { telemetry: false } }).getProvider() as Eip1193Provider,
+    )
+    .catch((e: unknown) => {
+      provider = null;
+      throw e;
+    });
+  return provider;
+}
+
+/** Forgets the provider, for tests. */
+export function resetBaseAccountProvider(): void {
+  provider = null;
+}
