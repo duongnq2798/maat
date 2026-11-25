@@ -317,7 +317,7 @@ The contracts compile through the IR pipeline (`via_ir`) with the optimizer on, 
 
 | Part | What it holds |
 | --- | --- |
-| **`contracts/src`** | The 15 Solidity files the vault, the calendar and the two adapters are built from: `MandateVault`, `GuardLib`, `MarketCalendar`, `Types` and `IMandateVaultEvents`; the two adapters and their interfaces; the external interfaces; and the `DateLib`, `PriceLib` and `TokenTransfer` libraries |
+| **`contracts/src`** | The 16 Solidity files the vault, the calendar, the two adapters and the briefs inbox are built from: `MandateVault`, `GuardLib`, `MarketCalendar`, `Types`, `IMandateVaultEvents` and `MaatInbox`; the two adapters and their interfaces; the external interfaces; and the `DateLib`, `PriceLib` and `TokenTransfer` libraries |
 | **`contracts/script`** | The deploy configuration, listed apart from `src`: `Deploy.s.sol`, `MaatConfig.sol` (the default mandate, the basket and the credit reserves) and `BaseAddresses.sol` (every Base address). They set every address and default, and `DeployFork.t.sol` tests them on a fork, with `Deploy.t.sol` unit-testing the script's payee list |
 | **Uniswap v4-core** | The only outside code in `src`: `TickMath`, used by `PriceLib` and `AerodromeSwapAdapter`, and `FullMath`, used by `PriceLib`. `TickMath` imports `BitMath` and `CustomRevert` from the same folder. It is a submodule pinned at commit `e50237c` |
 | **forge-std** | A submodule pinned at commit `f3dae6e`, used by the tests and by `Deploy.s.sol` only, never by `src` |
