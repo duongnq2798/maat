@@ -162,6 +162,18 @@ describe("blob validation (§2.6)", () => {
     expect(problemOf(make({ ...v1(), k: undefined }))).toBe("v1");
   });
 
+  it("accepts c in each form gitCommit() gives, and nothing else (§2.1)", () => {
+    const sha = v1().c as string;
+    for (const c of [sha, `${sha}-dirty`, "unknown"]) {
+      const b = blobOf(txInput(make({ ...v1(), c })));
+      if (b.status !== "v1") throw new Error(`${c}: ${b.status === "invalid" ? b.problem : b.status}`);
+      expect(b.fields.c).toBe(c);
+    }
+    for (const c of [`${sha}-DIRTY`, `${sha}-dirty-dirty`, `${sha.slice(0, 39)}-dirty`, "unknown-dirty", "Unknown", ""]) {
+      expect(problemOf(make({ ...v1(), c }))).toMatch(/^c is not a git commit/);
+    }
+  });
+
   it("keeps a null source value, which means the read failed", () => {
     const b = blobOf(txInput(make({ ...v1(), s: [["0xb20000000000000000000078ee7ce2fe4908108c", null, null, null]] })));
     if (b.status !== "v1") throw new Error(b.status);

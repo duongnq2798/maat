@@ -160,6 +160,24 @@ function Sources({ s }: { s: BlobV1["s"] }) {
   );
 }
 
+/**
+ * An agent commit in a form `COMMIT_RE` accepts (spec §2.1): a link for a clean HEAD. A `-dirty` or `unknown` value is
+ * shown as it is, with no link, since it does not pin the code that ran.
+ */
+export function CommitRef({ commit }: { commit: string }) {
+  if (commit === "unknown") return <span title="git could not tell which commit the agent ran, so this does not pin its code.">unknown</span>;
+  const sha = commit.slice(0, 40);
+  if (commit.endsWith("-dirty")) {
+    return <span title={`${commit}: tracked files under agent/ differed from this commit, so it does not pin the code that ran.`}>{`${sha.slice(0, 7)}-dirty`}</span>;
+  }
+  return (
+    <a href={`${SITE.repoUrl}/commit/${sha}`} aria-label={`Agent commit ${sha.slice(0, 7)} on GitHub`}>
+      {sha.slice(0, 7)}
+      <span aria-hidden="true"> ↗</span>
+    </a>
+  );
+}
+
 /** The decoded maat:v1 blob of a Decision: the tick, Claude's words and where they came from. */
 export function BlobView({ blob, hashOk, anchor }: { blob: Extract<DecodedBlob, { status: "v1" }>; hashOk: boolean; anchor: AnchorView }) {
   const f = blob.fields;
@@ -186,10 +204,7 @@ export function BlobView({ blob, hashOk, anchor }: { blob: Extract<DecodedBlob, 
           <Fact term="State block">{formatInt(f.b)}</Fact>
           <Fact term="Run">{f.r}</Fact>
           <Fact term="Commit">
-            <a href={`${SITE.repoUrl}/commit/${f.c}`} aria-label={`Agent commit ${f.c.slice(0, 7)} on GitHub`}>
-              {f.c.slice(0, 7)}
-              <span aria-hidden="true"> ↗</span>
-            </a>
+            <CommitRef commit={f.c} />
           </Fact>
           <Fact term="Journal head">
             {f.j === GENESIS ? "GENESIS (empty journal)" : shortHash(f.j)} · {anchorText}

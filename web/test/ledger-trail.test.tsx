@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import LedgerPage from "@/app/(site)/ledger/page";
+import { BlobView } from "@/components/ledger/AgentTrail";
 import { DecisionTimeline } from "@/components/ledger/DecisionTimeline";
 import { LedgerApp } from "@/components/ledger/LedgerApp";
 import { RoundsPanel } from "@/components/ledger/RoundsPanel";
@@ -10,7 +11,7 @@ import { VerifyByHand } from "@/components/ledger/VerifyByHand";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
 import { briefMap, JOURNAL_RAW_URL, verifyJournal } from "@/lib/chain/ledger";
 import { loadLedger, type LedgerSnapshot } from "@/lib/chain/load";
-import { canon } from "@/lib/chain/rationale";
+import { canon, decodeExecuteInput, GENESIS } from "@/lib/chain/rationale";
 import { decisionLog, FAKE_VAULT, fakeLedgerClient, hash32, memoryStorage, type FakeChain } from "./helpers/fake-ledger";
 import { AGENT_TEST_CODE, erc8021Suffix, executeCalldata, JOURNAL_HASHES, JOURNAL_LINES, SPEC_CODE, txInput, VECTORS } from "./helpers/maat-v1";
 
@@ -24,6 +25,8 @@ const OWNER: Address = "0x00000000000000000000000000000000000000A1";
 const AGENT: Address = "0x00000000000000000000000000000000000000B2";
 const OWNER_TEXT = "Owner-sent first decision: BUY 5 USD of NVDAc";
 const OTHER: Address = "0x00000000000000000000000000000000000c0ffe";
+/** The commit in the spec's vectors. */
+const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 
 /** Decisions oldest first: n is the tx hash32(n), its block DEPLOY + n, and what its transaction carries. */
 const ROWS: { n: number; from: Address; input: Hex; rationaleHash: Hash; to?: Address }[] = [
@@ -168,6 +171,23 @@ describe("the agent trail on each Decision row", () => {
     expect(row).toHaveTextContent(`✓ Builder Code ${SPEC_CODE}, the code on the vault's first Decision`);
   });
 
+  it("shows a -dirty or unknown commit as it is, with no commit link, since it does not pin the code (spec §2.1)", () => {
+    const withCommit = (c: string) => {
+      const b = decodeExecuteInput(txInput(`maat:v1:${canon({ ...JSON.parse(VECTORS.V1.blob.slice(8)), c })}`))!.blob;
+      if (b.status !== "v1") throw new Error(b.status);
+      return b;
+    };
+    const { unmount } = render(<BlobView blob={withCommit(`${COMMIT}-dirty`)} hashOk anchor="absent" />);
+    expect(screen.getByText("0123456-dirty").getAttribute("title")).toBe(
+      `${COMMIT}-dirty: tracked files under agent/ differed from this commit, so it does not pin the code that ran.`,
+    );
+    expect(screen.queryByRole("link", { name: /Agent commit/ })).toBeNull();
+    unmount();
+    render(<BlobView blob={withCommit("unknown")} hashOk anchor="absent" />);
+    expect(screen.getByText("unknown").getAttribute("title")).toMatch(/git could not tell which commit the agent ran/);
+    expect(screen.queryByRole("link", { name: /Agent commit/ })).toBeNull();
+  });
+
   it("labels a probe and a brief-driven intent, and says when the Builder Code differs or is missing", () => {
     timeline();
     expect(within(rowOf(3)).getByText("probe")).toBeInTheDocument();
@@ -246,6 +266,17 @@ describe("the Rounds tab", () => {
     expect(rows[0]).toHaveTextContent("intent BUY NVDAc $5.00 · preview OK · gate dry-run: would execute");
     expect(rows[1]).toHaveTextContent("run dry-run · ok · block 61745836 · proposals 1 · suggestions 1 · One buy proposed.");
     expect(within(rows[1]!).getByRole("link", { name: "Agent commit 0123456 on GitHub" })).toBeInTheDocument();
+  });
+
+  it("shows a row's -dirty commit as it is, with no commit link", () => {
+    const fields = { kind: "run", ts: "2026-11-24T16:59:02.000Z", runId: "r", commit: `${COMMIT}-dirty`, mode: "live", ok: true };
+    const line = canon({ ...fields, prev: GENESIS, hash: keccak256(toBytes(canon({ ...fields, prev: GENESIS }))) });
+    const chainOk = verifyJournal([{ name: "2026-11-24.jsonl", text: `${line}\n` }]);
+    expect(chainOk.failure).toBeNull();
+    render(<RoundsPanel journal={{ state: "read", files: ["2026-11-24.jsonl"], ...chainOk }} onReload={() => {}} />);
+    const [row] = within(screen.getByRole("list", { name: "Journal rows, newest first" })).getAllByRole("listitem");
+    expect(within(row!).getByText("0123456-dirty")).toBeInTheDocument();
+    expect(within(row!).queryByRole("link", { name: /Agent commit/ })).toBeNull();
   });
 
   it("names the first line that broke the chain", () => {

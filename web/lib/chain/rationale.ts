@@ -112,7 +112,10 @@ export interface BlobSource {
 export interface BlobV1 {
   /** The block of the state the intent was built from. */
   b: number;
-  /** The agent's git commit, 40 lowercase hex characters. */
+  /**
+   * The agent's git commit as `gitCommit()` gives it (§2.1): 40 lowercase hex characters, the same followed by
+   * `-dirty`, or `unknown`.
+   */
   c: string;
   /** The journal head when the blob was built, or GENESIS. */
   j: Hash;
@@ -151,7 +154,8 @@ export interface ExecuteCall {
 const latin1 = (bytes: Uint8Array) => String.fromCharCode(...bytes);
 const isNat = (v: unknown): v is number => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
 const BLOB_KEYS: ReadonlySet<string> = new Set(["b", "c", "j", "k", "m", "q", "r", "s", "t"]);
-const COMMIT_RE = /^[0-9a-f]{40}$/;
+/** `c`, and a journal row's `commit` (§2.1, §3.2): a clean HEAD, that HEAD and `-dirty`, or `unknown`. */
+export const COMMIT_RE = /^(?:[0-9a-f]{40}(?:-dirty)?|unknown)$/;
 const HASH_RE = /^0x[0-9a-f]{64}$/;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/;
 const RUN_RE = /^[A-Za-z0-9._:-]{1,64}$/;
@@ -173,7 +177,7 @@ function blobFields(o: Record<string, unknown>): BlobV1 | string {
   const extra = Object.keys(o).find((k) => !BLOB_KEYS.has(k));
   if (extra !== undefined) return `it has a key the spec does not allow: ${JSON.stringify(extra)}`;
   if (!isNat(o.b)) return "b is not a block number";
-  if (typeof o.c !== "string" || !COMMIT_RE.test(o.c)) return "c is not a 40-character lowercase commit";
+  if (typeof o.c !== "string" || !COMMIT_RE.test(o.c)) return "c is not a git commit (40 lowercase hex, that and -dirty, or unknown)";
   if (typeof o.j !== "string" || !HASH_RE.test(o.j)) return "j is not a lowercase 32-byte hash";
   const hasK = "k" in o;
   if (hasK && o.k !== "probe" && o.k !== "bill") return "k is neither probe nor bill";
