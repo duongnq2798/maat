@@ -876,7 +876,7 @@ describe("runOnce", () => {
       expect(store.unpaidUsd6()).toBe(0n);
     });
 
-    it("is $0.10 in dry-run and $1.00 in live unless MAAT_BILL_MIN_USD sets it", () => {
+    it("pins the two defaults: $0.10 for dry-run and $1.00 for live (runtime.test.ts checks which one a mode gets)", () => {
       expect([BILL_MIN_USD6, LIVE_BILL_MIN_USD6]).toEqual([100_000n, 1_000_000n]);
     });
   });
