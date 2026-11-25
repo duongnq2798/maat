@@ -448,9 +448,9 @@ The agent reads [MaatInbox](/docs/guides/brief-the-agent) briefs only once the t
 | Brief-driven transactions per UTC day | 5, counted inside `MAAT_MAX_TX_PER_DAY` too | New briefs are `skipped` with `brief-txs-per-day`, and an intent that adopts a brief is not sent: its `gate` begins `brief budget:`. |
 | Claude cost of the rounds that carried briefs, per UTC day | $0.25 of `MAAT_MAX_LLM_USD_PER_DAY` | New briefs are `skipped` with `brief-llm-per-day`. Once the whole daily Claude cap is spent, they are `skipped` with `llm-per-day`. |
 
-The UTC day is the state block's timestamp divided by 86,400. An intent may adopt 1 to 3 briefs of its own round. Its blob then lists their ids in `q`, and its text is built from the action, the amount, the token and the ids alone, never from a brief, for example `Brief-driven: BUY 10.00 USD of NVDAc, adopting MaatInbox brief 7.` An intent that adopts a brief the round did not send, or one an earlier intent of the answer adopted, is journaled as a `skip`. A refusal of a brief-driven intent is logged onchain at most once per set of brief ids and reason.
+The UTC day is the state block's timestamp divided by 86,400. Like the daily Claude cap, the $0.25 is checked before each call, so the round whose cost crosses it is the day's last with briefs. An intent may adopt 1 to 3 briefs of its own round. Its blob then lists their ids in `q`, and its text is built from the action, the amount, the token and the ids alone, for example `Brief-driven: BUY 10.00 USD of NVDAc, adopting MaatInbox brief 7.` An intent Claude proposes as its own in that round has no `q`, and its text is a template too, for example `Agent: BUY 10.00 USD of NVDAc, its own intent in a round that read MaatInbox brief 7.`, so neither a brief nor Claude's wording reaches the calldata of a round that read briefs. An intent that adopts more than 3 briefs, a brief the round did not send, or one an earlier intent of the answer adopted is journaled as a `skip`; the rest of the answer stands. A refusal of a brief-driven intent is logged onchain at most once per set of brief ids and reason.
 
-A brief is known by its id, the hash of its transaction and its log index, so a reorg that mines the same id in another transaction makes a new brief. A decided brief whose log a later read no longer finds is forgotten. A brief is saved as `started` before Claude is called, and a restart journals one still `started` as `unanswered`, so no brief is answered twice. `npm run eval:briefs` sends prompt-injection briefs to Claude and grades the answers; it is paid, and only the owner runs it ([eval-briefs.ts](/docs/reference/agent-scripts#eval-briefsts)).
+A brief is known by its id, the hash of its transaction and its log index, so a reorg that mines the same id in another transaction makes a new brief. A decided brief whose log a later read no longer finds is forgotten, and so are the refusals logged under its id. A brief is saved as `started` before Claude is called, and a restart journals one still `started` as `unanswered` unless the journal already holds its row, so no brief is answered twice. `npm run eval:briefs` sends prompt-injection briefs to Claude and grades the answers; it is paid, and only the owner runs it ([eval-briefs.ts](/docs/reference/agent-scripts#eval-briefsts)).
 
 ## What the agent keeps in its data folder
 
@@ -469,7 +469,7 @@ The folder belongs to one vault. `state.json` does not record which, so when `MA
 
 Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
 
-```typescript title="agent/src/ledger/journal.ts#L13-L31"
+```typescript title="agent/src/ledger/journal.ts#L14-L32"
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
   /** `rationale` is the text as written; `blob` the maat:v1 blob whose keccak256 is `rationaleHash`. */
@@ -496,7 +496,7 @@ export type BriefOutcome = "replied" | "unanswered" | "skipped";
 - `day` is the UTC day number: the whole days from 1970-01-01 to the timestamp of the block the round read. It is the same number the vault's `today()` returns.
 - `blob` is the [rationale blob](/docs/help/glossary#rationale-blob) that `rationaleHash` hashes (older lines have none), `commit` the agent's git commit, and `hash` the `keccak256` of the line's public fields with `prev`, the line before's `hash`.
 - A `probe` line is one [`MAAT_PROBES`](/docs/reference/agent-configuration#maat_probes) instant, and its `note` says why it sent nothing. The probe's own `intent` and `sent` lines share its `runId`, `probe-` and the instant.
-- A `brief` line is one MaatInbox brief a round decided, named by its id, the hash of the transaction that posted it and its log index, never by its text. `cap` names the cap that kept a `skipped` brief from Claude, `reply` is Claude's reply, sanitized and cut to 200 characters, and `adopted` is true when an intent of that round cites the brief. [Briefs](#briefs) has the rules.
+- A `brief` line is one MaatInbox brief a round decided, named by its id, the hash of the transaction that posted it and its log index, never by its text. `cap` names the cap that kept a `skipped` brief from Claude, `reply` is Claude's reply, sanitized and cut to 200 characters, and `adopted` is true when an intent of that round cites the brief and was sent, or previewed in a dry-run. A round writes the `brief` lines of the briefs it sent to Claude after its `intent` lines. [Briefs](#briefs) has the rules.
 
 ### State file format
 
