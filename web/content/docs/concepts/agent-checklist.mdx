@@ -13,9 +13,9 @@ sources:
 next: [concepts/refusal-codes, concepts/nine-checks, security/model]
 ---
 
-An agent that trades a tokenized stock meets failures that a token-only agent never does: a stock market that closes while the pool keeps trading, a price feed that goes quiet for the weekend, a split that rescales the token, an issuer that can pause it. This page is the checklist such an agent needs before every trade, one row per failure.
+An agent that trades a tokenized stock meets failures that an agent trading only crypto tokens never does: a stock market that closes while the pool keeps trading, a price feed that goes quiet for the weekend, a split that rescales the token, an issuer that can pause it. This page is the checklist such an agent needs before every trade, one row per failure.
 
-In Maat the agent does not run the checklist itself. Claude proposes, and the [vault](/docs/help/glossary#vault) runs every check inside `execute`, so the vault has the last word. A failed check does not [revert](/docs/help/glossary#revert): the vault records a [Decision](/docs/help/glossary#decision) with a typed reason, and moves no funds. Each row names that reason and links the line of the contract that returns it.
+In Maat no check rests on the agent. Claude proposes, and the [vault](/docs/help/glossary#vault) runs every check itself inside `execute`, so the vault has the last word. A failed check does not [revert](/docs/help/glossary#revert): the vault records a [Decision](/docs/help/glossary#decision) with a typed reason, and moves no funds. Each row names that reason and links the line of the contract that returns it.
 
 ## The checklist
 
