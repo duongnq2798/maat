@@ -1,5 +1,6 @@
 import type { Address, PublicClient } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
+import { oneLine } from "../redact.js";
 import { REASONS, type OnchainIntent, type ReasonName } from "../types.js";
 
 export type PreviewClient = Pick<PublicClient, "readContract">;
@@ -29,7 +30,8 @@ export async function previewIntent(
       ...(blockNumber === undefined ? {} : { blockNumber }),
     });
   } catch (e) {
-    return { result: "UNKNOWN", error: (e as Error).message.split("\n")[0] ?? "preview call failed" };
+    // The journal keeps this line; viem's message can quote the RPC URL and its key.
+    return { result: "UNKNOWN", error: oneLine(e) || "preview call failed" };
   }
   const reason = REASONS[Number(r)];
   return reason === undefined ? { result: "UNKNOWN", error: `unknown reason id ${String(r)}` } : { result: reason };

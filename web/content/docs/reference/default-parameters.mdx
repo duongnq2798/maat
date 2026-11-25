@@ -82,18 +82,20 @@ These come from `MarketCalendar.sol`. The session times and the [feed edge](/doc
 
 ## Agent
 
-The first two rows are the defaults of two environment variables, `MAAT_MAX_TX_PER_DAY` and `MAAT_DEFAULT_DAILY_COMPUTE_USD`, so you change them in `.env` ([Agent configuration](/docs/reference/agent-configuration)). The other rows are constants in the agent's source. Nothing passes a policy of its own to a round, so `agent/src/loop/runOnce.ts` uses `DEFAULT_POLICY`, and changing one of these rows means editing the code.
+The first three rows are the defaults of three environment variables, `MAAT_MAX_TX_PER_DAY`, `MAAT_DEFAULT_DAILY_COMPUTE_USD` and `MAAT_MAX_LLM_USD_PER_DAY`, so you change them in `.env` ([Agent configuration](/docs/reference/agent-configuration)). The other rows are constants in the agent's source. The two bill minimums apply while `MAAT_BILL_MIN_USD` is unset; set it and the agent uses that amount in either mode. Nothing passes a policy of its own to a round, so `agent/src/loop/runOnce.ts` uses `DEFAULT_POLICY`, and changing one of the policy rows means editing the code.
 
 <FactTable
   names={[
     "maxTxPerDay",
     "dailyComputeUsd",
+    "maxLlmUsdPerDay",
     "loopMinutes",
     "offSessionMinutes",
     "cashReservePct",
     "rebalanceDriftPct",
     "runwayDays",
     "minTradeUsd",
+    "liveBillMinUsd",
     "billMinUsd",
     "maxIntents",
     "maxRationaleChars",
@@ -103,7 +105,7 @@ The first two rows are the defaults of two environment variables, `MAAT_MAX_TX_P
     "executeGasFloor",
     "syncGasFloor",
     "receiptTimeoutSec",
-    "pendingWindowBlocks",
+    "pendingWindowMinutes",
     "lockStaleSec",
   ]}
   label="Agent defaults"
@@ -117,7 +119,7 @@ Some agent values are written in more than one file. Change one copy alone and t
 
 - **The policy and the system prompt.** The system prompt in `agent/src/llm/prompt.ts` restates the cash target (<Fact name="cashReservePct" />), the drift (<Fact name="rebalanceDriftPct" />) and the runway (<Fact name="runwayDays" />) to Claude. If you change `DEFAULT_POLICY` alone, the policy computes one target and the prompt tells Claude another. `agent/test/prompt.test.ts` checks that the prompt says <Fact name="cashReservePct" />, so a new cash target changes that test too.
 - **The basket.** The agent lists its stocks in three files: `agent/src/addresses.ts`, `LLM_SYMBOLS` in `agent/src/llm/schema.ts`, and the system prompt in `agent/src/llm/prompt.ts`. The vault's own list is separate, and [Configure a mandate](/docs/guides/configure-a-mandate) covers it.
-- **The model.** `agent/src/llm/pricing.ts` has prices for `claude-sonnet-5-5` and `claude-opus-5-5`, and it bills any other model at the `claude-opus-5-5` rate ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)).
+- **The model.** `agent/src/llm/pricing.ts` has prices for the two loop models, `claude-sonnet-5-5` and `claude-opus-5-5`, and for the three a server-side fallback can answer with, `claude-sonnet-5`, `claude-opus-5` and `claude-opus-4-8`. It bills any other model at the `claude-opus-4-8` rate, the dearest in its table, so a model priced above that is under-billed ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)).
 
 No agent with changed defaults has been tested. After a change, run `npm test` and `npm run typecheck` in `agent/`.
 
