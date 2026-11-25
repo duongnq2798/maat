@@ -702,6 +702,29 @@
   }
 }
 
+/* The nav bar (components/live/NavDock.tsx, NavBar): white, pinned from lg, with a hairline once the page has
+   scrolled, on the 120 ms tick. From lg, on a page that has the bar, the scrollport is padded by 82 px (the bar is 81.5 px tall), so
+   both an anchor jump and a focus move scroll their target out from under it: an anchor lands at 82 px plus its base
+   16 px margin, 98 px. A margin on [id] would offset anchors only, and Shift+Tab onto a control already on screen
+   under the bar would leave it hidden. /now and /gap-index load this file but have no bar, so their anchors keep the
+   base 16 px. */
+@layer components {
+  .nav-bar {
+    border-bottom: 1px solid transparent;
+    transition: border-color var(--t-tick) var(--ease-instrument);
+  }
+  .nav-bar[data-scrolled] {
+    border-bottom-color: var(--color-line);
+  }
+}
+@layer base {
+  @media (min-width: 64rem) {
+    html:has([data-nav-bar]) {
+      scroll-padding-top: 82px;
+    }
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
