@@ -14,6 +14,8 @@ sources:
   - agent/scripts/first-decision.ts
   - agent/scripts/heartbeat.ts
   - agent/scripts/restart-loop.ts
+  - agent/scripts/verify-decision.ts
+  - agent/src/rationale/verify.ts
   - agent/src/loop/heartbeat.ts
   - agent/src/runtime.ts
   - agent/src/redact.ts
@@ -41,12 +43,14 @@ This page covers the npm scripts in `agent/package.json` and the files in `agent
 | `npm run test:integration` | Runs the [fork test](/docs/help/glossary#fork-test) | A Base archive RPC and the Base build of Anvil | Your Base RPC. No Claude call and no CDP call |
 | `npm run typecheck` | Type-checks the TypeScript | Nothing | None |
 | `npm run gen:abi` | Rewrites the generated ABI file | The compiled contracts | None |
+| `npm run verify` | Checks a `Decision`'s [rationale blob](/docs/help/glossary#rationale-blob) against its hash, and the journal's hash chain | A transaction input, or a transaction hash and an RPC URL; optionally the journal | The RPC you give with `--rpc`, read only. None without it |
 | `cdp-setup.ts` | [Owner](/docs/help/glossary#owner) only. Creates the [executor](/docs/help/glossary#executor) account and its policy | The three CDP credentials | Coinbase CDP |
 | `first-decision.ts` | For the owner. Builds one `BUY` [intent](/docs/help/glossary#intent) offline and prints its calldata and `cast` commands | A vault address, a basket token, a salt or an id, and a Builder Code | None |
 | `gen-abis.ts` | The file that `npm run gen:abi` runs | See `gen:abi` | None |
 | `heartbeat.ts` | The file that `npm run agent:heartbeat` runs | See `agent:heartbeat` | None |
 | `restart-loop.ts` | The file that `npm run agent:loop` runs | See `agent:loop` | See `agent:loop` |
 | `smoke-claude.ts` | Asks Claude for one proposal | `ANTHROPIC_API_KEY` | Claude (paid) |
+| `verify-decision.ts` | The file that `npm run verify` runs | See `verify` | See `verify` |
 
 ## npm scripts
 
@@ -175,9 +179,57 @@ Trimmed output from the run on Windows at commit `95e4024`. The start of the abs
 wrote …\agent\src\abi\generated.ts
 ```
 
+### verify
+
+<ScriptEntry name="verify" />
+
+Re-derives what a [Decision](/docs/help/glossary#decision) commits to from its transaction's input, and checks the agent's [journal](/docs/help/glossary#journal). It sends nothing, holds no key and reads no settings file. The script file is [verify-decision.ts](#verify-decisionts).
+
+```bash
+cd agent
+npm run verify -- --input test/fixtures/calldata-v1.hex --journal test/fixtures/journal-v1.jsonl
+npm run verify -- --tx <TX_HASH> --rpc <RPC_URL> --journal data/journal.jsonl
+```
+
+| Flag | Effect |
+| --- | --- |
+| `--input` | The transaction input, as `cast tx <TX_HASH> input` prints it: hex, or a file that holds it |
+| `--tx` | The transaction hash. With `--rpc`, the script reads the input, the receipt's `Decision` for the intent and the vault's `owner()` from that RPC. Without it, the hash only finds the journal's `sent` or `reconcile` line for the transaction |
+| `--rpc` | An RPC URL to read `--tx` from. The script never prints it |
+| `--journal` | A journal file: the agent's `journal.jsonl`, or day files in order. Give it more than once for several files |
+| `--rationale` | The text a `Decision` with no blob commits to, such as an owner's first decision |
+
+It prints one line per check, then the verdict:
+
+| Check | Passes when |
+| --- | --- |
+| `calldata` | The input is a direct `execute` call: the selector `0x4ad3993f` and the 228-byte call |
+| `blob` | The bytes between the call and the Builder Code are a valid `maat:v1` blob. With no blob there, it passes only when `--rationale` gives the text |
+| `hash` | The `keccak256` of the blob, or of the `--rationale` text, is the intent's `rationaleHash` |
+| `decision` | With `--rpc` only: the receipt's `Decision` for the intent carries that same `rationaleHash` |
+| `journal` | With `--journal` only: every line's `hash` matches the line, and its `prev` is the line before it |
+| `anchor` | With `--journal` and a blob: the blob's journal hash `j` is the `hash` of a line before the `Decision`'s own line, or the blob's `j` is 32 zero bytes and no hashed line comes before it. The `Decision`'s line is the `sent` or `reconcile` line with the `--tx` hash, or without `--tx`, the line that carries the blob. A `sent` line must carry the same blob |
+
+It exits with 0 on `PASS`, 1 on `FAIL`, 2 on `PENDING`, when the journal has no line for the transaction yet, and 3 on a bad argument, a file it cannot read or a failed RPC read. The fixtures are the spec's test vectors: the calldata of a 5 USD `BUY` with its blob, and two journal lines.
+
+Output from the run on the fixtures at commit `04602d6`:
+
+```text
+> @maat/agent@0.1.0 verify
+> node --import tsx scripts/verify-decision.ts --input test/fixtures/calldata-v1.hex --journal test/fixtures/journal-v1.jsonl
+
+intent 0x5ab74fda7322b60dc25dc1ca3f0902cd67e72203319f46b70fd789b4604773d8, rationaleHash 0xbc7e8a953617d15492fcb18bacbcacc9db09d8138a717810f4786fceefc1d27d
+PASS calldata  228-byte execute call, 438-byte blob, suffix codes fake_code
+PASS blob      maat:v1, 438 bytes: block 61745836, run 1795539542000-a1b2c3d4, m claude-sonnet-5-5, commit 0123456789abcdef0123456789abcdef01234567, j 0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff
+PASS hash      keccak256(blob) = rationaleHash 0xbc7e8a953617d15492fcb18bacbcacc9db09d8138a717810f4786fceefc1d27d
+PASS journal   2 chained rows, head 0x3a54dfb09811088c8f2ffdecf4666c6e34f721a7e4166f1a6557dc3133ec4f8c
+PASS anchor    j 0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff is the hash of journal-v1.jsonl:1, before journal-v1.jsonl:2 (the intent row carrying this blob)
+PASS
+```
+
 ## Script files
 
-Three files have an npm script: `gen-abis.ts` (`gen:abi`), `heartbeat.ts` (`agent:heartbeat`) and `restart-loop.ts` (`agent:loop`). You run the other files in `agent/scripts` with Node or `npx tsx`.
+Four files have an npm script: `gen-abis.ts` (`gen:abi`), `heartbeat.ts` (`agent:heartbeat`), `restart-loop.ts` (`agent:loop`) and `verify-decision.ts` (`verify`). You run the other files in `agent/scripts` with Node or `npx tsx`.
 
 ### cdp-setup.ts
 
@@ -218,7 +270,7 @@ node --import tsx scripts/first-decision.ts --vault <VAULT_ADDRESS> --token NVDA
 | `--id` | Takes the intent id as given: `0x` and 64 hex digits, not all zeros |
 | `--usd` | The dollars to spend, `5` by default, with at most 9 digits before the point and 6 after |
 | `--action` | `BUY`, the default and the only action it builds. It refuses `SELL`, because a `SELL` amount is a raw stock amount and turning dollars into one takes the live price |
-| `--rationale` | The rationale text. The intent carries its keccak256 hash, so keep the text. By default it names the amount and the token |
+| `--rationale` | The rationale text. The intent carries its keccak256 hash, so keep the text. By default it names the amount and the token. The calldata carries no [rationale blob](/docs/help/glossary#rationale-blob), which the agent's own sender would refuse for an `execute`; `npm run verify` checks it with this text as `--rationale` |
 
 The intent's `minOut` is 0, as the agent sends it for a `BUY`: the vault swaps with the larger of `minOut` and its own oracle floor, so the script needs no price. Its payee is the zero address. The amount is not capped at the vault's USDC balance, which would take a read, so a `BUY` larger than the balance gets `INSUFFICIENT_BALANCE` from the vault. The vault accepts each id once, and `execute` reverts with [`IntentAlreadyUsed`](/docs/reference/errors#intentalreadyused) on an id it has seen, so every send needs a new salt. The send template sets a gas limit of <Fact name="executeGasFloor" />, the floor the agent uses for `execute`.
 
@@ -241,6 +293,12 @@ The file behind `npm run agent:loop`. It starts the agent with `npm run agent`, 
 <ScriptFile name="gen-abis.ts" />
 
 The file behind `npm run gen:abi`. Its list of targets is `MandateVault`, `ICreditAdapter`, `MarketCalendar`, `IB20Asset`, `IAggregatorV3` and `IERC20Minimal`. It writes one `export const` for each into `agent/src/abi/generated.ts`, under a header that says not to edit the file by hand. See [gen:abi](#genabi) for what it needs.
+
+### verify-decision.ts
+
+<ScriptFile name="verify-decision.ts" />
+
+The file behind `npm run verify`. The checks themselves are `verifyDecision` in `agent/src/rationale/verify.ts`, which `npm test` runs against the same fixtures. See [verify](#verify) for its flags and exit codes.
 
 ### smoke-claude.ts
 

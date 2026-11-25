@@ -161,7 +161,7 @@ A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Cl
 | `kind` | When the agent writes it |
 | --- | --- |
 | `run` | Once per round that reaches the proposal step: the summary, the cost of the Claude call, the number of suggestions and proposals, and `ok`. |
-| `intent` | For each proposal that became an [intent](/docs/help/glossary#intent). It holds the `rationale`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result and a `gate` that says what the agent did with it. For a proposal that was not sent, it is one line with the `gate`. For a sent one, the line is written after the receipt, with the `txHash`, `gasUsed` and `decision`, and the `sent` line comes before it. |
+| `intent` | For each proposal that became an [intent](/docs/help/glossary#intent). It holds the `rationale`, the `blob`, the `rationaleHash`, the [preview](/docs/help/glossary#preview) result and a `gate` that says what the agent did with it. For a proposal that was not sent, it is one line with the `gate`. For a sent one, the line is written after the receipt, with the `txHash`, `gasUsed` and `decision`, and the `sent` line comes before it. |
 | `sent` | Right after a send returns, before the receipt arrives. |
 | `skip` | For a proposal that could not become an intent, for example an amount that rounds to zero, or a credit action while `MAAT_CREDIT_ACTIONS` is off. |
 | `housekeeping` | For a `syncMultiplier` call that the vault needs. In dry-run mode the line carries the note `dry-run` and nothing is sent. |
@@ -288,7 +288,7 @@ npm run agent -- --once
 
 </Callout>
 
-Check the transaction on Basescan. Its input data must end with the Builder Code suffix. This page shows no output, because these docs record no round in live mode on Base mainnet.
+Check the transaction on Basescan. Its input data must end with the Builder Code suffix. An `execute` also carries its [rationale blob](/docs/help/glossary#rationale-blob) between the 228-byte call and the suffix: the bytes of `maat:v1:` and a JSON object, whose `keccak256` is the `rationaleHash` of the `Decision`. [`npm run verify -- --tx <TX_HASH> --rpc <RPC_URL>`](/docs/reference/agent-scripts#verify) checks both from the chain. This page shows no output, because these docs record no round in live mode on Base mainnet.
 
 To read the input data yourself, this call only reads:
 
@@ -315,7 +315,7 @@ export function codesIn(input: Hex): readonly string[] {
 }
 ```
 
-The agent's transactions carry the suffix: `GuardedSender` appends it to every send. Of the owner's own transactions, only the first-decision `BUY` intents of `deployments/go-live.md` carry it, because their calldata comes from `agent/scripts/first-decision.ts`; the others, such as the deploy, `approve`, `fund` and `setExecutor`, do not.
+The agent's transactions carry the suffix: `GuardedSender` appends it to every send, after the blob of an `execute`. `Attribution.fromData` reads the suffix from the end of the input, so the blob does not hide it. Of the owner's own transactions, only the first-decision `BUY` intents of `deployments/go-live.md` carry it, because their calldata comes from `agent/scripts/first-decision.ts`; the others, such as the deploy, `approve`, `fund` and `setExecutor`, do not.
 
 </Step>
 
@@ -402,7 +402,7 @@ The agent bounds itself, in addition to the vault's checks. The vault stays the 
 | Gas limit of `syncMultiplier` | At least <Fact name="syncGasFloor" /> | The agent never sends `syncMultiplier` with less. |
 | Claude spend per UTC day | <Fact name="maxLlmUsdPerDay" /> by default, set with `MAAT_MAX_LLM_USD_PER_DAY` | The later rounds of that day do not call Claude. Their `run` line has an error that begins `llm cap:`, and they still pay a bill that is due. |
 | Credit actions | Off by default, set with `MAAT_CREDIT_ACTIONS` | While off, a `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY` that Claude proposes is journaled as a `skip` and never previewed or sent. |
-| Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else. In live mode the CDP policy adds a second layer for the target, not for the function. `notifyRevenue` is on the list, but the agent never sends it: no code in `agent/src` encodes it, and it has no gas floor. |
+| Target and function | The vault, and only `execute`, `syncMultiplier` and `notifyRevenue` | `GuardedSender` refuses anything else, an `execute` without the rationale blob its `rationaleHash` commits to, and any other bytes after a call. In live mode the CDP policy adds a second layer for the target, not for the function. `notifyRevenue` is on the list, but the agent never sends it: no code in `agent/src` encodes it, and it has no gas floor. |
 | Agents per data folder | One | A second agent on the same folder stops at startup with an error. |
 
 Two more rules come from agent/README.md, Safety: if a transaction fails or reverts, the round stops at once, and if the RPC fails, the round does nothing. With `BASE_RPC_URL_FALLBACK` set, a request that fails on `BASE_RPC_URL` is sent to the second RPC, and the RPC counts as failed only when both fail. In the loop, the next round still runs ([Run it continuously](#run-it-continuously)).
@@ -419,7 +419,7 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 
 | File | What it holds |
 | --- | --- |
-| `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the [rationale](/docs/help/glossary#rationale) text behind each `rationaleHash`. |
+| `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the [rationale](/docs/help/glossary#rationale) text and the [rationale blob](/docs/help/glossary#rationale-blob) behind each `rationaleHash`, and every line carries the hash that chains it to the line before. |
 | `data/state.json` | The compute bills and the amount paid so far, the refusals logged per NYSE date, the transaction count per UTC day, and the sends that are still `pending`. The agent needs it to survive a restart. |
 | `data/heartbeat.json` | When the last round ended, its run id and status, and its halt reason or error as one line. The agent writes it after every round, and `agent:loop` and `agent:heartbeat` read it. |
 | `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and at most <Fact name="lockStaleSec" /> old, counts as held. |
@@ -432,12 +432,13 @@ The folder belongs to one vault. `state.json` does not record which, so when `MA
 
 Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
 
-```typescript title="agent/src/ledger/journal.ts#L8-L18"
+```typescript title="agent/src/ledger/journal.ts#L11-L22"
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
-  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; note?: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
+  /** `rationale` is the text as written; `blob` the maat:v1 blob whose keccak256 is `rationaleHash`. */
+  | { kind: "intent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; blob?: string; preview: PreviewResult; previewError?: string; gate: string; note?: string; txHash?: Hex; gasUsed?: bigint; decision?: Decision }
   /** Written right after the send returns, before the receipt: with `intent` it brackets the pending window. */
-  | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; preview: PreviewResult; previewError?: string; gate: string; note?: string; txHash: Hex; gas: bigint }
+  | { kind: "sent"; runId: string; index: number; intentId: Hex; action: string; symbol: string; amountUsd6: bigint; rationale: string; rationaleHash: Hex; blob?: string; preview: PreviewResult; previewError?: string; gate: string; note?: string; txHash: Hex; gas: bigint }
   /** A send from an earlier round, settled (applied / dropped) or still pending at round start. */
   | { kind: "reconcile"; runId: string; intentId: Hex; action: string; txHash?: Hex; outcome: "applied" | "pending" | "dropped"; decision?: Decision; note?: string }
   | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
@@ -449,6 +450,8 @@ export type JournalEntry =
 - Every `bigint` field is written as a decimal string.
 - Amounts that end in `Usd6` are USDC units, with <Fact name="usdcDecimals" />.
 - `day` is the UTC day number: the whole days from 1970-01-01 to the timestamp of the block the round read. It is the same number the vault's `today()` returns.
+- `blob` is the [rationale blob](/docs/help/glossary#rationale-blob) the intent commits to: `rationaleHash` is its `keccak256`, and for a sent intent it is the bytes between the call and the Builder Code. `rationale` keeps the text as Claude or the agent's code wrote it, before the blob's sanitizer. Lines older code wrote have no `blob`, and their `rationaleHash` is the hash of `rationale`.
+- `commit` is the git commit of the agent code that wrote the line. `prev` and `hash` chain each line to the one before it: `hash` is the `keccak256` of the line's public fields with `prev`, and `prev` is the `hash` of the line before, or 32 zero bytes for the first. `npm run verify` checks the chain ([verify](/docs/reference/agent-scripts#verify)).
 
 ### State file format
 
