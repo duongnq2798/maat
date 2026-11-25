@@ -46,6 +46,8 @@ function phrases(f: Readonly<Record<string, unknown>>): string[] {
     case "run":
       parts.push(str(f.mode));
       if (typeof f.ok === "boolean") parts.push(f.ok ? "ok" : "not ok");
+      // A run row's only trace of its error: the daily LLM cap stopped the round before Claude was called (§3.2).
+      if (f.capped === true) parts.push("daily LLM cap reached, Claude not called");
       add("block", f.block);
       add("proposals", f.proposals);
       add("suggestions", f.suggestions);

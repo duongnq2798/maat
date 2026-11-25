@@ -279,6 +279,16 @@ describe("the Rounds tab", () => {
     expect(within(row!).queryByRole("link", { name: /Agent commit/ })).toBeNull();
   });
 
+  it("says when the daily LLM cap stopped a round, from the run row's capped flag (spec §3.2)", () => {
+    // A capped round has no summary: the publisher leaves the field out, never "(no text)".
+    const fields = { kind: "run", ts: "2026-11-27T15:00:00.000Z", runId: "r", mode: "live", ok: false, capped: true, block: "61800000", proposals: 0, suggestions: 2 };
+    const line = canon({ ...fields, prev: GENESIS, hash: keccak256(toBytes(canon({ ...fields, prev: GENESIS }))) });
+    const chainOk = verifyJournal([{ name: "2026-11-27.jsonl", text: `${line}\n` }]);
+    render(<RoundsPanel journal={{ state: "read", files: ["2026-11-27.jsonl"], ...chainOk }} onReload={() => {}} />);
+    const [row] = within(screen.getByRole("list", { name: "Journal rows, newest first" })).getAllByRole("listitem");
+    expect(row).toHaveTextContent("run live · not ok · daily LLM cap reached, Claude not called · block 61800000 · proposals 0 · suggestions 2");
+  });
+
   it("names the first line that broke the chain", () => {
     const broken = verifyJournal([{ name: "2026-11-24.jsonl", text: `${JOURNAL_LINES[0]}\n${JOURNAL_LINES[0]}\n` }]);
     render(<RoundsPanel journal={{ state: "read", files: ["2026-11-24.jsonl"], ...broken }} onReload={() => {}} />);
