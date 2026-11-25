@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PolicyView } from "../policy.js";
 import type { VaultState } from "../chain/state.js";
 import type { Proposal } from "../intent.js";
+import { oneLine } from "../redact.js";
 import { costUsd6, type Usage } from "./pricing.js";
 import { renderUserMessage, systemPrompt } from "./prompt.js";
 import { BATCH_JSON_SCHEMA, BatchSchema, type Batch } from "./schema.js";
@@ -29,11 +30,32 @@ export type CreateMessage = (params: Record<string, unknown>) => Promise<{
   usage: Usage;
 }>;
 
+/** The only host the agent sends its prompt and its API key to. */
+export const ANTHROPIC_API_URL = "https://api.anthropic.com";
+
+/**
+ * The SDK client, pinned to ANTHROPIC_API_URL and ANTHROPIC_API_KEY. Left to itself the SDK reads ANTHROPIC_BASE_URL
+ * (Claude Code exports one to the processes it starts), which would get the key and could answer for Claude, and with
+ * no key it falls back to ANTHROPIC_AUTH_TOKEN or a login profile. A key passed in code keeps it from reading either.
+ */
+export function anthropicClient(opts: { fetch?: typeof globalThis.fetch } = {}): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
+  return new Anthropic({ ...opts, baseURL: ANTHROPIC_API_URL, apiKey, authToken: null });
+}
+
+/** The set Anthropic env that anthropicClient overrides, as one line for main.ts to print at startup; null if none. */
+export function ignoredAnthropicEnv(env: NodeJS.ProcessEnv = process.env): string | null {
+  const names = ["ANTHROPIC_BASE_URL", "ANTHROPIC_AUTH_TOKEN"].filter((name) => env[name]);
+  if (names.length === 0) return null;
+  return `maat agent: ignoring ${names.join(" and ")}: Claude is called only at ${ANTHROPIC_API_URL}, with ANTHROPIC_API_KEY`;
+}
+
 /** The SDK client is built on first use, so tests that inject `create` never need ANTHROPIC_API_KEY. */
 function defaultCreate(): CreateMessage {
   let client: Anthropic | undefined;
   return (params) => {
-    client ??= new Anthropic();
+    client ??= anthropicClient();
     return client.beta.messages.create(params as never) as never;
   };
 }
@@ -60,10 +82,11 @@ export class ClaudeProposer implements Proposer {
         fallbacks: "default",
       });
     } catch (e) {
-      return { ok: false, error: `claude: ${e instanceof Error ? e.message : String(e)}`, costUsd6: 0n };
+      // The journal keeps this line, so it is redacted like a halt reason.
+      return { ok: false, error: `claude: ${oneLine(e)}`, costUsd6: 0n };
     }
     try {
-      const cost = costUsd6(res.model, res.usage);
+      const cost = costUsd6(res.model, res.usage, this.opts.model);
       if (res.stop_reason === "refusal") return { ok: false, error: "claude refused", costUsd6: cost };
       if (res.stop_reason === "max_tokens") return { ok: false, error: "claude output truncated", costUsd6: cost };
       // A `fallback` block marks where one model's output gives way to the next: the declining model's text (possibly

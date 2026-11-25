@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
 import { SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
-import { ClaudeProposer, FixedProposer, type CreateMessage } from "../src/llm/proposer.js";
+import { ANTHROPIC_API_URL, anthropicClient, ClaudeProposer, FixedProposer, ignoredAnthropicEnv, type CreateMessage } from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 
@@ -99,6 +99,25 @@ describe("ClaudeProposer", () => {
     expect(out).toMatchObject({ ok: true, model: "claude-opus-4-8", costUsd6: 117_000n });
   });
 
+  it("prices the requested model's attempt at its own price when the entry names no model", async () => {
+    const attempt = (input: number) => ({ input_tokens: input, output_tokens: 0, cache_read_input_tokens: 0, cache_creation_input_tokens: 0 });
+    const create: CreateMessage = async () => ({
+      model: "claude-opus-4-8",
+      stop_reason: "end_turn",
+      content: [{ type: "fallback" }, { type: "text", text: '{"summary":"hold","intents":[]}' }],
+      usage: {
+        ...attempt(1_000_000),
+        iterations: [
+          { type: "message", model: null, ...attempt(1_000_000) },
+          { type: "fallback_message", model: "claude-opus-4-8", ...attempt(1_000_000) },
+        ],
+      },
+    });
+    const out = await new ClaudeProposer({ model: "claude-opus-5-5", create }).propose(await input());
+    // $4 for the declined Opus 5.5 attempt + $5 for the Opus 4.8 one
+    expect(out).toMatchObject({ ok: true, costUsd6: 9_000_000n });
+  });
+
   it("prices an attempt without a model at the response model, once", async () => {
     const create: CreateMessage = async () => ({
       model: "claude-sonnet-5-5",
@@ -138,6 +157,69 @@ describe("ClaudeProposer", () => {
     };
     const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
     expect(out).toEqual({ ok: false, error: "claude: 529 overloaded", costUsd6: 0n });
+  });
+
+  it("journals an API error as one redacted line", async () => {
+    vi.stubEnv("MAAT_PROPOSER_TEST_API_KEY", "fake-secret-in-an-error");
+    try {
+      const create: CreateMessage = async () => {
+        throw new Error("401 key fake-secret-in-an-error rejected\nPOST https://proxy.example.org/v1/messages");
+      };
+      const out = await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
+      expect(out).toEqual({ ok: false, error: "claude: 401 key [redacted] rejected", costUsd6: 0n });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+});
+
+describe("anthropicClient", () => {
+  const message = { id: "msg_fake", type: "message", role: "assistant", model: "claude-sonnet-5-5", content: [{ type: "text", text: "{}" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } };
+
+  it("calls https://api.anthropic.com with ANTHROPIC_API_KEY, whatever ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN say", async () => {
+    // A parent process (Claude Code exports ANTHROPIC_BASE_URL) must not get the key or answer for Claude.
+    vi.stubEnv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9/fake-proxy");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "fake-auth-token-from-a-parent");
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-fake-agent-key");
+    try {
+      const seen: { url: string; headers: Headers }[] = [];
+      const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+        seen.push({ url: String(url), headers: new Headers(init?.headers) });
+        return new Response(JSON.stringify(message), { status: 200, headers: { "content-type": "application/json" } });
+      }) as typeof globalThis.fetch;
+      const client = anthropicClient({ fetch });
+      expect(client.baseURL).toBe(ANTHROPIC_API_URL);
+      expect(ANTHROPIC_API_URL).toBe("https://api.anthropic.com");
+      await client.beta.messages.create({ model: "claude-sonnet-5-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.url).toMatch(/^https:\/\/api\.anthropic\.com\/v1\/messages/);
+      const headerValues = [...seen[0]!.headers.values()].join("\n");
+      expect(headerValues).toContain("sk-ant-fake-agent-key");
+      expect(headerValues).not.toContain("fake-auth-token-from-a-parent");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("refuses to build without ANTHROPIC_API_KEY instead of using an auth token or a login profile", () => {
+    vi.stubEnv("ANTHROPIC_API_KEY", "");
+    vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "fake-auth-token-from-a-parent");
+    try {
+      expect(() => anthropicClient()).toThrow("ANTHROPIC_API_KEY is not set");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("names the Anthropic env it ignores, for one startup warning", () => {
+    expect(ignoredAnthropicEnv({})).toBeNull();
+    expect(ignoredAnthropicEnv({ ANTHROPIC_BASE_URL: "", ANTHROPIC_API_KEY: "sk-ant-fake" })).toBeNull();
+    expect(ignoredAnthropicEnv({ ANTHROPIC_BASE_URL: "http://127.0.0.1:9" })).toBe(
+      "maat agent: ignoring ANTHROPIC_BASE_URL: Claude is called only at https://api.anthropic.com, with ANTHROPIC_API_KEY",
+    );
+    expect(ignoredAnthropicEnv({ ANTHROPIC_BASE_URL: "http://127.0.0.1:9", ANTHROPIC_AUTH_TOKEN: "fake" })).toBe(
+      "maat agent: ignoring ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN: Claude is called only at https://api.anthropic.com, with ANTHROPIC_API_KEY",
+    );
   });
 });
 
