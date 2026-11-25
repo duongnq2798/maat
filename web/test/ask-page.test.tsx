@@ -61,12 +61,26 @@ describe("no page links /ask while the inbox is not recorded", () => {
       return statSync(path).isDirectory() ? files(path) : /\.(tsx?|mdx|json)$/.test(name) ? [path] : [];
     });
 
+  // In code, any quoted "/ask" path could become an href. In a docs page, only a link target is a link: a Markdown
+  // link or reference, or an href. The guide names the page in a code span, which renders as text.
+  const CODE_LINK = /["'`(]\/ask(?=["'`)#?/])/;
+  const MDX_LINK = /(?:\]\(\s*|^\[[^\]]+\]:\s*|href=\{?\s*["'`])\/ask(?=[\s"'`)#?/}]|$)/m;
+  const links = (path: string, text: string) => (path.endsWith(".mdx") ? MDX_LINK : CODE_LINK).test(text);
+
+  it("tells a link to /ask from a mention of it", () => {
+    for (const text of ["[Ask](/ask)", "[Ask]( /ask#send)", "[ask]: /ask", '<a href="/ask">Ask</a>', '<Card href={"/ask/"} />']) {
+      expect(links("page.mdx", text), text).toBe(true);
+    }
+    for (const text of ["The site's `/ask` page", "web/app/(site)/ask/AskApp.tsx", "/asking", "[Ask](/asks)"]) expect(links("page.mdx", text), text).toBe(false);
+    for (const text of ['href: "/ask"', "`/ask#feed`", "{ href: '/ask/' }"]) expect(links("nav.ts", text), text).toBe(true);
+    expect(links("nav.ts", '"/asking"')).toBe(false);
+  });
+
   it.skipIf(recorded)("finds no link to /ask in the site's code or docs outside the page itself", () => {
     const web = join(REPO_ROOT, "web");
     const own = join(web, "app", "(site)", "ask");
     const sources = ["app", "components", "content", "lib"].flatMap((d) => files(join(web, d))).filter((f) => !f.startsWith(own));
-    const LINK = /["'`(]\/ask(?=["'`)#?/])/;
-    const linked = sources.filter((f) => LINK.test(readFileSync(f, "utf8"))).map((f) => relative(web, f).split(sep).join("/"));
+    const linked = sources.filter((f) => links(f, readFileSync(f, "utf8"))).map((f) => relative(web, f).split(sep).join("/"));
     expect(linked).toEqual([]);
   });
 });
