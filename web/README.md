@@ -40,7 +40,7 @@ Full local check: `npm run verify`, then `npm run e2e` (the build inside `verify
 
 Every number on the page lives in `content/facts.ts` with a `source`. `test/facts.test.ts` reads the contracts and the fork test directly, so a contract change that moves a number fails the tests until the site is updated.
 
-W1's decisions are only those of the labeled Base fork run. The mandate sheet's `mandateHash` chip is the `mandateHash()` of the vault the owner deployed on Base mainnet, shortened. A value that exists only once a decision is a mainnet transaction is shown as `[from mainnet tx]`, never as a made-up hash.
+W1's decisions are only those of the labeled Base fork run. The mandate sheet's `mandateHash` chip is the `mandateHash()` of the vault the owner deployed on Base mainnet, shortened. A value that exists only once a decision is a mainnet transaction is shown as `[from mainnet tx]`, never as a made-up hash. The day the footer gives for the vault's deploy is the Date cell of the `MandateVault` row in `deployments/README.md`, read through `lib/chain/config.ts`; built from a table with no vault, the footer names no day.
 
 ## Docs content
 

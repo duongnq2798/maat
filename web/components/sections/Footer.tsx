@@ -1,6 +1,12 @@
+import { dayLabel } from "@/content/format";
+import { vaultDeployDate } from "@/lib/chain/config";
+import type { Deployment } from "@/lib/docs/docs-data";
+import { docsData } from "@/lib/docs/generated";
 import { SITE } from "@/lib/site";
 
+// The lead names the mainnet ledger, and /now and /gap-index have no other link to it, so it comes first.
 const LINKS = [
+  { href: "/ledger", label: "Mainnet ledger" },
   { href: SITE.docsUrl, label: "Docs" },
   { href: SITE.repoUrl, label: "Source on GitHub" },
   { href: SITE.quickstartUrl, label: "Verify in 5 minutes" },
@@ -9,7 +15,17 @@ const LINKS = [
   { href: SITE.xUrl, label: SITE.xHandle },
 ] as const;
 
-export function Footer() {
+/**
+ * The footer's lead: the day the deployments table records for the vault, when it records one, then where the vault's
+ * decisions are. A build from a table with no vault, which /ledger shows as waiting, names no day.
+ */
+function lead(deployments: readonly Deployment[]): string {
+  const date = vaultDeployDate(deployments);
+  if (!date) return "Every decision the vault makes, refusals included, is public on the mainnet ledger.";
+  return `The vault has been on Base mainnet since ${dayLabel(date)} ${date.slice(0, 4)}, with a small treasury. Every decision it makes, refusals included, is public on the mainnet ledger.`;
+}
+
+export function Footer({ deployments = docsData.deployments }: { deployments?: readonly Deployment[] }) {
   return (
     <footer className="relative overflow-hidden border-t border-line">
       <div aria-hidden="true" className="grid-bg absolute inset-0" />
@@ -18,10 +34,7 @@ export function Footer() {
           <h2 className="m-0 text-[clamp(56px,8vw,120px)] font-semibold leading-[0.95] tracking-[-0.055em]">
             Watch it <span className="text-accent">say no.</span>
           </h2>
-          <p className="lead max-w-[34em]">
-            Mainnet goes live with a small treasury. The first weekend and Thanksgiving refusals will be posted as they
-            happen.
-          </p>
+          <p className="lead max-w-[34em]">{lead(deployments)}</p>
           <div className="flex flex-wrap justify-center gap-3">
             <a className="pill-dark" href={SITE.xUrl}>
               Follow {SITE.xHandle}
