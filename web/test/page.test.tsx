@@ -103,6 +103,7 @@ describe("landing page", () => {
       .getAllByRole("link")
       .map((a) => [a.textContent, a.getAttribute("href")]);
     expect(links).toEqual([
+      ["Mainnet ledger", "/ledger"],
       ["Docs", SITE.docsUrl],
       ["Source on GitHub", SITE.repoUrl],
       ["Verify in 5 minutes", SITE.quickstartUrl],

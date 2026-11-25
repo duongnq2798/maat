@@ -4,7 +4,9 @@ import type { Deployment } from "@/lib/docs/docs-data";
 import { docsData } from "@/lib/docs/generated";
 import { SITE } from "@/lib/site";
 
+// The lead names the mainnet ledger, and /now and /gap-index have no other link to it, so it comes first.
 const LINKS = [
+  { href: "/ledger", label: "Mainnet ledger" },
   { href: SITE.docsUrl, label: "Docs" },
   { href: SITE.repoUrl, label: "Source on GitHub" },
   { href: SITE.quickstartUrl, label: "Verify in 5 minutes" },
