@@ -1012,10 +1012,10 @@
     "test_transfersNvdacOnFork": 22
   },
   "contracts/test/fork/CreditSupplyWithdrawFork.t.sol": {
-    "test_supplyThenWithdrawFiveDollarsOfNvdac": 85,
-    "test_minimumSupplyAndWithdrawIsOneRawUnit": 150,
-    "test_marketLimitsAtTheForkBlock": 186,
-    "test_supplyAndWithdrawWhileTheMarketIsClosed": 222
+    "test_supplyThenWithdrawFiveDollarsOfNvdac": 110,
+    "test_minimumSupplyAndWithdrawIsOneRawUnit": 174,
+    "test_marketLimitsAtTheForkBlock": 214,
+    "test_supplyAndWithdrawWhileTheMarketIsClosed": 260
   },
   "contracts/test/fork/DeployFork.t.sol": {
     "test_deployWiresEverything": 15
