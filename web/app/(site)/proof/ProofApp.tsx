@@ -6,16 +6,18 @@ import { PROOF_BOUNTY } from "@/content/proof-bounty";
 import { PROOF_SENDS } from "@/content/proof-sends";
 import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
+import { browserStorage } from "@/lib/chain/cache";
 import type { InboxDeployment } from "@/lib/chain/inbox";
 import { errorText } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
+import { fetchSnapshotJson } from "@/lib/chain/snapshot";
 import { fetchProofConfig, type ProofConfig } from "./config";
 import { countBriefs, formatCount, type ProofLists } from "./count";
 import { readProof, type ProofClient, type ProofRead } from "./load";
 import { ProofCounts } from "./ProofCounts";
 import { RuleText } from "./RuleText";
 import { RULE_SPEC } from "./rule";
-import { DECISION_NOTE, TEAM_SET_NOTE } from "./team";
+import { DECISION_NOTE, TEAM_SET_NOTE, type TeamTrace } from "./team";
 
 const REPO = "https://github.com/duongnq2798/maat";
 const LISTS: ProofLists = { team: PROOF_TEAM, hidden: HIDDEN_BRIEFS, bounty: PROOF_BOUNTY, sends: PROOF_SENDS, stops: PROOF_STOPS };
@@ -24,6 +26,18 @@ export interface ProofDeps {
   client?: ProofClient;
   fetchConfig?: () => Promise<ProofConfig>;
   lists?: ProofLists;
+  /** The committed snapshot of the vault's logs, as /data/decisions-snapshot.json serves it. */
+  fetchSnapshot?: () => Promise<unknown>;
+  /** Where the ledger keeps its cache of the vault's logs (default: this browser's localStorage). */
+  storage?: Storage | null;
+}
+
+/** Where the trace took the vault's logs from, when it did not read them all from Base. */
+function seedText(seed: NonNullable<TeamTrace["seed"]>): string {
+  const to = formatCount(Number(seed.to));
+  return seed.source === "snapshot" && seed.anchor !== null
+    ? `The vault's logs to block ${to} are from the committed snapshot of block ${formatCount(Number(seed.anchor))}: Base gave that block the same hash, and each log's transaction receipt holds it. The rest were read from Base.`
+    : `The vault's logs to block ${to} are from this browser's ledger cache, and each log's transaction receipt on Base holds it. The rest were read from Base.`;
 }
 
 function Section({ id, title, lead, children }: { id: string; title: string; lead: ReactNode; children: ReactNode }) {
@@ -51,11 +65,15 @@ function RecordedCounts({
   deployments,
   client,
   lists,
+  fetchSnapshot,
+  storage,
 }: {
   inbox: InboxDeployment;
   deployments: ProofConfig["deployments"];
   client: ProofClient;
   lists: ProofLists;
+  fetchSnapshot: () => Promise<unknown>;
+  storage: Storage | null;
 }) {
   const [read, setRead] = useState<Read>({ state: "reading" });
   const [attempt, setAttempt] = useState(0);
@@ -63,13 +81,14 @@ function RecordedCounts({
   useEffect(() => {
     const controller = new AbortController();
     setRead({ state: "reading" });
-    readProof(client, { inbox, deployments }, lists, controller.signal)
+    // The snapshot is fetched while the head and the Brief logs are read; the trace waits for it only at the vault.
+    readProof(client, { inbox, deployments }, lists, controller.signal, { snapshot: fetchSnapshot(), storage })
       .then((proof) => setRead({ state: "read", proof }))
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setRead({ state: "error", message: errorText(e) });
       });
     return () => controller.abort();
-  }, [client, inbox, deployments, lists, attempt]);
+  }, [client, inbox, deployments, lists, fetchSnapshot, storage, attempt]);
 
   const again = (
     <button type="button" onClick={() => setAttempt((n) => n + 1)} className="pill-line cursor-pointer bg-white">
@@ -110,6 +129,7 @@ function RecordedCounts({
           </ul>
         </div>
       )}
+      {proof.team.seed ? <p className="m-0 max-w-[720px] text-[13px] leading-normal text-ink-2">{seedText(proof.team.seed)}</p> : null}
       {proof.verifiedError ? (
         <p className="m-0 flex flex-wrap items-center gap-3 text-[15px] text-refuse">
           The Verified Account column could not be read: {proof.verifiedError} {again}
@@ -146,6 +166,8 @@ export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: 
   // createLedgerClient builds a viem PublicClient, which has request as well.
   const [client] = useState<ProofClient>(() => deps.client ?? (createLedgerClient() as ProofClient));
   const [fetchConfig] = useState(() => deps.fetchConfig ?? (() => fetchProofConfig()));
+  const [fetchSnapshot] = useState(() => deps.fetchSnapshot ?? (() => fetchSnapshotJson()));
+  const [storage] = useState(() => (deps.storage === undefined ? browserStorage() : deps.storage));
   const lists = deps.lists ?? LISTS;
 
   useEffect(() => {
@@ -180,7 +202,14 @@ export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: 
           <p className="m-0">{DECISION_NOTE}</p>
         </div>
         {config.inbox ? (
-          <RecordedCounts inbox={config.inbox} deployments={config.deployments} client={client} lists={lists} />
+          <RecordedCounts
+            inbox={config.inbox}
+            deployments={config.deployments}
+            client={client}
+            lists={lists}
+            fetchSnapshot={fetchSnapshot}
+            storage={storage}
+          />
         ) : (
           <NotRecorded lists={lists} />
         )}
@@ -198,6 +227,9 @@ export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: 
         <p className="m-0 max-w-[720px] text-[15px] leading-relaxed text-ink-body">
           It runs on Node.js 24. <code className="font-mono text-[0.9em]">--rpc &lt;url&gt;</code> reads another RPC, and{" "}
           <code className="font-mono text-[0.9em]">--to-block &lt;n&gt;</code> stops at the block this page says it counted to.
+          It reads every vault log from the vault&apos;s deploy block, while this page may take the older ones from the
+          committed snapshot once Base confirms each one; <code className="font-mono text-[0.9em]">--snapshot</code> makes
+          the script do the same, and say so.
         </p>
       </Section>
 

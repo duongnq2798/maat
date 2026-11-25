@@ -6,7 +6,7 @@
 // team set traced at the block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless
 // JSON-RPC. The Decision lines of the rule are not rebuilt yet, and it says so.
 //
-//   node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
+//   node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>] [--snapshot]
 //   node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 //
 // No dependency: Node's built-ins and fetch only. It reads the TypeScript lists, and the team trace
@@ -38,24 +38,27 @@ export const GET_ATTESTATION_UID = "0xab2717dd";
 /** The selector of getAttestation(bytes32). */
 export const GET_ATTESTATION = "0xa3112a64";
 
-/** The widest eth_getLogs range tried first: base-rpc.publicnode.com's limit (web/lib/chain/scan.ts LOG_CHUNK). */
-const MAX_SPAN = 50_000n;
-/** An RPC's answer to a range that is too wide (web/lib/chain/scan.ts). */
-const RANGE_ERROR = /block range|ranges? over|limited to (?:a )?[\d,\s-]+(?:blocks? )?range|max(?:imum)? (?:block )?range/i;
 const RATE_LIMIT = /rate.?limit|too many requests/i;
 const RETRIES = 5;
 const ZERO32 = `0x${"0".repeat(64)}`;
 const RULE = "docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5";
+/** The committed snapshot of the vault's logs (web/lib/chain/snapshot.ts), which --snapshot reads. */
+const SNAPSHOT_FILE = "web/content/generated/decisions-snapshot.json";
 
 const USAGE = `Rebuilds the /proof brief lines from Base mainnet alone.
 
-  node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
+  node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>] [--snapshot]
   node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 
   --rpc <url>        a Base mainnet JSON-RPC (default ${DEFAULT_RPC})
   --logs-rpc <url>   read eth_getLogs from this Base mainnet RPC instead of --rpc (default: --rpc)
   --to-block <n>     count to block n, the block /proof says it counted to, as it prints it or as digits (default: the head)
   --root <dir>       read deployments/README.md and web/content/ from this checkout (default: this script's)
+  --snapshot         take the vault's logs below the committed snapshot's reorg window from
+                     ${SNAPSHOT_FILE}, as /proof does, once the RPC gives the file's block the hash it
+                     records and each log's transaction receipt holds it, and read only the other blocks. Without it,
+                     every log is read from the RPC, from the vault's deploy block on, and the recount depends on no
+                     file but the deployments table and the five lists.
   --sends <wallet>   print the entry of web/content/proof-sends.ts the wallet needs at block n: the transactions it
                      sent that left no vault log the team trace reads (it skips RevenueReceived, which anyone can
                      make the vault emit) and no Brief of MaatInbox, in nonce order. It reads the wallet's nonce at
@@ -250,27 +253,6 @@ export function rpcClient(url) {
   };
 }
 
-/**
- * Every Brief log of `inbox` in [from, to]. A range error halves the window and tries again; the window that worked
- * is kept for the blocks after it. Any other error stops the recount: a count with a gap in it is not a recount.
- */
-async function briefLogs(call, inbox, from, to) {
-  const logs = [];
-  let span = MAX_SPAN;
-  let lo = from;
-  while (lo <= to) {
-    const hi = lo + span - 1n < to ? lo + span - 1n : to;
-    try {
-      logs.push(...(await call("eth_getLogs", [{ address: inbox, topics: [BRIEF_TOPIC], fromBlock: hex(lo), toBlock: hex(hi) }])));
-      lo = hi + 1n;
-    } catch (e) {
-      if (!(e instanceof RpcError) || !RANGE_ERROR.test(e.message) || hi === lo) throw e;
-      span = (hi - lo + 1n) / 2n;
-    }
-  }
-  return logs;
-}
-
 const word = (data, i) => `0x${data.slice(2 + 64 * i, 2 + 64 * (i + 1))}`;
 
 /** A Brief log as the page's reader keeps it (web/lib/chain/inbox.ts), or null for a log it would drop. */
@@ -316,24 +298,23 @@ function decodeAttestation(data) {
   };
 }
 
-/** Each wallet's counting Verified Account UID, or null; every read is at `blockTag`, judged at `now`. */
+/**
+ * Each wallet's counting Verified Account UID, or null; every read is at `blockTag`, judged at `now`. The wallets are
+ * read READ_WORKERS at a time (team.ts), as the page reads them all at once.
+ */
 export async function verifiedAccounts(call, list, blockTag, now) {
-  const uids = [];
-  for (const w of list) {
+  const { mapLimit, READ_WORKERS } = await import(TEAM_MODULE.href);
+  const uids = await mapLimit(list, READ_WORKERS, async (w) => {
     const data = `${GET_ATTESTATION_UID}${w.slice(2).padStart(64, "0")}${VERIFIED_ACCOUNT_SCHEMA.slice(2)}`;
-    uids.push(word(await call("eth_call", [{ to: COINBASE_INDEXER, data }, blockTag]), 0).toLowerCase());
-  }
-  const out = new Map();
-  for (const [i, w] of list.entries()) {
+    return word(await call("eth_call", [{ to: COINBASE_INDEXER, data }, blockTag]), 0).toLowerCase();
+  });
+  const held = await mapLimit([...list.entries()], READ_WORKERS, async ([i, w]) => {
     const uid = uids[i];
-    if (uid === ZERO32) {
-      out.set(w, null);
-      continue;
-    }
+    if (uid === ZERO32) return null;
     const att = decodeAttestation(await call("eth_call", [{ to: EAS, data: `${GET_ATTESTATION}${uid.slice(2)}` }, blockTag]));
-    out.set(w, countsAsVerified(att, uid, w, now) ? uid : null);
-  }
-  return out;
+    return countsAsVerified(att, uid, w, now) ? uid : null;
+  });
+  return new Map(list.map((w, i) => [w, held[i]]));
 }
 
 /**
@@ -375,8 +356,9 @@ export async function sentTransactions(call, wallet, head, known = []) {
 }
 
 /**
- * Every Brief of the recorded inbox to `head`, in id order, each read once, from the inbox's deploy block on. Any chunk
- * that cannot be read stops the recount, so the scan it gives the team trace is complete.
+ * Every Brief of the recorded inbox to `head`, in id order, each read once, from the inbox's deploy block on, with the
+ * team trace's own scan (team.ts logsIn: windows of 50,000 blocks, halved on a range error, LOG_WORKERS at a time). Any
+ * window that cannot be read stops the recount, so the scan it gives the team trace is complete.
  */
 async function inboxBriefs(call, record, head) {
   let from = SCAN_FLOOR_BLOCK;
@@ -384,8 +366,9 @@ async function inboxBriefs(call, record, head) {
     const receipt = await call("eth_getTransactionReceipt", [record.deployTx]);
     if (receipt?.blockNumber) from = BigInt(receipt.blockNumber);
   }
+  const { logsIn } = await import(TEAM_MODULE.href);
   const byKey = new Map();
-  for (const log of await briefLogs(call, record.inbox, from, head)) {
+  for (const log of await logsIn(call, { address: record.inbox, topics: [BRIEF_TOPIC] }, from, head)) {
     const b = decodeBrief(log, record.inbox);
     if (b) byKey.set(`${b.txHash}:${b.logIndex}`, b);
   }
@@ -408,7 +391,15 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
   try {
     args = parseArgs({
       args: argv,
-      options: { rpc: { type: "string" }, "logs-rpc": { type: "string" }, "to-block": { type: "string" }, root: { type: "string" }, sends: { type: "string" }, help: { type: "boolean" } },
+      options: {
+        rpc: { type: "string" },
+        "logs-rpc": { type: "string" },
+        "to-block": { type: "string" },
+        root: { type: "string" },
+        sends: { type: "string" },
+        snapshot: { type: "boolean" },
+        help: { type: "boolean" },
+      },
       strict: true,
     }).values;
   } catch (e) {
@@ -477,7 +468,23 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
       bounty: await list(root, "web/content/proof-bounty.ts", "PROOF_BOUNTY"),
     };
     countBriefs([], lists);
-    const { DECISION_NOTE, TEAM_SET_NOTE, teamLines, traceTeam } = await import(TEAM_MODULE.href);
+    const { DECISION_NOTE, TEAM_SET_NOTE, snapshotSeed, teamLines, traceTeam } = await import(TEAM_MODULE.href);
+    // --snapshot: the committed file as a seed of the vault's logs, which the trace checks log by log against Base.
+    const vaultRow = deployments.find((r) => r.contract === "MandateVault" && r.address.trim() !== "");
+    let vaultSeed = null;
+    let unread = null;
+    if (args.snapshot && vaultRow) {
+      let raw;
+      try {
+        raw = JSON.parse(readFileSync(join(root, SNAPSHOT_FILE), "utf8"));
+      } catch {
+        unread = "it could not be read as JSON";
+      }
+      if (unread === null) {
+        vaultSeed = snapshotSeed(raw, vaultRow.address.trim());
+        if (!vaultSeed) unread = `it is not a decisions snapshot of MandateVault ${vaultRow.address.trim().toLowerCase()} on Base mainnet`;
+      }
+    }
 
     say(`Maat /proof recount, from Base mainnet alone, by the counting rule of ${RULE}.`);
     say(`RPC ${source}: chain id ${chainId}, head block ${latest.toLocaleString("en-US")}.`);
@@ -495,7 +502,10 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     // As on the page, the trace reads the vault's logs while the Brief logs are read, and takes a team wallet's briefs
     // as its sends from them.
     const scan = inboxBriefs(call, record, head);
-    const [{ from, briefs }, trace] = await Promise.all([scan, traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments, briefScan: scan }, head)]);
+    const [{ from, briefs }, trace] = await Promise.all([
+      scan,
+      traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments, briefScan: scan, vaultSeed }, head),
+    ]);
     const count = countBriefs(briefs, { ...lists, team: trace.members });
     const complete = trace.gaps.length === 0;
     let verified = new Map();
@@ -512,6 +522,13 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     say(
       `MaatInbox ${record.inbox}: Brief logs from block ${from.toLocaleString("en-US")} to block ${head.toLocaleString("en-US")}, team set and Verified Accounts read at block ${head.toLocaleString("en-US")}.`,
     );
+    if (args.snapshot && trace.seed) {
+      say(
+        `Vault logs to block ${trace.seed.to.toLocaleString("en-US")} from ${SNAPSHOT_FILE}, the snapshot of block ${trace.seed.anchor.toLocaleString("en-US")}: the RPC gives that block the same hash, and each log's transaction receipt holds it. The vault's other blocks, to block ${head.toLocaleString("en-US")}, are read from the RPC.`,
+      );
+    } else if (args.snapshot && vaultRow) {
+      say(`${SNAPSHOT_FILE} was not used (${unread ?? trace.seedRejected}), so the vault's logs are read from its deploy block.`);
+    }
     say(TEAM_SET_NOTE);
     say(DECISION_NOTE);
     for (const line of reportLines(count, verified, complete ? "counted" : "incomplete", teamLines(trace))) say(line);

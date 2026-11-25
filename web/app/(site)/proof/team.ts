@@ -21,6 +21,35 @@ export interface TeamInputs {
    * first and waits for it only then. A brief is a send of the wallet it names when that wallet sent its transaction.
    */
   briefScan?: BriefScan | PromiseLike<BriefScan>;
+  /**
+   * Vault logs the caller already holds (snapshotSeed: the committed snapshot; or the ledger's browser cache), or a
+   * promise of them. The trace takes from it the logs of VAULT_TOPICS in its range once each one's transaction receipt
+   * holds it, and the block it records has that hash, and reads only the other blocks; any difference drops the seed
+   * and the trace reads every block from the vault's deploy. So a seed can leave a log out, which leaves a team send
+   * missing, but it cannot add or change one.
+   */
+  vaultSeed?: VaultSeed | null | PromiseLike<VaultSeed | null>;
+}
+
+/** A vault log as the snapshot and the ledger's cache keep it: block numbers as decimal strings. */
+export interface SeedLog {
+  blockNumber: string;
+  logIndex: number;
+  transactionHash: string;
+  topics: readonly string[];
+  data: string;
+}
+
+export interface VaultSeed {
+  source: "snapshot" | "cache";
+  /** Lowercased. */
+  vault: string;
+  /** Every log of the vault in [from, to] that the source holds. */
+  from: bigint;
+  to: bigint;
+  logs: readonly SeedLog[];
+  /** A block above `to` and the hash the source recorded for it (the snapshot's N), or null for none. */
+  anchor: { block: bigint; hash: string } | null;
 }
 
 export interface BriefScan {
@@ -53,6 +82,10 @@ export interface TeamTrace {
   gaps: string[];
   /** What the rule's sources cannot show for a wallet. */
   notes: string[];
+  /** The vault's logs taken from TeamInputs.vaultSeed, once each held its receipt, or null; `anchor` is its block. */
+  seed: { source: VaultSeed["source"]; from: bigint; to: bigint; anchor: bigint | null } | null;
+  /** Why a seed the caller gave was not used, or null. */
+  seedRejected: string | null;
 }
 
 /** owner(), executor() and payees() of MandateVault. */
@@ -110,9 +143,23 @@ const FULL_ADDRESS = /^0x[0-9a-fA-F]{40}$/;
 const FULL_HASH = /^0x[0-9a-fA-F]{64}$/;
 /** The widest eth_getLogs range tried first: base-rpc.publicnode.com's limit (web/lib/chain/scan.ts LOG_CHUNK). */
 const MAX_SPAN = 50_000n;
-const LOG_WORKERS = 4;
-/** Transaction and wallet reads in flight at once; the page's client batches them into one HTTP request. */
-const READ_WORKERS = 8;
+/**
+ * eth_getLogs windows in flight at once, in each scan: the vault's here, and the Brief logs' (lib/chain/inbox.ts
+ * readBriefs), which run at the same time. base-rpc.publicnode.com answered 32 windows of 50,000 blocks sent at once in
+ * 567 to 960 ms, and 64 in 593 ms, with no error (2026-11-25).
+ */
+export const LOG_WORKERS = 16;
+/** web/lib/chain/snapshot.ts SNAPSHOT_REORG_WINDOW: the snapshot's newest blocks, which a read takes from Base again. */
+export const SEED_REORG_WINDOW = 150n;
+const BASE_CHAIN_ID = 8453;
+const DECIMAL = /^\d+$/;
+const HEX = /^0x[0-9a-fA-F]*$/;
+/**
+ * Transaction and wallet reads in flight at once: 25 transactions are 50 calls, one batch of the page's client
+ * (lib/chain/rpc.ts). base-rpc.publicnode.com answered a batch of 50 transaction and receipt lookups in 270 to 346 ms,
+ * and 16 in 232 to 258 ms (2026-11-25, UTC). The recount reads its Verified Accounts this many at a time too.
+ */
+export const READ_WORKERS = 25;
 /** An RPC's answer to a range that is too wide (web/lib/chain/scan.ts). */
 const RANGE_ERROR = /block range|ranges? over|limited to (?:a )?[\d,\s-]+(?:blocks? )?range|max(?:imum)? (?:block )?range/i;
 
@@ -126,12 +173,14 @@ interface RawTx {
 interface RawLog {
   address: string;
   topics: string[];
+  data: string;
   blockNumber: string;
   logIndex: string;
   transactionHash: string;
 }
 interface RawReceipt {
   from: string;
+  blockNumber: string;
   status: string;
   contractAddress: string | null;
   logs: RawLog[];
@@ -169,7 +218,7 @@ function abortIf(signal?: AbortSignal) {
 }
 
 /** `fn` over `items`, at most `limit` at a time, with the results in the order of `items`. */
-async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+export async function mapLimit<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const out: R[] = [];
   let next = 0;
   const worker = async () => {
@@ -191,11 +240,11 @@ function addressList(data: string): string[] {
 }
 
 /**
- * Every log of `filter` in [from, to], in block and log order. A range error halves that window and tries again, and
- * the windows still to come start at that width; any other error is thrown, since a team set with a gap in it is not
- * the rule's.
+ * Every log of `filter` in [from, to], in block and log order, LOG_WORKERS windows at a time. A range error halves that
+ * window and tries again, and the windows still to come start at that width; any other error is thrown, since a team
+ * set with a gap in it is not the rule's. scripts/recount.mjs reads the Brief logs with it too.
  */
-async function logsIn(rpc: Rpc, filter: { address: string; topics?: (string | string[])[] }, from: bigint, to: bigint, signal?: AbortSignal): Promise<RawLog[]> {
+export async function logsIn(rpc: Rpc, filter: { address: string; topics?: (string | string[])[] }, from: bigint, to: bigint, signal?: AbortSignal): Promise<RawLog[]> {
   let span = MAX_SPAN;
   let next = from;
   const split: { lo: bigint; hi: bigint }[] = [];
@@ -228,6 +277,94 @@ async function logsIn(rpc: Rpc, filter: { address: string; topics?: (string | st
     const [bb, bi] = key(b);
     return ab === bb ? (ai < bi ? -1 : ai > bi ? 1 : 0) : ab < bb ? -1 : 1;
   });
+}
+
+const isSeedLog = (l: unknown): l is SeedLog => {
+  if (typeof l !== "object" || l === null) return false;
+  const o = l as Record<string, unknown>;
+  return (
+    typeof o.blockNumber === "string" &&
+    DECIMAL.test(o.blockNumber) &&
+    Number.isSafeInteger(o.logIndex) &&
+    (o.logIndex as number) >= 0 &&
+    typeof o.transactionHash === "string" &&
+    FULL_HASH.test(o.transactionHash) &&
+    Array.isArray(o.topics) &&
+    o.topics.every((t) => typeof t === "string" && HEX.test(t)) &&
+    typeof o.data === "string" &&
+    HEX.test(o.data)
+  );
+};
+
+/**
+ * The committed snapshot (web/content/generated/decisions-snapshot.json, as web/lib/chain/snapshot.ts describes it) as
+ * a seed for `vault`: its logs up to block N − 1 − SEED_REORG_WINDOW, and N with the hash it records. Null for anything
+ * else: no file, another version, chain or vault, a floor above N, a log outside [floor, N] or a field of another shape,
+ * which are the files the ledger's parseSnapshot refuses too.
+ */
+export function snapshotSeed(raw: unknown, vault: string): VaultSeed | null {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return null;
+  const s = raw as Record<string, unknown>;
+  if (s.v !== 1 || s.chainId !== BASE_CHAIN_ID) return null;
+  if (typeof s.vault !== "string" || !FULL_ADDRESS.test(s.vault) || s.vault.toLowerCase() !== vault.toLowerCase()) return null;
+  if (typeof s.floor !== "string" || !DECIMAL.test(s.floor) || typeof s.block !== "string" || !DECIMAL.test(s.block)) return null;
+  if (typeof s.blockHash !== "string" || !FULL_HASH.test(s.blockHash) || !Array.isArray(s.logs)) return null;
+  const floor = BigInt(s.floor);
+  const block = BigInt(s.block);
+  if (floor > block) return null;
+  const logs: SeedLog[] = [];
+  for (const l of s.logs as unknown[]) {
+    if (!isSeedLog(l) || BigInt(l.blockNumber) < floor || BigInt(l.blockNumber) > block) return null;
+    logs.push(l);
+  }
+  const to = block - SEED_REORG_WINDOW - 1n;
+  return {
+    source: "snapshot",
+    vault: s.vault.toLowerCase(),
+    from: floor,
+    to,
+    logs: logs.filter((l) => BigInt(l.blockNumber) <= to),
+    anchor: { block, hash: s.blockHash.toLowerCase() },
+  };
+}
+
+const SEED_NAME: Record<VaultSeed["source"], string> = { snapshot: "the snapshot", cache: "the ledger's cache" };
+const sameHex = (a: unknown, b: unknown) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
+
+/**
+ * Why `logs` of `seed` cannot stand for the vault's: the block it records has another hash on the RPC, or a log's
+ * transaction receipt does not hold, in the same block and at the same log index, the same log of the vault. Null when
+ * every one holds. The receipts are the trace's own reads, so a seed that passes costs no read the scan would not.
+ */
+async function seedProblem(rpc: Rpc, read: (hash: string) => Promise<Read>, vault: string, seed: VaultSeed, logs: readonly SeedLog[]): Promise<string | null> {
+  const anchor = seed.anchor;
+  const anchored = anchor
+    ? (rpc("eth_getBlockByNumber", [hex(anchor.block), false]) as Promise<{ hash?: unknown } | null>).then((b) =>
+        b && sameHex(b.hash, anchor.hash) ? null : `block ${fmt(anchor.block)} has another hash on this RPC`,
+      )
+    : Promise.resolve(null);
+  const byTx = new Map<string, SeedLog[]>();
+  for (const l of logs) byTx.set(l.transactionHash.toLowerCase(), [...(byTx.get(l.transactionHash.toLowerCase()) ?? []), l]);
+  const receipts = mapLimit([...byTx.keys()], READ_WORKERS, read).then((reads) => {
+    for (const { hash, receipt } of reads) {
+      if (!receipt) return `the RPC has no receipt for ${hash}, which ${SEED_NAME[seed.source]} gives a log of the vault`;
+      for (const l of byTx.get(hash)!) {
+        const r = receipt.logs.find((x) => BigInt(x.logIndex) === BigInt(l.logIndex));
+        const same =
+          r !== undefined &&
+          BigInt(receipt.blockNumber) === BigInt(l.blockNumber) &&
+          BigInt(r.blockNumber) === BigInt(l.blockNumber) &&
+          sameHex(r.address, vault) &&
+          sameHex(r.data, l.data) &&
+          r.topics.length === l.topics.length &&
+          r.topics.every((t, i) => sameHex(t, l.topics[i]));
+        if (!same) return `the receipt of ${hash} has no log of the vault at index ${l.logIndex} as ${SEED_NAME[seed.source]} has it in block ${fmt(BigInt(l.blockNumber))}`;
+      }
+    }
+    return null;
+  });
+  const [a, r] = await Promise.all([anchored, receipts]);
+  return a ?? r;
 }
 
 const byNonce = (a: Send, b: Send) => {
@@ -270,21 +407,31 @@ async function vaultOf(rows: TeamInputs["deployments"], txOf: (hash: string) => 
   return tx.blockNumber === null ? null : { address: checked(row.address.trim(), "deployments/README.md"), from: BigInt(tx.blockNumber) };
 }
 
+/** The blocks of [vault.from, block] that `seed` can stand for, or why it stands for none. */
+function seedRange(seed: VaultSeed, vault: { address: string; from: bigint }, block: bigint): { from: bigint; to: bigint } | string {
+  if (seed.vault.toLowerCase() !== vault.address) return `it holds the logs of ${seed.vault.toLowerCase()}, not of ${VAULT_CONTRACT} ${vault.address}`;
+  if (seed.anchor && seed.anchor.block > block) return `its block ${fmt(seed.anchor.block)} is past block ${fmt(block)}, the block counted to`;
+  const from = seed.from > vault.from ? seed.from : vault.from;
+  const to = seed.to < block ? seed.to : block;
+  return from <= to ? { from, to } : `it holds no block from ${fmt(vault.from)} to ${fmt(block)}`;
+}
+
 /**
  * The sends the logs give, wallet by wallet: every transaction with a vault log of VAULT_TOPICS from its deploy block to
  * `block`, by its sender, whoever that is (anyone may call syncMultiplier); and each brief's transaction, for the wallet
- * the Brief names, only when that wallet sent it. All vault transactions are read here, at most READ_WORKERS at a time,
- * before the Brief scan is waited for; a wallet's briefs are read when its sends are. A send counts only toward the
- * wallet that sent it, so a log never covers another wallet's send.
+ * the Brief names, only when that wallet sent it. The vault's logs come from the RPC, or from `inputs.vaultSeed` for
+ * the blocks it covers once seedProblem finds nothing. All vault transactions are read here, at most READ_WORKERS at a
+ * time, before the Brief scan is waited for; a wallet's briefs are read when its sends are. A send counts only toward
+ * the wallet that sent it, so a log never covers another wallet's send.
  */
 async function logSends(
   rpc: Rpc,
   read: (hash: string) => Promise<Read>,
   vault: { address: string; from: bigint } | null,
-  briefScan: TeamInputs["briefScan"],
+  inputs: Pick<TeamInputs, "briefScan" | "vaultSeed">,
   block: bigint,
   signal?: AbortSignal,
-): Promise<{ of: (wallet: string) => Promise<Send[]>; briefsComplete: boolean }> {
+): Promise<{ of: (wallet: string) => Promise<Send[]>; briefsComplete: boolean; seed: TeamTrace["seed"]; seedRejected: string | null }> {
   const sent = (r: Read, source: string): Send => {
     const { tx, receipt } = r;
     if (!tx || !receipt) throw new Error(`the RPC has no transaction or no receipt for ${r.hash}, ${source}`);
@@ -293,8 +440,40 @@ async function logSends(
     return { ...r, tx: { ...tx, blockNumber: tx.blockNumber } };
   };
   const byVault = new Map<string, Send[]>();
+  let seed: TeamTrace["seed"] = null;
+  let seedRejected: string | null = null;
   if (vault && vault.from <= block) {
-    const logs = await logsIn(rpc, { address: vault.address, topics: [[...VAULT_TOPICS]] }, vault.from, block, signal);
+    const filter = { address: vault.address, topics: [[...VAULT_TOPICS]] };
+    const given = (await inputs.vaultSeed) ?? null;
+    const usable = given ? seedRange(given, vault, block) : null;
+    if (given && typeof usable === "string") seedRejected = usable;
+    let logs: { transactionHash: string }[];
+    if (given && usable && typeof usable !== "string") {
+      // The seed's logs of VAULT_TOPICS in its range are checked against their receipts while the blocks it does not
+      // cover are read; RevenueReceived logs in it are dropped unread, as the scan never asks for them.
+      const topics = new Set<string>(VAULT_TOPICS);
+      const seeded = given.logs.filter((l) => {
+        const at = BigInt(l.blockNumber);
+        return at >= usable.from && at <= usable.to && topics.has(String(l.topics[0]).toLowerCase());
+      });
+      const outside = [
+        ...(usable.from > vault.from ? [{ lo: vault.from, hi: usable.from - 1n }] : []),
+        ...(usable.to < block ? [{ lo: usable.to + 1n, hi: block }] : []),
+      ];
+      const [scanned, problem] = await Promise.all([
+        Promise.all(outside.map((r) => logsIn(rpc, filter, r.lo, r.hi, signal))).then((parts) => parts.flat()),
+        seedProblem(rpc, read, vault.address, given, seeded),
+      ]);
+      if (problem === null) {
+        logs = [...seeded, ...scanned];
+        seed = { source: given.source, from: usable.from, to: usable.to, anchor: given.anchor?.block ?? null };
+      } else {
+        seedRejected = problem;
+        logs = [...(await logsIn(rpc, filter, usable.from, usable.to, signal)), ...scanned];
+      }
+    } else {
+      logs = await logsIn(rpc, filter, vault.from, block, signal);
+    }
     const hashes = [...new Set(logs.map((l) => l.transactionHash.toLowerCase()))];
     for (const r of await mapLimit(hashes, READ_WORKERS, read)) {
       const s = sent(r, `which left a log of ${VAULT_CONTRACT}`);
@@ -302,7 +481,7 @@ async function logSends(
       byVault.set(from, [...(byVault.get(from) ?? []), s]);
     }
   }
-  const { briefs, complete } = (await briefScan) ?? { briefs: [], complete: true };
+  const { briefs, complete } = (await inputs.briefScan) ?? { briefs: [], complete: true };
   const briefsOf = new Map<string, Set<string>>();
   for (const b of briefs) {
     const from = checked(b.from, "a Brief log");
@@ -316,7 +495,7 @@ async function logSends(
     }
     return [...out.values()].sort(byNonce);
   };
-  return { of, briefsComplete: complete };
+  return { of, briefsComplete: complete, seed, seedRejected };
 }
 
 /**
@@ -334,7 +513,7 @@ export async function loggedSends(
   const w = checked(wallet, "the wallet asked for");
   const { txOf, read } = reader(rpc);
   const vault = await vaultOf(inputs.deployments, txOf);
-  const sends = await (await logSends(rpc, read, vault, inputs.briefScan, block, signal)).of(w);
+  const sends = await (await logSends(rpc, read, vault, { briefScan: inputs.briefScan }, block, signal)).of(w);
   return sends.map((s) => ({ hash: s.hash, nonce: BigInt(s.tx.nonce), block: BigInt(s.tx.blockNumber) }));
 }
 
@@ -403,7 +582,7 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     if (from) add(from, 0, `deployer of ${row.contract}`);
     else gaps.push(`deployments/README.md gives no transaction for ${row.contract}, so its deployer is not known.`);
   }
-  const logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs.briefScan, block, signal);
+  const logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs, block, signal);
 
   /** What one wallet's own transactions show: whom it funded, which tokens it approved, and what is missing. */
   const fundingOf = async (w: string) => {
@@ -501,7 +680,7 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     for (const f of funded) add(f.to, hop + 1, f.why);
   }
 
-  return { block, members: [...members.values()], stops: [...stops.values()], gaps, notes };
+  return { block, members: [...members.values()], stops: [...stops.values()], gaps, notes, seed: logged.seed, seedRejected: logged.seedRejected };
 }
 
 /** The trace as text, one line each: the team set, the hop stops, what is not seen, and what is missing. */
