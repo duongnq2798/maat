@@ -5,9 +5,18 @@ import { getAddress } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/data/decisions-snapshot.json/route";
 import { CACHE_SAFETY_BLOCKS, memoryStorage, saveCache } from "@/lib/chain/cache";
-import { loadLedger, takeSnapshot } from "@/lib/chain/load";
+import { checkSnapshot, loadLedger, takeSnapshot } from "@/lib/chain/load";
 import type { RationaleSource } from "@/lib/chain/rationale";
-import { fetchSnapshotJson, parseSnapshot, SNAPSHOT_REORG_WINDOW, SNAPSHOT_URL, type DecisionsSnapshot } from "@/lib/chain/snapshot";
+import { DEFAULT_RPCS, scansLogs } from "@/lib/chain/rpc";
+import {
+  fetchSnapshotJson,
+  parseSnapshot,
+  SNAPSHOT_CHECK_RPC,
+  SNAPSHOT_REORG_WINDOW,
+  SNAPSHOT_RPC,
+  SNAPSHOT_URL,
+  type DecisionsSnapshot,
+} from "@/lib/chain/snapshot";
 import fixture from "./fixtures/decisions-snapshot.json";
 import { decisionLog, FAKE_VAULT, fakeBlockHash, fakeLedgerClient, hash32, type FakeChain } from "./helpers/fake-ledger";
 import { SNAP_AT, SNAP_BLOCK, SNAP_DEPLOY, SNAP_DEPLOY_TX, SNAP_HEAD, snapshotChain } from "./helpers/snapshot-chain";
@@ -87,41 +96,37 @@ describe("loadLedger from a snapshot", () => {
     expect(s.decisions.map((d) => d.txHash)).toEqual([hash32(4), hash32(3), hash32(2), hash32(1)]);
   });
 
-  it("checks the block hash once and reads nothing else for the Decisions below the window", async () => {
-    // A chain that would fail every read for Decisions 1 and 2: the file's times, gas and transactions stand in.
-    const chain = snapshotChain();
-    const stripped = snapshotChain({
-      times: Object.fromEntries(Object.entries(chain.times!).filter(([b]) => BigInt(b) >= SNAP_BLOCK - W)),
-      gas: { [hash32(3)]: chain.gas![hash32(3)]!, [hash32(4)]: chain.gas![hash32(4)]! },
-      txs: { [hash32(3)]: chain.txs![hash32(3)]!, [hash32(4)]: chain.txs![hash32(4)]! },
-    });
-    const { client, result } = load(stripped, { snapshot: fixture });
-    const s = await result;
-    const full = await load(chain).result;
+  it("reads N's hash and the receipt of each transaction the file names below the window once, and no logs there", async () => {
+    const { client, result } = load(snapshotChain(), { snapshot: fixture });
+    await result;
+    expect(client.blockCalls.filter((b) => b === SNAP_BLOCK)).toHaveLength(1);
+    for (const n of [1, 2]) expect(client.receiptCalls.filter((h) => h === hash32(n))).toHaveLength(1);
+    expect(client.logCalls.every((c) => c.from >= SNAP_BLOCK - W)).toBe(true);
+  });
+
+  it("takes only logs from the file: each Decision's block time, gas and transaction are read from Base", async () => {
+    // A file that also carries a time, a gas and a transaction for Decision 1, none of them Base's.
+    const snap = {
+      ...fixtureCopy(),
+      blockTimes: { [String(SNAP_DEPLOY + 5n)]: 1 },
+      gasUsed: { [hash32(1)]: "1" },
+      txs: { [hash32(1)]: { from: OTHER_VAULT, to: FAKE_VAULT, input: "0xdeadbeef" } },
+    };
+    const s = await load(snapshotChain(), { snapshot: snap }).result;
+    const full = await load(snapshotChain()).result;
+    expect(s.scan.fromSnapshot?.block).toBe(SNAP_BLOCK);
     expect(s.decisions).toEqual(full.decisions);
     expect(s.txs).toEqual(full.txs);
-    expect(client.blockCalls.filter((b) => b < SNAP_BLOCK - W)).toEqual([]);
-    expect(client.blockCalls.filter((b) => b === SNAP_BLOCK)).toHaveLength(1);
+    expect(s.trails).toEqual(full.trails);
   });
 
   it("drops a row inside the window that the chain no longer has, and keeps the one it still has", async () => {
     const snap = fixtureCopy();
     // Decision 9 was in the file at N - 20, then reorged out; Decision 3 at N - 10 is still on the chain.
     snap.logs.push(decisionLog(9, SNAP_BLOCK - 20n));
-    snap.blockTimes[String(SNAP_BLOCK - 20n)] = 1_795_717_000;
-    snap.gasUsed[hash32(9)] = "111116";
     const s = await load(snapshotChain(), { snapshot: snap }).result;
     expect(s.decisions.map((d) => d.txHash)).toEqual([hash32(4), hash32(3), hash32(2), hash32(1)]);
     expect(s.events.some((e) => e.txHash === hash32(9))).toBe(false);
-  });
-
-  it("drops the file's time and gas for a window row the chain moved, and reads them again", async () => {
-    const snap = fixtureCopy();
-    snap.blockTimes[String(SNAP_BLOCK - 10n)] = 1;
-    snap.gasUsed[hash32(3)] = "1";
-    const s = await load(snapshotChain(), { snapshot: snap }).result;
-    const full = await load(snapshotChain()).result;
-    expect(s.decisions).toEqual(full.decisions);
   });
 
   it("gives the same ledger as a full scan of the same chain", async () => {
@@ -182,6 +187,158 @@ describe("loadLedger from a snapshot", () => {
     expect(s.decisions.map((d) => d.txHash)).toEqual([hash32(2), hash32(1)]);
     expect(s.scan).toMatchObject({ done: false, gaps: [{ from: SNAP_BLOCK - W, to: SNAP_HEAD }], scannedFrom: null });
   });
+
+  it("starts from the snapshot when the browser cache covers it but ends above this RPC's head", async () => {
+    // A cache from an RPC that was ahead: this RPC's head is below its end, so the load cannot use it.
+    const storage = memoryStorage();
+    saveCache({ v: 1, vault: FAKE_VAULT, from: String(SNAP_DEPLOY), to: String(SNAP_HEAD - CACHE_SAFETY_BLOCKS), logs: [], blockTimes: {}, gasUsed: {} }, storage);
+    const { client, result } = load(snapshotChain({ head: SNAP_HEAD - 1_000n }), { storage, snapshot: fixture });
+    const s = await result;
+    expect(s.scan.fromSnapshot?.block).toBe(SNAP_BLOCK);
+    expect(lowest(client.logCalls)).toBe(SNAP_BLOCK - W);
+    expect(s.decisions.map((d) => d.txHash)).toEqual([hash32(3), hash32(2), hash32(1)]);
+  });
+});
+
+/** The fixture with a Decision below the window that the chain does not have: Base has no receipt for its transaction. */
+const invented = () => {
+  const snap = fixtureCopy();
+  snap.logs.splice(1, 0, decisionLog(9, SNAP_DEPLOY + 1_000n));
+  return snap;
+};
+
+describe("loadLedger checks each log it takes from the file against Base", () => {
+  const changed: [string, () => DecisionsSnapshot, () => FakeChain][] = [
+    ["a Decision Base does not have", invented, () => snapshotChain()],
+    [
+      "a log whose data differs from its receipt's (another amount)",
+      () => {
+        const snap = fixtureCopy();
+        snap.logs[1] = decisionLog(2, SNAP_DEPLOY + 60_000n, { reason: "MARKET_CLOSED", amount: 99_000_000n });
+        return snap;
+      },
+      () => snapshotChain(),
+    ],
+    [
+      "a log whose topics differ from its receipt's (another intent)",
+      () => {
+        const snap = fixtureCopy();
+        snap.logs[1]!.topics[1] = hash32(1999);
+        return snap;
+      },
+      () => snapshotChain(),
+    ],
+    [
+      "a log in another block than its receipt",
+      () => {
+        const snap = fixtureCopy();
+        snap.logs[0]!.blockNumber = String(SNAP_DEPLOY + 6n);
+        return snap;
+      },
+      () => snapshotChain(),
+    ],
+    [
+      "a log at an index its receipt has no log at",
+      () => {
+        const snap = fixtureCopy();
+        snap.logs[0]!.logIndex = 1;
+        return snap;
+      },
+      () => snapshotChain(),
+    ],
+    ["a receipt that cannot be read", fixtureCopy, () => snapshotChain({ failReceipts: [hash32(2)] })],
+  ];
+
+  it.each(changed)("drops the whole file for %s, and scans from the deploy block", async (_, snapshot, chain) => {
+    const full = await load(chain()).result;
+    const { client, result } = load(chain(), { snapshot: snapshot() });
+    const s = await result;
+    expect(s.scan.fromSnapshot).toBeNull();
+    expect(lowest(client.logCalls)).toBe(SNAP_DEPLOY);
+    expect(s.events.some((e) => e.txHash === hash32(9))).toBe(false);
+    expect(s.decisions).toEqual(full.decisions);
+  });
+
+  it("never shows a row the file invented, not even before the check, and keeps none in the browser cache", async () => {
+    const storage = memoryStorage();
+    const seen: string[][] = [];
+    await load(snapshotChain(), { storage, snapshot: invented(), onProgress: (p) => seen.push(p.decisions.map((d) => d.txHash)) }).result;
+    expect(seen.length).toBeGreaterThan(0);
+    expect(seen.flat()).not.toContain(hash32(9));
+    const again = await load(snapshotChain(), { storage, snapshot: null }).result;
+    expect(again.events.some((e) => e.txHash === hash32(9))).toBe(false);
+  });
+});
+
+describe("the browser cache of a load that started from a snapshot", () => {
+  /** The fixture without Decision 2: Base cannot show a log the file leaves out, so only another file brings it back. */
+  const omitted = () => {
+    const snap = fixtureCopy();
+    snap.logs.splice(1, 1);
+    return snap;
+  };
+  const rows = (s: Awaited<ReturnType<typeof loadLedger>>) => s.decisions.map((d) => d.txHash);
+
+  it("is kept by a refresh, which passes no snapshot, and while the site serves the same file", async () => {
+    const storage = memoryStorage();
+    expect(rows(await load(snapshotChain(), { storage, snapshot: omitted() }).result)).toEqual([hash32(4), hash32(3), hash32(1)]);
+    const refresh = load(snapshotChain(), { storage });
+    expect(rows(await refresh.result)).toEqual([hash32(4), hash32(3), hash32(1)]);
+    expect(lowest(refresh.client.logCalls)).toBeGreaterThan(SNAP_HEAD - CACHE_SAFETY_BLOCKS - 1n);
+    const same = load(snapshotChain(), { storage, snapshot: omitted() });
+    expect(rows(await same.result)).toEqual([hash32(4), hash32(3), hash32(1)]);
+    expect(same.client.blockCalls).not.toContain(SNAP_BLOCK);
+    expect(lowest(same.client.logCalls)).toBeGreaterThan(SNAP_HEAD - CACHE_SAFETY_BLOCKS - 1n);
+  });
+
+  it("is dropped once the site serves another file, so the row the old one left out comes back", async () => {
+    const storage = memoryStorage();
+    await load(snapshotChain(), { storage, snapshot: omitted() }).result;
+    const fixed = load(snapshotChain(), { storage, snapshot: fixture });
+    const s = await fixed.result;
+    expect(rows(s)).toEqual([hash32(4), hash32(3), hash32(2), hash32(1)]);
+    expect(s.scan.fromSnapshot?.block).toBe(SNAP_BLOCK);
+    expect(lowest(fixed.client.logCalls)).toBe(SNAP_BLOCK - W);
+  });
+
+  it("is dropped once the site serves no file, and the load scans from the deploy block", async () => {
+    const storage = memoryStorage();
+    await load(snapshotChain(), { storage, snapshot: omitted() }).result;
+    const none = load(snapshotChain(), { storage, snapshot: null });
+    expect(rows(await none.result)).toEqual([hash32(4), hash32(3), hash32(2), hash32(1)]);
+    expect(lowest(none.client.logCalls)).toBe(SNAP_DEPLOY);
+  });
+});
+
+describe("checkSnapshot", () => {
+  it("passes a snapshot whose block hash and every log Base gives, reading each receipt", async () => {
+    const client = fakeLedgerClient(snapshotChain());
+    expect(await checkSnapshot(client, FAKE_VAULT, fixture)).toEqual({ ok: true });
+    expect(client.blockCalls).toEqual([SNAP_BLOCK]);
+    expect([...new Set(client.receiptCalls)].sort()).toEqual([hash32(1), hash32(2), hash32(3)]);
+  });
+
+  const failing: [string, () => FakeChain, () => unknown, RegExp][] = [
+    ["a file of another vault", () => snapshotChain(), () => ({ ...fixture, vault: OTHER_VAULT }), /^not a decisions snapshot of 0x/],
+    ["another hash for block N", () => snapshotChain(), () => ({ ...fixture, blockHash: hash32(777) }), /^block 59845280 has another hash on this RPC/],
+    ["a block N that cannot be read", () => snapshotChain({ failBlocks: [SNAP_BLOCK] }), () => fixture, /^block 59845280 could not be read: /],
+    ["a log Base does not have", () => snapshotChain(), invented, /^the receipt of 0x0{63}9 could not be read: /],
+    [
+      "a log that differs from its receipt's",
+      () => snapshotChain(),
+      () => {
+        const snap = fixtureCopy();
+        snap.logs[2]!.data = snap.logs[1]!.data;
+        return snap;
+      },
+      /^the receipt of 0x0{63}3 has no log of the vault at index 0 as the file has it in block 59845270$/,
+    ],
+  ];
+  it.each(failing)("says what is wrong with %s", async (_, chain, raw, reason) => {
+    const out = await checkSnapshot(fakeLedgerClient(chain()), FAKE_VAULT, raw());
+    expect(out.ok).toBe(false);
+    expect(out.ok ? "" : out.reason).toMatch(reason);
+  });
 });
 
 describe("takeSnapshot", () => {
@@ -207,12 +364,16 @@ describe("takeSnapshot", () => {
     ).rejects.toThrow(/could not be read/);
   });
 
-  it("refuses to write a snapshot missing a Decision's time, gas or transaction", async () => {
-    const chain = snapshotChain();
-    delete chain.gas![hash32(2)];
-    await expect(takeSnapshot({ client: fakeLedgerClient(chain), vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX, block: SNAP_AT })).rejects.toThrow(
-      /gas of 1 Decision/,
-    );
+  it("builds on a previous snapshot only when Base's receipts give its logs", async () => {
+    const client = fakeLedgerClient(snapshotChain());
+    const next = await takeSnapshot({ client, vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX, block: SNAP_AT, previous: invented() });
+    expect(lowest(client.logCalls)).toBe(SNAP_DEPLOY);
+    expect(next).toEqual(fixture);
+  });
+
+  it("holds only the logs, N and its hash: each Decision's time, gas and transaction are left to Base", async () => {
+    const written = await takeSnapshot({ client: fakeLedgerClient(snapshotChain()), vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX, block: SNAP_AT });
+    expect(Object.keys(written).sort()).toEqual(["block", "blockHash", "chainId", "floor", "logs", "v", "vault"]);
   });
 
   it("scans in chunks of the span it is given, for an RPC that caps eth_getLogs at 200 blocks", async () => {
@@ -220,6 +381,25 @@ describe("takeSnapshot", () => {
     const s = await takeSnapshot({ client, vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX, block: SNAP_AT, span: 200n, minSpan: 200n });
     expect(client.logCalls.every((c) => c.to - c.from + 1n <= 200n)).toBe(true);
     expect(s).toEqual(fixture);
+  });
+});
+
+describe("npm run snapshot's RPCs", () => {
+  it("reads the logs from one the page scans logs with, and checks the file on another", () => {
+    expect(DEFAULT_RPCS).toContain(SNAPSHOT_RPC);
+    expect(scansLogs(SNAPSHOT_RPC)).toBe(true);
+    // mainnet.base.org refuses eth_getLogs, but it answers the block and receipt reads of the check.
+    expect(scansLogs("https://mainnet.base.org")).toBe(false);
+    expect(SNAPSHOT_CHECK_RPC).toBe("https://mainnet.base.org");
+  });
+
+  it("are the ones scripts/decisions-snapshot.ts and the README name", () => {
+    const script = readFileSync(join(process.cwd(), "scripts/decisions-snapshot.ts"), "utf8");
+    expect(script).toMatch(/rpc: \{ type: "string", default: SNAPSHOT_RPC \}/);
+    expect(script).toMatch(/check: \{ type: "string", default: SNAPSHOT_CHECK_RPC \}/);
+    const readme = readFileSync(join(process.cwd(), "README.md"), "utf8");
+    expect(readme).toContain(`\`npm run snapshot\` | reads the vault's logs from Base through \`${SNAPSHOT_RPC}\``);
+    expect(readme).not.toMatch(/npm run snapshot[^\n]*`https:\/\/mainnet\.base\.org` unless/);
   });
 });
 

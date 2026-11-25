@@ -7,7 +7,7 @@ import { decodeVaultLogs, type DecisionEvent, type VaultEvent } from "./events";
 import { decisionTrails, summarize, toMainnetDecisions, type DecisionTrail, type MainnetDecision, type Summary, type TxInput } from "./ledger";
 import type { RationaleSource } from "./rationale";
 import { scanLogs, type BlockRange } from "./scan";
-import { parseSnapshot, SNAPSHOT_REORG_WINDOW, type DecisionsSnapshot } from "./snapshot";
+import { parseSnapshot, SNAPSHOT_REORG_WINDOW, snapshotId, type DecisionsSnapshot } from "./snapshot";
 import { readTreasury, type Treasury } from "./treasury";
 
 /** The client calls the ledger makes; a viem PublicClient satisfies it, and tests pass a fake. */
@@ -97,10 +97,12 @@ export interface LoadOptions {
    */
   txs?: Map<string, TxInput>;
   /**
-   * The committed snapshot, as /data/decisions-snapshot.json holds it (parsed JSON), or a promise of it. Once Base gives
-   * the hash it records for its block N, the load takes the logs below N − SNAPSHOT_REORG_WINDOW from it and scans
-   * only from there to the head. Without one, with one it cannot use, or when the browser cache already covers it, the
-   * load scans as if there were none.
+   * The committed snapshot, as /data/decisions-snapshot.json holds it (parsed JSON), or a promise of it; a refresh
+   * passes none. Once Base gives the hash it records for its block N and the receipt of each log below
+   * N − SNAPSHOT_REORG_WINDOW holds that log as the file has it, the load takes those logs from it and scans only from
+   * there to the head; each Decision's time, gas and transaction are read from Base as for any other. Without one,
+   * with one that fails that check, or when the browser cache already covers it, the load scans as if there were none.
+   * A cache entry that took logs from a file is dropped once the caller passes another file, or null.
    */
   snapshot?: unknown;
   now?: () => number;
@@ -165,38 +167,110 @@ interface Reads {
 
 /** The last block whose logs a load takes from `snapshot`; the window above it, up to N, is read again. */
 const snapshotTop = (snapshot: DecisionsSnapshot) => BigInt(snapshot.block) - SNAPSHOT_REORG_WINDOW - 1n;
+/** The logs a load takes from `snapshot`: those below its reorg window. */
+const belowWindow = (snapshot: DecisionsSnapshot) => snapshot.logs.filter((l) => BigInt(l.blockNumber) <= snapshotTop(snapshot));
+/** True when `cache` holds every block a load would take from `snapshot`. */
+const covers = (cache: LedgerCache | null, snapshot: DecisionsSnapshot) =>
+  cache !== null && BigInt(cache.from) <= BigInt(snapshot.floor) && BigInt(cache.to) >= snapshotTop(snapshot);
+const sameHex = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
-/**
- * The snapshot in `raw` (a value or a promise of one) once Base gives its block the hash it records, or null: no
- * snapshot, a bad one, a block Base does not have, a read of it that failed, or a `cache` that already covers it.
- */
-async function confirmSnapshot(client: LedgerClient, vault: Address, raw: unknown, cache: LedgerCache | null): Promise<DecisionsSnapshot | null> {
-  let snapshot: DecisionsSnapshot | null;
+/** The snapshot in `raw` (a value or a promise of one), or null: none, a fetch that failed, or a bad file. */
+async function readSnapshot(raw: unknown, vault: Address): Promise<DecisionsSnapshot | null> {
   try {
-    snapshot = parseSnapshot(await raw, vault);
-  } catch {
-    return null;
-  }
-  if (!snapshot) return null;
-  if (cache && BigInt(cache.from) <= BigInt(snapshot.floor) && BigInt(cache.to) >= snapshotTop(snapshot)) return null;
-  try {
-    const block = await client.getBlock({ blockNumber: BigInt(snapshot.block) });
-    return block.hash?.toLowerCase() === snapshot.blockHash.toLowerCase() ? snapshot : null;
+    return parseSnapshot(await raw, vault);
   } catch {
     return null;
   }
 }
 
-/** Adds to `reads` what `snapshot` holds below its reorg window, keeping anything `reads` already has. */
-function seedSnapshot(reads: Reads, snapshot: DecisionsSnapshot): void {
-  const top = snapshotTop(snapshot);
-  const kept = snapshot.logs.filter((l) => BigInt(l.blockNumber) <= top);
-  for (const l of kept) if (!reads.logs.has(keyOf(l))) reads.logs.set(keyOf(l), l);
-  const keptTxs = new Set(kept.map((l) => l.transactionHash.toLowerCase()));
-  for (const [b, t] of Object.entries(snapshot.blockTimes)) if (BigInt(b) <= top) reads.blockTimes[b] ??= t;
-  for (const [h, g] of Object.entries(snapshot.gasUsed)) if (keptTxs.has(h.toLowerCase())) reads.gasUsed[h] ??= g;
-  for (const [h, tx] of Object.entries(snapshot.txs)) if (keptTxs.has(h) && !reads.txs.has(h)) reads.txs.set(h, tx);
+type Check = { ok: true; gasUsed: Record<string, string> } | { ok: false; reason: string };
+
+/** The part of a receipt the check reads; a viem TransactionReceipt has it. */
+interface ReceiptLogs {
+  blockNumber: bigint;
+  gasUsed: bigint;
+  logs: readonly { address: string; logIndex: number | null; topics: readonly string[]; data: string }[];
+}
+
+/**
+ * Checks `logs` of `snapshot` against Base: block N must have the hash the file records, and each log's transaction
+ * receipt must hold, in the same block and at the same log index, the same log of the vault. Returns the gas of each
+ * Decision transaction it read, or why the file fails. So a file that passes can leave a log out, but it cannot add a
+ * log or change one.
+ */
+async function check(client: LedgerClient, vault: Address, snapshot: DecisionsSnapshot, logs: readonly CachedLog[]): Promise<Check> {
+  const byTx = new Map<string, CachedLog[]>();
+  for (const l of logs) byTx.set(l.transactionHash.toLowerCase(), [...(byTx.get(l.transactionHash.toLowerCase()) ?? []), l]);
+  const decisionTxs = new Set(decodeVaultLogs([...logs]).flatMap((e) => (e.name === "Decision" ? [e.txHash.toLowerCase()] : [])));
+  const gasUsed: Record<string, string> = {};
+
+  const readBlock = async (): Promise<string | null> => {
+    let hash: Hash | null;
+    try {
+      hash = (await client.getBlock({ blockNumber: BigInt(snapshot.block) })).hash;
+    } catch (e) {
+      return `block ${snapshot.block} could not be read: ${errorText(e)}`;
+    }
+    return hash !== null && sameHex(hash, snapshot.blockHash) ? null : `block ${snapshot.block} has another hash on this RPC`;
+  };
+  const readReceipt = async (own: readonly CachedLog[]): Promise<string | null> => {
+    const hash = own[0]!.transactionHash;
+    let receipt: ReceiptLogs;
+    try {
+      receipt = await client.getTransactionReceipt({ hash });
+    } catch (e) {
+      return `the receipt of ${hash} could not be read: ${errorText(e)}`;
+    }
+    for (const l of own) {
+      const r = receipt.blockNumber === BigInt(l.blockNumber) ? receipt.logs.find((x) => x.logIndex === l.logIndex) : undefined;
+      const same =
+        r !== undefined &&
+        sameHex(r.address, vault) &&
+        sameHex(r.data, l.data) &&
+        r.topics.length === l.topics.length &&
+        r.topics.every((t, i) => sameHex(t, l.topics[i]!));
+      if (!same) return `the receipt of ${hash} has no log of the vault at index ${l.logIndex} as the file has it in block ${l.blockNumber}`;
+    }
+    if (decisionTxs.has(hash.toLowerCase())) for (const l of own) gasUsed[l.transactionHash] = receipt.gasUsed.toString();
+    return null;
+  };
+  const readReceipts = async (): Promise<string | null> => {
+    const groups = [...byTx.values()];
+    for (let i = 0; i < groups.length; i += LOOKUP_BATCH) {
+      const failed = (await Promise.all(groups.slice(i, i + LOOKUP_BATCH).map(readReceipt))).find((r) => r !== null);
+      if (failed) return failed;
+    }
+    return null;
+  };
+
+  const [blockFailed, receiptFailed] = await Promise.all([readBlock(), readReceipts()]);
+  const reason = blockFailed ?? receiptFailed;
+  return reason === null ? { ok: true, gasUsed } : { ok: false, reason };
+}
+
+/** The gas of each Decision a load takes from `snapshot` once the file passes `check`, or null when it does not. */
+async function confirmSnapshot(client: LedgerClient, vault: Address, snapshot: DecisionsSnapshot): Promise<Record<string, string> | null> {
+  const out = await check(client, vault, snapshot, belowWindow(snapshot));
+  return out.ok ? out.gasUsed : null;
+}
+
+/**
+ * Checks the snapshot in `raw` against the RPC behind `client` as a load does, but over every log in the file, those of
+ * the window too. npm run snapshot asks a second RPC this before it writes a file.
+ */
+export async function checkSnapshot(client: LedgerClient, vault: Address, raw: unknown): Promise<{ ok: true } | { ok: false; reason: string }> {
+  const snapshot = parseSnapshot(raw, vault);
+  if (!snapshot) return { ok: false, reason: `not a decisions snapshot of ${vault} on Base mainnet` };
+  const out = await check(client, vault, snapshot, snapshot.logs);
+  return out.ok ? { ok: true } : out;
+}
+
+/** Adds to `reads` the logs `snapshot` holds below its reorg window and the gas `check` read, keeping what `reads` has. */
+function seedSnapshot(reads: Reads, snapshot: DecisionsSnapshot, gasUsed: Readonly<Record<string, string>>): void {
+  for (const l of belowWindow(snapshot)) if (!reads.logs.has(keyOf(l))) reads.logs.set(keyOf(l), l);
+  for (const [h, g] of Object.entries(gasUsed)) reads.gasUsed[h] ??= g;
   const floor = BigInt(snapshot.floor);
+  const top = snapshotTop(snapshot);
   if (floor <= top) reads.covered.push({ from: floor, to: top });
 }
 
@@ -267,21 +341,34 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
   const { client, vault, rationaleSource, signal, onProgress } = opts;
   const storage = opts.storage;
   const now = opts.now ?? Date.now;
-  const cached = loadCache(vault, storage);
+  const stored = loadCache(vault, storage);
 
-  // The treasury, the deploy block and the snapshot's block hash are independent reads, so they go out together.
-  const [treasuryRead, floor, confirmed] = await Promise.all([
+  // undefined when the caller passes no snapshot (a refresh), null when there is none it can use.
+  const served = opts.snapshot === undefined ? Promise.resolve(undefined) : readSnapshot(opts.snapshot, vault);
+  // An entry that took logs from a snapshot is kept only while the site serves that same file, so a file that is
+  // replaced or removed takes with it what it left in this browser, a log it left out included.
+  const kept = served.then((s) => (s === undefined || !stored?.snapshot || (s !== null && snapshotId(s) === stored.snapshot) ? stored : null));
+  // The file is checked unless the cache already holds every block the load would take from it.
+  const early = Promise.all([served, kept]).then(([s, c]) => (s && !covers(c, s) ? confirmSnapshot(client, vault, s) : null));
+
+  // The treasury, the deploy block and the snapshot's check are independent reads, so they go out together.
+  const [treasuryRead, floor, cached, earlyGas] = await Promise.all([
     readTreasury(client, vault).then(
       (t) => ({ treasury: t as Treasury | null, error: null as string | null }),
       (e: unknown) => ({ treasury: null, error: errorText(e) }),
     ),
     opts.floor ?? deployBlock(client, opts.deployTx),
-    opts.snapshot === undefined ? null : confirmSnapshot(client, vault, opts.snapshot, cached),
+    kept,
+    early,
   ]);
   const { treasury, error: treasuryError } = treasuryRead;
   const head = treasury?.blockNumber ?? (await client.getBlockNumber());
 
   const cache = usableCache(cached, head);
+  const file = await served;
+  // A cache that covers the file spared its check, but one that ends above this RPC's head is not used: check it now.
+  const gas = earlyGas ?? (file && covers(cached, file) && !cache ? await confirmSnapshot(client, vault, file) : null);
+  const snapshot = file && gas && BigInt(file.block) <= head ? file : null;
   const reads: Reads = {
     covered: cache ? [{ from: BigInt(cache.from), to: BigInt(cache.to) }] : [],
     logs: new Map<string, CachedLog>((cache?.logs ?? []).map((l) => [keyOf(l), l])),
@@ -289,9 +376,9 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
     gasUsed: { ...cache?.gasUsed },
     txs: opts.txs ?? new Map<string, TxInput>(),
   };
-  const snapshot = confirmed && BigInt(confirmed.block) <= head ? confirmed : null;
-  if (snapshot) seedSnapshot(reads, snapshot);
+  if (snapshot && gas) seedSnapshot(reads, snapshot, gas);
   const fromSnapshot = snapshot ? { block: BigInt(snapshot.block), blockHash: snapshot.blockHash } : null;
+  const tag = snapshot ? snapshotId(snapshot) : cache?.snapshot;
 
   const usdc = treasury?.usdcAddress ?? USDC;
   const decimals = Object.fromEntries(
@@ -341,7 +428,7 @@ export async function loadLedger(opts: LoadOptions): Promise<LedgerSnapshot> {
   }
 
   const result = view();
-  const entry = cacheEntry(vault, head, reads.covered, reads.logs, reads.blockTimes, reads.gasUsed);
+  const entry = cacheEntry(vault, head, reads, tag);
   if (entry) saveCache(entry, storage);
   return result;
 }
@@ -352,7 +439,10 @@ export interface SnapshotOptions {
   deployTx: Hash | null;
   /** Block N as the RPC gave it. Pick one that cannot reorg, such as the RPC's finalized block. */
   block: { number: bigint; hash: Hash };
-  /** The snapshot to build on (parsed JSON): its logs below its reorg window are kept once Base gives its block's hash. */
+  /**
+   * The snapshot to build on (parsed JSON): its logs below its reorg window are kept once the RPC gives its block's
+   * hash and the receipt of each of those logs, as a load checks them.
+   */
   previous?: unknown;
   /** Blocks per eth_getLogs call (default LOG_CHUNK in scan.ts); mainnet.base.org needs MIN_LOG_CHUNK. */
   span?: bigint;
@@ -369,11 +459,10 @@ const byBlock = (a: CachedLog, b: CachedLog) => {
   const y = BigInt(b.blockNumber);
   return x === y ? a.logIndex - b.logIndex : x < y ? -1 : 1;
 };
-const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
- * The committed snapshot at `block`: every log of the vault from its deploy block to N, with each Decision's block
- * time, gas and transaction, as loadLedger takes them. Throws rather than return a snapshot with a hole in it.
+ * The committed snapshot at `block`: every log of the vault from its deploy block to N, as loadLedger takes them.
+ * Throws rather than return a snapshot with a hole in it.
  */
 export async function takeSnapshot(opts: SnapshotOptions): Promise<DecisionsSnapshot> {
   const { client, vault, block } = opts;
@@ -381,8 +470,9 @@ export async function takeSnapshot(opts: SnapshotOptions): Promise<DecisionsSnap
   // Unlike the page, the deploy block is not guessed when its receipt cannot be read: the scan would be far longer.
   const floor = opts.deployTx ? (await client.getTransactionReceipt({ hash: opts.deployTx })).blockNumber : SCAN_FLOOR_BLOCK;
   const reads: Reads = { covered: [], logs: new Map(), blockTimes: {}, gasUsed: {}, txs: new Map() };
-  const previous = opts.previous === undefined ? null : await confirmSnapshot(client, vault, opts.previous, null);
-  if (previous && BigInt(previous.block) <= n) seedSnapshot(reads, previous);
+  const previous = opts.previous === undefined ? null : await readSnapshot(opts.previous, vault);
+  const gas = previous && BigInt(previous.block) <= n ? await confirmSnapshot(client, vault, previous) : null;
+  if (previous && gas) seedSnapshot(reads, previous, gas);
 
   const total = n - floor + 1n;
   const progress = () => {
@@ -395,29 +485,8 @@ export async function takeSnapshot(opts: SnapshotOptions): Promise<DecisionsSnap
     throw new Error(`${gaps.map((g) => `blocks ${g.from} to ${g.to}`).join(", ")} could not be read; no snapshot written`);
   }
 
-  const decisions = await readDecisionDetails(client, reads);
-  const missing = [
-    ["block time", decisions.filter((e) => reads.blockTimes[e.blockNumber.toString()] === undefined).length],
-    ["gas", decisions.filter((e) => reads.gasUsed[e.txHash] === undefined).length],
-    ["transaction", decisions.filter((e) => !reads.txs.has(e.txHash.toLowerCase())).length],
-  ] as const;
-  const unread = missing.filter(([, count]) => count > 0).map(([what, count]) => `the ${what} of ${plural(count, "Decision")}`);
-  if (unread.length > 0) throw new Error(`could not read ${unread.join(", ")}; no snapshot written`);
-
   const logs = [...reads.logs.values()].filter((l) => BigInt(l.blockNumber) >= floor && BigInt(l.blockNumber) <= n).sort(byBlock);
-  const kept = decodeVaultLogs(logs).filter((e): e is DecisionEvent => e.name === "Decision");
-  return {
-    v: 1,
-    chainId: BASE_CHAIN_ID,
-    vault: getAddress(vault),
-    floor: floor.toString(),
-    block: n.toString(),
-    blockHash: block.hash,
-    logs,
-    blockTimes: Object.fromEntries(kept.map((e) => [e.blockNumber.toString(), reads.blockTimes[e.blockNumber.toString()]!])),
-    gasUsed: Object.fromEntries(kept.map((e) => [e.txHash, reads.gasUsed[e.txHash]!])),
-    txs: Object.fromEntries(kept.map((e) => [e.txHash.toLowerCase(), reads.txs.get(e.txHash.toLowerCase())!])),
-  };
+  return { v: 1, chainId: BASE_CHAIN_ID, vault: getAddress(vault), floor: floor.toString(), block: n.toString(), blockHash: block.hash, logs };
 }
 
 async function deployBlock(client: LedgerClient, deployTx: Hash | null): Promise<bigint> {
@@ -429,15 +498,12 @@ async function deployBlock(client: LedgerClient, deployTx: Hash | null): Promise
   }
 }
 
-/** The largest contiguous range read, cut to CACHE_SAFETY_BLOCKS below the head so a reorg near the tip is reread. */
-function cacheEntry(
-  vault: Address,
-  head: bigint,
-  covered: readonly BlockRange[],
-  logs: ReadonlyMap<string, CachedLog>,
-  blockTimes: Readonly<Record<string, number>>,
-  gasUsed: Readonly<Record<string, string>>,
-): LedgerCache | null {
+/**
+ * The largest contiguous range read, cut to CACHE_SAFETY_BLOCKS below the head so a reorg near the tip is reread, and
+ * tagged with the snapshotId of the file whose logs it took, if any.
+ */
+function cacheEntry(vault: Address, head: bigint, reads: Readonly<Reads>, snapshot: Hash | undefined): LedgerCache | null {
+  const { covered, logs, blockTimes, gasUsed } = reads;
   const safe = head - CACHE_SAFETY_BLOCKS;
   const best = merge(covered)
     .map((r) => ({ from: r.from, to: r.to > safe ? safe : r.to }))
@@ -454,5 +520,6 @@ function cacheEntry(
     logs: kept,
     blockTimes: Object.fromEntries(Object.entries(blockTimes).filter(([b]) => BigInt(b) >= best.from && BigInt(b) <= best.to)),
     gasUsed: Object.fromEntries(Object.entries(gasUsed).filter(([h]) => txs.has(h as Hash))),
+    ...(snapshot ? { snapshot } : {}),
   };
 }

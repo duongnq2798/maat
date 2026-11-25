@@ -90,6 +90,19 @@ function block(s: FakeScenario, n: bigint) {
   };
 }
 
+/** A log of the scenario's vault as the RPC gives it, in eth_getLogs and in a receipt. */
+const vaultLog = (s: FakeScenario, l: CachedLog) => ({
+  address: s.vault,
+  blockHash: blockHash(BigInt(l.blockNumber)),
+  blockNumber: toHex(BigInt(l.blockNumber)),
+  data: l.data,
+  logIndex: toHex(l.logIndex),
+  removed: false,
+  topics: l.topics,
+  transactionHash: l.transactionHash,
+  transactionIndex: "0x0",
+});
+
 function handle(s: FakeScenario, method: string, params: readonly unknown[]): unknown {
   switch (method) {
     case "eth_chainId":
@@ -124,19 +137,7 @@ function handle(s: FakeScenario, method: string, params: readonly unknown[]): un
       s.onLogs?.({ address: String(address ?? ""), from, to });
       // Only the scenario's vault has logs, as on the real chain a request for another address finds none of them.
       if (String(address ?? "").toLowerCase() !== s.vault.toLowerCase()) return [];
-      return s.logs
-        .filter((l) => BigInt(l.blockNumber) >= from && BigInt(l.blockNumber) <= to)
-        .map((l) => ({
-          address: s.vault,
-          blockHash: blockHash(BigInt(l.blockNumber)),
-          blockNumber: toHex(BigInt(l.blockNumber)),
-          data: l.data,
-          logIndex: toHex(l.logIndex),
-          removed: false,
-          topics: l.topics,
-          transactionHash: l.transactionHash,
-          transactionIndex: "0x0",
-        }));
+      return s.logs.filter((l) => BigInt(l.blockNumber) >= from && BigInt(l.blockNumber) <= to).map((l) => vaultLog(s, l));
     }
     case "eth_getTransactionByHash": {
       const hash = String(params[0]).toLowerCase() as Hash;
@@ -178,7 +179,8 @@ function handle(s: FakeScenario, method: string, params: readonly unknown[]): un
         effectiveGasPrice: "0x1",
         from: zeroAddress,
         gasUsed: toHex(r.gasUsed),
-        logs: [],
+        // The scenario's logs of this transaction, as eth_getLogs gives them.
+        logs: s.logs.filter((l) => l.transactionHash.toLowerCase() === hash).map((l) => vaultLog(s, l)),
         logsBloom: BLOOM,
         status: "0x1",
         to: s.vault,

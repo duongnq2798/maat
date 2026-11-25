@@ -34,6 +34,9 @@ function isHttps(value: string): boolean {
  */
 const NO_LOG_SCAN: ReadonlySet<string> = new Set(["https://mainnet.base.org"]);
 
+/** True unless `url` is one of the RPCs the ledger never asks for logs (NO_LOG_SCAN). */
+export const scansLogs = (url: string): boolean => !NO_LOG_SCAN.has(url);
+
 /**
  * A read-only Base client over `urls`, falling back in order and batching JSON-RPC calls. A call that fails on every
  * RPC is retried once, with viem's backoff; the scan retries a failed chunk once more on its own.
@@ -42,7 +45,7 @@ export function createLedgerClient(urls: readonly string[] = rpcUrls()): LedgerC
   return createPublicClient({
     chain: base,
     transport: fallback(
-      urls.map((u) => http(u, { batch: { batchSize: 50 }, ...(NO_LOG_SCAN.has(u) ? { methods: { exclude: ["eth_getLogs"] } } : {}) })),
+      urls.map((u) => http(u, { batch: { batchSize: 50 }, ...(!scansLogs(u) ? { methods: { exclude: ["eth_getLogs"] } } : {}) })),
       { retryCount: 1 },
     ),
   }) as unknown as LedgerClient;

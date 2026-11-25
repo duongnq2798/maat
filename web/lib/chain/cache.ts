@@ -27,6 +27,11 @@ export interface LedgerCache {
   blockTimes: Record<string, number>;
   /** Transaction hash → gas used, decimal. */
   gasUsed: Record<string, string>;
+  /**
+   * snapshotId of the committed snapshot whose logs the range took, if it took any (lib/chain/snapshot.ts). A first
+   * read keeps such an entry only while the site serves that same file.
+   */
+  snapshot?: Hash;
 }
 
 const hex = z.string().regex(/^0x[0-9a-fA-F]*$/);
@@ -39,6 +44,7 @@ const schema = z.object({
   logs: z.array(z.object({ blockNumber: decimal, logIndex: z.number().int(), transactionHash: hex, topics: z.array(hex), data: hex })),
   blockTimes: z.record(decimal, z.number()),
   gasUsed: z.record(hex, decimal),
+  snapshot: z.string().regex(/^0x[0-9a-fA-F]{64}$/).optional(),
 });
 
 export function cacheKey(vault: Address): string {

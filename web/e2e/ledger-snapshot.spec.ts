@@ -1,11 +1,11 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Browser, type Page } from "@playwright/test";
 import { getAddress, zeroAddress, type Hash } from "viem";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { deploymentConfig } from "../lib/chain/config";
 import { parseSnapshot, SNAPSHOT_REORG_WINDOW, SNAPSHOT_URL } from "../lib/chain/snapshot";
 import fixture from "../test/fixtures/decisions-snapshot.json" with { type: "json" };
-import { FAKE_VAULT, hash32 } from "../test/helpers/fake-ledger";
+import { decisionLog, FAKE_VAULT, hash32 } from "../test/helpers/fake-ledger";
 import { SNAP_BLOCK, SNAP_DEPLOY, SNAP_DEPLOY_TX, SNAP_HEAD, SNAP_OWNER, SNAP_ROWS, snapshotChain } from "../test/helpers/snapshot-chain";
 import { installFakeChain, type FakeScenario } from "./fake-rpc";
 import { collectErrors } from "./helpers";
@@ -85,7 +85,7 @@ test.describe("/ledger's first read with a decisions snapshot", () => {
     await expect(decisions(page)).toHaveCount(SNAP_ROWS.length);
     await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0);
     await expect(page.getByText(/^Logs up to block/)).toHaveText(
-      `Logs up to block ${(SNAP_BLOCK - SNAPSHOT_REORG_WINDOW - 1n).toLocaleString("en-US")} are from the committed snapshot of block ${SNAP_BLOCK.toLocaleString("en-US")}, whose hash Base confirmed.`,
+      `Logs up to block ${(SNAP_BLOCK - SNAPSHOT_REORG_WINDOW - 1n).toLocaleString("en-US")} are from the committed snapshot of block ${SNAP_BLOCK.toLocaleString("en-US")}. Base gave the same hash for that block and the same logs in their transaction receipts.`,
     );
     await expect(page.getByRole("link", { name: "committed snapshot" })).toHaveAttribute("href", SNAPSHOT_URL);
     expect(logRequests.length).toBeGreaterThan(0);
@@ -98,6 +98,8 @@ test.describe("/ledger's first read with a decisions snapshot", () => {
     ["a file that is not JSON", "{"],
     ["no snapshot (null)", "null\n"],
     ["a snapshot whose block hash Base does not give", JSON.stringify({ ...fixture, blockHash: hash32(777) as Hash })],
+    // Its transaction has no receipt on Base, so the whole file is dropped.
+    ["a snapshot with a Decision Base does not have", JSON.stringify({ ...fixture, logs: [fixture.logs[0], decisionLog(9, SNAP_DEPLOY + 1_000n), ...fixture.logs.slice(1)] })],
   ] as const) {
     test(`reads every block from the deploy with ${name}`, async ({ page }) => {
       const errors = collectErrors(page);
@@ -120,33 +122,66 @@ test("the build serves the committed snapshot of the recorded vault, or null", a
   expect(body === null || parseSnapshot(body, recorded.vault) !== null).toBe(true);
 });
 
+/**
+ * One cold /ledger read on the real public RPCs, in a context of its own (no cache), with the build's snapshot or,
+ * when `snapshot` is given, that body served in its place. It measures from the navigation to the moment the Decisions
+ * are listed, the scan is done and each rationale is checked, and collects the fromBlock of every eth_getLogs.
+ */
+async function coldRead(browser: Browser, baseURL: string, snapshot?: string) {
+  const context = await browser.newContext({ baseURL });
+  try {
+    const page = await context.newPage();
+    if (snapshot !== undefined) await page.route(`**${SNAPSHOT_URL}`, (route) => route.fulfill({ body: snapshot, contentType: "application/json; charset=utf-8" }));
+    const froms: bigint[] = [];
+    page.on("request", (r) => {
+      if (r.method() !== "POST" || !/publicnode|base\.org/.test(new URL(r.url()).host)) return;
+      const body = JSON.parse(r.postData() ?? "null") as unknown;
+      for (const call of Array.isArray(body) ? body : [body]) {
+        const c = call as { method?: string; params?: { fromBlock?: string }[] };
+        if (c.method === "eth_getLogs" && c.params?.[0]?.fromBlock) froms.push(BigInt(c.params[0].fromBlock));
+      }
+    });
+    const started = Date.now();
+    await page.goto("/ledger");
+    await expect(decisions(page).first()).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0, { timeout: 60_000 });
+    await expect(page.getByText("Checking rationale…")).toHaveCount(0, { timeout: 60_000 });
+    const ms = Date.now() - started;
+    return { ms, froms, decisions: await decisions(page).count(), fromSnapshot: await page.getByText(/^Logs up to block/).count() };
+  } finally {
+    await context.close();
+  }
+}
+
 // The plan's target for a first read: /ledger shows every Decision in under 5 s with the snapshot, read from the real
-// public RPCs. It measures from the navigation to the moment the Decisions are listed, the scan is done and each
-// rationale is checked.
-test("a cold /ledger on the public RPCs lists the Decisions in under 5 s with the committed snapshot", async ({ page }) => {
+// public RPCs. A cold read scans from N minus the window to the head, so it gets slower every day after N: the test
+// prints how far the head is past N, and a read of the same build with no snapshot, after the first (so the network is
+// warm for it, never for the read it is compared with).
+test("a cold /ledger on the public RPCs lists the Decisions in under 5 s with the committed snapshot", async ({ browser, baseURL, request }) => {
   test.skip(process.env.MAAT_E2E_LIVE !== "1", "reads the real Base mainnet; set MAAT_E2E_LIVE=1 to run it");
-  const res = await page.request.get(SNAPSHOT_URL);
-  const committed = parseSnapshot(await res.json(), deploymentConfig(deployments)!.vault);
+  test.setTimeout(180_000);
+  const committed = parseSnapshot(await (await request.get(SNAPSHOT_URL)).json(), deploymentConfig(deployments)!.vault);
   expect(committed, "the build has no snapshot of the recorded vault").not.toBeNull();
-  const froms: bigint[] = [];
-  page.on("request", (r) => {
-    if (r.method() !== "POST" || !/publicnode|base\.org/.test(new URL(r.url()).host)) return;
-    const body = JSON.parse(r.postData() ?? "null") as unknown;
-    for (const call of Array.isArray(body) ? body : [body]) {
-      const c = call as { method?: string; params?: { fromBlock?: string }[] };
-      if (c.method === "eth_getLogs" && c.params?.[0]?.fromBlock) froms.push(BigInt(c.params[0].fromBlock));
-    }
-  });
-  const started = Date.now();
-  await page.goto("/ledger");
-  await expect(decisions(page).first()).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0, { timeout: 30_000 });
-  await expect(page.getByText("Checking rationale…")).toHaveCount(0, { timeout: 30_000 });
-  const ms = Date.now() - started;
-  test.info().annotations.push({ type: "cold load", description: `${ms} ms; eth_getLogs from block ${froms.reduce((m, f) => (f < m ? f : m), froms[0] ?? 0n)}` });
-  console.log(`cold /ledger load with the snapshot of block ${committed!.block}: ${ms} ms, ${await decisions(page).count()} Decisions`);
-  await expect(page.getByText(/^Logs up to block/)).toBeVisible();
-  expect(froms.length).toBeGreaterThan(0);
-  expect(froms.every((f) => f >= BigInt(committed!.block) - SNAPSHOT_REORG_WINDOW)).toBe(true);
-  expect(ms).toBeLessThan(5_000);
+  const n = BigInt(committed!.block);
+  const head = BigInt(
+    ((await (await request.post("https://base-rpc.publicnode.com", { data: { jsonrpc: "2.0", id: 1, method: "eth_blockNumber", params: [] } })).json()) as { result: string })
+      .result,
+  );
+  const withFile = await coldRead(browser, baseURL!);
+  const without = await coldRead(browser, baseURL!, "null\n");
+  const lowestFrom = (fs: readonly bigint[]) => fs.reduce((m, f) => (f < m ? f : m), fs[0] ?? 0n);
+  const report = [
+    `head ${head}, ${head - n} blocks past the snapshot's block ${n}`,
+    `with the snapshot: ${withFile.ms} ms, ${withFile.decisions} Decisions, ${withFile.froms.length} eth_getLogs from block ${lowestFrom(withFile.froms)}`,
+    `without it: ${without.ms} ms, ${without.decisions} Decisions, ${without.froms.length} eth_getLogs from block ${lowestFrom(without.froms)}`,
+  ];
+  for (const line of report) test.info().annotations.push({ type: "cold load", description: line });
+  console.log(`cold /ledger load: ${report.join("; ")}`);
+  expect(withFile.fromSnapshot).toBe(1);
+  expect(withFile.froms.length).toBeGreaterThan(0);
+  expect(withFile.froms.every((f) => f >= n - SNAPSHOT_REORG_WINDOW)).toBe(true);
+  expect(without.fromSnapshot).toBe(0);
+  expect(lowestFrom(without.froms)).toBe(BigInt(committed!.floor));
+  expect(without.decisions).toBe(withFile.decisions);
+  expect(withFile.ms).toBeLessThan(5_000);
 });
