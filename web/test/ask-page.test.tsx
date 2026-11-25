@@ -5,8 +5,11 @@ import { encodeAbiParameters, encodeEventTopics, keccak256, toBytes, type Addres
 import { describe, expect, it } from "vitest";
 import { ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
 import AskPage, { metadata } from "@/app/(site)/ask/page";
+import { askConfig, askIsOpen, fetchAskConfig } from "@/app/(site)/ask/config";
+import { GET as GET_ASK } from "@/app/data/ask.json/route";
+import { ASK_OPEN } from "@/content/ask-open";
 import type { CachedLog } from "@/lib/chain/cache";
-import { inboxAbi, inboxDeployment } from "@/lib/chain/inbox";
+import { inboxAbi } from "@/lib/chain/inbox";
 import { docsData } from "@/lib/docs/generated";
 import type { LedgerClient } from "@/lib/chain/load";
 import type { InjectedWallet } from "@/lib/wallet/eip6963";
@@ -53,8 +56,53 @@ describe("/ask while deployments/README.md records no MaatInbox", () => {
   });
 });
 
-describe("no page links /ask while the inbox is not recorded", () => {
-  const recorded = inboxDeployment(docsData.deployments) !== null;
+describe("the owner's switch: /ask opens only when it is on and the inbox and the vault are recorded", () => {
+  const rows = (inbox: boolean) => [
+    ...docsData.deployments,
+    ...(inbox ? [{ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: hash32(4242), date: "2026-11-25" }] : []),
+  ];
+
+  it("is the boolean of web/content/ask-open.ts, which askConfig takes by default", () => {
+    expect(typeof ASK_OPEN).toBe("boolean");
+    expect(askConfig(rows(true)).open).toBe(ASK_OPEN);
+  });
+
+  it("keeps the page closed while the switch is off, even with the inbox recorded", () => {
+    expect(askIsOpen(askConfig(rows(true), false))).toBe(false);
+    expect(askIsOpen(askConfig(rows(false), true))).toBe(false);
+    expect(askIsOpen({ ...askConfig(rows(true), true), vault: null })).toBe(false);
+    expect(askIsOpen(askConfig(rows(true), true))).toBe(true);
+  });
+
+  it("reads the switch at runtime from /data/ask.json, and the addresses from /data/deployments.json", async () => {
+    const served: Record<string, unknown> = { "/data/deployments.json": { contracts: rows(true) }, "/data/ask.json": { open: true } };
+    const fetchImpl = (async (url: string) => new Response(JSON.stringify(served[url]), { status: served[url] ? 200 : 404 })) as unknown as typeof fetch;
+    const c = await fetchAskConfig(fetchImpl);
+    expect(c.open).toBe(true);
+    expect(c.inbox?.inbox).toBe(INBOX);
+    expect(askIsOpen(c)).toBe(true);
+    served["/data/ask.json"] = { open: "yes" };
+    await expect(fetchAskConfig(fetchImpl)).rejects.toThrow();
+    delete served["/data/ask.json"];
+    await expect(fetchAskConfig(fetchImpl)).rejects.toThrow("/data/ask.json answered HTTP 404");
+  });
+
+  it("serves the committed switch at /data/ask.json", async () => {
+    expect(await GET_ASK().json()).toEqual({ open: ASK_OPEN });
+  });
+
+  it("says the inbox is not open, with no way to send and no feed, when the inbox is recorded but the switch is off", () => {
+    const config = askConfig(rows(true), false);
+    render(<AskApp initial={config} deps={{ client: fakeLedgerClient({ head: 1n, logs: [] }), fetchConfig: () => new Promise(() => {}) }} />);
+    expect(screen.getByText("The inbox is not open yet.")).toBeInTheDocument();
+    expect(screen.getByText(/MaatInbox is recorded in deployments\/README\.md, but this page does not send briefs yet\./)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Send with/ })).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Briefs" })).toBeNull();
+  });
+});
+
+describe("no page links /ask while it is not open", () => {
+  const open = askIsOpen(askConfig(docsData.deployments));
   const files = (dir: string): string[] =>
     readdirSync(dir).flatMap((name) => {
       const path = join(dir, name);
@@ -76,7 +124,7 @@ describe("no page links /ask while the inbox is not recorded", () => {
     expect(links("nav.ts", '"/asking"')).toBe(false);
   });
 
-  it.skipIf(recorded)("finds no link to /ask in the site's code or docs outside the page itself", () => {
+  it.skipIf(open)("finds no link to /ask in the site's code or docs outside the page itself", () => {
     const web = join(REPO_ROOT, "web");
     const own = join(web, "app", "(site)", "ask");
     const sources = ["app", "components", "content", "lib"].flatMap((d) => files(join(web, d))).filter((f) => !f.startsWith(own));
@@ -128,7 +176,7 @@ describe("/ask once the inbox is recorded", () => {
         },
       },
     };
-    const config = { vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) } };
+    const config = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) } };
     render(
       <AskApp
         initial={config}

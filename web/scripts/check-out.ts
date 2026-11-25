@@ -21,6 +21,7 @@ import {
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
 } from "../lib/check-out";
+import { ASK_OPEN } from "../content/ask-open";
 import rationales from "../content/generated/rationales.json";
 import { deploymentConfig, deploymentsFile } from "../lib/chain/config";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
@@ -132,9 +133,9 @@ problems.push(
   ),
 );
 
-// The ledger page's data, each as its route writes it from the generated sources.
+// The data the ledger page and /ask read, each as its route writes it from its source.
 problems.push(
-  ...checkDataFiles({ "data/deployments.json": deploymentsFile(docsData.deployments), "data/rationales.json": rationales }, (path) =>
+  ...checkDataFiles({ "data/deployments.json": deploymentsFile(docsData.deployments), "data/rationales.json": rationales, "data/ask.json": { open: ASK_OPEN } }, (path) =>
     isFile(join(OUT, path)) ? read(path) : undefined,
   ),
 );

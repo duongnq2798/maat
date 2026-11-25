@@ -5,7 +5,7 @@ import type { LedgerClient } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
 import { BriefForm, type BriefFormDeps } from "./BriefForm";
 import { BriefsPanel } from "./BriefsPanel";
-import { fetchAskConfig, type AskConfig } from "./config";
+import { askIsOpen, fetchAskConfig, type AskConfig } from "./config";
 import { PreviewForm } from "./PreviewForm";
 
 /** The notice the inbox spec (§4) gives /ask, word for word. */
@@ -31,14 +31,16 @@ function Section({ id, title, lead, children }: { id: string; title: string; lea
   );
 }
 
-/** What the page shows instead of the form until deployments/README.md records the inbox. */
-function NotOpen() {
+/** What the page shows instead of the form until it is open: before the inbox is recorded, and after, until the owner's switch. */
+function NotOpen({ recorded }: { recorded: boolean }) {
   return (
     <div data-ask-state="not-open" className="card flex flex-col gap-2 p-5 sm:p-6">
       <p className="m-0 text-[17px] font-semibold text-ink">The inbox is not open yet.</p>
       <p className="m-0 text-[15px] leading-relaxed text-ink-body">
-        Briefs open once the MaatInbox contract is deployed on Base and its address is recorded in deployments/README.md. Until
-        then you can still ask the real vault below: it is free, and nothing is signed.
+        {recorded
+          ? "MaatInbox is recorded in deployments/README.md, but this page does not send briefs yet."
+          : "Briefs open once the MaatInbox contract is deployed on Base and its address is recorded in deployments/README.md."}{" "}
+        Until then you can still ask the real vault below: it is free, and nothing is signed.
       </p>
     </div>
   );
@@ -46,8 +48,8 @@ function NotOpen() {
 
 /**
  * /ask: send a brief to the agent through MaatInbox, ask the live vault for free, and read the briefs. `initial` is the
- * build's deployments table, so the static HTML shows the state the page settles on; the page then reads
- * /data/deployments.json, and keeps `initial` when that read fails.
+ * build's deployments table and the owner's switch, so the static HTML shows the state the page settles on; the page
+ * then reads /data/deployments.json and /data/ask.json, and keeps `initial` when that read fails.
  */
 export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskDeps }) {
   const [config, setConfig] = useState(initial);
@@ -65,7 +67,7 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
     };
   }, [fetchConfig]);
 
-  const open = config.inbox !== null && config.vault !== null;
+  const open = askIsOpen(config);
   return (
     <div className="wrap flex flex-col gap-14 py-12 md:py-20">
       <header className="flex max-w-[820px] flex-col gap-4">
@@ -86,10 +88,10 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
         title="Send a brief"
         lead="1 to 280 bytes of text. A brief is public and stays onchain for good, so put nothing private in it. The agent reads it as untrusted data."
       >
-        {open && config.inbox && config.vault ? (
+        {open ? (
           <BriefForm inbox={config.inbox} vault={config.vault} deployTx={config.deployTx} client={client} onIncluded={() => setReloadKey((n) => n + 1)} deps={deps} />
         ) : (
-          <NotOpen />
+          <NotOpen recorded={config.inbox !== null} />
         )}
       </Section>
 
@@ -101,7 +103,7 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
         <PreviewForm vault={config.vault} client={client} />
       </Section>
 
-      {open && config.inbox ? (
+      {open ? (
         <Section id="feed-title" title="Briefs" lead="Every brief sent to the inbox, newest first, read from its logs on Base. Shown as plain text, with no links.">
           <BriefsPanel inbox={config.inbox} client={client} reloadKey={reloadKey} />
         </Section>

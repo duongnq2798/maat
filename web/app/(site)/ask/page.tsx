@@ -5,19 +5,19 @@ import { docsData } from "@/lib/docs/generated";
 import { OG_IMAGE } from "@/lib/og-image";
 import { SITE } from "@/lib/site";
 import { AskApp } from "./AskApp";
-import { askConfig } from "./config";
+import { askConfig, askIsOpen } from "./config";
 
 const TITLE = `Brief the agent · ${SITE.name}`;
 const DESCRIPTION = "Send Maat's AI agent a public brief from your wallet on Base, and ask the live vault, for free, what it would answer to any intent.";
 
-/** The build's deployments table: /ask is not open, and asks not to be indexed, until it records a MaatInbox address. */
+/** The build's deployments table and the owner's switch: /ask asks not to be indexed until it is open. */
 const initial = askConfig(docsData.deployments);
 
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   alternates: { canonical: "/ask" },
-  ...(initial.inbox ? {} : { robots: { index: false, follow: true } }),
+  ...(askIsOpen(initial) ? {} : { robots: { index: false, follow: true } }),
   openGraph: { type: "website", url: "/ask", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [OG_IMAGE] },
   twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [OG_IMAGE] },
 };

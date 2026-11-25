@@ -15,6 +15,7 @@ import {
 } from "viem";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
+import { ASK_OPEN } from "../content/ask-open";
 import { REASONS } from "../content/reasons";
 import type { CachedLog } from "../lib/chain/cache";
 import { deploymentConfig } from "../lib/chain/config";
@@ -136,6 +137,7 @@ test.describe("/ask with the committed deployments table, which records no MaatI
     await expect(page.getByRole("button", { name: /^Send with/ })).toHaveCount(0);
     await expect(page.getByRole("heading", { name: "Briefs" })).toHaveCount(0);
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute("content", /noindex/);
+    expect(await (await page.request.get("/data/ask.json")).json()).toEqual({ open: ASK_OPEN });
 
     const form = page.getByRole("form", { name: "Ask the real vault" });
     await form.getByLabel("Action").selectOption("SELL");
@@ -152,14 +154,33 @@ test.describe("/ask with the committed deployments table, which records no MaatI
   });
 });
 
-test.describe("/ask with a test MaatInbox served in deployments.json", () => {
+/** Serves the test inbox in /data/deployments.json, and the owner's switch in /data/ask.json as `open`. */
+async function serveInbox(page: Page, open: boolean) {
+  await page.route("**/data/deployments.json", async (route) => {
+    const res = await route.fetch();
+    const file = (await res.json()) as { contracts: unknown[] };
+    file.contracts.push({ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: INBOX_TX, date: "2026-11-25" });
+    await route.fulfill({ response: res, json: file });
+  });
+  await page.route("**/data/ask.json", async (route) => route.fulfill({ response: await route.fetch(), json: { open } }));
+}
+
+test.describe("/ask with a test MaatInbox served in deployments.json and the switch off", () => {
+  test("still says the inbox is not open and offers no send", async ({ page }) => {
+    await installWallet(page);
+    const seen = await installAskChain(page, chain(true));
+    await serveInbox(page, false);
+    await page.goto("/ask");
+    await expect(page.locator('[data-ask-state="not-open"]')).toContainText("MaatInbox is recorded in deployments/README.md, but this page does not send briefs yet.");
+    await expect(page.getByRole("button", { name: /^Send with/ })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Briefs" })).toHaveCount(0);
+    expect(seen.logRequests.filter((r) => r.address.toLowerCase() === INBOX.toLowerCase())).toEqual([]);
+  });
+});
+
+test.describe("/ask with a test MaatInbox served in deployments.json and the switch on in ask.json", () => {
   test.beforeEach(async ({ page }) => {
-    await page.route("**/data/deployments.json", async (route) => {
-      const res = await route.fetch();
-      const file = (await res.json()) as { contracts: unknown[] };
-      file.contracts.push({ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: INBOX_TX, date: "2026-11-25" });
-      await route.fulfill({ response: res, json: file });
-    });
+    await serveInbox(page, true);
   });
 
   test("shows a fixture brief as plain text, then sends a brief whose request ends with the Builder Code suffix", async ({ page }) => {
