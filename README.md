@@ -545,7 +545,7 @@ it has not been re-timed.
 
    ```text
     Test Files  41 passed (41)
-         Tests  581 passed (581)
+         Tests  596 passed (596)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -564,10 +564,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  119 passed (119)
-         Tests  2625 passed (2625)
+    Test Files  125 passed (125)
+         Tests  2736 passed (2736)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 52 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 
@@ -620,9 +620,14 @@ CI's web unit tests check the chain it writes, on its fixtures.
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the four offline suites above (contracts
 unit, agent unit, web unit and web end to end), a secret scan of the full history and of every commit
 message, and a lint of the workflow itself, on every pull request and every push to `main`. Each run's
-summary shows the counts each runner reported. The contracts fork suite and the agent fork integration suite
-need an archive RPC and run by hand. Lighthouse, a browser audit of the production site, also runs by hand
-([`web/README.md`](web/README.md#deploy-owner)).
+summary shows the counts each runner reported. A second workflow, "live fork adversarial"
+([`.github/workflows/live-fork.yml`](.github/workflows/live-fork.yml)), runs once a day and on demand, never on a
+pull request and with no secret: it forks Base at a recent block through a keyless public RPC and runs
+`contracts/test/fork/LiveVault*.t.sol` against the deployed vault (the six invariants, the compromised-executor
+bound, preview against execute and the trailing rationale blob). A failure whose forge log shows RPC errors is
+rerun once, at the same block and seed, through the other RPC. The other contract fork tests and the agent fork
+integration suite need an archive RPC and run by hand. Lighthouse, a browser audit of the production site, also
+runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
 
 ## Known limitations
 
@@ -736,7 +741,8 @@ owner's GitHub account.
 ## Where things are in this repository
 
 ```text
-.github/                   the CI workflow, its counting script and tests, Dependabot
+.github/                   the CI workflow, its counting script and tests, the live fork workflow and its block
+                           picker, Dependabot
 contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork base:Cobalt)
   src/
     MandateVault.sol       the vault: mandate, nine checks, Decision log, timelock, credit routing
