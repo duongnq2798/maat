@@ -81,6 +81,8 @@ describe("skills/maat-market-guard", () => {
     expect(meta.name).toBe(SLUG);
     expect(typeof meta.description).toBe("string");
     expect((meta.description as string).length).toBeLessThanOrEqual(1024);
+    // The count of refusal codes it names is the count the script returns: every reason but OK.
+    expect(meta.description).toContain(`OK or one of ${guard.REASONS.length - 1} refusal codes`);
     const files = ["SKILL.md", "catalog.json", "scripts/check.mjs", "scripts/selftest.mjs"].map((f) => readRepo(`${DIR}/${f}`));
     for (const text of files) expect(text).not.toMatch(/co-authored-by|generated with|claude code|anthropic/i);
   });
