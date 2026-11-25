@@ -23,7 +23,8 @@ interface ITokenSymbol {
 ///
 ///   forge script script/QueueReserveCaps.s.sol --fork-url https://mainnet.base.org
 ///
-/// Run it again after queueing: for each queued change it prints the earliest and the last time to apply it.
+/// Run it again after queueing: for each queued change it prints the earliest and the last time to apply it, and
+/// in place of its queue line a note not to send it again, since a second queue tx restarts its TIMELOCK.
 contract QueueReserveCaps is Script {
     string internal constant RPC = "https://mainnet.base.org";
     string internal constant SEND_FLAGS = " --account maat-owner --rpc-url https://mainnet.base.org";
@@ -39,6 +40,18 @@ contract QueueReserveCaps is Script {
         bytes32 changeHash;
         /// MandateVault.queuedAt(changeHash): 0 until the queue tx lands
         uint256 queuedAt;
+    }
+
+    /// Where one change stands at the current block.
+    enum Stage {
+        /// the token's maxWeightBps is already RESERVE_CAP_BPS: nothing to queue or apply
+        AT_CAP,
+        /// queuedAt is 0: the queue tx has not landed
+        NOT_QUEUED,
+        /// queued, and its apply window, which ends GRACE_PERIOD after queuedAt + TIMELOCK, has not closed
+        QUEUED,
+        /// queued, but the apply window closed unapplied: an apply reverts ChangeExpired until it is queued again
+        EXPIRED
     }
 
     function run() external view {
@@ -70,14 +83,16 @@ contract QueueReserveCaps is Script {
             console2.log(string.concat("  now  ", tuple(c[i].current)));
             console2.log(string.concat("  next ", tuple(c[i].next)));
             console2.log(string.concat("  change hash ", vm.toString(c[i].changeHash)));
-            if (c[i].current.maxWeightBps == RESERVE_CAP_BPS) {
+            Stage s = stageOf(vault, c[i]);
+            if (s == Stage.AT_CAP) {
                 console2.log("  already at the reserve cap: nothing to queue or apply");
-            } else if (c[i].queuedAt == 0) {
+            } else if (s == Stage.NOT_QUEUED) {
                 console2.log("  not queued yet");
             } else {
                 uint256 eta = c[i].queuedAt + timelock;
                 console2.log(string.concat("  queued ", utc(c[i].queuedAt)));
                 console2.log(string.concat("  apply from ", utc(eta), " until ", utc(eta + grace)));
+                if (s == Stage.EXPIRED) console2.log("  expired unapplied: queue it again");
             }
         }
 
@@ -86,9 +101,8 @@ contract QueueReserveCaps is Script {
             "1. Queue. Send the lines one after the other; each starts its own TIMELOCK at its block's time."
         );
         for (uint256 i; i < c.length; ++i) {
-            if (c[i].current.maxWeightBps != RESERVE_CAP_BPS) {
-                console2.log(queueCommand(address(vault), c[i].token, c[i].next));
-            }
+            string memory line = queueLine(vault, c[i]);
+            if (bytes(line).length != 0) console2.log(line);
         }
         console2.log("");
         console2.log(
@@ -158,6 +172,32 @@ contract QueueReserveCaps is Script {
                 queuedAt: vault.queuedAt(h)
             });
         }
+    }
+
+    /// @notice Where `c` stands at block.timestamp, by MandateVault._consume's rules.
+    function stageOf(MandateVault vault, Change memory c) public view returns (Stage) {
+        if (c.current.maxWeightBps == RESERVE_CAP_BPS) return Stage.AT_CAP;
+        if (c.queuedAt == 0) return Stage.NOT_QUEUED;
+        if (block.timestamp > c.queuedAt + vault.TIMELOCK() + vault.GRACE_PERIOD()) return Stage.EXPIRED;
+        return Stage.QUEUED;
+    }
+
+    /// @notice Step 1's line for `c`: its queue `cast send` while it is not queued or has expired unapplied, a
+    /// `#` note while it is queued (sending the queue tx again would reset queuedAt and restart its TIMELOCK),
+    /// and "" once the token is at the cap.
+    function queueLine(MandateVault vault, Change memory c) public view returns (string memory) {
+        Stage s = stageOf(vault, c);
+        if (s == Stage.AT_CAP) return "";
+        if (s == Stage.QUEUED) {
+            return string.concat(
+                "# ",
+                c.symbol,
+                " already queued at ",
+                utc(c.queuedAt),
+                ": do not send it again, a second queue tx restarts its TIMELOCK"
+            );
+        }
+        return queueCommand(address(vault), c.token, c.next);
     }
 
     /// @notice A new config equal to `c` except maxWeightBps = RESERVE_CAP_BPS (a copy: `c` is not modified).

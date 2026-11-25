@@ -97,6 +97,58 @@ contract QueueReserveCapsForkTest is Test, IMandateVaultEvents {
         );
     }
 
+    /// Run again after queueing, the script must not print the queue line of a change that is already queued:
+    /// a second queue tx resets queuedAt (MandateVault._queue), which restarts that change's TIMELOCK. It prints
+    /// the line again once a queued change has expired unapplied, and nothing once the cap is applied.
+    function test_scriptPrintsAQueueLineOnlyForAChangeThatIsNotQueued() public {
+        QueueReserveCaps.Change[] memory c = script.changes(vault);
+        for (uint256 i; i < 3; ++i) {
+            assertEq(
+                script.queueLine(vault, c[i]), script.queueCommand(address(vault), c[i].token, c[i].next)
+            );
+        }
+
+        // The owner queues NVDAc and GOOGLc, not AAPLc.
+        uint256 queuedAt = vm.getBlockTimestamp();
+        vm.startPrank(owner);
+        vault.queueTokenConfig(c[0].token, c[0].next);
+        vault.queueTokenConfig(c[1].token, c[1].next);
+        vm.stopPrank();
+        c = script.changes(vault);
+        assertEq(c[0].queuedAt, queuedAt);
+        assertEq(
+            script.queueLine(vault, c[0]),
+            "# NVDAc already queued at 2026-11-24 17:29:03 UTC: do not send it again, a second queue tx restarts"
+            " its TIMELOCK"
+        );
+        assertEq(
+            script.queueLine(vault, c[2]), script.queueCommand(address(vault), c[2].token, c[2].next), "AAPLc"
+        );
+        script.run();
+
+        // The owner applies NVDAc: nothing is left to queue for it.
+        vm.warp(queuedAt + vault.TIMELOCK());
+        vm.prank(owner);
+        vault.applyTokenConfig(c[0].token, c[0].next);
+        c = script.changes(vault);
+        assertEq(script.queueLine(vault, c[0]), "");
+
+        // GOOGLc stays queued through the last second of its apply window, then expires unapplied: an apply
+        // would revert ChangeExpired, so the script prints its queue line again.
+        vm.warp(queuedAt + vault.TIMELOCK() + vault.GRACE_PERIOD());
+        assertEq(
+            script.queueLine(vault, c[1]),
+            "# GOOGLc already queued at 2026-11-24 17:29:03 UTC: do not send it again, a second queue tx"
+            " restarts its TIMELOCK"
+        );
+        vm.warp(queuedAt + vault.TIMELOCK() + vault.GRACE_PERIOD() + 1);
+        assertEq(script.queueLine(vault, c[1]), script.queueCommand(address(vault), c[1].token, c[1].next));
+        vm.prank(owner);
+        vm.expectRevert(abi.encodeWithSelector(MandateVault.ChangeExpired.selector, c[1].changeHash));
+        vault.applyTokenConfig(c[1].token, c[1].next);
+        script.run();
+    }
+
     function test_onlyTheOwnerCanQueue() public {
         QueueReserveCaps.Change[] memory c = script.changes(vault);
         vm.prank(makeAddr("stranger"));
