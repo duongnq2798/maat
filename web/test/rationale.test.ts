@@ -57,9 +57,49 @@ describe("exportRationales", () => {
     const bad = line({ kind: "intent", index: 0, intentId: id(4), rationale: "edited", rationaleHash: hash("original"), txHash: tx(4) });
     expect(() => exportRationales([bad])).toThrow(`rationale hash mismatch for ${id(4)}`);
   });
+});
 
-  it("starts empty in the repository, before any mainnet run", () => {
-    expect(rationales).toEqual([]);
+// The vault's two Decision events on Base mainnet, as their transaction receipts record them: the owner-sent BUY the
+// vault refused with reason 6 (MARKET_CLOSED) and the one it allowed. Both commit to the same rationaleHash.
+const MAINNET = [
+  {
+    txHash: "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
+    block: 61_700_601,
+    intentId: "0xdc06ec8e29767044d325cc10445a942d26a463a4ed08487b013c5fed2a59243c",
+    allowed: false,
+    rationaleHash: "0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+  },
+  {
+    txHash: "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8",
+    block: 61_745_836,
+    intentId: "0x475efb77a4242345466f42fc844ac578b99716db50eca20d0ffe27549a68ee3d",
+    allowed: true,
+    rationaleHash: "0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+  },
+] as const;
+
+describe("the committed export (content/generated/rationales.json)", () => {
+  it("holds one row for each mainnet Decision, oldest first, and no other", () => {
+    expect(rationales.map((r) => [r.intentId, r.txHash])).toEqual(MAINNET.map((m) => [m.intentId, m.txHash]));
+  });
+
+  for (const m of MAINNET) {
+    it(`verifies the ${m.allowed ? "allowed" : "refused"} Decision in block ${m.block} against its onchain rationaleHash`, () => {
+      const row = rationales.find((r) => r.intentId === m.intentId);
+      expect(row?.rationaleHash).toBe(m.rationaleHash);
+      expect(verifyRationale(row?.text, m.rationaleHash)).toBe("verified");
+    });
+  }
+
+  it("is what exportRationales writes back from it, so the file holds no row the export would refuse", () => {
+    const lines = rationales.map((r) => ({ kind: "intent", intentId: r.intentId, rationale: r.text, rationaleHash: r.rationaleHash, txHash: r.txHash, ts: r.ts }));
+    expect(exportRationales(lines)).toEqual(rationales);
+  });
+
+  it("gives /ledger a verified text for both mainnet intent ids, as the page reads the file", async () => {
+    const src = staticRationaleSource("/data/rationales.json", (async () => new Response(JSON.stringify(rationales), { status: 200 })) as typeof fetch);
+    const found = await src.lookup(MAINNET.map((m) => m.intentId));
+    expect(MAINNET.map((m) => verifyRationale(found.get(m.intentId), m.rationaleHash))).toEqual(["verified", "verified"]);
   });
 });
 
