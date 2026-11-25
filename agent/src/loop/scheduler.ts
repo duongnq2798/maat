@@ -24,7 +24,10 @@ export async function abortableSleep(ms: number, signal: AbortSignal): Promise<v
 export async function runForever(o: {
   run: () => Promise<RunReport>;
   signal: AbortSignal;
-  /** Held for each round, so a probe (loop/probeRound.ts) waits for the round and a round for the probe. */
+  /**
+   * Held for each round, so a probe (loop/probeRound.ts) waits for the round and a round for the probe. A round that
+   * gets the lock after a stop does not start.
+   */
   lock?: { run<T>(fn: () => Promise<T>): Promise<T> };
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   log?: (m: string) => void;
@@ -38,7 +41,10 @@ export async function runForever(o: {
     let report: RunReport | null = null;
     let error: string | null = null;
     try {
-      report = await (o.lock ? o.lock.run(o.run) : o.run());
+      const r = o.lock ? await o.lock.run<RunReport | null>(async () => (o.signal.aborted ? null : o.run())) : await o.run();
+      // A stop (Ctrl-C) that came while it waited for the lock: no Claude call, no send.
+      if (r === null) break;
+      report = r;
       const counts = `round ${report.runId}: ${report.status}, sent ${report.sent.length}, skipped ${report.skipped}`;
       // runOnce already redacted the halt reason (oneLine).
       const line = report.haltReason ? `${counts} (${report.haltReason})` : counts;

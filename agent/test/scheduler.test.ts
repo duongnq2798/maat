@@ -162,4 +162,30 @@ describe("runForever with a round lock", () => {
     await probe;
     expect(order).toEqual(["round 1 start", "round 1 end", "probe", "round 2 start", "round 2 end"]);
   });
+
+  it("starts no round that gets the lock after the agent was stopped", async () => {
+    const ac = new AbortController();
+    const lock = new RoundLock();
+    let releaseProbe!: () => void;
+    const probe = lock.run(() => new Promise<void>((r) => (releaseProbe = r)));
+    let started = 0;
+    const after: unknown[] = [];
+    const loop = runForever({
+      signal: ac.signal,
+      lock,
+      run: async () => (started++, rep(true)),
+      sleep: async () => {},
+      log: () => {},
+      afterRound: async (r) => void after.push(r),
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(lock.waiting).toBe(1);
+    // Ctrl-C while the round waits for a probe: the probe ends, and no Claude call or send may start after the stop.
+    ac.abort();
+    releaseProbe();
+    await probe;
+    expect(await loop).toBe(0);
+    expect(started).toBe(0);
+    expect(after).toEqual([]);
+  });
 });
