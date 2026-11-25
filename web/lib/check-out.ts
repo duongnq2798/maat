@@ -363,6 +363,23 @@ export function checkDataFiles(expected: Readonly<Record<string, unknown>>, read
   return problems;
 }
 
+/**
+ * Each text file in out/ (keyed by its path, such as skill.md) is exactly the text of its generated copy, which names
+ * its source file in the repo.
+ */
+export function checkTextFiles(
+  expected: Readonly<Record<string, { readonly source: string; readonly text: string }>>,
+  read: (path: string) => string | undefined,
+): string[] {
+  const problems: string[] = [];
+  for (const [path, { source, text }] of Object.entries(expected)) {
+    const got = read(path);
+    if (got === undefined) problems.push(`missing out/${path}`);
+    else if (got !== text) problems.push(`out/${path} is not ${source} (run npm run docs:gen and build again)`);
+  }
+  return problems;
+}
+
 type Env = Record<string, string | undefined>;
 
 /** Whether this run checks an export that is about to ship: on CI, or in a Vercel build. */

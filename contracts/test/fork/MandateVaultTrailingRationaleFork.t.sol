@@ -38,7 +38,12 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         bytes32 rationaleHash;
     }
 
-    function setUp() public {
+    /// Who sends and who is paid: EXECUTOR at FORK_BLOCK. LiveVaultTrailingRationaleFork.t.sol runs these calls at
+    /// the live block and reads both from the vault there.
+    address internal executor = EXECUTOR;
+    address internal payee = EXECUTOR;
+
+    function setUp() public virtual {
         vm.createSelectFork("base", FORK_BLOCK);
         assertEq(VAULT.executor(), EXECUTOR);
         assertEq(VAULT.mandate().calendar, CALENDAR);
@@ -46,7 +51,7 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         assertFalse(VAULT.paused());
     }
 
-    function test_refusedBuyCarriesTheBlobHash() public {
+    function test_refusedBuyCarriesTheBlobHash() public virtual {
         bytes memory blob = _blob(512);
         Intent memory i = _intent("b1-refused-buy", Action.BUY, A.GOOGLC, 1e6, address(0), blob);
         Decided memory d = _executeWithTrailer(i, blob);
@@ -54,19 +59,19 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         assertEq(uint8(d.reason), uint8(Reason.MARKET_CLOSED));
     }
 
-    function test_allowedExpenseCarriesTheBlobHash() public {
+    function test_allowedExpenseCarriesTheBlobHash() public virtual {
         uint256 vaultBefore = IERC20Minimal(A.USDC).balanceOf(address(VAULT));
-        uint256 payeeBefore = IERC20Minimal(A.USDC).balanceOf(EXECUTOR);
+        uint256 payeeBefore = IERC20Minimal(A.USDC).balanceOf(payee);
         bytes memory blob = _blob(512);
-        Intent memory i = _intent("b1-allowed-expense", Action.PAY_EXPENSE, A.USDC, 0.1e6, EXECUTOR, blob);
+        Intent memory i = _intent("b1-allowed-expense", Action.PAY_EXPENSE, A.USDC, 0.1e6, payee, blob);
         Decided memory d = _executeWithTrailer(i, blob);
         assertTrue(d.allowed);
         assertEq(uint8(d.reason), uint8(Reason.OK));
         assertEq(IERC20Minimal(A.USDC).balanceOf(address(VAULT)), vaultBefore - 0.1e6);
-        assertEq(IERC20Minimal(A.USDC).balanceOf(EXECUTOR), payeeBefore + 0.1e6);
+        assertEq(IERC20Minimal(A.USDC).balanceOf(payee), payeeBefore + 0.1e6);
     }
 
-    function test_blobAtExactly1024Bytes() public {
+    function test_blobAtExactly1024Bytes() public virtual {
         bytes memory blob = _blob(MAX_BLOB);
         assertEq(blob.length, 1024);
 
@@ -75,7 +80,7 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         assertFalse(d.allowed);
         assertEq(uint8(d.reason), uint8(Reason.MARKET_CLOSED));
 
-        Intent memory pay = _intent("b1-cap-expense", Action.PAY_EXPENSE, A.USDC, 0.1e6, EXECUTOR, blob);
+        Intent memory pay = _intent("b1-cap-expense", Action.PAY_EXPENSE, A.USDC, 0.1e6, payee, blob);
         d = _executeWithTrailer(pay, blob);
         assertTrue(d.allowed);
         assertEq(uint8(d.reason), uint8(Reason.OK));
@@ -113,9 +118,9 @@ contract MandateVaultTrailingRationaleForkTest is Test {
     /// The agent previews with a plain eth_call from the executor before it sends. The same trailer on the preview
     /// call must not change its verdict either.
     function _preview(Intent memory i, bytes memory trailer) internal returns (Reason previewed) {
-        vm.prank(EXECUTOR, EXECUTOR);
+        vm.prank(executor, executor);
         previewed = VAULT.previewIntent(i);
-        vm.prank(EXECUTOR, EXECUTOR);
+        vm.prank(executor, executor);
         (bool ok, bytes memory ret) =
             address(VAULT).staticcall(bytes.concat(abi.encodeCall(MandateVault.previewIntent, (i)), trailer));
         assertTrue(ok, "previewIntent with a trailer reverted");
@@ -126,7 +131,7 @@ contract MandateVaultTrailingRationaleForkTest is Test {
     function _send(Intent memory i, bytes memory trailer) internal returns (Decided memory d) {
         bytes memory data = _executeCalldata(i, trailer);
         vm.recordLogs();
-        vm.prank(EXECUTOR, EXECUTOR);
+        vm.prank(executor, executor);
         (bool ok, bytes memory ret) = address(VAULT).call(data);
         assertTrue(ok, "execute with a trailing blob and suffix reverted");
         d = _onlyDecision(vm.getRecordedLogs(), i);

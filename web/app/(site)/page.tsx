@@ -1,5 +1,6 @@
 import { ThumbBar } from "@/components/instrument/ThumbBar";
 import { LiveSnapshotProvider } from "@/components/live/LiveSnapshotProvider";
+import { AgentBuilders } from "@/components/sections/AgentBuilders";
 import { AnnouncementBar } from "@/components/sections/AnnouncementBar";
 import { BuiltOn } from "@/components/sections/BuiltOn";
 import { Footer } from "@/components/sections/Footer";
@@ -36,6 +37,7 @@ export default function Page() {
           <Ledger />
           <Mandate />
           <TreasuryLoop />
+          <AgentBuilders />
         </main>
         <Footer />
         <ThumbBar />

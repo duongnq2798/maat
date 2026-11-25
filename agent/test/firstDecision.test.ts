@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { Attribution } from "ox/erc8021";
-import { decodeFunctionData, getAddress, size, slice, zeroAddress, type Hex } from "viem";
+import { concat, decodeFunctionData, getAddress, size, slice, zeroAddress, type Hex } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildFirstDecision,
@@ -17,6 +17,8 @@ import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
 import { EXECUTE_GAS_FLOOR, encodeExecute } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
 import { buildIntent, intentId, rationaleHash } from "../src/intent.js";
+import { GENESIS } from "../src/rationale/blob.js";
+import { decodeExecuteInput } from "../src/rationale/calldata.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 import { FakeSender } from "./fakes/fakeSender.js";
 
@@ -68,24 +70,28 @@ describe("first-decision execute calldata", () => {
     expect(codesIn(withoutSuffix(d.executeCalldata))).toEqual([]);
   });
 
-  it("is byte for byte what the agent's GuardedSender sends for the same intent", async () => {
+  it("is the execute call and the agent's Builder Code suffix with no blob between them, as the two owner Decisions are", () => {
     const d = build();
-    const inner = new FakeSender();
-    const guarded = new GuardedSender(inner, { vault: d.vault, suffix: builderSuffix(CODE) });
-    await guarded.send({ to: d.vault, data: encodeExecute(d.intent), idempotencyKey: d.intent.id, gas: EXECUTE_GAS_FLOOR });
-    expect(inner.sent.map((t) => t.data)).toEqual([d.executeCalldata]);
+    expect(d.executeCalldata).toBe(concat([encodeExecute(d.intent), builderSuffix(CODE)]));
+    expect(decodeExecuteInput(d.executeCalldata)).toMatchObject({ status: "none", codes: [CODE], rationaleHash: rationaleHash(d.rationale) });
+    // The agent never sends that: every execute through its GuardedSender carries the maat:v1 blob.
+    const guarded = new GuardedSender(new FakeSender(), { vault: d.vault, suffix: builderSuffix(CODE) });
+    expect(() => guarded.calldata({ to: d.vault, data: encodeExecute(d.intent) })).toThrow(/execute needs a maat:v1 blob/);
   });
 
-  it.each(BASKET.map((t) => t.symbol))("matches the intent the agent's buildIntent makes for a 5 USD %s BUY", async (symbol) => {
+  it.each(BASKET.map((t) => t.symbol))("matches the intent the agent's buildIntent makes for a 5 USD %s BUY, but for the hash", async (symbol) => {
     const d = build({ token: symbol });
     const state = await readVaultState(standardScene().client(), VAULT);
     const b = buildIntent(
       { action: "BUY", symbol, amountUsd: 5, rationale: d.rationale },
       state,
-      { runId: `${RUN_ID_PREFIX}sat-1`, index: 0, expensePayee: zeroAddress },
+      { runId: `${RUN_ID_PREFIX}sat-1`, index: 0, expensePayee: zeroAddress, blob: { c: "unknown", j: GENESIS, m: "fixed" } },
     );
-    expect(b.ok).toBe(true);
-    expect(b.ok && b.intent).toEqual(d.intent);
+    if (!b.ok) throw new Error(b.error);
+    // The owner's intent commits to its plain text; the agent's commits to its blob.
+    expect({ ...b.intent, rationaleHash: d.intent.rationaleHash }).toEqual(d.intent);
+    expect(d.intent.rationaleHash).toBe(rationaleHash(d.rationale));
+    expect(b.intent.rationaleHash).toBe(b.blob.hash);
   });
 });
 
