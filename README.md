@@ -98,10 +98,10 @@ novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-19:
 
 | Idea (quest page) | What Maat does | Status | Where |
 | --- | --- | --- | --- |
-| Agents that earn a stock treasury | Holds its own USDC and stocks. USDC that arrives is recorded as `RevenueReceived`, and new revenue repays debt. The planned income, x402 fees for safety checks, is not on `main` | **Partly**: x402 is in PR #2, unmerged | [`notifyRevenue`](contracts/src/MandateVault.sol#L124-L131), [`policy.ts`](agent/src/policy.ts#L71-L78) |
-| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L10-L19) |
+| Agents that earn a stock treasury | Holds its own USDC and stocks. USDC that arrives is recorded as `RevenueReceived`, and new revenue repays debt. The planned income, x402 fees for safety checks, is not on `main` | **Partly**: x402 is in PR #2, unmerged | [`notifyRevenue`](contracts/src/MandateVault.sol#L124-L131), [`policy.ts`](agent/src/policy.ts#L72-L79) |
+| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L28-L32) |
 | Stock-backed credit for agents | Supplies stocks to the Aave V4 MAG7 Spoke, borrows USDC against them, repays and withdraws. A borrow needs an open market and a health factor of 1.5, or 2.0 in the de-risk window | **Built and fork-tested** | [`AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol), [`MandateVaultCreditFork.t.sol`](contracts/test/fork/MandateVaultCreditFork.t.sol) |
-| Agent-managed rebalancing | Equal weights after a 30% USDC reserve (23.3% per stock), rebalanced past a 5-point drift. The vault refuses a buy that takes one stock above 40% | **Built**, unit-tested; the fork run's trades came from a scripted proposer | [`policy.ts`](agent/src/policy.ts#L13), [`test_concentration`](contracts/test/MandateVault.t.sol#L106) |
+| Agent-managed rebalancing | Equal weights after a 30% USDC reserve (23.3% per stock), rebalanced past a 5-point drift. The vault refuses a buy that takes one stock above 40% | **Built**, unit-tested; the fork run's trades came from a scripted proposer | [`policy.ts`](agent/src/policy.ts#L14), [`test_concentration`](contracts/test/MandateVault.t.sol#L106) |
 
 Bankr is a partner of this track. Nothing is built for it yet; a Bankr Skill is planned.
 
@@ -214,18 +214,21 @@ flowchart TD
     ANY["Anyone"] -->|"notifyRevenue, syncMultiplier<br/>(record state only)"| MV
 ```
 
-One round, every 15 minutes in session and every hour outside ([`scheduler.ts`](agent/src/loop/scheduler.ts#L4-L5)):
+One round, every 15 minutes in session and every hour outside ([`scheduler.ts`](agent/src/loop/scheduler.ts#L5-L6)):
 
 1. **Read.** Read the vault, tokens, feeds and Aave position at one pinned block; if a required read fails, do
    nothing. Reconcile any pending send, and send `syncMultiplier` for a stock whose multiplier changed.
-2. **Suggest.** A rule-based policy keeps an equal-weight basket of NVDAc, GOOGLc and AAPLc with 30% in USDC,
-   rebalances past a 5-point drift, supplies idle stock to Aave V4, borrows USDC when cash falls below seven
-   days of compute cost, and repays debt when revenue arrives (the planned source, x402 fees, is not built).
+2. **Suggest.** A rule-based policy keeps an equal-weight basket of NVDAc, GOOGLc and AAPLc with 30% in USDC
+   and rebalances past a 5-point drift. With `MAAT_CREDIT_ACTIONS=on` (off by default) it also supplies idle
+   stock to Aave V4, borrows USDC when cash falls below seven days of compute cost, and repays debt when revenue
+   arrives (the planned source, x402 fees, is not built).
 3. **Propose.** Claude gets the state and the suggestions, and may adopt, resize or drop them. Proposing
    nothing is a valid answer.
 4. **Check before sending.** Code re-validates the answer, clamps each amount except a borrow, previews it as
-   the executor, and sends it only if it is allowed, or if it is a safety refusal not yet logged today for that
-   reason. The compute bill goes first if at least $0.10 is owed: `PAY_EXPENSE` to an allowlisted payee, the
+   the executor, and sends it only if it is allowed, or if it is a safety refusal not yet logged for its
+   NYSE date (and, for `MARKET_CLOSED`, its closed phase). With credit actions off, a credit proposal is
+   dropped before the preview. The compute bill goes first if at least $1.00 is owed in live mode ($0.10 in
+   dry-run, or `MAAT_BILL_MIN_USD`): `PAY_EXPENSE` to an allowlisted payee, the
    wallet that pays for its Claude usage (for Agent #1, the owner's). Claude's schema cannot express
    `PAY_EXPENSE`; code adds it.
 5. **Decide.** The vault runs its checks and emits a `Decision` either way. A borrow needs an open market and a
@@ -235,7 +238,9 @@ One round, every 15 minutes in session and every hour outside ([`scheduler.ts`](
 
 `MAAT_MODE` defaults to `dry-run`: it reads the chain and calls Claude but sends nothing. Live mode through
 `npm run agent` needs a registered Builder Code and CDP keys, set up by the owner
-([`agent/README.md`](agent/README.md)). The fork integration test runs live mode with a test code
+([`agent/README.md`](agent/README.md)). Live mode refuses a data directory whose journal holds dry-run rows, so
+a dry run and the live agent each get their own `MAAT_DATA_DIR`. `npm run agent:loop` restarts the agent each
+time it exits and warns when no round has ended for 90 minutes or the agent keeps exiting. The fork integration test runs live mode with a test code
 (`bc_maattest`) and a local sender instead.
 
 The owner can pause the vault, swap the executor key and withdraw at any time, and can change the rules only
@@ -261,14 +266,14 @@ measurement script and its data are not in the repository, so these figures cann
 | Step | Who decides | Bound | Where |
 | --- | --- | --- | --- |
 | Suggest | Code: a rule-based policy | Equal weights after a 30% USDC reserve, a 5-point drift trigger. Advisory only | [`policy.ts#L13`](agent/src/policy.ts#L13) |
-| Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L26`](agent/src/config.ts#L26) |
-| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L79-L80`](agent/src/llm/proposer.ts#L79-L80) |
+| Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L27`](agent/src/config.ts#L27) |
+| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L106-L107`](agent/src/llm/proposer.ts#L106-L107) |
 | Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L47-L71`](agent/src/intent.ts#L47-L71) |
-| Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L13`](agent/src/chain/preview.ts#L13) |
-| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per UTC day | [`refusals.ts#L4-L26`](agent/src/refusals.ts#L4-L26) |
+| Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L14`](agent/src/chain/preview.ts#L14) |
+| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L290-L296`](agent/src/loop/runOnce.ts#L290-L296) |
 | Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; Builder Code appended | [`sender.ts#L26-L53`](agent/src/exec/sender.ts#L26-L53) |
 | Decide | The vault | The nine checks; the first failure is the reason; a refusal does not revert | [`MandateVault.sol#L257-L282`](contracts/src/MandateVault.sol#L257-L282) |
-| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L279-L280`](agent/src/loop/runOnce.ts#L279-L280) |
+| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L323-L324`](agent/src/loop/runOnce.ts#L323-L324) |
 
 The model chooses what to try and says why; code bounds its answer; only the vault decides.
 
@@ -358,7 +363,7 @@ and calls `withdraw` (reverts `NotOwner`); the vault keeps all 200 USDC. Gaps: [
 | **24-hour timelock** | Mandate, token and payee changes are queued, then applied with the exact queued values from 24 hours after queueing until 7 days after that, or cancelled | `test_mandateChangeNeedsTimelock`, `test_appliedParamsMustMatchQueued`, `test_expiredChangeReverts` |
 | **Owner escape hatches** | `setPaused` (instant; `REPAY` still works), `setExecutor` (instant key rotation), `withdraw` (only to the owner) | `test_repayIsAllowedWhileVaultPaused`, `test_rotatingExecutorRevokesOldOne`, `test_withdrawOnlyGoesToOwner` |
 | **Guarded sender** | The agent sends only `execute`, `syncMultiplier` or `notifyRevenue` to the vault address, with an explicit gas limit (at most 3,000,000) and the Builder Code suffix | [`agent/src/exec/sender.ts`](agent/src/exec/sender.ts), [`sender.test.ts`](agent/test/sender.test.ts) |
-| **Exactly-once sends** | Every `execute` is stored as pending before it is sent; the next round reconciles it against `usedIntent` before doing anything else, so a send that threw after broadcast is not sent again. Not covered: a pending send dropped after the window; its bill is sent again, and if the first send lands late, the bill is paid twice ([Security model](https://maatonbase.xyz/docs/security/model)) | [`agent/src/loop/runOnce.ts`](agent/src/loop/runOnce.ts), `runOnce.test.ts` "reconciles a send that threw after broadcast instead of sending again" |
+| **Exactly-once sends** | Every `execute` is stored as pending before it is sent; the next round settles it before doing anything else, from the tx receipt once the tx is mined, otherwise against `usedIntent`, so a send that threw after broadcast is not sent again. Not covered: a pending send dropped after the window; its bill is sent again, and if the first send lands late, the bill is paid twice ([Security model](https://maatonbase.xyz/docs/security/model)) | [`agent/src/loop/runOnce.ts`](agent/src/loop/runOnce.ts), `runOnce.test.ts` "reconciles a send that threw after broadcast instead of sending again" |
 
 <details>
 <summary>Eight more layers</summary>
@@ -369,9 +374,9 @@ and calls `withdraw` (reverts `NotOwner`); the vault keeps all 200 USDC. Gaps: [
 | **Single-use intents** | Each intent id executes once, refused or not | `test_replayReverts` |
 | **Slippage floor from the oracle** | The vault, not the agent, sets the minimum output | `test_slippageFloorIsEnforcedEvenIfAgentSendsZero` |
 | **Calendar can only get stricter** | The calendar owner can add holidays and earlier closes, never remove them | `test_ownerCanOnlyMakeItStricter` |
-| **CDP account policy** | The executor wallet may only send zero-value transactions to the vault on Base; raw hash signing is rejected | [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts), [`cdpPolicy.test.ts`](agent/test/cdpPolicy.test.ts) |
+| **CDP account policy** | The executor wallet may only send zero-value transactions to the vault on Base, to any vault function, and sign only zero-value transactions to the vault; hash, message and typed-data signing are rejected | [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts), [`cdpPolicy.test.ts`](agent/test/cdpPolicy.test.ts) |
 | **Halt on surprise** | If the preview said OK but the vault refused, or a receipt has no `Decision`, the round stops | `runOnce.test.ts` "halts when the preview said OK but the vault refused" |
-| **Rate limits** | `MAAT_MAX_TX_PER_DAY` (default 40). Safety refusals (market, policy, size, concentration, health factor) are logged onchain at most once per reason per UTC day; bookkeeping refusals such as `INSUFFICIENT_BALANCE` cost no gas | [`agent/src/refusals.ts`](agent/src/refusals.ts) |
+| **Rate limits** | `MAAT_MAX_TX_PER_DAY` (default 40). Safety refusals (market, policy, size, concentration, health factor) are logged onchain at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase (holiday, weekend, early close, outside regular hours) of that date; without a readable calendar the agent falls back to once per reason per UTC day. Bookkeeping refusals such as `INSUFFICIENT_BALANCE` cost no gas | [`agent/src/refusals.ts`](agent/src/refusals.ts), `runOnce.test.ts` "logs Friday's overnight and early-close refusals, whatever the week logged before" |
 | **One agent per data directory** | A lock file is taken before the store or the wallet is opened | [`agent/src/loop/lock.ts`](agent/src/loop/lock.ts) |
 
 </details>
@@ -439,9 +444,9 @@ All addresses are Base mainnet, from [`contracts/script/BaseAddresses.sol`](cont
 | **Chainlink equity feeds** | Oracle price per raw token (multiplier already included), staleness | [NVDA](https://basescan.org/address/0x04689a41629776563E6822F76f2e57D148d28513), [GOOGL](https://basescan.org/address/0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2), [AAPL](https://basescan.org/address/0x787f13dEa48Db0897CbCDD985de77809D837F988) |
 | **Aerodrome Slipstream** | Swap venue and 30-minute TWAP; called directly, no router | [NVDAc/USDC](https://basescan.org/address/0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC), [GOOGLc/USDC](https://basescan.org/address/0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3), [AAPLc/USDC](https://basescan.org/address/0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6) |
 | **Aave V4 (MAG7 Spoke, Equities Hub)** | Stocks as collateral, USDC borrowing; the adapter is the Aave user and only its vault can move the position | [Spoke](https://basescan.org/address/0x17905Db0e4A3514467539956c084180616AE7B8D), [Hub](https://basescan.org/address/0xa4d5947Eb727A052bae69C593FfC84247EC9864E) |
-| **Coinbase CDP Server Wallet** | The executor key, with an account policy (sends only zero-value transactions to the vault on Base; raw hash signing rejected). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
+| **Coinbase CDP Server Wallet** | The executor key, with an account policy (sends and signs only zero-value transactions to the vault, sends only on Base; hash, message and typed-data signing rejected). Built, not yet run live | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
 | **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it; the first-decision BUYs of [`deployments/go-live.md`](deployments/go-live.md) do, because the owner sends the calldata that [`first-decision.ts`](agent/scripts/first-decision.ts) builds | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
-| **Claude** | `claude-sonnet-5-5` by default (`MAAT_LOOP_MODEL`), with structured output, proposes the round's intents. Tested against a fake client only | [`agent/src/config.ts#L26`](agent/src/config.ts#L26) |
+| **Claude** | `claude-sonnet-5-5` by default (`MAAT_LOOP_MODEL`), with structured output, proposes the round's intents. Called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. Tested against a fake client only | [`agent/src/config.ts#L27`](agent/src/config.ts#L27) |
 
 AMZNc is not in the basket: its pool held only about $34k of liquidity when the basket was chosen.
 

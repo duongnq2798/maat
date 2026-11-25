@@ -89,7 +89,7 @@ Yes. Maat is an entry in Base's Stocks Maxxing Season Builder Quest (5 November 
 - `SUPPLY`, `REPAY` and `PAY_EXPENSE` do not need an open market. Their own checks still apply.
 - `WITHDRAW_COLLATERAL` needs no open market when there is no debt, and its own checks still apply. While there is debt it is refused with `MARKET_CLOSED`.
 - `BORROW` is refused with `MARKET_CLOSED`.
-- A [refusal](/docs/help/glossary#refusal) is recorded as a [`Decision`](/docs/help/glossary#decision) only when the agent sends the intent. The agent is built to send a refusal onchain at most once per [reason](/docs/help/glossary#reason) per UTC day.
+- A [refusal](/docs/help/glossary#refusal) is recorded as a [`Decision`](/docs/help/glossary#decision) only when the agent sends the intent. The agent is built to send a refusal onchain at most once per [reason](/docs/help/glossary#reason) per NYSE date, and a `MARKET_CLOSED` once per closed phase of that date.
 
 In the fork run, with the clock moved ahead to a Saturday, the agent's buy of GOOGLc was refused this way, and the transaction that recorded it used <Fact name="gas.refusalLog" /> gas. See [Worked example: the Saturday buy](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy).
 
@@ -108,7 +108,7 @@ The agent has run in live mode only on a fork, so this is the cadence the code i
 
 ### Why is there no Decision for every proposal?
 
-The agent previews every intent first, and it sends a refusal onchain only when the refusal is worth recording and its reason has not been logged on the current UTC day. Other refusals, such as `INSUFFICIENT_BALANCE`, go to the agent's [journal](/docs/help/glossary#journal) only. So a missing `Decision` is not proof that the agent did not try. See [What a decision does not tell you](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you).
+The agent previews every intent first, and it sends a refusal onchain only when the refusal is worth recording and its reason has not been logged on the current NYSE date (for `MARKET_CLOSED`, in the current closed phase of that date). Other refusals, such as `INSUFFICIENT_BALANCE`, go to the agent's [journal](/docs/help/glossary#journal) only. So a missing `Decision` is not proof that the agent did not try. See [What a decision does not tell you](/docs/get-started/read-a-decision#what-a-decision-does-not-tell-you).
 
 ### What if the calendar misses a holiday?
 

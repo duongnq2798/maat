@@ -47,15 +47,16 @@ In the agent's fork run, at block <Fact name="forkBlock" />, one round buys, sup
 
 The policy keeps an equal-weight basket of the vault's stocks that it knows by name: NVDAc, GOOGLc and AAPLc. Net equity is the vault's USDC plus the value of every stock the vault lists that has a feed price, both in the vault and supplied to Aave, minus any debt. A listed stock the agent does not know by name still counts in net equity, but it gets no target and no suggestion. The policy's defaults sit in one line of code:
 
-```typescript title="agent/src/policy.ts#L6-L13"
+```typescript title="agent/src/policy.ts#L6-L14"
 export interface PolicyParams {
   cashReserveBps: number;
   driftBps: number;
   runwayDays: number;
   minTradeUsd6: bigint;
+  creditActions: boolean; // CREDIT_ACTIONS (types.ts) are suggested only when true; MAAT_CREDIT_ACTIONS=on sets it
 }
 
-export const DEFAULT_POLICY: PolicyParams = { cashReserveBps: 3000, driftBps: 500, runwayDays: 7, minTradeUsd6: 1_000_000n };
+export const DEFAULT_POLICY: PolicyParams = { cashReserveBps: 3000, driftBps: 500, runwayDays: 7, minTradeUsd6: 1_000_000n, creditActions: false };
 ```
 
 | Setting | Default | What it does |
@@ -68,11 +69,13 @@ export const DEFAULT_POLICY: PolicyParams = { cashReserveBps: 3000, driftBps: 50
 
 The cash reserve is not a separate rule. It is what is left when the stocks sit at their targets. A stock's weight is its value, in the vault and supplied, as a share of net equity. The policy then looks at each stock:
 
-- **Overweight.** The weight is more than the drift above its target. The policy suggests a `SELL` of the excess, capped by the mandate's per-trade cap. If the vault does not hold enough of the stock outside Aave, and some of it is supplied and the credit position can be read, it suggests a `WITHDRAW_COLLATERAL` instead, so that the stock is back in the vault before it is sold. Otherwise the policy suggests nothing for that stock.
+- **Overweight.** The weight is more than the drift above its target. The policy suggests a `SELL` of the excess, capped by the mandate's per-trade cap. If the vault does not hold enough of the stock outside Aave, and some of it is supplied, credit actions are on and the credit position can be read, it suggests a `WITHDRAW_COLLATERAL` instead, so that the stock is back in the vault before it is sold. Otherwise the policy suggests nothing for that stock.
 - **Underweight.** The weight is more than the drift below its target. The policy suggests a `BUY` of the shortfall, capped by the per-trade cap and by spendable cash.
-- **Idle stock.** Stock in the vault that is not overweight gets a `SUPPLY` suggestion, when the credit position can be read.
+- **Idle stock.** Stock in the vault that is not overweight gets a `SUPPLY` suggestion, when credit actions are on and the credit position can be read.
 
 Only a stock that the vault allows and prices is bought or supplied.
+
+Credit actions are off by default. Until [`MAAT_CREDIT_ACTIONS`](/docs/reference/agent-configuration#maat_credit_actions) is `on`, the policy suggests no `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY` (`with credit actions off (DEFAULT_POLICY)` in `agent/test/policy.test.ts`), the system prompt tells Claude never to propose them, and a credit action that Claude proposes anyway is journaled as a `skip` and never previewed or sent. The supply, borrow and repay steps below describe the agent with credit actions on.
 
 The vault's own limit on one stock, <Fact name="mandate.maxWeightBps" />, is a separate and looser check ([The mandate](/docs/concepts/mandate#maxweightbps)). The policy's targets are what the agent aims for, and the vault's cap bounds whatever is proposed. The policy tests pin these rules, including the order of suggestions: `REPAY`, `SUPPLY`, `WITHDRAW_COLLATERAL` and `SELL`, `BUY`, `BORROW` (`agent/test/policy.test.ts`).
 
@@ -91,14 +94,14 @@ The test `all cash: buys each token toward 23.33%, capped by spendable cash` in 
 
 The agent keeps a runway: enough USDC to cover a number of days of its own compute cost. It also keeps back any bill it has not paid yet. The daily cost is the average of the days it has recorded over the previous week. If it has recorded none, it uses a default, <Fact name="dailyComputeUsd" /> a day, which the `MAAT_DEFAULT_DAILY_COMPUTE_USD` setting changes. Cash that the policy spends on stock is whatever is left after the unpaid bill and the runway, so a suggested purchase never eats the runway. This is the policy's rule, not the vault's:
 
-```typescript title="agent/src/policy.ts#L63-L64"
+```typescript title="agent/src/policy.ts#L64-L65"
   const runwayNeedUsd6 = BigInt(params.runwayDays) * bills.dailyComputeUsd6;
   let spendable = maxBig(0n, s.usdcBalance - bills.unpaidUsd6 - runwayNeedUsd6);
 ```
 
 When USDC falls below the runway plus the unpaid bill, the policy suggests a borrow of the shortfall, but only if some stock is supplied as collateral and the credit position can be read:
 
-```typescript title="agent/src/policy.ts#L114-L120"
+```typescript title="agent/src/policy.ts#L115-L121"
   // 7. BORROW
   const supplied = weights.reduce((a, w) => a + w.suppliedUsd6, 0n);
   const need = runwayNeedUsd6 + bills.unpaidUsd6;
@@ -118,22 +121,31 @@ Each round that reaches the proposal step asks Claude, and each answer has a cos
 
 The price table is a few lines of code:
 
-```typescript title="agent/src/llm/pricing.ts#L8-L13"
-/** Cents per million tokens (claude-api skill model table, cached 2026-10-06). Cache write = 1.25 x input (5 min TTL). */
+```typescript title="agent/src/llm/pricing.ts#L13-L27"
+/**
+ * Cents per million tokens (claude-api skill: model table cached 2026-11-03, prompt-caching economics). Cache read =
+ * 0.1 x input (0.05 x on claude-sonnet-5-5 and claude-opus-5-5); cache write = 1.25 x input (5 min TTL).
+ * claude-sonnet-5, claude-opus-5 and claude-opus-4-8 are here because the server-side fallback can answer with them.
+ */
 const CENTS: Record<string, { input: number; output: number; cacheRead: number; cacheWrite: number }> = {
-  "claude-sonnet-5-5": { input: 200, output: 1000, cacheRead: 20, cacheWrite: 250 },
+  "claude-sonnet-5-5": { input: 200, output: 1000, cacheRead: 10, cacheWrite: 250 },
+  "claude-sonnet-5": { input: 200, output: 1000, cacheRead: 20, cacheWrite: 250 },
   "claude-opus-5-5": { input: 400, output: 2000, cacheRead: 20, cacheWrite: 500 },
+  "claude-opus-5": { input: 500, output: 2500, cacheRead: 50, cacheWrite: 625 },
+  "claude-opus-4-8": { input: 500, output: 2500, cacheRead: 50, cacheWrite: 625 },
 };
-const FALLBACK = CENTS["claude-opus-5-5"]!;
+// The bill is what the vault pays back for Claude usage, so an unknown model takes the dearest row in this table
+// (claude-opus-4-8, tied with claude-opus-5). A model priced above it (Fable 5.x) is under-billed.
+const FALLBACK = CENTS["claude-opus-4-8"]!;
 ```
 
-The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate of 200 means $2.00 per million input tokens. The agent prices each answer under the model name the API reports back, and prices any name that is not in the table at the `claude-opus-5-5` rate ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). It rounds the cost of each call up to the next micro-dollar. The table is fixed in the code and dated 2026-10-06 in its comment. The agent does not read prices from Anthropic, so if Anthropic's prices change, the bill is off until `pricing.ts` is updated. These are the rates the code bills, not a price list.
+The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate of 200 means $2.00 per million input tokens. The agent prices each answer at the model that produced it. When the requested model declines and the API's server-side fallback hands the request to another model, the response lists each attempt in `usage.iterations`, and the agent prices each attempt at the model that ran it and adds them up, so the declined attempt is billed too. It prices any name that is not in the table at the `claude-opus-4-8` rate, the highest in the table, so a model priced above that is billed too low ([`MAAT_LOOP_MODEL`](/docs/reference/agent-configuration#maat_loop_model)). It rounds the cost of each call up to the next micro-dollar. `pricing.test.ts` checks these rules against responses written by hand. The table is fixed in the code and dated 2026-11-03 in its comment. The agent does not read prices from Anthropic, so if Anthropic's prices change, the bill is off until `pricing.ts` is updated. These are the rates the code bills, not a price list.
 
-Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment at the front of the round's queue:
+Once at least the bill minimum is owed, the agent puts a bill payment at the front of the round's queue. The minimum is <Fact name="liveBillMinUsd" /> in live mode and <Fact name="billMinUsd" /> in dry-run, unless `MAAT_BILL_MIN_USD` sets another amount for both:
 
-```typescript title="agent/src/loop/runOnce.ts#L248-L252"
+```typescript title="agent/src/loop/runOnce.ts#L282-L286"
     const queue: Proposal[] = [];
-    if (unpaid >= BILL_MIN_USD6) {
+    if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
       queue.push({ action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale: `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}` });
     }
@@ -142,14 +154,15 @@ Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment 
 - **Claude does not propose it.** The proposal schema has no `PAY_EXPENSE` action, and the system prompt says bills are settled automatically.
 - **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list, with an optional second payee from `MAAT_EXPENSE_PAYEE_2`. The agent pays only the address in its own setting. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
 - **The vault limits it.** `PAY_EXPENSE` needs a payee on the allowlist and an amount within the balance and under the per-trade and daily caps, which it shares with trades. It works when the market is closed and it is refused while the vault is paused ([The nine checks](/docs/concepts/nine-checks#other-actions)).
-- **It is paid once.** The agent stores a send as pending before it leaves, and the next round checks `usedIntent` first. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
-- **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows. The first round in live mode on the same `MAAT_DATA_DIR` that owes at least <Fact name="billMinUsd" /> is built to pay it. The payment is the unpaid total, or the vault's whole USDC balance when that is smaller, in one `PAY_EXPENSE`; a payment of the whole balance leaves the rest owed. When that amount is above the per-trade cap, the vault refuses it with `SIZE_LIMIT` and the bill stays unpaid ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).
+- **It is paid once.** The agent stores a send as pending before it leaves, and the next round settles it first, from the transaction's receipt once it is mined, or else from `usedIntent`. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
+- **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows. Live mode refuses to start on a `MAAT_DATA_DIR` whose journal holds dry-run rows, so the vault never pays a dry run's bill: the live agent starts in its own folder, with no bill ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).
+- **A live bill is paid in one go.** The payment is the unpaid total, or the vault's whole USDC balance when that is smaller, in one `PAY_EXPENSE`; a payment of the whole balance leaves the rest owed. When that amount is above the per-trade cap, the vault refuses it with `SIZE_LIMIT` and the bill stays unpaid.
 
 ## Cadence
 
 The loop is built to run one round at a time: it waits for a round to finish, then sleeps. The sleep depends on whether the round found the market open.
 
-```typescript title="agent/src/loop/scheduler.ts#L4-L9"
+```typescript title="agent/src/loop/scheduler.ts#L5-L10"
 export const IN_SESSION_MS = 15 * 60_000;
 export const OFF_SESSION_MS = 60 * 60_000;
 
@@ -160,7 +173,7 @@ export function nextDelayMs(r: RunReport | null): number {
 
 That is <Fact name="loopMinutes" /> in session and <Fact name="offSessionMinutes" /> outside. The round reads the market state from the vault's own calendar, under the mandate's session mode ([Market hours](/docs/concepts/market-hours)). A round that could not read the market state, or that threw an error, waits <Fact name="offSessionMinutes" /> for the next one. A round that halted after reading an open market runs again <Fact name="loopMinutes" /> later.
 
-Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per day ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)).
+Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)). The transaction cap and the compute bill count UTC days. Claude's own spend has a daily cap too: once the day's Claude cost reaches <Fact name="maxLlmUsdPerDay" /> (`MAAT_MAX_LLM_USD_PER_DAY`), the rounds of that UTC day skip Claude and journal why.
 
 ## Planned: earning
 

@@ -35,6 +35,68 @@ describe("scheduler", () => {
     expect(delays).toEqual([IN_SESSION_MS, OFF_SESSION_MS, OFF_SESSION_MS]);
   });
 
+  it("logs a failed round as one redacted line: no stack, URL, key or secret", async () => {
+    const ac = new AbortController();
+    const lines: string[] = [];
+    const rpc = "https://base-mainnet.example.org/v2/fakeKey0123456789abcdef";
+    process.env.MAAT_SCHED_TEST_RPC_URL = rpc;
+    try {
+      await runForever({
+        signal: ac.signal,
+        run: async () => {
+          const e = new TypeError(`fetch to ${rpc} failed for fakeKey0123456789abcdef\nURL: ${rpc}\nRequest body: {"method":"eth_call"}`);
+          throw e;
+        },
+        sleep: async () => ac.abort(),
+        log: (m) => lines.push(m),
+      });
+    } finally {
+      delete process.env.MAAT_SCHED_TEST_RPC_URL;
+    }
+    expect(lines).toEqual(["round failed: TypeError: fetch to [redacted] failed for [redacted]"]);
+  });
+
+  it("logs a halted round's reason on its line", async () => {
+    const ac = new AbortController();
+    const lines: string[] = [];
+    await runForever({
+      signal: ac.signal,
+      run: async () => ({ ...rep(false), status: "halted", haltReason: "daily tx cap 20 reached" }),
+      sleep: async () => ac.abort(),
+      log: (m) => lines.push(m),
+    });
+    expect(lines).toEqual(["round r: halted, sent 0, skipped 0 (daily tx cap 20 reached)"]);
+  });
+
+  it("calls afterRound after every round, failed ones too, and survives its failure", async () => {
+    const ac = new AbortController();
+    const seen: { status: string | null; error: string | null }[] = [];
+    const lines: string[] = [];
+    const outcomes = [rep(true), new Error("boom\nat stack line")];
+    let i = 0;
+    await runForever({
+      signal: ac.signal,
+      run: async () => {
+        const o = outcomes[i++];
+        if (o instanceof Error) throw o;
+        return o!;
+      },
+      afterRound: async ({ report, error }) => {
+        seen.push({ status: report?.status ?? null, error });
+        if (seen.length === 2) throw new Error("disk full");
+      },
+      sleep: async () => {
+        if (i === 2) ac.abort();
+      },
+      log: (m) => lines.push(m),
+    });
+    expect(seen).toEqual([
+      { status: "done", error: null },
+      { status: null, error: "boom" },
+    ]);
+    expect(lines).toEqual(["round r: done, sent 0, skipped 0", "round failed: boom", "after round: disk full"]);
+  });
+
   it("does not start a round after abort", async () => {
     const ac = new AbortController();
     ac.abort();
