@@ -1,8 +1,9 @@
 import type { Hash } from "viem";
 import { formatInt } from "@/content/format";
 import { basescanTx } from "@/lib/chain/basescan";
-import { etLabel, formatUsd6, JOURNAL_BRANCH_URL, JOURNAL_RAW_URL, type JournalRow } from "@/lib/chain/ledger";
+import { etLabel, formatUsd6, JOURNAL_BRANCH_URL, JOURNAL_RAW_URL, type BriefEntry, type JournalRow } from "@/lib/chain/ledger";
 import { SITE } from "@/lib/site";
+import { BriefMap } from "./BriefMap";
 import type { JournalView } from "./useJournal";
 
 /** How many rows the panel lists, newest first. The chain check covers every row. */
@@ -167,8 +168,11 @@ function Status({ journal, onReload }: { journal: JournalView; onReload: () => v
   }
 }
 
-/** The Rounds tab: the public journal, its hash chain checked in the browser, and its latest rows. */
-export function RoundsPanel({ journal, onReload }: { journal: JournalView; onReload: () => void }) {
+/**
+ * The Rounds tab: the public journal, its hash chain checked in the browser, and its latest rows; then, when `briefs`
+ * is given, the inbox briefs the Decisions adopted.
+ */
+export function RoundsPanel({ journal, onReload, briefs }: { journal: JournalView; onReload: () => void; briefs?: readonly BriefEntry[] }) {
   const rows = journal.state === "read" ? journal.rows.slice(-ROUNDS_SHOWN).reverse() : [];
   return (
     <div className="flex flex-col gap-4">
@@ -187,6 +191,7 @@ export function RoundsPanel({ journal, onReload }: { journal: JournalView; onRel
           </ol>
         </div>
       ) : null}
+      {briefs ? <BriefMap briefs={briefs} /> : null}
     </div>
   );
 }

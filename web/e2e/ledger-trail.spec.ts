@@ -227,6 +227,8 @@ test.describe("/ledger agent trail before the journal branch exists", () => {
     await page.getByRole("tab", { name: "Rounds" }).click();
     await expect(page.getByText("No journal has been published yet.")).toBeVisible();
     await expect(page.getByText(/The agent-journal branch does not exist yet, or holds no journal\/index.json: GitHub answered 404/)).toBeVisible();
+    // The brief map comes from the blobs, not the journal; none of these Decisions names a brief.
+    await expect(page.getByText("No Decision has adopted an inbox brief yet.", { exact: true })).toBeVisible();
     // The ticks do not depend on the journal: they come from the transactions.
     await page.getByRole("tab", { name: "Decisions" }).click();
     await expect(row(page, 2).getByText("Hash verified", { exact: true })).toBeVisible();

@@ -296,6 +296,27 @@ export function decisionTrails(
   return out;
 }
 
+/** One MaatInbox brief and the Decisions whose maat:v1 blob adopts it (`q`, §2.1), newest first. */
+export interface BriefEntry {
+  id: number;
+  decisions: MainnetDecision[];
+}
+
+/**
+ * The brief-to-Decision map, from the chain alone: every brief id that a Decision's blob names in `q`, newest brief
+ * first. Only a blob whose keccak256 equals the Decision's rationaleHash counts, as for its text.
+ */
+export function briefMap(decisions: readonly MainnetDecision[], trails: ReadonlyMap<string, DecisionTrail>): BriefEntry[] {
+  const byId = new Map<number, MainnetDecision[]>();
+  for (const d of decisions) {
+    const trail = trails.get(d.key);
+    const blob = trail?.call?.blob;
+    if (trail?.blobHashOk !== true || blob?.status !== "v1") continue;
+    for (const id of blob.fields.q ?? []) byId.set(id, [...(byId.get(id) ?? []), d]);
+  }
+  return [...byId.entries()].sort(([a], [b]) => b - a).map(([id, adopted]) => ({ id, decisions: adopted }));
+}
+
 // The public agent-journal branch (§3.4) and the browser verifier of its hash chain (§3.6).
 
 /** Where the publisher pushes the redacted journal. */

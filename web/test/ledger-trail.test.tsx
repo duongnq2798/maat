@@ -8,7 +8,7 @@ import { RoundsPanel } from "@/components/ledger/RoundsPanel";
 import type { LedgerState } from "@/components/ledger/useLedger";
 import { VerifyByHand } from "@/components/ledger/VerifyByHand";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
-import { JOURNAL_RAW_URL, verifyJournal } from "@/lib/chain/ledger";
+import { briefMap, JOURNAL_RAW_URL, verifyJournal } from "@/lib/chain/ledger";
 import { loadLedger, type LedgerSnapshot } from "@/lib/chain/load";
 import { canon } from "@/lib/chain/rationale";
 import { decisionLog, FAKE_VAULT, fakeLedgerClient, hash32, memoryStorage, type FakeChain } from "./helpers/fake-ledger";
@@ -327,6 +327,75 @@ describe("/ledger with the agent trail", () => {
     expect(screen.getByRole("list", { name: "Mainnet decisions", hidden: true })).not.toBeVisible();
     fireEvent.click(screen.getByRole("tab", { name: "Decisions" }));
     expect(screen.getByRole("list", { name: "Mainnet decisions" })).toBeVisible();
+  });
+});
+
+describe("the brief-to-Decision map", () => {
+  // V5 with q = [3, 7]: Decision 8 adopts briefs 3 and 7 and is refused. Decision 9 carries V5 too, but the event's
+  // rationaleHash is V1's, so its blob fails the tick and the brief it names does not count.
+  const BRIEFS_3_7 = VECTORS.V5.blob.replace('"q":[7]', '"q":[3,7]');
+  const EXTRA = [
+    { n: 8, input: txInput(BRIEFS_3_7), rationaleHash: keccak256(toBytes(BRIEFS_3_7)), reason: "MARKET_CLOSED" },
+    { n: 9, input: txInput(VECTORS.V5.blob, { rationaleHash: VECTORS.V1.hash }), rationaleHash: VECTORS.V1.hash, reason: "OK" },
+  ];
+  let withBriefs: LedgerSnapshot;
+  beforeAll(async () => {
+    const base = chain();
+    withBriefs = await load(
+      chain({
+        logs: [...base.logs, ...EXTRA.map((e) => decisionLog(e.n, DEPLOY + BigInt(e.n), { rationaleHash: e.rationaleHash, reason: e.reason }))],
+        times: { ...base.times, ...Object.fromEntries(EXTRA.map((e) => [String(DEPLOY + BigInt(e.n)), T0 + e.n * 60])) },
+        txs: { ...base.txs, ...Object.fromEntries(EXTRA.map((e) => [hash32(e.n), { from: AGENT, to: FAKE_VAULT, input: e.input }])) },
+      }),
+    );
+  });
+
+  it("maps each brief id a verified blob names in q to the Decisions that adopted it, both newest first", () => {
+    expect(withBriefs.trails.get(`${hash32(8)}:0`)!.label).toBe("brief-driven");
+    expect(withBriefs.trails.get(`${hash32(9)}:0`)!.blobHashOk).toBe(false);
+    const map = briefMap(withBriefs.decisions, withBriefs.trails);
+    expect(map.map((b) => [b.id, b.decisions.map((d) => d.txHash)])).toEqual([
+      [7, [hash32(8), hash32(4)]],
+      [3, [hash32(8)]],
+    ]);
+  });
+
+  it("is empty when no Decision's verified blob names a brief", () => {
+    expect(briefMap(snapshot.decisions, new Map([...snapshot.trails].filter(([key]) => key !== `${hash32(4)}:0`)))).toEqual([]);
+    expect(briefMap(snapshot.decisions, new Map())).toEqual([]);
+  });
+
+  it("lists each brief on the Rounds tab with the Decisions that adopted it: when, what, the verdict and Basescan", () => {
+    render(<RoundsPanel journal={{ state: "absent" }} onReload={() => {}} briefs={briefMap(withBriefs.decisions, withBriefs.trails)} />);
+    const briefs = within(screen.getByRole("list", { name: "Inbox briefs, newest first" })).getAllByRole("listitem");
+    expect(briefs.map((b) => b.querySelector("[data-brief-id]")?.textContent)).toEqual(["Brief #7", "Brief #3"]);
+    const adopted = [...briefs[0]!.querySelectorAll("[data-adopted]")];
+    expect(adopted).toHaveLength(2);
+    expect(adopted[0]).toHaveTextContent(/^Thu 26 Nov 10:38 ETBUY · NVDAc · \$20\.00Refused · Market closedMARKET_CLOSEDBasescan ↗$/);
+    expect(adopted[1]).toHaveTextContent(/^Thu 26 Nov 10:34 ETBUY · NVDAc · \$20\.00Allowed · All checks passedOKBasescan ↗$/);
+    expect(within(briefs[0]!).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
+      `https://basescan.org/tx/${hash32(8)}`,
+      `https://basescan.org/tx/${hash32(4)}`,
+    ]);
+    expect(screen.getByText(/the brief ids each Decision's maat:v1 blob names in its q field/)).toBeInTheDocument();
+  });
+
+  it("says plainly when no Decision has adopted a brief yet", () => {
+    render(<RoundsPanel journal={{ state: "absent" }} onReload={() => {}} briefs={[]} />);
+    expect(screen.getByText("No Decision has adopted an inbox brief yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: "Inbox briefs, newest first" })).toBeNull();
+  });
+
+  it("is on the Rounds tab of /ledger, built from the Decisions the page read", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("404: Not Found", { status: 404 })));
+    hook.state = { mode: "mainnet", snapshot, endpoints: [], loading: false, refreshError: null };
+    render(<LedgerApp initial="loading" />);
+    fireEvent.click(screen.getByRole("tab", { name: "Rounds" }));
+    const briefs = within(screen.getByRole("list", { name: "Inbox briefs, newest first" })).getAllByRole("listitem");
+    expect(briefs).toHaveLength(1);
+    expect(briefs[0]).toHaveTextContent("Brief #7");
+    expect(briefs[0]).toHaveTextContent("BUY · NVDAc · $20.00");
+    await waitFor(() => expect(screen.getByText("No journal has been published yet.")).toBeVisible());
   });
 });
 

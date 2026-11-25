@@ -7,6 +7,7 @@ import { RefusalsByReasonChart } from "@/components/charts/RefusalsByReasonChart
 import { WeightsChart } from "@/components/charts/WeightsChart";
 import { FACTS } from "@/content/facts";
 import type { RefusalCode } from "@/content/reasons";
+import { briefMap } from "@/lib/chain/ledger";
 import type { LedgerSnapshot } from "@/lib/chain/load";
 import type { Treasury } from "@/lib/chain/treasury";
 import { DecisionTimeline } from "./DecisionTimeline";
@@ -131,7 +132,7 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
                 scanning={state.mode === "mainnet" && state.loading && !snapshot.scan.done}
               />
             }
-            rounds={<RoundsPanel journal={journal} onReload={journal.reload} />}
+            rounds={<RoundsPanel journal={journal} onReload={journal.reload} briefs={briefMap(snapshot.decisions, snapshot.trails)} />}
           />
         </Block>
       ) : null}
