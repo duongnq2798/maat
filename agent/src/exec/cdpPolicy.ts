@@ -4,11 +4,13 @@ import { zeroAddress, type Address } from "viem";
 /**
  * CDP policy for the executor account. Accept-only rules make each listed operation default-deny.
  * An operation no rule names is accepted, so hash, message and typed-data signing each get a reject rule.
+ * User operations are not named; they need an owner hash signature, which the signEvmHash reject blocks.
  */
 export function executorPolicy(vault: Address): CreatePolicyBody {
   return {
     scope: "account",
-    description: "Maat executor, MandateVault calls on Base only", // the SDK allows only letters, digits, spaces, commas and periods
+    // At most 50 letters, digits, spaces, commas and periods (the SDK schema). Only sending is limited to Base.
+    description: "Maat executor, zero value MandateVault calls only",
     rules: [
       {
         action: "accept",

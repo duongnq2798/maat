@@ -36,7 +36,10 @@ describe("executorPolicy", () => {
       ],
     });
   });
-  it("accepts nothing but those two vault transaction paths", () => {
+  it("describes only what both accept rules check: the signing rule names no network", () => {
+    expect(p.description).toBe("Maat executor, zero value MandateVault calls only");
+  });
+  it("has accept rules only for the two vault transaction paths", () => {
     const accepted = p.rules.filter((r) => r.action === "accept");
     expect(accepted.map((r) => r.operation)).toEqual(["sendEvmTransaction", "signEvmTransaction"]);
   });
