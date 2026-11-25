@@ -31,11 +31,22 @@ export function HowWeRead() {
             blocks are always read again, in case of a reorg.
           </li>
           <li>
-            The vault stores a hash of each rationale, not the text. The text comes from{" "}
-            <a href="/data/rationales.json">/data/rationales.json</a>, which the operator exports from the agent&apos;s
-            journal; an intent the owner sends by hand has no journal text, so the page has only its rationaleHash
-            onchain and shows no text for it. The page hashes each exported text and shows &quot;Hash verified&quot;
-            only when it matches the rationaleHash in the Decision event.
+            The vault stores a hash of each rationale, not the text. When a Decision&apos;s calldata carries a maat:v1
+            blob, the text is in the transaction itself: the page reads the transaction&apos;s input, cuts it as the{" "}
+            <a href={repoFileUrl("docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md")}>blob spec</a> lays
+            out, hashes the blob and shows &quot;Hash verified&quot; only when it matches the rationaleHash in the Decision
+            event. A Decision with no blob gets its text from <a href="/data/rationales.json">/data/rationales.json</a>,
+            which the operator exports, and the page hashes that text the same way.
+          </li>
+          <li>
+            The sender label compares the transaction&apos;s sender with the vault&apos;s owner. The Builder Code is read
+            from the ERC-8021 suffix at the end of the calldata and compared with the code on the vault&apos;s first
+            Decision, which the owner sent by hand.
+          </li>
+          <li>
+            The Rounds tab reads the agent&apos;s journal from the repository&apos;s public agent-journal branch through
+            raw.githubusercontent.com and recomputes the hash of every line and every link to the line before it. GitHub is asked only when the tab opens or a
+            Decision carries a blob, whose journal head the page then looks for.
           </li>
           <li>
             Rule changes are read from their queue, cancel and apply events. Each waits {FACTS.timelockHours.value} hours
