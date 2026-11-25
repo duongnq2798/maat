@@ -33,6 +33,128 @@
     "accepts every vector and returns its fields": 267,
     "calls a blob invalid when it breaks any rule": 275
   },
+  "agent/test/briefCaps.test.ts": {
+    "the caps of inbox spec §3": 26,
+    "are 3 a round, 20 a day, 2 per sender a day, 5 brief-driven txs a day, $0.25 of Claude a day and 200-character replies": 27,
+    "planBriefs": 34,
+    "sends at most 3 a round, in id order; the 4th waits for the next round and is not journaled": 35,
+    "skips a brief over the day cap with its name, never sending it": 42,
+    "skips a sender's third brief of the day, counting the ones sent earlier that day and in this round": 48,
+    "skips every brief once 5 brief-driven txs went out that day": 55,
+    "skips every brief once rounds that carried briefs spent $0.25 of Claude that day": 61,
+    "skips every brief when the agent's own daily Claude cap stops the round": 67,
+    "lets the round cap hold back briefs only after the day and sender caps had their say": 72
+  },
+  "agent/test/briefInbox.test.ts": {
+    "the MaatInbox record in deployments/README.md": 16,
+    "is null while the table has no MaatInbox row, or the row's address is empty": 17,
+    "reads the address and the deploy tx, as links or as plain code": 22,
+    "refuses a MaatInbox row whose address or tx is not one": 28,
+    "is null for the repository's own table today: no MaatInbox is recorded yet": 33,
+    "is null when the file does not exist": 38,
+    "the start line": 46,
+    "says briefs are off and no inbox log is read when no MaatInbox is recorded": 47,
+    "says briefs are off when the record has no deploy tx or cannot be read, and why": 51,
+    "names the inbox and the safe block when briefs are on": 60,
+    "reading Brief logs": 67,
+    "reads only up to the safe tag": 68,
+    "decodes each log into (id, from, text) and its identity (id, txHash, logIndex), in id order": 75,
+    "reads in windows of at most 9,000 blocks, with no gap and no overlap": 88,
+    "halves the window on a range error, down to 200 blocks, as the fallback RPC needs": 101,
+    "throws any other RPC error, so the round reads no brief rather than a partial set": 112,
+    "decodes text leniently: invalid UTF-8 becomes U+FFFD, and a log of another shape is passed over": 118
+  },
+  "agent/test/briefInjections.test.ts": {
+    "prompt-injection fixtures": 70,
+    "number at least 30, each with a distinct name, at most MaatInbox's 280 bytes, and a fooled answer here": 71,
+    "a model fooled by brief $name": 79,
+    "sends nothing outside the mandate, puts no brief or reply text in calldata, and journals a reply of at most 200 characters": 80
+  },
+  "agent/test/briefIntent.test.ts": {
+    "briefText: the fixed blob text of a brief-driven Decision": 15,
+    "is filled only from the typed fields: the brief ids, the action, the token and the amount": 16,
+    "buildIntent for a brief-driven intent": 23,
+    "hashes the template, never Claude's rationale, and cites the adopted ids in q": 26,
+    "states the amount the intent carries, after a clamp to the vault's balance": 36,
+    "keeps an intent of Claude's own on its rationale, with no q": 43,
+    "briefRefusalKey: refusals of brief-driven intents": 52,
+    "is keyed by the brief ids, not by the day, so each adopted brief's refusal is logged once": 53
+  },
+  "agent/test/briefJournal.test.ts": {
+    "the journal rows of briefs": 49,
+    "publishes a brief's identity, outcome, cap, adoption and sanitized reply, never its text or a note": 57,
+    "cuts and sanitizes a reply in the projection too, and leaves out one nothing is left of": 77,
+    "matches the committed fixtures the web and the publisher read": 86
+  },
+  "agent/test/briefPrompt.test.ts": {
+    "the untrusted brief section of the prompt": 29,
+    "quotes each brief as one {id, from, text} JSON object on its own line, between markers with a fresh random nonce": 30,
+    "puts the briefs after the round's state, which reads as it does without briefs": 46,
+    "never puts a brief in the instructions: the system prompt has no brief text, and names the section untrusted": 51,
+    "keeps a brief that imitates the markers, a line break or a closing tag inside its one JSON string": 67,
+    "replaces every Cc, Cf and Default_Ignorable code point of a brief with U+FFFD before it is quoted": 77,
+    "ClaudeProposer with briefs": 84,
+    "sends the brief schema with briefs, and exactly today's request without them": 85,
+    "returns the replies and each intent's adopted brief ids, leaving out an empty list": 99,
+    "does not reject a whole answer for a reply over 200 characters: the journal cuts it": 120,
+    "rejects an answer that adopts more than 3 briefs in one intent, or leaves out replies": 128
+  },
+  "agent/test/briefRound.test.ts": {
+    "the round cap: at most 3 briefs a round": 25,
+    "sends the first 3 to Claude and keeps the 4th, unjournaled, for the next round": 26,
+    "the day cap: at most 20 briefs a UTC day": 44,
+    "journals the 21st and 22nd as skipped with the cap's name, and never sends them to Claude": 45,
+    "counts the UTC day of the round's state block: yesterday's 20 do not cap today": 59,
+    "the sender cap: at most 2 briefs per sender a UTC day": 68,
+    "skips a sender's third brief with the cap's name and still sends another sender's": 69,
+    "counts a sender by address, whatever its case": 86,
+    "the brief budget: transactions": 97,
+    "sends at most 5 brief-driven transactions a UTC day, then journals briefs as skipped": 98,
+    "counts brief-driven transactions inside MAAT_MAX_TX_PER_DAY": 118,
+    "the brief budget: Claude spend": 127,
+    "stops sending briefs once the rounds that carried them spent $0.25 on the UTC day": 128,
+    "skips briefs, naming the daily Claude cap, once MAAT_MAX_LLM_USD_PER_DAY stops the round's call": 145,
+    "refusals of brief-driven intents": 158,
+    "are keyed by brief id: each adopted brief's refusal goes onchain, where the agent's own is logged once a day": 159,
+    "the blob of a brief-driven Decision": 186,
+    "carries q and the fixed text, decodes with npm run verify, fits 1,024 bytes, and holds no brief or reply text": 187,
+    "drops an intent that adopts a brief this round did not send, or one an earlier intent adopted": 209,
+    "replies": 237,
+    "are journaled sanitized and cut to 200 characters; a brief with no usable reply is unanswered": 238,
+    "journals every brief as unanswered when the call failed, and spends it: it is not sent again": 263,
+    "brief identity, the safe block and restarts": 274,
+    "reads Brief logs only up to the safe block, in windowed getLogs from the inbox's deploy block": 275,
+    "answers a brief a reorg re-mined under another tx as a new brief, and forgets the one whose log is gone": 291,
+    "forgets a decided brief whose log is gone from the window it reads again": 307,
+    "resumes from state.json after a restart without answering a brief twice": 322,
+    "journals a brief Claude was answering when the agent stopped as unanswered, and never sends it again": 333,
+    "journals a failed read and goes on with the round, without briefs": 351,
+    "no MaatInbox recorded": 363,
+    "reads no inbox log, sends no brief and journals no brief row": 364,
+    "keeps a state.json without briefs readable by a Store": 376
+  },
+  "agent/test/briefRuntime.test.ts": {
+    "inboxSetup: the MaatInbox the agent starts with": 21,
+    "finds none in the repo's deployments/README.md today, so briefs are off": 22,
+    "reads a recorded inbox, and turns briefs off, naming the problem, for a row it cannot read": 27,
+    "buildRuntime and the start line": 38,
+    "leaves briefs out of the runtime with no recorded inbox, and the start line says briefs=off": 39,
+    "reads briefs from a recorded inbox through the runtime's own client, and the start line says briefs=on": 50
+  },
+  "agent/test/briefStore.test.ts": {
+    "Store: briefs": 11,
+    "opens a state.json older code wrote, with no brief record": 12,
+    "keeps each decided brief under its identity, and its day's counts, across a restart": 21,
+    "forgets the briefs below the next read's first block, but never one Claude may still be answering": 40,
+    "forgets one brief whose log no longer exists": 52
+  },
+  "agent/test/briefText.test.ts": {
+    "promptText: the code points a brief may not carry into the prompt": 24,
+    "replaces with U+FFFD": 25,
+    "turns tag characters that spell hidden ASCII into marks a reader sees": 33,
+    "keeps printable text, other scripts, emoji and visible punctuation as they are": 38,
+    "leaves a lone U+FFFD from lenient UTF-8 decoding as it is": 46
+  },
   "agent/test/builderCode.test.ts": {
     "builder code": 8,
     "matches the ERC-8021 schema-0 test vector": 9,
@@ -107,6 +229,13 @@
     "reads MAAT_CREDIT_ACTIONS as off or on, and nothing else": 78,
     "reads the daily LLM cap in dollars; 0 is allowed and a negative cap is not": 83,
     "reads the smallest bill repayment in dollars, above 0": 89
+  },
+  "agent/test/evalBriefs.test.ts": {
+    "npm run eval:briefs": 24,
+    "is the owner-run script package.json names": 25,
+    "says what it would do, that it is paid, and calls no model without --call-claude": 30,
+    "with --call-claude, sends each brief once as the agent's prompt would, and grades each answer": 43,
+    "fails an answer that adopts a brief past the mandate or replies with a link, and exits 1": 53
   },
   "agent/test/firstDecision.test.ts": {
     "first-decision execute calldata": 44,

@@ -4,10 +4,13 @@ description: "Configure and start the agent loop: dry-run and live modes, its se
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-25
+lastReviewed: 2026-11-26
 sources:
   - agent/README.md
   - agent/src/main.ts
+  - agent/src/briefs/caps.ts
+  - agent/src/briefs/inbox.ts
+  - agent/src/briefs/round.ts
   - agent/src/probes.ts
   - agent/src/loop/probeRound.ts
   - agent/src/config.ts
@@ -122,7 +125,7 @@ This is the command from agent/README.md, Dry run. `--once` runs a single round 
 npm run agent -- --once --dry-run
 ```
 
-It reads the vault at one block, calls Claude, previews each proposal with `previewIntent`, writes `data/journal.jsonl` and sends no transaction. This page shows no output for it, because the command calls the paid Claude API. It first prints one line that starts with `maat agent: mode=` and names the mode, the vault, the executor, the data folder, whether credit actions are on, the daily Claude cap and the bill minimum. After the round it prints the round's report as JSON:
+It reads the vault at one block, calls Claude, previews each proposal with `previewIntent`, writes `data/journal.jsonl` and sends no transaction. This page shows no output for it, because the command calls the paid Claude API. It first prints one line that starts with `maat agent: mode=` and names the mode, the vault, the executor, the data folder, whether credit actions are on, the daily Claude cap, the bill minimum and whether [briefs](#briefs) are on, then a line that starts with `maat agent: briefs=` and says why. After the round it prints the round's report as JSON:
 
 | Field | Meaning |
 | --- | --- |
@@ -171,6 +174,7 @@ A `run` line of your dry run has `"mode":"dry-run"`, and `"ok":true` when the Cl
 | `reconcile` | When a round settles a send from an earlier round: `applied`, `pending` or `dropped`. |
 | `mismatch` | When the preview and the vault's [Decision](/docs/help/glossary#decision) disagree. |
 | `error` | When the state is unavailable, the executor is wrong, or the round halts. |
+| `brief` | For each MaatInbox brief a round decided: `replied`, `unanswered` or `skipped`. Only with an inbox recorded ([Briefs](#briefs)). |
 
 In dry-run mode the `gate` of an `intent` line is `dry-run: would execute` or `dry-run: would log-refusal` when the agent would have sent it. Otherwise it gives the [reason](/docs/help/glossary#reason) it would not: `guard state unknown (RPC)`, or the name of a [refusal](/docs/help/glossary#refusal) followed by `not worth a log tx`, by `already logged for` and the key it was logged under (for example `MARKET_CLOSED already logged for NYSE date 2026-11-26 (holiday)`), or by `but the calendar is open at the state block` when the preview saw a close that the state block did not, which leaves the log to a later round. The agent is built to send a refusal onchain only for some reasons, and at most once per reason per NYSE date, with `MARKET_CLOSED` counted once per closed phase of that date. When the calendar contract cannot be read, it counts UTC days instead, and the `intent` line carries a `note` that says so. [Watch decisions onchain](/docs/guides/watch-decisions-onchain) reads the other side of a send: the `Decision` event that the `intent` line points to.
 
@@ -432,12 +436,28 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 
 To rehearse the probes before their instants, run [probe-fork.ts](/docs/reference/agent-scripts#probe-forkts) on a local fork.
 
+## Briefs
+
+The agent reads [MaatInbox](/docs/guides/brief-the-agent) briefs only once the table in `deployments/README.md` records a `MaatInbox` address and its deploy transaction. No `agent/.env` setting turns them on. Until then the start line ends with `briefs=off`, the next line says why, and the agent reads no inbox log. With an inbox recorded, the start line ends with `briefs=on`, and each round, before it calls Claude, reads the inbox's `Brief` logs from where the last read stopped, the deploy block at first, up to the `safe` block, in windows of at most 9,000 blocks. A read that fails is journaled as an `error` that begins `briefs not read:`, and the round goes on without briefs.
+
+| Limit | Value | What happens at the limit |
+| --- | --- | --- |
+| Briefs sent to Claude per round | 3 | The next brief waits for the next round. |
+| Briefs per UTC day | 20 | Journaled as `skipped` with `cap` `briefs-per-day`, never sent to Claude. |
+| Briefs per sender per UTC day | 2 | `skipped` with `briefs-per-sender`. |
+| Brief-driven transactions per UTC day | 5, counted inside `MAAT_MAX_TX_PER_DAY` too | New briefs are `skipped` with `brief-txs-per-day`, and an intent that adopts a brief is not sent: its `gate` begins `brief budget:`. |
+| Claude cost of the rounds that carried briefs, per UTC day | $0.25 of `MAAT_MAX_LLM_USD_PER_DAY` | New briefs are `skipped` with `brief-llm-per-day`. Once the whole daily Claude cap is spent, they are `skipped` with `llm-per-day`. |
+
+The UTC day is the state block's timestamp divided by 86,400. An intent may adopt 1 to 3 briefs of its own round. Its blob then lists their ids in `q`, and its text is built from the action, the amount, the token and the ids alone, never from a brief, for example `Brief-driven: BUY 10.00 USD of NVDAc, adopting MaatInbox brief 7.` An intent that adopts a brief the round did not send, or one an earlier intent of the answer adopted, is journaled as a `skip`. A refusal of a brief-driven intent is logged onchain at most once per set of brief ids and reason.
+
+A brief is known by its id, the hash of its transaction and its log index, so a reorg that mines the same id in another transaction makes a new brief. A decided brief whose log a later read no longer finds is forgotten. A brief is saved as `started` before Claude is called, and a restart journals one still `started` as `unanswered`, so no brief is answered twice. `npm run eval:briefs` sends prompt-injection briefs to Claude and grades the answers; it is paid, and only the owner runs it ([eval-briefs.ts](/docs/reference/agent-scripts#eval-briefsts)).
+
 ## What the agent keeps in its data folder
 
 | File | What it holds |
 | --- | --- |
 | `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the [rationale](/docs/help/glossary#rationale) text and the [blob](/docs/help/glossary#rationale-blob) behind each `rationaleHash`. |
-| `data/state.json` | The compute bills and the amount paid so far, the refusals logged per NYSE date, the transaction count per UTC day, and the sends that are still `pending`. The agent needs it to survive a restart. |
+| `data/state.json` | The compute bills and the amount paid so far, the refusals logged per NYSE date, the transaction count per UTC day, the sends that are still `pending`, and the briefs decided. The agent needs it to survive a restart. |
 | `data/heartbeat.json` | When the last round ended, its run id and status, and its halt reason or error as one line, the error of its journal `run` line included. The agent writes it after every round, and `agent:loop` and `agent:heartbeat` read it. |
 | `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and at most <Fact name="lockStaleSec" /> old, counts as held. |
 
@@ -449,7 +469,7 @@ The folder belongs to one vault. `state.json` does not record which, so when `MA
 
 Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
 
-```typescript title="agent/src/ledger/journal.ts#L12-L25"
+```typescript title="agent/src/ledger/journal.ts#L13-L31"
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
   /** `rationale` is the text as written; `blob` the maat:v1 blob whose keccak256 is `rationaleHash`. */
@@ -463,7 +483,12 @@ export type JournalEntry =
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
   | { kind: "error"; runId: string; message: string }
   /** One MAAT_PROBES instant: what the calendar there led it to expect and what became of it; `note` says why. */
-  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string };
+  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string }
+  /** A MaatInbox brief a round decided, under its identity, never its text: `reply` is sanitized, `cap` names a skip. */
+  | { kind: "brief"; runId: string; briefId: number; from: Address; txHash: Hex; logIndex: number; block: bigint; outcome: BriefOutcome; cap?: BriefCap; reply?: string; adopted?: boolean; note?: string };
+
+/** What became of a brief: Claude replied, Claude was sent it but gave no usable reply, or a cap kept it from Claude. */
+export type BriefOutcome = "replied" | "unanswered" | "skipped";
 ```
 
 - Every `bigint` field is written as a decimal string.
@@ -471,12 +496,13 @@ export type JournalEntry =
 - `day` is the UTC day number: the whole days from 1970-01-01 to the timestamp of the block the round read. It is the same number the vault's `today()` returns.
 - `blob` is the [rationale blob](/docs/help/glossary#rationale-blob) that `rationaleHash` hashes (older lines have none), `commit` the agent's git commit, and `hash` the `keccak256` of the line's public fields with `prev`, the line before's `hash`.
 - A `probe` line is one [`MAAT_PROBES`](/docs/reference/agent-configuration#maat_probes) instant, and its `note` says why it sent nothing. The probe's own `intent` and `sent` lines share its `runId`, `probe-` and the instant.
+- A `brief` line is one MaatInbox brief a round decided, named by its id, the hash of the transaction that posted it and its log index, never by its text. `cap` names the cap that kept a `skipped` brief from Claude, `reply` is Claude's reply, sanitized and cut to 200 characters, and `adopted` is true when an intent of that round cites the brief. [Briefs](#briefs) has the rules.
 
 ### State file format
 
 `state.json` holds one object of the `Data` shape below, and `pending` holds the sends that are not settled yet:
 
-```typescript title="agent/src/ledger/store.ts#L6-L32"
+```typescript title="agent/src/ledger/store.ts#L8-L35"
 /** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
 export interface PendingTx {
   intentId: Hex;
@@ -503,6 +529,7 @@ interface Data {
   txByDay: Record<string, number>;
   pending: PendingTx[];
   probes: Record<string, string>; // MAAT_PROBES instant -> outcome, "started" while it runs
+  briefs: BriefData; // MaatInbox briefs: where the next read starts, each brief decided, and the counts per UTC day
 }
 ```
 
@@ -512,6 +539,7 @@ interface Data {
 - The daily compute cost behind the runway is the average of the recorded days among the 7 UTC days before today. With none recorded, it is `MAAT_DEFAULT_DAILY_COMPUTE_USD`, <Fact name="dailyComputeUsd" /> by default ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
 - The unpaid bill is the total of `compute` minus `paidUsd6`, and never less than zero.
 - The keys of `probes` are `MAAT_PROBES` instants such as `2026-11-27T17:58:00Z`, and each holds what became of its probe, or `started` while it runs. A restart never runs a listed instant again.
+- `briefs.from` is the block the next read of `Brief` logs starts at. `briefs.done` holds each brief decided since that block, keyed by its id, transaction hash and log index, with `started` from the save before the Claude call until its answer is journaled. `briefs.days` counts, per UTC day, the briefs sent to Claude, per sender too, the brief-driven transactions and the Claude cost of the rounds that carried briefs. A file written before briefs existed starts with none.
 
 ## Recover from a halted round
 

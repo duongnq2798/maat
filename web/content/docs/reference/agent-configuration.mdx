@@ -4,9 +4,11 @@ description: "Every environment variable the agent reads: whether it is required
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-25
+lastReviewed: 2026-11-26
 sources:
   - agent/src/config.ts
+  - agent/src/briefs/caps.ts
+  - agent/src/briefs/inbox.ts
   - agent/src/probes.ts
   - agent/src/loop/probeRound.ts
   - agent/.env.example
@@ -35,7 +37,7 @@ The agent takes all of its settings from environment variables. This page lists 
 
 <EnvTable />
 
-`npm run agent` loads `agent/.env` when that file exists, and `agent/.env.example` is the template to copy. Git ignores `.env` files, so the file stays on your machine: keep every secret in it and never commit it. The agent checks its own settings once, at startup, in `agent/src/config.ts`. A blank value (`KEY=`) counts as unset, so a default applies, and a required setting that is blank is reported as missing. If any check fails, the agent stops before it does anything else, with one `invalid agent config` error that names each problem. It does not check the settings that the SDKs read, which is why the Required column says No for them.
+`npm run agent` loads `agent/.env` when that file exists, and `agent/.env.example` is the template to copy. Git ignores `.env` files, so the file stays on your machine: keep every secret in it and never commit it. The agent checks its own settings once, at startup, in `agent/src/config.ts`. A blank value (`KEY=`) counts as unset, so a default applies, and a required setting that is blank is reported as missing. If any check fails, the agent stops before it does anything else, with one `invalid agent config` error that names each problem. It does not check the settings that the SDKs read, which is why the Required column says No for them. [MaatInbox](/docs/guides/brief-the-agent) briefs have no setting: the agent reads them only once the table in `deployments/README.md` records a `MaatInbox` address and its deploy transaction, and the startup line shows `briefs=off` or `briefs=on` ([Briefs](/docs/guides/run-the-agent#briefs)).
 
 `contracts/.env` is a different file. The commands you run in `contracts/` read it, and the agent does not. It repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with other rules. There, `BASE_RPC_URL` also serves the contract [fork tests](/docs/help/glossary#fork-test), which read [Base](/docs/help/glossary#base) at pinned past blocks and so need an archive node. The two addresses there are what the deploy writes into the [vault](/docs/help/glossary#vault). Here, [`BASE_RPC_URL`](#base_rpc_url) needs no archive node, `MAAT_EXECUTOR` must be the vault's current [executor](/docs/help/glossary#executor) and `MAAT_EXPENSE_PAYEE` an address on its [payee](/docs/help/glossary#payee) list. So check `MAAT_EXECUTOR` before you copy it across. In the deploy that [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) describes, it starts as the [owner](/docs/help/glossary#owner)'s own wallet, and it becomes the CDP account once the owner hands the role over with `setExecutor`. [The whole path](/docs/guides/deploy-your-own-vault#the-whole-path) shows which value goes in which file.
 
@@ -105,7 +107,7 @@ A directory belongs to one mode. A dry-run round adds the cost of its Claude ans
 
 <EnvVar name="MAAT_MAX_TX_PER_DAY" />
 
-The most transactions the agent sends in one UTC day, by default <Fact name="maxTxPerDay" />. It must be a positive whole number. The count includes every `execute` and `syncMultiplier` the agent sends or tries to send, including refusal logs and bill payments, and it is kept in `state.json`, so a restart does not reset it. The agent checks the count before each send. When the cap is reached, the round stops with the status `halted` and a reason that begins `daily tx cap`. The cap exists so that a repeating error cannot burn gas all day. In dry-run mode the agent sends nothing, so the count stays at zero.
+The most transactions the agent sends in one UTC day, by default <Fact name="maxTxPerDay" />. It must be a positive whole number. The count includes every `execute` and `syncMultiplier` the agent sends or tries to send, including refusal logs and bill payments, and it is kept in `state.json`, so a restart does not reset it. The agent checks the count before each send. When the cap is reached, the round stops with the status `halted` and a reason that begins `daily tx cap`. The cap exists so that a repeating error cannot burn gas all day. In dry-run mode the agent sends nothing, so the count stays at zero. A transaction of an intent that adopts a brief counts here too, and at most 5 of those are sent in one UTC day.
 
 ### MAAT_DEFAULT_DAILY_COMPUTE_USD
 
@@ -123,7 +125,7 @@ Whether the agent may use the vault's Aave credit line. The only values are `off
 
 <EnvVar name="MAAT_MAX_LLM_USD_PER_DAY" />
 
-The most the agent spends on Claude in one UTC day, in US dollars, by default <Fact name="maxLlmUsdPerDay" />. It must be zero or a positive number. Before each Claude call the agent compares the day's recorded Claude cost with this cap, so the call that crosses it is the day's last. Once the cap is reached, the later rounds of that day do not call Claude: their `run` line has `ok` false and an error that begins `llm cap:`, and they still pay a compute bill that is due and send any `syncMultiplier` the vault needs. A cap of `0` keeps the agent from calling Claude at all. The cost is the agent's own estimate from its price table ([`MAAT_LOOP_MODEL`](#maat_loop_model)), and your Anthropic billing is the real figure.
+The most the agent spends on Claude in one UTC day, in US dollars, by default <Fact name="maxLlmUsdPerDay" />. It must be zero or a positive number. Before each Claude call the agent compares the day's recorded Claude cost with this cap, so the call that crosses it is the day's last. Once the cap is reached, the later rounds of that day do not call Claude: their `run` line has `ok` false and an error that begins `llm cap:`, and they still pay a compute bill that is due and send any `syncMultiplier` the vault needs. A cap of `0` keeps the agent from calling Claude at all. The cost is the agent's own estimate from its price table ([`MAAT_LOOP_MODEL`](#maat_loop_model)), and your Anthropic billing is the real figure. The rounds that carry briefs may spend at most $0.25 of the cap in one UTC day. Past that, new briefs are journaled as skipped and the rounds go on without them.
 
 ### MAAT_BILL_MIN_USD
 

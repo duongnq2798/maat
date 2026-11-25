@@ -174,7 +174,7 @@ With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to tha
 
 The agent sends Claude a system prompt and one user message, both built in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts): `systemPrompt`, fixed text apart from its credit lines, which follow `MAAT_CREDIT_ACTIONS`, and `renderUserMessage`. The request gives Claude no tools. This is the whole user message:
 
-```typescript title="agent/src/llm/prompt.ts#L49-L84"
+```typescript title="agent/src/llm/prompt.ts#L52-L87"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
