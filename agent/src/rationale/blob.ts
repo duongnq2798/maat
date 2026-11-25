@@ -1,6 +1,6 @@
 import { keccak256, toBytes, type Hex } from "viem";
 import { canon } from "./canon.js";
-import { cuts, ELLIPSIS, HEX_RE, KEY_RE, LONG_RE, matches, sanitize, URL_RE } from "./sanitize.js";
+import { cuts, HEX_RE, KEY_RE, LONG_RE, matches, sanitize, URL_RE } from "./sanitize.js";
 
 /**
  * The maat:v1 rationale blob (docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md §2). The agent sends
@@ -134,8 +134,9 @@ export function closedSuffix(closed: string): string {
 
 /**
  * Builds the blob (§2.2-§2.5): `t` is sanitize(text, 600), or sanitize(text, 600 - n.length) + n with the
- * closed-market note n, then cut on a space (never inside n) until the blob fits 1,024 bytes, and only then `s`
- * entries dropped from the end. Throws a BlobError when a field breaks a §2.1 rule.
+ * closed-market note n, then cut on a space (never inside n, nor inside the start a probe's or a bill's text must
+ * keep) until the blob fits 1,024 bytes, and only then `s` entries dropped from the end. Throws a BlobError when a
+ * field breaks a §2.1 rule.
  */
 export function encodeBlob(input: BlobInput): EncodedBlob {
   const { text, closed, ...head } = input;
@@ -162,12 +163,17 @@ export function encodeBlob(input: BlobInput): EncodedBlob {
     return blob.length <= MAX_BLOB_BYTES ? blob : null;
   };
 
+  // A probe's or a bill's t must keep the start §2.1 requires, so only the cuts that keep it count, and the shortest of
+  // them stands in for "..." once `s` entries go. Without k every cut counts, and the shortest is "..." itself.
+  const start = head.k === "probe" ? PROBE_TEXT_PREFIX : head.k === "bill" ? BILL_TEXT_PREFIX : "";
+  const kept = cuts(before).filter((c) => c.startsWith(start));
   let blob = fit(before + n, head.s);
-  for (const cut of blob ? [] : cuts(before)) {
+  for (const cut of blob ? [] : kept) {
     blob = fit(cut + n, head.s);
     if (blob) break;
   }
-  for (let keep = head.s.length - 1; !blob && keep >= 0; keep--) blob = fit(ELLIPSIS + n, head.s.slice(0, keep));
+  const shortest = kept.at(-1);
+  for (let keep = head.s.length - 1; !blob && shortest !== undefined && keep >= 0; keep--) blob = fit(shortest + n, head.s.slice(0, keep));
   if (!blob) throw new BlobError(`no blob of at most ${MAX_BLOB_BYTES} bytes holds these fields`);
 
   // The encoder only ever emits what a decoder accepts as v1.

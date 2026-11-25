@@ -148,6 +148,29 @@ describe("the 1,024-byte cap (spec §2.4)", () => {
     expect(bytesOf(got.blob)).toBeLessThanOrEqual(MAX_BLOB_BYTES);
   });
 
+  it("keeps a bill's or a probe's required start when it cuts, and drops s entries rather than cut into it", () => {
+    const bill = `${BILL_TEXT_PREFIX}$1.234567 of Claude API usage unpaid as of UTC day 20781`;
+    const probe = `${PROBE_TEXT_PREFIX}: a fixed 1 USD buy that checks the send path end to end`;
+    for (const [k, text, start] of [
+      ["bill", bill, `${BILL_TEXT_PREFIX}...`],
+      ["probe", probe, `${PROBE_TEXT_PREFIX}: ...`],
+    ] as const) {
+      const input: BlobInput = { b: B, c: `${C}-dirty`, j: J, k, r: R, s: wide(MAX_SOURCES), text };
+      const got = encodeBlob(input);
+      expect(validateBlob(got.blob), k).toMatchObject({ status: "v1" });
+      expect(got.fields.t).toBe(start);
+      expect(got.fields.s).toEqual(wide(MAX_SOURCES).slice(0, got.fields.s.length));
+      expect(got.fields.s.length).toBeLessThan(MAX_SOURCES);
+      expect(bytesOf(BLOB_PREFIX + canon({ ...got.fields, s: wide(got.fields.s.length + 1) }))).toBeGreaterThan(MAX_BLOB_BYTES);
+      // With as many entries as fit next to that shortest cut, the encoder cuts the text and keeps every entry.
+      const most = wide(got.fields.s.length);
+      const cut = encodeBlob({ ...input, s: most });
+      expect(cut.fields.s).toEqual(most);
+      expect(cut.fields.t.startsWith(k === "bill" ? BILL_TEXT_PREFIX : PROBE_TEXT_PREFIX)).toBe(true);
+      expect(cut.fields.t.length).toBeLessThan(text.length);
+    }
+  });
+
   it("matches the spec's sizes: 372 bytes with s empty and t '...', 623 with three symbol entries, 701 with addresses", () => {
     const min = { ...widest, text: "..." };
     expect(bytesOf(encodeBlob(min).blob)).toBe(372);
