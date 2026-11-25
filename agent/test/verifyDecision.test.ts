@@ -288,4 +288,46 @@ describe("scripts/verify-decision.ts", () => {
     expect(wrong.code).toBe(1);
     expect([...ok.out, ...ok.err, ...wrong.out, ...wrong.err].join("\n")).not.toContain("fake-key");
   });
+
+  describe("--vault", () => {
+    const id = keccak256(toBytes("spec-example"));
+    const LOOKALIKE: Address = "0x4444444444444444444444444444444444444444";
+    const url = "https://base.example/v2/fake-key-123";
+    // A Decision log with the vault's event signature and the right rationaleHash, emitted by `address`.
+    const log = (address: Address) => ({
+      address,
+      topics: encodeEventTopics({ abi: mandateVaultAbi, eventName: "Decision", args: { intentId: id, token: addressOf("NVDAc") } }) as [Hex, ...Hex[]],
+      data: encodeAbiParameters([{ type: "uint8" }, { type: "uint256" }, { type: "bool" }, { type: "uint8" }, { type: "bytes32" }], [0, 5_000_000n, true, 0, keccak256(V1)]),
+    });
+    const client = (to: Address, read: Address[] = []): VerifyClient => ({
+      getTransaction: async () => ({ input: INPUT, from: AGENT, to }),
+      getTransactionReceipt: async () => ({ logs: [log(to)] }),
+      readContract: async ({ address }) => (read.push(address), OWNER),
+    });
+
+    it("defaults to the Base mainnet MandateVault and names it in the calldata check", async () => {
+      const read: Address[] = [];
+      const r = await run(["--tx", TX, "--rpc", url], client(VAULT, read));
+      expect(r.out).toContainEqual(expect.stringMatching(new RegExp(`^PASS calldata  228-byte execute call to the vault ${VAULT}, `)));
+      expect(read).toEqual([VAULT]);
+      expect(r.code).toBe(0);
+    });
+
+    it("fails the calldata check for a tx to another contract, however its logs and owner() look", async () => {
+      const read: Address[] = [];
+      const r = await run(["--tx", TX, "--rpc", url], client(LOOKALIKE, read));
+      expect(r.code).toBe(1);
+      expect(r.out).toContainEqual(`FAIL calldata  the tx calls ${LOOKALIKE}, not the vault ${VAULT}`);
+      expect(r.out).not.toContainEqual("PASS decision  the Decision log's rationaleHash is the intent's");
+      expect(r.out.join("\n")).not.toContain("sender:");
+      expect(read).toEqual([VAULT]); // owner() is read from the vault, never from the contract the tx called
+      expect(r.out.at(-1)).toBe("FAIL");
+    });
+
+    it("checks against the vault --vault names, and needs --rpc and an address", async () => {
+      expect((await run(["--tx", TX, "--rpc", url, "--vault", LOOKALIKE], client(LOOKALIKE))).code).toBe(0);
+      expect(await run(["--input", INPUT_FILE, "--vault", VAULT])).toMatchObject({ code: 3, err: ["verify-decision: --vault needs --tx with --rpc"] });
+      expect(await run(["--tx", TX, "--rpc", url, "--vault", "0x12"], client(VAULT))).toMatchObject({ code: 3, err: ["verify-decision: --vault is not an address"] });
+    });
+  });
 });

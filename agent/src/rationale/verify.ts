@@ -1,4 +1,4 @@
-import { decodeFunctionData, keccak256, size, slice, toBytes, type Address, type Hex } from "viem";
+import { decodeFunctionData, getAddress, keccak256, size, slice, toBytes, type Address, type Hex } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
 import { verifyJournal } from "../ledger/journal.js";
 import type { OnchainIntent } from "../types.js";
@@ -31,6 +31,9 @@ export interface VerifyRequest {
   /** tx.from and the vault's owner(), for the sender label (§4). */
   from?: Address;
   owner?: Address;
+  /** tx.to and the vault it must be: §1 decodes only a tx to the vault, so the calldata check fails when they differ. */
+  to?: Address;
+  vault?: Address;
 }
 
 export interface DecisionReport {
@@ -113,7 +116,11 @@ function done(checks: Check[], o: { intentId: Hex | null; rationaleHash: Hex | n
 export function verifyDecision(v: VerifyRequest): DecisionReport {
   const checks: Check[] = [];
   const d = decodeExecuteInput(v.input);
-  const label = v.from !== undefined && v.owner !== undefined ? senderLabel({ from: v.from, owner: v.owner, decoded: d }) : undefined;
+  const target = v.to !== undefined && v.vault !== undefined ? { to: getAddress(v.to), vault: getAddress(v.vault) } : undefined;
+  const elsewhere = target !== undefined && target.to !== target.vault;
+  // A tx to another contract says nothing about who sent a vault Decision, so it gets no sender label.
+  const label = v.from !== undefined && v.owner !== undefined && !elsewhere ? senderLabel({ from: v.from, owner: v.owner, decoded: d }) : undefined;
+  if (elsewhere) checks.push({ name: "calldata", status: "fail", detail: `the tx calls ${target.to}, not the vault ${target.vault}` });
   if (d === null) {
     const n = size(v.input);
     checks.push({ name: "calldata", status: "fail", detail: `not a direct execute call: ${n} bytes${n >= 4 ? `, selector ${slice(v.input, 0, 4)}` : ""}` });
@@ -121,7 +128,8 @@ export function verifyDecision(v: VerifyRequest): DecisionReport {
   }
   const intent = decodeFunctionData({ abi: mandateVaultAbi, data: slice(v.input, 0, EXECUTE_BYTES) }).args![0] as OnchainIntent;
   const codes = d.codes === null ? "no ERC-8021 suffix" : `suffix codes ${d.codes.join(",")}`;
-  checks.push({ name: "calldata", status: "pass", detail: `${EXECUTE_BYTES}-byte execute call, ${d.blobBytes}-byte blob, ${codes}` });
+  const to = target === undefined ? "" : ` to the vault ${target.vault}`;
+  if (!elsewhere) checks.push({ name: "calldata", status: "pass", detail: `${EXECUTE_BYTES}-byte execute call${to}, ${d.blobBytes}-byte blob, ${codes}` });
 
   if (d.status === "none") {
     if (v.rationale === undefined) {

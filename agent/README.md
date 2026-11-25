@@ -96,7 +96,7 @@ npm run verify -- --input test/fixtures/calldata-v1.hex --journal test/fixtures/
 npm run verify -- --tx <hash> --rpc <url> --journal data/journal.jsonl
 ```
 
-`scripts/verify-decision.ts` decodes the input (hex, a file, or read over `--rpc` with the receipt's Decision and the vault's `owner()`), re-derives keccak256 of the blob and compares it with the intent's `rationaleHash` (and the Decision's), checks the journal's hash chain, and checks that the blob's `j` names a row before the Decision's own row: the `sent` or `reconcile` row with the `--tx` hash, or, without `--tx`, the row that carries the blob. It prints one line per check and `PASS`, `FAIL` or `PENDING` (exit 0, 1 or 2; 3 for bad arguments). It sends nothing and never prints the RPC URL.
+`scripts/verify-decision.ts` decodes the input (hex, a file, or read over `--rpc` with the receipt's Decision and the vault's `owner()`; with `--rpc`, the calldata check fails unless the tx calls the vault, the Base mainnet MandateVault or the one `--vault <address>` names), re-derives keccak256 of the blob and compares it with the intent's `rationaleHash` (and the Decision's), checks the journal's hash chain, and checks that the blob's `j` names a row before the Decision's own row: the `sent` or `reconcile` row with the `--tx` hash, or, without `--tx`, the row that carries the blob. It prints one line per check and `PASS`, `FAIL` or `PENDING` (exit 0, 1 or 2; 3 for bad arguments). It sends nothing and never prints the RPC URL.
 
 ## Test
 

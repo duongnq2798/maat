@@ -1,11 +1,13 @@
 // Re-derives what a vault Decision commits to from its transaction input, and checks the agent's journal chain.
 //   npm run verify -- --input test/fixtures/calldata-v1.hex --journal test/fixtures/journal-v1.jsonl   (from agent/)
 //   npm run verify -- --input 0x4ad3993f... [--tx 0xHash] [--journal journal.jsonl ...] [--rationale "text"]
-//   npm run verify -- --tx 0xHash --rpc https://mainnet.base.org [--journal ...]
+//   npm run verify -- --tx 0xHash --rpc https://mainnet.base.org [--vault 0xVault] [--journal ...]
 // --input is the tx input (`cast tx <hash> input`) as hex, or a file holding it. With --rpc, --tx reads the input,
 // the receipt's Decision for the intent and the vault's owner() over that RPC; without it, --tx only finds the
-// journal's sent or reconcile row for the tx. --journal takes the published day files in order, or the agent's local
-// journal.jsonl, and may be given more than once. --rationale is the text a Decision with no blob commits to.
+// journal's sent or reconcile row for the tx. --vault is the vault the tx must call, the Base mainnet MandateVault by
+// default: the Decision and owner() are read from it, and the calldata check fails for a tx to any other contract.
+// --journal takes the published day files in order, or the agent's local journal.jsonl, and may be given more than
+// once. --rationale is the text a Decision with no blob commits to.
 // It prints one line per check (calldata, blob, hash, decision, journal, anchor; docs/superpowers/specs/
 // 2026-11-25-maat-v1-rationale-blob-design.md §1 to §3.6) and the verdict. Exit code 0: PASS. 1: FAIL. 2: PENDING (the
 // journal has no row for the tx yet). 3: bad arguments, an unreadable file or a failed RPC read. It sends nothing,
@@ -15,7 +17,7 @@ import { readFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
-import { createPublicClient, decodeFunctionData, getAddress, http, isHex, parseEventLogs, slice, type Address, type Hex, type Log } from "viem";
+import { createPublicClient, decodeFunctionData, getAddress, http, isAddress, isHex, parseEventLogs, slice, type Address, type Hex, type Log } from "viem";
 import { base } from "viem/chains";
 import { mandateVaultAbi } from "../src/abi/index.js";
 import { EXECUTE_BYTES } from "../src/rationale/calldata.js";
@@ -31,6 +33,9 @@ export interface VerifyClient {
 }
 
 const USAGE = "give --input <hex or file>, or --tx <hash> with --rpc <url>";
+
+/** The Base mainnet MandateVault (deployments/README.md): the vault --rpc checks a tx against unless --vault names one. */
+export const DEFAULT_VAULT: Address = "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b";
 
 class Usage extends Error {}
 
@@ -49,7 +54,7 @@ async function readInput(arg: string): Promise<Hex> {
   return text;
 }
 
-/** The Decision rationaleHash the receipt holds for `id`, from the vault the tx called; null when it has none. */
+/** The Decision rationaleHash the receipt holds for `id`, from `vault`; null when it has none. */
 function decisionHashIn(logs: readonly Pick<Log, "address" | "topics" | "data">[], vault: Address, id: Hex): Hex | null {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[], strict: true });
   const l = parsed.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId.toLowerCase() === id.toLowerCase());
@@ -63,37 +68,50 @@ export async function main(
   const out = o.out ?? console.log;
   const err = o.err ?? console.error;
   try {
-    let values: { input?: string; tx?: string; rpc?: string; journal?: string[]; rationale?: string };
+    let values: { input?: string; tx?: string; rpc?: string; vault?: string; journal?: string[]; rationale?: string };
     try {
       ({ values } = parseArgs({
         args: [...argv],
-        options: { input: { type: "string" }, tx: { type: "string" }, rpc: { type: "string" }, journal: { type: "string", multiple: true }, rationale: { type: "string" } },
+        options: {
+          input: { type: "string" },
+          tx: { type: "string" },
+          rpc: { type: "string" },
+          vault: { type: "string" },
+          journal: { type: "string", multiple: true },
+          rationale: { type: "string" },
+        },
       }));
     } catch (e) {
       throw new Usage(oneLine(e));
     }
     if (values.tx !== undefined && !isHex(values.tx, { strict: true })) throw new Usage("--tx is not a hash");
     if (values.tx !== undefined && values.tx.length !== 66) throw new Usage("--tx is not a 32-byte hash");
+    if (values.vault !== undefined && values.rpc === undefined) throw new Usage("--vault needs --tx with --rpc");
+    if (values.vault !== undefined && !isAddress(values.vault, { strict: false })) throw new Usage("--vault is not an address");
     const txHash = values.tx as Hex | undefined;
     const req: Partial<VerifyRequest> = {};
     if (values.rpc !== undefined) {
       if (txHash === undefined || values.input !== undefined) throw new Usage(USAGE);
+      const vault = getAddress(values.vault ?? DEFAULT_VAULT);
       const client = (o.client ?? rpcClient)(values.rpc);
       try {
         const tx = await client.getTransaction({ hash: txHash });
         if (tx.to === null) throw new Usage(`tx ${txHash} creates a contract; it calls no vault`);
         req.input = tx.input;
         req.from = tx.from;
+        req.to = tx.to;
+        req.vault = vault;
+        // The Decision and owner() come from the vault, never from whatever contract the tx called.
         const receipt = await client.getTransactionReceipt({ hash: txHash });
         if (req.input.length >= 2 + 2 * EXECUTE_BYTES) {
           try {
             const id = (decodeFunctionData({ abi: mandateVaultAbi, data: slice(req.input, 0, EXECUTE_BYTES) }).args![0] as OnchainIntent).id;
-            req.decisionHash = decisionHashIn(receipt.logs, tx.to, id);
+            req.decisionHash = decisionHashIn(receipt.logs, vault, id);
           } catch {
             // Not an execute call: verifyDecision says so from the input.
           }
         }
-        req.owner = getAddress((await client.readContract({ address: tx.to, abi: mandateVaultAbi, functionName: "owner" })) as string);
+        req.owner = getAddress((await client.readContract({ address: vault, abi: mandateVaultAbi, functionName: "owner" })) as string);
       } catch (e) {
         if (e instanceof Usage) throw e;
         throw new Usage(`the RPC read failed: ${oneLine(e)}`);
