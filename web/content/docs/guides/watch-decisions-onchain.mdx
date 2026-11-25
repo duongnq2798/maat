@@ -145,7 +145,7 @@ The ids come from the order of the enums. The `Reason` ids are append-only: `Typ
 
 The agent decodes a `Decision` with viem, and this is the function it uses. It reads the logs of a receipt with the vault's ABI (`mandateVaultAbi`, generated from the compiled contract into `agent/src/abi/generated.ts`), keeps the log that came from the vault and carries the intent id, and turns the `reason` number into its name with the agent's own list of reasons. This is a copy of the code, and a test fails if the file changes and this page does not.
 
-```typescript title="agent/src/loop/runOnce.ts#L83-L87"
+```typescript title="agent/src/loop/runOnce.ts#L85-L89"
 function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
   const l = parsed.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId.toLowerCase() === id.toLowerCase());
@@ -155,7 +155,7 @@ function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | u
 
 A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how the agent finds a `Decision` by intent id for a send an earlier round left pending. When the transaction is mined, it reads the `Decision` from the transaction's receipt first. Without one there, it reads the latest block number, asks the vault at that block whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at up to that block.
 
-```typescript title="agent/src/loop/runOnce.ts#L203-L207"
+```typescript title="agent/src/loop/runOnce.ts#L205-L209"
     // usedIntent is read at a fresh head, so a used intent's Decision lies between the send's block and that head.
     const head = await d.txClient.getBlockNumber({ cacheTime: 0 });
     const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId], blockNumber: head });

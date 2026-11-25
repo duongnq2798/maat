@@ -143,7 +143,7 @@ The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate 
 
 Once at least the bill minimum is owed, the agent puts a bill payment at the front of the round's queue. The minimum is <Fact name="liveBillMinUsd" /> in live mode and <Fact name="billMinUsd" /> in dry-run, unless `MAAT_BILL_MIN_USD` sets another amount for both:
 
-```typescript title="agent/src/loop/runOnce.ts#L282-L286"
+```typescript title="agent/src/loop/runOnce.ts#L285-L289"
     const queue: Proposal[] = [];
     if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
