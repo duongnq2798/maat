@@ -10,15 +10,6 @@
       "requiredInLive": false
     },
     {
-      "name": "BASE_RPC_URL_FALLBACK",
-      "example": "",
-      "note": "Optional second Base RPC, used only when a request to BASE_RPC_URL fails. Best from another provider.",
-      "readBy": "agent",
-      "default": null,
-      "required": false,
-      "requiredInLive": false
-    },
-    {
       "name": "MAAT_VAULT",
       "example": "0x0000000000000000000000000000000000000000",
       "note": "From the deploy logs (deployments/README.md).",
@@ -169,6 +160,7 @@
   ],
   "scriptFiles": [
     "cdp-setup.ts",
+    "first-decision.ts",
     "gen-abis.ts",
     "smoke-claude.ts"
   ]

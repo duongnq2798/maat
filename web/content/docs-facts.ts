@@ -18,7 +18,7 @@ export const DOCS_FACTS = {
   ),
   earlyCloseMin: fact(780, "contracts/src/MarketCalendar.sol constructor: _setEarlyClose(..., 780), a 13:00 ET close"),
   calendarPreload: fact(
-    { holidays: 3, earlyCloses: 2 },
+    { holidays: 12, earlyCloses: 3 },
     "contracts/src/MarketCalendar.sol constructor: _addHoliday and _setEarlyClose calls",
   ),
   etOffsetHours: fact(
@@ -54,13 +54,9 @@ export const DOCS_FACTS = {
     120,
     "agent/src/loop/runOnce.ts RECEIPT_TIMEOUT_MS = 120_000, how long a round waits for the receipt of a transaction it sent",
   ),
-  pendingWindowMinutes: fact(
-    10,
-    "agent/src/loop/runOnce.ts PENDING_WINDOW_SECONDS = 600n, the chain time after which a send with no onchain trace is recorded as dropped",
-  ),
-  logWindowBlocks: fact(
-    9_000,
-    "agent/src/chain/logWindows.ts MAX_LOG_RANGE = 9_000n, the most blocks one eth_getLogs query of the agent covers",
+  pendingWindowBlocks: fact(
+    300,
+    "agent/src/loop/runOnce.ts PENDING_WINDOW_BLOCKS = 300n, the blocks after which a send with no onchain trace is recorded as dropped",
   ),
   lockStaleSec: fact(
     60,

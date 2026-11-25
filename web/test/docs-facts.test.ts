@@ -54,6 +54,10 @@ describe("facts the docs cite (docs spec §2.4)", () => {
     expect(vault).toMatch(/m\.minHealthFactor < WAD\b/);
   });
 
+  it("the mock Aave spoke in the unit tests refuses below the same health factor, as the credit page and its scale say", () => {
+    expect(readRepo("contracts/test/mocks/MockSpoke.sol")).toMatch(new RegExp(`healthFactor < ${DOCS_FACTS.healthFactorBound.value}e18\\)`));
+  });
+
   it("agent settings defaults", () => {
     expect(zodDefault("MAAT_MAX_TX_PER_DAY")).toBe(DOCS_FACTS.maxTxPerDay.value);
     expect(zodDefault("MAAT_DEFAULT_DAILY_COMPUTE_USD")).toBe(DOCS_FACTS.dailyComputeUsd.value);
@@ -74,11 +78,7 @@ describe("facts the docs cite (docs spec §2.4)", () => {
 
   it("the receipt wait, and the window after which a pending send with no trace is dropped", () => {
     expect(tsConst("agent/src/loop/runOnce.ts", "RECEIPT_TIMEOUT_MS") / 1000).toBe(DOCS_FACTS.receiptTimeoutSec.value);
-    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_SECONDS") / 60).toBe(DOCS_FACTS.pendingWindowMinutes.value);
-  });
-
-  it("the most blocks one log query of the agent covers", () => {
-    expect(tsConst("agent/src/chain/logWindows.ts", "MAX_LOG_RANGE")).toBe(DOCS_FACTS.logWindowBlocks.value);
+    expect(tsConst("agent/src/loop/runOnce.ts", "PENDING_WINDOW_BLOCKS")).toBe(DOCS_FACTS.pendingWindowBlocks.value);
   });
 
   it("the age at which a lock file with no readable pid is stale", () => {

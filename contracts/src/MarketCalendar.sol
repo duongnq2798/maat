@@ -33,8 +33,19 @@ contract MarketCalendar {
         _addHoliday(2026, 11, 26); // Thanksgiving
         _addHoliday(2026, 12, 25); // Christmas
         _addHoliday(2027, 1, 1); // New Year
+        // 2027 closures from the NYSE holiday calendar on nyse.com, read 2026-11-16.
+        _addHoliday(2027, 1, 18); // Martin Luther King Jr. Day
+        _addHoliday(2027, 2, 15); // Washington's Birthday
+        _addHoliday(2027, 3, 26); // Good Friday
+        _addHoliday(2027, 5, 31); // Memorial Day
+        _addHoliday(2027, 6, 18); // Juneteenth (observed)
+        _addHoliday(2027, 7, 5); // Independence Day (observed)
+        _addHoliday(2027, 9, 6); // Labor Day
+        _addHoliday(2027, 11, 25); // Thanksgiving
+        _addHoliday(2027, 12, 24); // Christmas (observed)
         _setEarlyClose(2026, 11, 27, 780); // 13:00
         _setEarlyClose(2026, 12, 24, 780);
+        _setEarlyClose(2027, 11, 26, 780);
     }
 
     function addHoliday(uint256 y, uint256 m, uint256 d) external onlyOwner {

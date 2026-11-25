@@ -4,27 +4,35 @@ description: "Every environment variable the agent reads: whether it is required
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - agent/src/config.ts
-  - agent/src/runtime.ts
-  - agent/src/loop/runOnce.ts
   - agent/.env.example
   - agent/README.md
   - agent/src/policy.ts
   - agent/src/refusals.ts
   - agent/src/llm/proposer.ts
   - agent/src/ledger/store.ts
+  - agent/src/loop/runOnce.ts
+  - agent/src/intent.ts
+  - agent/src/llm/prompt.ts
+  - agent/src/chain/state.ts
+  - agent/src/addresses.ts
+  - contracts/.env.example
+  - contracts/foundry.toml
+  - contracts/script/Deploy.s.sol
+  - agent/scripts/first-decision.ts
+  - deployments/go-live.md
 next: [reference/agent-scripts, guides/run-the-agent]
 ---
 
-The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has not run live. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
+The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has run in [live mode](/docs/help/glossary#live-mode) only on a fork. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
 
 <EnvTable />
 
 `npm run agent` loads `agent/.env` when that file exists, and `agent/.env.example` is the template to copy. Git ignores `.env` files, so the file stays on your machine: keep every secret in it and never commit it. The agent checks its own settings once, at startup, in `agent/src/config.ts`. A blank value (`KEY=`) counts as unset, so a default applies, and a required setting that is blank is reported as missing. If any check fails, the agent stops before it does anything else, with one `invalid agent config` error that names each problem. It does not check the settings that the SDKs read, which is why the Required column says No for them.
 
-`contracts/.env` is a different file. The commands you run in `contracts/` read it, and the agent does not. It repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with other rules: there the two addresses are what the deploy writes into the [vault](/docs/help/glossary#vault), and here `MAAT_EXECUTOR` must be the vault's current [executor](/docs/help/glossary#executor) and `MAAT_EXPENSE_PAYEE` an address on its [payee](/docs/help/glossary#payee) list. So check `MAAT_EXECUTOR` before you copy it across. In the deploy that [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) describes, it starts as the [owner](/docs/help/glossary#owner)'s own wallet, and it becomes the CDP account once the owner hands the role over with `setExecutor`. [The whole path](/docs/guides/deploy-your-own-vault#the-whole-path) shows which value goes in which file.
+`contracts/.env` is a different file. The commands you run in `contracts/` read it, and the agent does not. It repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with other rules. There, `BASE_RPC_URL` also serves the contract [fork tests](/docs/help/glossary#fork-test), which read [Base](/docs/help/glossary#base) at pinned past blocks and so need an archive node. The two addresses there are what the deploy writes into the [vault](/docs/help/glossary#vault). Here, [`BASE_RPC_URL`](#base_rpc_url) needs no archive node, `MAAT_EXECUTOR` must be the vault's current [executor](/docs/help/glossary#executor) and `MAAT_EXPENSE_PAYEE` an address on its [payee](/docs/help/glossary#payee) list. So check `MAAT_EXECUTOR` before you copy it across. In the deploy that [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) describes, it starts as the [owner](/docs/help/glossary#owner)'s own wallet, and it becomes the CDP account once the owner hands the role over with `setExecutor`. [The whole path](/docs/guides/deploy-your-own-vault#the-whole-path) shows which value goes in which file.
 
 ## Read by the agent
 
@@ -34,19 +42,13 @@ These settings are read by `agent/src/config.ts`. `BASE_RPC_URL`, `MAAT_VAULT`, 
 
 <EnvVar name="BASE_RPC_URL" />
 
-The RPC endpoint for [Base](/docs/help/glossary#base) mainnet. It must be a valid URL. The agent builds one client on it, with `BASE_RPC_URL_FALLBACK` behind it when that is set, and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier [round](/docs/help/glossary#round). It does not send transactions through this endpoint: in [live mode](/docs/help/glossary#live-mode) the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret. The agent does not print it, and a round that halts on a failed read keeps only the first line of the error, which leaves the URL out of the journal.
-
-### BASE_RPC_URL_FALLBACK
-
-<EnvVar name="BASE_RPC_URL_FALLBACK" />
-
-A second RPC endpoint for Base mainnet. It is optional, and when it is set it must be a valid URL. Every read still goes to `BASE_RPC_URL` first, and moves to this endpoint only when that request fails, for example on a timeout or a rate limit. Without it, a failed read makes the round do nothing or halt it. Take it from another provider, so that one outage does not stop both. It needs no archive node either, and the agent keeps it out of its output the same way as `BASE_RPC_URL`, so a URL with a key in it stays a secret.
+The RPC endpoint for Base mainnet. It must be a valid URL. The agent builds one client on it and uses that client for everything it reads: the vault state at a single block, the `previewIntent` calls, the gas estimates, the receipts, and the logs it uses to settle a transaction left pending by an earlier [round](/docs/help/glossary#round). It does not send transactions through this endpoint: in live mode the CDP wallet sends them. The agent does not need an archive node. A provider URL often contains a key, so treat it as a secret.
 
 ### MAAT_VAULT
 
 <EnvVar name="MAAT_VAULT" />
 
-The address of the `MandateVault` the agent reads and sends to. You get it from the deploy logs once the owner deploys, and nothing is deployed yet. The agent's guarded sender sends only to this address and refuses any other target. The CDP policy that `cdp-setup.ts` attaches names one vault, so use the same address in both places. The zero address in `.env.example` is a placeholder, so replace it.
+The address of the `MandateVault` the agent reads and sends to. For a vault you deploy, you get it from the deploy logs, and the address of Maat's own vault is on [Base addresses](/docs/reference/base-addresses). The agent's guarded sender sends only to this address and refuses any other target. The CDP policy that `cdp-setup.ts` attaches names one vault, so use the same address in both places. The zero address in `.env.example` is a placeholder, so replace it.
 
 ### MAAT_EXECUTOR
 
@@ -58,7 +60,7 @@ The address of the [executor](/docs/help/glossary#executor), the one address the
 
 <EnvVar name="MAAT_EXPENSE_PAYEE" />
 
-The address the agent pays its [compute bill](/docs/help/glossary#compute-bill) to. It goes into the `payee` field of each `PAY_EXPENSE` [intent](/docs/help/glossary#intent). The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: the payee given to the deploy script, or one the owner added later through the [timelock](/docs/help/glossary#timelock).
+The address the agent pays its [compute bill](/docs/help/glossary#compute-bill) to. It goes into the `payee` field of each `PAY_EXPENSE` [intent](/docs/help/glossary#intent). The vault pays only a [payee](/docs/help/glossary#payee) on its allowlist, so use an address on that list: a payee given to the deploy script (its own `MAAT_EXPENSE_PAYEE`, or its optional `MAAT_EXPENSE_PAYEE_2`), or one the owner added later through the [timelock](/docs/help/glossary#timelock). The agent pays only this address and does not read the vault's list, so with two payees allowlisted, this setting picks which one it pays.
 
 For any other address the vault's preview returns [`PAYEE_NOT_ALLOWED`](/docs/concepts/refusal-codes#payee_not_allowed). The agent does not log that [reason](/docs/help/glossary#reason) onchain, so it never sends the payment and no [`Decision`](/docs/help/glossary#decision) appears. The bill stays unpaid. Once it reaches <Fact name="billMinUsd" />, each round that reaches the proposal step writes an `intent` line for it in the journal, with the preview `PAYEE_NOT_ALLOWED` and the gate `PAYEE_NOT_ALLOWED not worth a log tx`. While the vault is paused, the preview and the gate name `VAULT_PAUSED` instead, and when the vault holds no USDC the round writes a `skip` line for it. To clear it, fix this setting, or have the owner add the address through the timelock. The agent needs this setting even in [dry-run](/docs/help/glossary#dry-run) mode.
 
@@ -72,7 +74,7 @@ The only values are `dry-run` and `live`, and anything else stops the start. The
 
 <EnvVar name="MAAT_BUILDER_CODE" />
 
-A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the live runtime, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it. No real code is registered yet. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
+A Builder Code that you registered for your project. Live mode requires it, and the Required column says so. Dry-run mode does not use it. In live mode the agent turns it into an ERC-8021 suffix and appends the suffix to the calldata of every transaction it sends. The code must match `^[a-z0-9_]{1,32}$`, and the agent checks that when it builds the runtime for live mode, before any CDP call. Transactions that the owner signs, such as the deploy, `fund` and `setExecutor`, do not carry it; the first-decision `BUY` intents of the go-live runbook, `deployments/go-live.md`, do, because the owner sends them with the calldata that `agent/scripts/first-decision.ts` builds. The owner registered Maat's own code, and the calldata of the vault's first `Decision` on Base mainnet carries it. [Run the agent](/docs/guides/run-the-agent#go-live) says where to register one.
 
 ### MAAT_LOOP_MODEL
 
@@ -84,9 +86,9 @@ The model the agent asks for its proposals. The name goes to the Claude API as w
 
 <EnvVar name="MAAT_DATA_DIR" />
 
-The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, dry-run rounds included, the amount paid, [refusals](/docs/help/glossary#refusal) logged per NYSE date, transactions sent per UTC day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
+The directory where the agent keeps its files. A relative path is relative to the directory you start the agent from, which is `agent/` when you use `npm run agent`, and the agent creates the directory when it is missing. It holds `state.json` (compute bills, dry-run rounds included, the amount paid, [refusals](/docs/help/glossary#refusal) logged per day, transactions sent per day, and sends not yet settled), `journal.jsonl` (the append-only journal) and `agent.lock`. The lock allows one agent per directory: a second agent stops at startup with an error that names the process holding the lock. Git ignores `agent/data/`.
 
-A dry-run round adds the cost of its Claude answer to the bill like any other round, so with the same directory the first live round that owes at least <Fact name="billMinUsd" /> puts the cost of the dry runs in its `PAY_EXPENSE` too, up to the vault's USDC balance ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)). The directory belongs to one vault, and `state.json` does not record which. When you change `MAAT_VAULT`, start with a new `MAAT_DATA_DIR`. Otherwise the unpaid bill, the compute history that sets the [runway](/docs/help/glossary#runway), the refusals logged on the current NYSE date, the UTC day's transaction count and any pending send carry over to the new vault. A pending send that succeeded on the old vault is never seen as used on the new one, so every round then ends `pending-tx`. No test covers a change of vault: this is what the code does.
+A dry-run round adds the cost of its Claude answer to the bill like any other round, so with the same directory the first round in live mode that owes at least <Fact name="billMinUsd" /> puts the cost of the dry runs in its `PAY_EXPENSE` too, up to the vault's USDC balance ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)). The directory belongs to one vault, and `state.json` does not record which. When you change `MAAT_VAULT`, start with a new `MAAT_DATA_DIR`. Otherwise the unpaid bill, the compute history that sets the [runway](/docs/help/glossary#runway), the refusals logged today, the day's transaction count and any pending send carry over to the new vault. A pending send whose transaction hash the agent recorded, and that succeeded on the old vault, is never seen as used on the new one, so every round then ends `pending-tx`. One with no recorded hash ends rounds `pending-tx` too, until it is dropped after at least <Fact name="pendingWindowBlocks" />. No test covers a change of vault: this is what the code does.
 
 ### MAAT_MAX_TX_PER_DAY
 
@@ -98,13 +100,13 @@ The most transactions the agent sends in one UTC day, by default <Fact name="max
 
 <EnvVar name="MAAT_DEFAULT_DAILY_COMPUTE_USD" />
 
-The daily compute cost, in US dollars, that the agent assumes until it has a history of its own. The default is <Fact name="dailyComputeUsd" />, and it must be a positive number. The policy aims to keep <Fact name="runwayDays" /> of that cost as USDC, the [runway](/docs/help/glossary#runway). A `BUY` it suggests uses only the USDC above the runway and the unpaid bill, and it suggests a `BORROW` when USDC falls below the runway plus the unpaid bill, but only if some stock is already supplied as collateral. These are suggestions. Claude is told to adopt, resize or drop them, and the agent caps a proposed `BUY` at the vault's USDC balance, not at the runway. So the runway is a target, not a limit ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)). The vault's per-trade and daily caps still bound every trade. As soon as one of the days before today, up to a week back, has a recorded cost, the agent uses the average of the recorded days instead of this setting.
+The daily compute cost, in US dollars, that the agent assumes until it has a history of its own. The default is <Fact name="dailyComputeUsd" />, and it must be a positive number. The policy aims to keep <Fact name="runwayDays" /> of that cost as USDC, the [runway](/docs/help/glossary#runway). A `BUY` it suggests uses only the USDC above the runway and the unpaid bill. When USDC falls short of the runway plus the unpaid bill by at least <Fact name="minTradeUsd" />, it suggests a `BORROW`, but only if the vault is not paused, the credit position can be read and stock from the policy's [basket](/docs/concepts/treasury-loop#the-basket) with a valid [feed](/docs/help/glossary#chainlink-equity-feed) price is supplied as collateral. These are suggestions. Claude is told to adopt, resize or drop them, and the agent caps a proposed `BUY` at the vault's USDC balance, not at the runway. So the runway is a target, not a limit ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)). The vault's per-trade and daily caps still bound every trade. As soon as one of the days before today, up to a week back, has a recorded cost, the agent uses the average of the recorded days instead of this setting.
 
 ### CDP_ACCOUNT_NAME
 
 <EnvVar name="CDP_ACCOUNT_NAME" />
 
-The name of the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) account that acts as the executor. `cdp-setup.ts` creates the account under this name or finds it, and the agent looks it up by name in live mode. The agent never creates an account. Dry-run mode does not use this setting.
+The name of the CDP Server Wallet account that acts as the executor. `cdp-setup.ts` creates the account under this name or finds it, and the agent looks it up by name in live mode. The agent never creates an account. Dry-run mode does not use this setting.
 
 ## Read by the SDKs
 
@@ -168,6 +170,7 @@ For the steps that produce these values, see [Run the agent](/docs/guides/run-th
 ## Related
 
 - [Agent scripts](/docs/reference/agent-scripts): the `--once` and `--dry-run` flags, and the scripts that read these settings.
+- [Run the agent](/docs/guides/run-the-agent): fill in these settings, run one round in dry-run mode, then switch to live mode.
 - [Default parameters](/docs/reference/default-parameters): the limits and cadences the agent ships with, including the two defaults above.
 - [The treasury loop](/docs/concepts/treasury-loop): how the compute bill, the runway and the daily cap fit into a round.
 - [Timelock and roles](/docs/concepts/timelock-and-roles): who the executor and the payee are, and who can change them.

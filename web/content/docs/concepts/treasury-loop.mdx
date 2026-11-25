@@ -4,18 +4,21 @@ description: How the agent keeps its basket, supplies idle stock, borrows for ru
 type: concept
 audience: [newcomer, watcher, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-19
 sources:
   - agent/src/policy.ts
   - agent/src/loop/runOnce.ts
   - agent/src/loop/scheduler.ts
   - agent/src/llm/pricing.ts
   - agent/src/intent.ts
+  - agent/src/chain/state.ts
+  - agent/test/policy.test.ts
   - web/components/sections/TreasuryLoop.tsx
+  - contracts/script/Deploy.s.sol
 next: [guides/run-the-agent, concepts/credit-and-health-factor]
 ---
 
-Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is still only planned. It describes the agent's code and what the fork run covers. The agent has not run live and nothing is deployed.
+Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is still only planned. It describes the agent's code and what the fork run covers. The four Maat contracts are deployed on Base mainnet, and the agent has sent transactions only on a fork.
 
 ## Five steps
 
@@ -28,11 +31,11 @@ Each step is a rule in the agent's policy, `agent/src/policy.ts`, and an action 
 | Step | What the agent is built to do | Vault action | What the vault checks |
 | --- | --- | --- | --- |
 | Buy | Keep an equal-weight basket and rebalance when a weight drifts | `BUY`, `SELL` | [The nine checks](/docs/concepts/nine-checks) |
-| Supply | Put idle stock into Aave as collateral | `SUPPLY`, and `WITHDRAW_COLLATERAL` before a sale | [The credit checks](/docs/concepts/credit-and-health-factor) |
-| Borrow | Keep a runway of compute cost in USDC | `BORROW` | An open market, live collateral and a health factor at or above the floor |
+| Supply | Put idle stock into [Aave](/docs/help/glossary#aave-v4) as collateral | `SUPPLY`, and `WITHDRAW_COLLATERAL` before a sale | [The credit checks](/docs/concepts/credit-and-health-factor) |
+| Borrow | Keep a [runway](/docs/help/glossary#runway) of compute cost in USDC | `BORROW` | An open market, every supplied stock allowed and unpaused with a valid, fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and a [health factor](/docs/help/glossary#health-factor) at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window) |
 | Pay | Pay the unpaid compute bill | `PAY_EXPENSE` | The payee allowlist and the caps |
 
-The policy only suggests. Claude can adopt, resize or drop a suggestion, the agent previews every intent, and the vault decides on each one ([How a decision is made](/docs/get-started/how-a-decision-is-made)). The agent starts in [dry-run](/docs/help/glossary#dry-run) mode, which is the default. In dry run it reads the chain, asks Claude and previews every intent, and it sends nothing. Live mode needs a registered Builder Code and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), and neither has been used for real. The rest of this page describes what the agent is built to do when it does send.
+The policy only suggests. Claude can adopt, resize or drop a suggestion, the agent previews every intent, and the vault decides on each one ([How a decision is made](/docs/get-started/how-a-decision-is-made)). The agent starts in [dry-run](/docs/help/glossary#dry-run) mode, which is the default. In dry run it reads the chain, asks Claude and previews every intent, and it sends nothing. [Live mode](/docs/help/glossary#live-mode) needs a registered Builder Code and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), and the agent has used neither for real. The rest of this page describes what the agent is built to do when it does send.
 
 <Callout type="fork" title="What the fork run covers">
 
@@ -77,23 +80,23 @@ The vault's own limit on one stock, <Fact name="mandate.maxWeightBps" />, is a s
 
 The policy tests start from a vault that holds 100 USDC, no stock and no debt, with no unpaid bill and a daily compute cost that the test sets to the default, <Fact name="dailyComputeUsd" />. The figures below are the test's own numbers:
 
-- The [runway](/docs/help/glossary#runway) is <Fact name="runwayDays" /> at <Fact name="dailyComputeUsd" /> a day, which is $3.50, so $96.50 is spendable.
+- The runway is <Fact name="runwayDays" /> at <Fact name="dailyComputeUsd" /> a day, which is $3.50, so $96.50 is spendable.
 - Each stock's target is 2,333 [bps](/docs/help/glossary#basis-point-bps): the 7,000 bps the cash reserve leaves, split three ways and rounded down. That is 23.33% of net equity, or $23.33 here.
 - Each stock sits at 0%, more than the drift below its target, so the policy suggests a `BUY` of $23.33 for each of NVDAc, GOOGLc and AAPLc. That leaves $30.01 in USDC, close to the <Fact name="cashReservePct" /> cash reserve.
-- It suggests no `SUPPLY` and no `BORROW`, because there is no stock to supply yet and nothing is supplied to borrow against.
+- It suggests no `SUPPLY` and no `BORROW`: there is no stock to supply yet, nothing is supplied to borrow against, and the 100 USDC already covers the runway.
 
 The test `all cash: buys each token toward 23.33%, capped by spendable cash` in `agent/test/policy.test.ts` pins the runway, the targets, the three buys and the missing `BORROW`. In a larger vault a buy stops at the per-trade cap: with 1,000 USDC, the first `BUY` is <Fact name="mandate.perTradeCapUsd" /> (`caps a buy at perTradeCapUsd`). These are suggestions only. Claude can change them, the vault checks each intent, and the fork run's buys were scripted, not taken from the policy.
 
 ## Runway and borrowing
 
-The agent keeps a runway: enough USDC to cover a number of days of its own compute cost, plus any bill it has not paid yet. The daily cost is the average of the days it has recorded over the previous week. If it has recorded none, it uses a default, <Fact name="dailyComputeUsd" /> a day, which the `MAAT_DEFAULT_DAILY_COMPUTE_USD` setting changes. Cash that the policy spends on stock is whatever is left after the unpaid bill and the runway, so a suggested purchase never eats the runway. This is the policy's rule, not the vault's:
+The agent keeps a runway: enough USDC to cover a number of days of its own compute cost. It also keeps back any bill it has not paid yet. The daily cost is the average of the days it has recorded over the previous week. If it has recorded none, it uses a default, <Fact name="dailyComputeUsd" /> a day, which the `MAAT_DEFAULT_DAILY_COMPUTE_USD` setting changes. Cash that the policy spends on stock is whatever is left after the unpaid bill and the runway, so a suggested purchase never eats the runway. This is the policy's rule, not the vault's:
 
 ```typescript title="agent/src/policy.ts#L63-L64"
   const runwayNeedUsd6 = BigInt(params.runwayDays) * bills.dailyComputeUsd6;
   let spendable = maxBig(0n, s.usdcBalance - bills.unpaidUsd6 - runwayNeedUsd6);
 ```
 
-When USDC falls below that need, the policy suggests a borrow of the shortfall, but only if some stock is supplied as collateral and the credit position can be read:
+When USDC falls below the runway plus the unpaid bill, the policy suggests a borrow of the shortfall, but only if some stock is supplied as collateral and the credit position can be read:
 
 ```typescript title="agent/src/policy.ts#L114-L120"
   // 7. BORROW
@@ -105,9 +108,9 @@ When USDC falls below that need, the policy suggests a borrow of the shortfall, 
   }
 ```
 
-The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock's feed is stale or its multiplier has changed, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
+The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock is not allowed, is paused, has no valid, fresh feed answer or has no stable multiplier, when a credit view cannot be read, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
 
-The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing in this repository sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
+The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
 
 ## Paying its own bill
 
@@ -128,7 +131,7 @@ The figures are cents per million tokens, so the `claude-sonnet-5-5` input rate 
 
 Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment at the front of the round's queue:
 
-```typescript title="agent/src/loop/runOnce.ts#L272-L276"
+```typescript title="agent/src/loop/runOnce.ts#L248-L252"
     const queue: Proposal[] = [];
     if (unpaid >= BILL_MIN_USD6) {
       const usd = usdc6ToUsd(unpaid);
@@ -137,10 +140,10 @@ Once at least <Fact name="billMinUsd" /> is owed, the agent puts a bill payment 
 ```
 
 - **Claude does not propose it.** The proposal schema has no `PAY_EXPENSE` action, and the system prompt says bills are settled automatically.
-- **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
+- **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list, with an optional second payee from `MAAT_EXPENSE_PAYEE_2`. The agent pays only the address in its own setting. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
 - **The vault limits it.** `PAY_EXPENSE` needs a payee on the allowlist and an amount within the balance and under the per-trade and daily caps, which it shares with trades. It works when the market is closed and it is refused while the vault is paused ([The nine checks](/docs/concepts/nine-checks#other-actions)).
-- **It is paid once.** The agent stores a send as pending before it leaves, and the next round settles it first, from the transaction's receipt once it is mined, or else from `usedIntent`. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
-- **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows. The first live round on the same `MAAT_DATA_DIR` that owes at least <Fact name="billMinUsd" /> is built to pay it. The payment is the unpaid total, or the vault's whole USDC balance when that is smaller, in one `PAY_EXPENSE`; a payment of the whole balance leaves the rest owed. When that amount is above the per-trade cap, the vault refuses it with `SIZE_LIMIT` and the bill stays unpaid ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).
+- **It is paid once.** The agent stores a send as pending before it leaves, and the next round checks `usedIntent` first. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
+- **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows. The first round in live mode on the same `MAAT_DATA_DIR` that owes at least <Fact name="billMinUsd" /> is built to pay it. The payment is the unpaid total, or the vault's whole USDC balance when that is smaller, in one `PAY_EXPENSE`; a payment of the whole balance leaves the rest owed. When that amount is above the per-trade cap, the vault refuses it with `SIZE_LIMIT` and the bill stays unpaid ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).
 
 ## Cadence
 
@@ -157,13 +160,13 @@ export function nextDelayMs(r: RunReport | null): number {
 
 That is <Fact name="loopMinutes" /> in session and <Fact name="offSessionMinutes" /> outside. The round reads the market state from the vault's own calendar, under the mandate's session mode ([Market hours](/docs/concepts/market-hours)). A round that could not read the market state, or that threw an error, waits <Fact name="offSessionMinutes" /> for the next one. A round that halted after reading an open market runs again <Fact name="loopMinutes" /> later.
 
-Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)). The transaction cap and the compute bill count UTC days.
+Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per day ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)).
 
 ## Planned: earning
 
 <Callout type="note" title="Planned">
 
-The first step of the loop is not built. The design has other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. Earning from x402 safety checks is planned and not built: no service in this repository takes a payment. The [status page](/docs/get-started/status#planned-not-built) lists it with the other planned work.
+The first step of the loop is not built. The design has other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. Earning from x402 safety checks is planned and not built on `main`: no service on `main` takes a payment. [Pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds an x402 Guard Service. The [status page](/docs/get-started/status#planned-not-built) lists it with the other planned work.
 
 </Callout>
 

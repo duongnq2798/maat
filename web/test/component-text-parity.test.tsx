@@ -1,9 +1,18 @@
 import { render } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { EventSignature, ForkLedger, MandateTable, ReasonTable, RouterCards } from "@/components/docs/content";
-import { Architecture, DecisionLoop, MarketWeek, TimelockFlow, TreasuryLoop } from "@/components/docs/diagrams";
+import {
+  Architecture,
+  DecisionLoop,
+  HealthFactorScale,
+  MarketWeek,
+  MultiplierFlow,
+  TimelockFlow,
+  TreasuryLoop,
+} from "@/components/docs/diagrams";
 import {
   AddressTable,
+  DeploymentTable,
   EnvTable,
   EnvVar,
   ErrorEntry,
@@ -15,9 +24,13 @@ import {
   ScriptFile,
   TypeEntry,
 } from "@/components/docs/reference";
+import { SectionIndex } from "@/components/docs/SectionIndex";
 import { StatusBadge } from "@/components/docs/StatusBadge";
-import { componentText, type Props, type TextContext } from "@/lib/docs/component-text";
+import { componentText, deploymentText, type Props, type TextContext } from "@/lib/docs/component-text";
 import type { DataComponent } from "@/lib/docs/data-components";
+import { docsData } from "@/lib/docs/generated";
+import { docsTree } from "@/lib/docs/remark-component-text";
+import { findContract } from "@/lib/docs/signatures";
 
 // The Markdown copies print the same data as the components. These tests render a component and read its text
 // back out of the HTML, so a column, a caption or a label that changes in one place and not the other fails here.
@@ -44,10 +57,30 @@ function domRows(container: HTMLElement): string[][] {
 /** The text after the last blank line: where the Markdown copies put a caption. */
 const lastBlock = (text: string) => text.split("\n\n").at(-1)!;
 
+/**
+ * The paragraphs of a rendered entry, and those of its Markdown after the signature fence, as a reader sees them. A
+ * NatSpec comment can hold backticks, which the page prints as they are and the Markdown makes code marks.
+ */
+const entryParagraphs = (container: HTMLElement) => [...container.querySelectorAll("[data-entry] > p")].map((p) => plain(p.textContent!));
+const mdParagraphs = (text: string) =>
+  text
+    .split("\n\n")
+    .filter((b) => !b.startsWith("```") && !b.startsWith("| ") && !b.startsWith("Who may call: "))
+    .map(plain);
+
+/** The vault's functions in two groups, those that change state and those that read, as a grouped index takes them. */
+const VAULT_FUNCTIONS = findContract(docsData.surface, "MandateVault").functions;
+const READS = VAULT_FUNCTIONS.filter((f) => f.mutability === "view" || f.mutability === "pure").map((f) => f.name);
+const GROUPS: [string, string[]][] = [
+  ["Changes state", VAULT_FUNCTIONS.map((f) => f.name).filter((n) => !READS.includes(n))],
+  ["Read only", READS],
+];
+
 describe("tables", () => {
   const cases: [string, DataComponent, Props, React.ReactElement][] = [
     ["FunctionIndex", "FunctionIndex", { contract: "MarketCalendar", qualify: true }, <FunctionIndex contract="MarketCalendar" qualify />],
     ["FunctionIndex of the vault", "FunctionIndex", { contract: "MandateVault" }, <FunctionIndex contract="MandateVault" />],
+    ["FunctionIndex in groups", "FunctionIndex", { contract: "MandateVault", groups: GROUPS }, <FunctionIndex contract="MandateVault" groups={GROUPS} />],
     ["EnvTable", "EnvTable", {}, <EnvTable />],
     ["AddressTable", "AddressTable", {}, <AddressTable />],
     ["FactTable of settings", "FactTable", { names: ["nyseOpen", "mandate.sessionMode", "maxTokenDecimals"] }, <FactTable names={["nyseOpen", "mandate.sessionMode", "maxTokenDecimals"]} />],
@@ -67,12 +100,15 @@ describe("tables", () => {
   });
 
   it.each([
-    ["AddressTable", "AddressTable", <AddressTable />],
-    ["ReasonTable", "ReasonTable", <ReasonTable />],
-  ] as const)("%s links the same targets as the rendered table, cell for cell", (_label, name, element) => {
+    ["AddressTable", "AddressTable", {}, <AddressTable />],
+    ["ReasonTable", "ReasonTable", {}, <ReasonTable />],
+    ["FunctionIndex", "FunctionIndex", { contract: "MarketCalendar" }, <FunctionIndex contract="MarketCalendar" />],
+    ["FunctionIndex of an adapter", "FunctionIndex", { contract: "ICreditAdapter", qualify: true }, <FunctionIndex contract="ICreditAdapter" qualify />],
+    ["FunctionIndex in groups", "FunctionIndex", { contract: "MandateVault", groups: GROUPS }, <FunctionIndex contract="MandateVault" groups={GROUPS} />],
+  ] as const)("%s links the same targets as the rendered table, cell for cell", (_label, name, props, element) => {
     const { container } = render(element);
     const targets = [...container.querySelectorAll("tbody td, tbody th")].map((td) => td.querySelector("a")?.getAttribute("href") ?? "");
-    const marked = md(name)
+    const marked = md(name, props)
       .split("\n")
       .slice(2)
       .flatMap((row) => row.slice(2, -2).split(/(?<!\\) \| /))
@@ -96,26 +132,67 @@ describe("tables", () => {
   });
 });
 
+describe("deployments", () => {
+  const VAULT = `0x${"11".repeat(20)}`;
+  const TX = `0x${"22".repeat(32)}`;
+  const row = (contract: string, address = "", tx = "", date = "", network = "Base mainnet") => ({ network, contract, address, tx, date });
+  const empty = [row("MarketCalendar"), row("MandateVault")];
+  const filled = [row("MarketCalendar"), row("MandateVault", VAULT, TX, "2026-12-01"), row("MandateVault", VAULT, "", "", "Base Sepolia")];
+  /** The Markdown links' targets, in order. */
+  const targets = (text: string) => [...text.matchAll(/\]\(([^)]*)\)/g)].map((m) => m[1]);
+
+  it("DeploymentTable draws the committed table of deployments/README.md", () => {
+    expect(render(<DeploymentTable />).container.innerHTML).toBe(render(<DeploymentTable rows={docsData.deployments} />).container.innerHTML);
+  });
+
+  it("while no row has an address, has the sentence and the link of the rendered paragraph", () => {
+    const { container } = render(<DeploymentTable rows={empty} />);
+    expect(container.querySelector("table")).toBeNull();
+    expect(plain(deploymentText(empty))).toBe(container.textContent);
+    expect(targets(deploymentText(empty))).toEqual([...container.querySelectorAll("a")].map((a) => a.getAttribute("href")));
+  });
+
+  it("once a row has an address, has the cells, the links and the caption of the rendered table", () => {
+    const { container } = render(<DeploymentTable rows={filled} />);
+    const text = deploymentText(filled);
+    expect(mdRows(text)).toEqual(domRows(container));
+    expect(targets(text)).toEqual([...container.querySelectorAll("a")].map((a) => a.getAttribute("href")));
+    expect(plain(lastBlock(text))).toBe(container.querySelector("figcaption")!.textContent);
+  });
+});
+
 describe("reference entries", () => {
-  it("Fn has the signature, the chips and the notice of the rendered entry", () => {
-    for (const name of ["execute", "fund", "executor"]) {
+  it("Fn has the signature, the chips, the selector and the source comment of the rendered entry", () => {
+    for (const name of ["execute", "fund", "executor", "previewIntent"]) {
       const { container, unmount } = render(<Fn contract="MandateVault" name={name} />);
-      const chips = [...container.querySelectorAll("span")].map((s) => s.textContent);
+      const chips = [...container.querySelectorAll("[data-entry] > div > span")].map((s) => s.textContent);
       const [access, ...kind] = chips as string[];
-      const notice = container.querySelector("p")?.textContent;
       const text = md("Fn", { contract: "MandateVault", name });
       expect(text).toContain(`\`\`\`solidity\n${container.querySelector("pre")!.textContent}\n\`\`\``);
       expect(text).toContain(`Who may call: ${access}. Kind: ${kind.join(", ")}.`);
-      if (notice) expect(text.endsWith(`\n\n${notice}`)).toBe(true);
+      expect(mdParagraphs(text)).toEqual(entryParagraphs(container));
       unmount();
     }
   });
 
-  it("EventEntry and ErrorEntry have the signature of the rendered entry", () => {
-    const event = render(<EventEntry contract="MandateVault" name="Decision" />).container;
-    expect(md("EventEntry", { contract: "MandateVault", name: "Decision" })).toContain(`\`\`\`solidity\n${event.querySelector("pre")!.textContent}\n\`\`\``);
-    const error = render(<ErrorEntry contract="MandateVault" name="ChangeExpired" />).container;
-    expect(md("ErrorEntry", { contract: "MandateVault", name: "ChangeExpired" })).toContain(`\`\`\`solidity\n${error.querySelector("pre")!.textContent}\n\`\`\``);
+  it.each([
+    ["EventEntry", "Decision", <EventEntry contract="MandateVault" name="Decision" />],
+    ["EventEntry", "PausedSet", <EventEntry contract="MandateVault" name="PausedSet" />],
+    ["ErrorEntry", "ChangeExpired", <ErrorEntry contract="MandateVault" name="ChangeExpired" />],
+    ["ErrorEntry", "InsufficientOutput", <ErrorEntry contract="AerodromeSwapAdapter" name="InsufficientOutput" />],
+    ["ErrorEntry", "HealthFactorTooLow", <ErrorEntry contract="ICreditAdapter" name="HealthFactorTooLow" />],
+  ] as const)("%s %s has the signature, the hash and the source comment of the rendered entry", (name, item, element) => {
+    const { container } = render(element);
+    const contract = (element.props as { contract: string }).contract;
+    const text = md(name, { contract, name: item });
+    expect(text).toContain(`\`\`\`solidity\n${container.querySelector("pre")!.textContent}\n\`\`\``);
+    expect(mdParagraphs(text)).toEqual(entryParagraphs(container));
+  });
+
+  it("a struct's TypeEntry has the source comment of the rendered entry", () => {
+    const { container } = render(<TypeEntry name="Intent" />);
+    expect(entryParagraphs(container)).toHaveLength(1);
+    expect(mdParagraphs(md("TypeEntry", { name: "Intent" }))).toEqual(entryParagraphs(container));
   });
 
   it.each(["BASE_RPC_URL", "MAAT_VAULT", "ANTHROPIC_API_KEY"])("EnvVar %s has the fields of the rendered entry", (name) => {
@@ -165,12 +242,36 @@ describe("router cards", () => {
   });
 });
 
+describe("section index", () => {
+  // Relative to web/, as the build reads it (the test helpers' file URLs do not resolve under jsdom).
+  const tree = docsTree("content/docs");
+
+  it.each(["", "get-started", "concepts", "guides", "reference", "security", "help"])(
+    'section "%s": each group has the name, and each card the link and the line, of the rendered index',
+    (section) => {
+      const { container } = render(<SectionIndex tree={tree} section={section} />);
+      // An unnamed group is a bare list; a named one is a section with its heading and its list.
+      const groups = [...container.firstElementChild!.children].map((group) => {
+        const name = group.querySelector("h2")?.textContent;
+        const items = [...group.querySelectorAll("li")].map((li) => {
+          const a = li.querySelector("a")!;
+          const line = li.querySelector("p")?.textContent;
+          return `- [${a.textContent}](${a.getAttribute("href")})${line ? `: ${line}` : ""}`;
+        });
+        return [name && `**${name}**`, items.join("\n")].filter(Boolean).join("\n\n");
+      });
+      expect(md("SectionIndex", section ? { section } : {}, { ...ALL, tree: () => tree })).toBe(groups.join("\n\n"));
+    },
+  );
+});
+
 describe("diagrams", () => {
   it.each([
     ["DecisionLoop", <DecisionLoop />],
     ["Architecture", <Architecture />],
     ["TimelockFlow", <TimelockFlow />],
     ["TreasuryLoop", <TreasuryLoop />],
+    ["MultiplierFlow", <MultiplierFlow />],
   ] as const)("%s has the label, the steps and the caption of the rendered figure", (name, element) => {
     const { container } = render(element);
     const steps = [...container.querySelectorAll("li")].map((li, i) => {
@@ -180,6 +281,17 @@ describe("diagrams", () => {
     const label = container.querySelector("ol")!.getAttribute("aria-label");
     const caption = container.querySelector("figcaption")!.textContent;
     expect(md(name)).toBe([`**${label}**`, steps.join("\n"), caption].join("\n\n"));
+  });
+
+  it("HealthFactorScale has the label, the ranges and the caption of the rendered figure", () => {
+    const { container } = render(<HealthFactorScale />);
+    const bands = [...container.querySelectorAll("li")].map((li) => {
+      const [range, title, detail] = [...li.querySelectorAll("p")].map((p) => p.textContent);
+      return `- **${range}**: ${title}. ${detail}`;
+    });
+    const label = container.querySelector("ol")!.getAttribute("aria-label");
+    const caption = container.querySelector("figcaption")!.textContent;
+    expect(md("HealthFactorScale")).toBe([`**${label}**`, bands.join("\n"), caption].join("\n\n"));
   });
 
   it("MarketWeek has the sentences and the caption of the rendered figure", () => {

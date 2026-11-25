@@ -7,9 +7,9 @@ import { readRepo } from "./helpers/solidity";
 it("renders the 12 mandate rows with a plain-English label, the onchain field and its value", () => {
   expect(mandateRows(FACTS.mandate.value).map((r) => [r.label, r.k, r.v])).toEqual([
     ["Trading session", "sessionMode", "REGULAR"],
-    ["Oldest price it will use", "maxStaleness", "3600 s"],
+    ["Oldest price it will use", "maxStaleness", "90000 s"],
     ["Pool price vs Chainlink", "maxPremiumBps", "100 bps · 1%"],
-    ["Slippage per swap", "maxSlippageBps", "100 bps · 1%"],
+    ["Slippage per swap", "maxSlippageBps", "150 bps · 1.5%"],
     ["Pool price averaged over", "twapWindow", "1800 s"],
     ["Pause after a split", "multiplierCooldown", "24 h"],
     ["Per-trade cap", "perTradeCapUsd", "$50"],

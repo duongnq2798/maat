@@ -4,38 +4,69 @@ description: "Maat's milestones, newest first: what each one added, when, and wh
 type: help
 audience: [newcomer, evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-19
 sources:
   - README.md
+  - deployments/README.md
   - docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md
   - docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md
   - docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md
   - docs/superpowers/plans/2026-11-07-maat-web-w1.md
   - docs/superpowers/plans/2026-11-07-maat-docs-center.md
+  - docs/superpowers/plans/2026-11-08-mandate-simulator.md
+  - docs/superpowers/plans/2026-11-18-maat-ci.md
   - docs/superpowers/specs/2026-11-07-maat-docs-center-design.md
+  - docs/superpowers/specs/2026-11-08-mandate-simulator-design.md
+  - docs/superpowers/specs/2026-11-18-maat-ci-design.md
 next: [get-started/status, help/faq]
 ---
 
-This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and none is live. No Maat contract is deployed to Base mainnet and the agent has not run live, so each entry says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
+This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and the contracts and the agent are fork-tested. The four Maat contracts are deployed on [Base](/docs/help/glossary#base) mainnet, but the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer and a local sender, so each code milestone says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
 
-Dates are the author dates that `git log --date=short` prints for the first and last commit of each milestone. A commit is cited only after checking that `main` contains it. Work on branches that have not been merged into `main` is not listed, except the docs center, which is the work this site is part of and is marked as not merged.
+The table lists the code milestones. For each one, the dates are the author dates that `git log --date=short` prints for its first and last commit. A commit is cited only after checking that `main` contains it. Work on branches that have not been merged into `main` is not listed.
 
 | Milestone | First commit | Last commit | Merged into `main` |
 | --- | --- | --- | --- |
-| [Docs center](/docs/help/changelog#docs-center) | 2026-11-07 | 2026-11-08, so far | Not yet |
+| [Continuous integration](/docs/help/changelog#continuous-integration) | 2026-11-18 | 2026-11-19 | 2026-11-19 |
+| [Docs center](/docs/help/changelog#docs-center) | 2026-11-07 | 2026-11-18 | 2026-11-19 |
+| [Simulator](/docs/help/changelog#simulator) | 2026-11-08 | 2026-11-16 | 2026-11-16 |
 | [Website](/docs/help/changelog#website) | 2026-11-07 | 2026-11-07 | 2026-11-07 |
 | [Agent runtime](/docs/help/changelog#agent-runtime) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
 | [Credit](/docs/help/changelog#credit) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
 | [Core contracts](/docs/help/changelog#core-contracts) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
 | [Project start](/docs/help/changelog#project-start) | 2026-11-06 | 2026-11-06 | Root commit |
 
+## Base mainnet deploy
+
+**Date.** 2026-11-24.
+
+**Scope.** The owner deployed the four Maat contracts on [Base](/docs/help/glossary#base) mainnet: `MarketCalendar`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `MandateVault`.
+
+**Read.** [Next: mainnet](/docs/get-started/status#next-mainnet), on the Status page, lists their addresses.
+
+## Continuous integration
+
+**Dates.** From 2026-11-18 to 2026-11-19. The first commit is `71d24b0`, the design spec, and the last is `8fea383`. The branch `chore/ci` was merged as pull request #4 in `d7d44c4` on 2026-11-19, after the docs center.
+
+**Scope.** One workflow, [`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml), that holds no secret. On every pull request and every push to `main` it runs the offline suites of the contracts, the agent and the website, the website's end-to-end tests among them, a secret scan of the history of every branch and of every commit message, and a lint of the workflow, and it writes the counts to each run's summary. The two fork suites need an archive RPC and still run by hand ([Run the tests](/docs/guides/run-the-tests)). With the workflow came `SECURITY.md`, the scan's rules in `.gitleaks.toml`, and a monthly Dependabot update for the pinned actions.
+
+**Read.** [The CI design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-18-maat-ci-design.md), [the plan](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-18-maat-ci.md) and [`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml).
+
 ## Docs center
 
-**Dates.** From 2026-11-07 to 2026-11-08, still in progress. This work is on the branch `feat/docs-center` and is not merged into `main` yet, so it has no commit to cite.
+**Dates.** From 2026-11-07 to 2026-11-18. The first commit is `6a378e0`, the design spec, and the last is `a98df14`. The branch `feat/docs-center` was merged as pull request #3 in `772e125` on 2026-11-19. It had merged `main` into itself before, so it covers the [simulator](/docs/help/changelog#simulator).
 
 **Scope.** The documentation center you are reading: a docs section of the website with guides, concepts, reference, security and help pages, search, and tests that check each page's numbers and code excerpts against the code.
 
-**Read.** [The docs center design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-docs-center-design.md), [the plan](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-07-maat-docs-center.md) and [`web/content/docs`](https://github.com/duongnq2798/maat/tree/main/web/content/docs) (available once this branch is merged).
+**Read.** [The docs center design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-07-maat-docs-center-design.md), [the plan](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-07-maat-docs-center.md) and [`web/content/docs`](https://github.com/duongnq2798/maat/tree/main/web/content/docs).
+
+## Simulator
+
+**Dates.** From 2026-11-08 to 2026-11-16. The first commit is `4bf219b`, the design spec, and the last is `72ceba3`. The branch `feat/try-simulator` was merged as pull request #1 in `8608b7d` on 2026-11-16.
+
+**Scope.** The "Try to make it say no" section of the landing page, linked from the navigation and the hero: a [simulator](/#try) of the default [mandate](/docs/help/glossary#mandate) that runs in the browser. It is a simulation, not the contract, and it handles `BUY` only. A visitor picks a basket token or one outside the mandate, an amount, and a New York time on a date from the fork day to the last holiday or early close the calendar lists, and the page shows the [nine checks](/docs/concepts/nine-checks) in the [vault](/docs/help/glossary#vault)'s order and the [reason](/docs/help/glossary#reason) it would return. It computes the token list, the market session (through a TypeScript port of `MarketCalendar` in `REGULAR` [session mode](/docs/help/glossary#session-mode), with the holidays and early closes the calendar lists), the per-trade and daily size caps, the vault's USDC balance and the weight limit. The other checks (token not paused, transfer policy, feed freshness, multiplier stable and pool premium) stay at values measured on the Base fork at the fork block, with the feed age measured for one token only and the other feeds assumed fresh. Execute adds the [intent](/docs/help/glossary#intent) to that day's list of decisions. A day starts with the fork vault's USDC and no stock, and holdings are valued at cost where the vault uses the Chainlink price. A share link holds the scenario, and the page recomputes every verdict from it. The simulator reads no chain and sends no transaction, and the page says that the contracts decide. Parity tests check the calendar port against the Foundry vectors of `MarketCalendar.t.sol` and the new facts (the calendar, the basket and the fork vault's USDC) against `MarketCalendar.sol`, `MaatConfig.sol` and the fork run's `deploy.ts`, and unit, component and browser tests drive the simulator.
+
+**Read.** [The simulator design spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-08-mandate-simulator-design.md), [the plan](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-08-mandate-simulator.md), [`web/content/simulator.ts`](https://github.com/duongnq2798/maat/blob/main/web/content/simulator.ts), [`web/content/calendar.ts`](https://github.com/duongnq2798/maat/blob/main/web/content/calendar.ts) and [`web/components/Simulator.tsx`](https://github.com/duongnq2798/maat/blob/main/web/components/Simulator.tsx).
 
 ## Website
 
@@ -49,7 +80,7 @@ Dates are the author dates that `git log --date=short` prints for the first and 
 
 **Dates.** 2026-11-06. The first commit is `16903ae`, the plan, and the last is `1193248`. The branch was merged in `4700f47` on 2026-11-07.
 
-**Scope.** The TypeScript agent in `agent/`: a vault reader pinned to one block, a rule-based policy, the Claude proposer, a [preview](/docs/help/glossary#preview) from the [executor](/docs/help/glossary#executor), a guarded sender that adds the [Builder Code](/docs/help/glossary#builder-code-erc-8021), the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) sender, the journal, the scheduler and a [fork test](/docs/help/glossary#fork-test) that runs the whole round. The Claude proposer and the CDP sender are tested against fakes only, and the fork run uses a scripted proposer and a local sender.
+**Scope.** The TypeScript agent in `agent/`: a [vault](/docs/help/glossary#vault) reader pinned to one block, a rule-based policy, the Claude proposer, a [preview](/docs/help/glossary#preview) from the [executor](/docs/help/glossary#executor), a guarded sender that adds the [Builder Code](/docs/help/glossary#builder-code-erc-8021), the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) sender, the [journal](/docs/help/glossary#journal), the scheduler and a [fork test](/docs/help/glossary#fork-test) that runs the whole [round](/docs/help/glossary#round). The Claude proposer and the CDP sender are tested against fakes only, and the fork run uses a scripted proposer and a local sender.
 
 **Read.** [Plan 2B](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) and [`agent/`](https://github.com/duongnq2798/maat/tree/main/agent).
 
@@ -65,7 +96,7 @@ Dates are the author dates that `git log --date=short` prints for the first and 
 
 **Dates.** 2026-11-06. The first commit is `a5a82ab` and the last is `3af1ad8`. The branch was merged in `55e25b5` on 2026-11-07.
 
-**Scope.** `MarketCalendar`, `PriceLib`, `GuardLib`, the Aerodrome swap adapter and `MandateVault` with its [`Decision`](/docs/help/glossary#decision) log and [timelock](/docs/help/glossary#timelock), the Base mainnet deploy script, unit tests and fork tests.
+**Scope.** `MarketCalendar`, `PriceLib`, `GuardLib`, the [Aerodrome](/docs/help/glossary#aerodrome-slipstream) swap adapter and `MandateVault` with its [`Decision`](/docs/help/glossary#decision) log and [timelock](/docs/help/glossary#timelock), the Base mainnet deploy script, unit tests and fork tests.
 
 **Read.** [Plan 1](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) and [`contracts/`](https://github.com/duongnq2798/maat/tree/main/contracts).
 
