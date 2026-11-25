@@ -102,7 +102,8 @@ The table below maps the guarantees to their tests, in the contracts and in the 
 | **The calendar only gets stricter** | [`test_ownerCanOnlyMakeItStricter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) | Unit | The calendar owner can add a holiday or an earlier close, and cannot loosen either |
 | **[Preview](/docs/help/glossary#preview) mismatch halts** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "halts when the preview said OK but the vault refused" | Agent unit | The round stops and the journal records the mismatch |
 | **Pending sends are reconciled** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "reconciles a send that threw after broadcast instead of sending again", "drops a pending entry older than the window that never reached the chain" | Agent unit | A send that threw after broadcast is reconciled in the next round, and the agent does not send it again. A pending send with no onchain trace after at least <Fact name="pendingWindowMinutes" /> of chain time is dropped. The README calls this row "Exactly-once sends"; [the security model](/docs/security/model#what-the-agent-adds) says what it does not cover |
-| **The sender only reaches the vault** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses calldata that does not decode" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
+| **The sender only reaches the vault** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses calldata that does not decode, or carries bytes after the call" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
+| **Every `execute` carries its blob** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses a blob whose keccak256 is not the intent's rationaleHash" | Agent unit | An `execute` whose [rationale blob](/docs/help/glossary#rationale-blob) does not hash to its `rationaleHash` is refused |
 | **The gas limit is bounded** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses a missing, zero or over-cap gas limit" | Agent unit | A missing, zero or over-cap limit is refused, and a limit at the cap is sent |
 
 To run one row yourself, use the test names in the table. From `contracts/`:
@@ -244,7 +245,7 @@ The agent's unit tests use fakes. The fake chain, receipts and sender are in [`a
 
 This is the mismatch test, the one that makes the agent stop a round when its preview said OK and the vault refused:
 
-```typescript title="agent/test/runOnce.test.ts#L721-L731"
+```typescript title="agent/test/runOnce.test.ts#L871-L881"
     it("halts when the preview said OK but the vault refused", async () => {
       const t = await setup({ batch: TWO });
       t.receipts.verdict = () => ({ allowed: false, reason: 15 });

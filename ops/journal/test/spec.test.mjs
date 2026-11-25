@@ -92,7 +92,7 @@ describe("project (spec §3.2, the allowlist)", () => {
 
   it("keeps exactly the fields its kind lists, plus the common ones, and leaves absent fields absent", () => {
     const all = Object.fromEntries(
-      ["block", "day", "mode", "ok", "costUsd6", "suggestions", "proposals", "index", "intentId", "action", "symbol", "amountUsd6", "rationaleHash", "blob", "preview", "gate", "txHash", "gasUsed", "decision", "gas", "outcome", "call", "token"].map((k) => [k, `v-${k}`]),
+      ["block", "day", "mode", "ok", "costUsd6", "suggestions", "proposals", "index", "intentId", "action", "symbol", "amountUsd6", "rationaleHash", "blob", "preview", "gate", "txHash", "gasUsed", "decision", "gas", "outcome", "call", "token", "at", "expected"].map((k) => [k, `v-${k}`]),
     );
     const keys = (kind) => Object.keys(project({ ...common, kind, ...all })).sort();
     const base = ["commit", "hash", "kind", "prev", "runId", "ts"];
@@ -104,6 +104,7 @@ describe("project (spec §3.2, the allowlist)", () => {
     assert.deepEqual(keys("mismatch"), want("intentId", "preview", "decision"));
     assert.deepEqual(keys("housekeeping"), want("call", "token", "txHash", "gas", "gasUsed"));
     assert.deepEqual(keys("skip"), want("index", "symbol", "action"));
+    assert.deepEqual(keys("probe"), want("at", "expected", "outcome"));
     assert.deepEqual(keys("error"), base);
     assert.deepEqual(keys("constructor"), base);
     assert.deepEqual(Object.keys(project({ kind: "skip", index: 0 })).sort(), ["index", "kind"]);

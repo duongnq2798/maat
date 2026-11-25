@@ -145,9 +145,10 @@ The blob is at most 1,024 bytes, prefix included. When `canon` gives more:
 
 1. `t` becomes the longest of its cuts (§2.3 step 5) with which the blob fits. Cuts fall on spaces and a `"` or `\`
    costs 2 bytes, so a capped blob can be a few bytes under 1,024. A `t` that ends with the closed-market note `n`
-   (§2.5) is cut only before `n`: its cuts are those of the part before `n`, each followed by `n`.
-2. If the shortest cut (`...`, or `...` followed by `n`) still does not fit, drop `s` entries from the end until it
-   does.
+   (§2.5) is cut only before `n`: its cuts are those of the part before `n`, each followed by `n`. With `k`, only the
+   cuts that keep the start `t` must have (§2.1, `k`) count, such as `Compute bill: ...`.
+2. If the shortest cut (`...`, or `...` followed by `n`; with `k`, the shortest cut that keeps the start) still does
+   not fit, drop `s` entries from the end until it does.
 
 With every other field at its maximum (`c` with `-dirty`) and `t = "..."`, the blob is 372 bytes with `s` empty and
 623 bytes with 3 symbol entries (701 if every entry falls back to its address). The longest `n` adds 59 bytes. So
@@ -219,6 +220,7 @@ change have none.
 | `mismatch` | `intentId`, `preview`, `decision` |
 | `housekeeping` | `call`, `token`, `txHash`, `gas`, `gasUsed` |
 | `skip` | `index`, `symbol`, `action` |
+| `probe` | `at`, `expected`, `outcome` (one MAAT_PROBES instant: `at` as `YYYY-MM-DDTHH:MM:SSZ`, `expected` `OK` or `MARKET_CLOSED` when the calendar was read, `outcome` one of `sent`, `dry-run`, `skipped`, `halted`, `missed`, `capped`) |
 | `error` and any other kind | none |
 
 Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error` (a

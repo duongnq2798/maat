@@ -95,4 +95,33 @@ describe("Store", () => {
     await writeFile(join(d, "state.json"), JSON.stringify({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {} }));
     expect((await Store.open(d)).pending()).toEqual([]);
   });
+
+  it("remembers what became of each probe across reopen, and counts the ones that ran on a UTC day", async () => {
+    const d = await dir();
+    const s = await Store.open(d);
+    expect(s.probeOutcome("2026-11-27T17:58:00Z")).toBeUndefined();
+    expect(s.probesRunOn("2026-11-27")).toBe(0);
+    s.recordProbe("2026-11-27T14:00:00Z", "missed");
+    s.recordProbe("2026-11-27T15:00:00Z", "capped");
+    s.recordProbe("2026-11-27T17:58:00Z", "started");
+    s.recordProbe("2026-11-27T17:58:00Z", "sent");
+    s.recordProbe("2026-11-27T18:01:00Z", "skipped");
+    s.recordProbe("2026-11-28T00:00:00Z", "halted");
+    await s.save();
+    const again = await Store.open(d);
+    expect(again.probeOutcome("2026-11-27T17:58:00Z")).toBe("sent");
+    expect(again.probeOutcome("2026-11-27T14:00:00Z")).toBe("missed");
+    // A missed or capped probe never ran; a started one may have sent before a crash, so it counts.
+    expect(again.probesRunOn("2026-11-27")).toBe(2);
+    expect(again.probesRunOn("2026-11-28")).toBe(1);
+  });
+
+  it("opens a state file written before probes existed", async () => {
+    const d = await dir();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(d, "state.json"), JSON.stringify({ version: 1, compute: {}, paidUsd6: "0", refusals: {}, txByDay: {}, pending: [] }));
+    const s = await Store.open(d);
+    expect(s.probeOutcome("2026-11-27T17:58:00Z")).toBeUndefined();
+    expect(s.probesRunOn("2026-11-27")).toBe(0);
+  });
 });
