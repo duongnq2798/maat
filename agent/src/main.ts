@@ -1,3 +1,4 @@
+import { inboxSetup } from "./briefs/inbox.js";
 import { loadConfig } from "./config.js";
 import { ignoredAnthropicEnv, ignoredAnthropicKey } from "./llm/proposer.js";
 import { heartbeatOf, writeHeartbeat } from "./loop/heartbeat.js";
@@ -6,11 +7,9 @@ import { probeStartup, runProbe, runProbes } from "./loop/probeRound.js";
 import { runOnce } from "./loop/runOnce.js";
 import { abortableSleep, runForever } from "./loop/scheduler.js";
 import { oneLine } from "./redact.js";
-import { buildRuntime } from "./runtime.js";
-import { usdc6ToUsd } from "./units.js";
+import { buildRuntime, startLine } from "./runtime.js";
 
 const args = new Set(process.argv.slice(2));
-const usd = (usd6: bigint) => `$${usdc6ToUsd(usd6).toFixed(2)}`;
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
@@ -18,11 +17,11 @@ async function main(): Promise<void> {
   // Lock before building the runtime: a second process must not even open the Store or connect to CDP.
   const release = await acquireLock(cfg.dataDir);
   try {
-    const deps = await buildRuntime(cfg, { forceDryRun: args.has("--dry-run") });
-    const credit = deps.policy?.creditActions ? "on" : "off";
-    console.log(
-      `maat agent: mode=${deps.mode} vault=${cfg.vault} executor=${cfg.executor} data=${cfg.dataDir} credit=${credit} llm-cap=${usd(deps.maxLlmUsd6PerDay)}/day bill-min=${usd(deps.billMinUsd6)}`,
-    );
+    // MaatInbox briefs: read only when deployments/README.md records the inbox with its deploy tx.
+    const inbox = inboxSetup();
+    const deps = await buildRuntime(cfg, { forceDryRun: args.has("--dry-run"), inbox: inbox.record });
+    console.log(startLine(cfg, deps));
+    console.log(inbox.line);
     if (args.has("--once")) {
       const r = await runOnce(deps);
       console.log(JSON.stringify(r, (_k, v) => (typeof v === "bigint" ? v.toString() : v), 2));

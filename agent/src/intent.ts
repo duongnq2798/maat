@@ -4,7 +4,7 @@ import type { VaultState } from "./chain/state.js";
 import { signedPremiumBps } from "./chain/twap.js";
 import { BlobError, encodeBlob, MAX_SOURCES, type BlobInput, type EncodedBlob, type Source } from "./rationale/blob.js";
 import { actionId, type ActionName, type OnchainIntent } from "./types.js";
-import { minBig, rawForUsd6, usdToUsdc6, valueUsd6 } from "./units.js";
+import { minBig, rawForUsd6, usdc6ToUsd, usdToUsdc6, valueUsd6 } from "./units.js";
 
 export interface Proposal {
   action: ActionName;
@@ -47,6 +47,15 @@ export function intentId(runId: string, index: number): Hex {
 /** keccak256 of the text's UTF-8 bytes: an intent's rationaleHash is this of its maat:v1 blob. */
 export function rationaleHash(text: string): Hex {
   return keccak256(toBytes(text));
+}
+
+/**
+ * The blob text of a brief-driven intent (blob `q`): a fixed template filled only with typed fields, the adopted brief
+ * ids, the action, the token and the amount the intent carries. Neither a brief's text nor Claude's rationale is in it.
+ */
+export function briefText(q: readonly number[], action: ActionName, symbol: string, amountUsd6: bigint): string {
+  const ids = q.length === 1 ? `brief ${q[0]}` : `briefs ${q.slice(0, -1).join(", ")} and ${q.at(-1)}`;
+  return `Brief-driven: ${action} ${usdc6ToUsd(amountUsd6).toFixed(2)} USD of ${symbol}, adopting MaatInbox ${ids}.`;
 }
 
 /** The intent for `p` at state `s`. Its rationaleHash commits to the maat:v1 blob built from `p.rationale`, not to the text alone. */
@@ -93,7 +102,8 @@ export function buildIntent(
   }
   if (amount === 0n) return fail("amount rounds to zero");
 
-  const blobInput: BlobInput = { ...ctx.blob, b: Number(s.blockNumber), r: ctx.runId, s: sourcesOf(s), text: p.rationale };
+  const text = ctx.blob.q ? briefText(ctx.blob.q, p.action, p.symbol, amountUsd6) : p.rationale;
+  const blobInput: BlobInput = { ...ctx.blob, b: Number(s.blockNumber), r: ctx.runId, s: sourcesOf(s), text };
   let blob: EncodedBlob;
   try {
     blob = encodeBlob(blobInput);
