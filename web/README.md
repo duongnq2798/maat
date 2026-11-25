@@ -62,6 +62,7 @@ The docs center is one MDX file per page, `content/docs/<section>/<page>.mdx`, w
 | `content/generated/agent.json` | the settings in `agent/.env.example` with their defaults in `agent/src/config.ts`, the scripts in `agent/package.json`, and the `.ts` files in `agent/scripts` |
 | `content/generated/tests.json` | the line each test starts on, in `contracts/test` and `agent/test` |
 | `content/generated/abi.json` | `agent/src/abi/generated.ts`, which `npm run gen:abi` writes in `agent/` |
+| `content/generated/skill.json` | `skills/maat-market-guard/SKILL.md`, which `app/skill.md/route.ts` serves at `/skill.md` |
 
 ### Frontmatter
 
@@ -153,7 +154,7 @@ A component that wraps Markdown text, such as `<Callout>`, stays out of `DATA_CO
 
 ### What check:out checks
 
-It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, the edition files in `content/gap-index/` for the NVDAc hours `/gap-index` must show, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
+It checks the `out/` the last build left and does not build, so run it after `npm run build`. It also reads `content/generated/abi.json` to compare the ABIs, `content/generated/skill.json` to compare `/skill.md`, the edition files in `content/gap-index/` for the NVDAc hours `/gap-index` must show, and, on CI or Vercel, the pages in `content/docs/` for the localhost URLs they write.
 
 - The files a deploy needs, among them `index.html`, `now.html`, `gap-index.html`, `404.html`, `docs.html`, `ledger.html`, `sitemap.xml`, `llms.txt`, `llms-full.txt` and the search index.
 - The landing page: `lang`, the title and description of `SITE` (`lib/site.ts`), an absolute Open Graph image, the X card, the Saturday verdict in the HTML, the simulator's `#try` section with its default verdict in its live region, the live strip's reading state with no LIVE pill, Basescan block link or verdict line in the HTML (the strip reads Base in the browser, so a reading in the export would be a stale one), a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and no docs CSS or JS in its assets.
@@ -164,6 +165,7 @@ It checks the `out/` the last build left and does not build, so run it after `np
 - Each docs page's Markdown copy: no component tag left in place of its text, the index note first, and the status label, review date and Source of truth files of its page.
 - `llms.txt`, `llms-full.txt` and `sitemap.xml` list every docs page, and `llms.txt` gives the status under its summary and links each page's Markdown copy.
 - Each ABI under `out/data/abi/` holds the committed ABI.
+- `skill.md`, the market-guard skill's instructions for other agents, is exactly the text of `skills/maat-market-guard/SKILL.md`.
 - `/ledger`, the mainnet ledger: while the deployments table records a vault, its connecting line and no chain reading in the HTML (no "Reading Base mainnet" line and no Basescan transaction link: the page reads Base in the browser); the waiting state only while the table has none; a description of 50 to 160 characters, an absolute Open Graph image, a canonical URL ending in `/ledger`, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and a `sitemap.xml` entry.
 - The search index stays within the gzipped budget in `lib/check-out.ts`, and every result opens an exported page and heading.
 - On CI or Vercel only: no exported file links an `http://localhost` URL (see below).
