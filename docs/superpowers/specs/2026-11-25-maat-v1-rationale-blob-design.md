@@ -212,7 +212,7 @@ change have none.
 
 | Kind | Further fields |
 |---|---|
-| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`; absent when the row's `summary` is empty, never `(no text)`), `capped` (`true` when the row's `error` starts with `llm cap: `: the daily LLM cap stopped the round before Claude was called; else absent) |
+| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`; absent when the row's `summary` is empty after sanitizer steps 1-3 (§2.3), as one of only spaces, emoji or other dropped characters is, never `(no text)`), `capped` (`true` when the row's `error` starts with `llm cap: `: the daily LLM cap stopped the round before Claude was called; else absent) |
 | `intent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gasUsed`, `decision` |
 | `sent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gas` |
 | `reconcile` | `intentId`, `action`, `txHash`, `outcome`, `decision` |

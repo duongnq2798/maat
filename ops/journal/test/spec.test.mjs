@@ -60,6 +60,12 @@ describe("sanitize (spec §2.3 and the §5.8 table)", () => {
     assert.equal(sanitize("abcdefghijkl", 8), "...");
   });
 
+  it("cuts (no text) too when max is under its 9 characters: step 5 comes after step 4", () => {
+    assert.equal(sanitize("", 9), "(no text)");
+    assert.equal(sanitize(" ", 7), "(no ...");
+    assert.equal(sanitize("", 5), "...");
+  });
+
   it("maps quotes, dashes and line breaks, and strips URLs, as in V2", () => {
     const v2 = "Fixture — premium check.\nSee https://basescan.org/tx/0xabc and www.example.com/x for context; vault says “no”.";
     assert.equal(sanitize(v2, 600), 'Fixture - premium check. See [url] and [url] for context; vault says "no".');
@@ -114,8 +120,20 @@ describe("project (spec §3.2, the allowlist)", () => {
     assert.equal(run("Buy—see https://example.com now").summary, "Buy-see [url] now");
     assert.equal(run("x ".repeat(400)).summary.length <= 600, true);
     assert.equal("summary" in run(""), false);
-    assert.equal("summary" in run(" \n\t "), false);
     assert.equal("summary" in project({ ...common, kind: "run" }), false);
+  });
+
+  it("leaves out a summary that nothing is left of after sanitizer steps 1 to 3, never (no text)", () => {
+    const run = (summary) => project({ ...common, kind: "run", summary });
+    // Only spaces, only emoji, only CJK or Cyrillic text, only control characters: the sanitizer drops every one.
+    for (const summary of [" ", " \n\t ", "\u{1F680}", "\u{1F680} \u{1F4C8}", "上涨", "Рост", "\u0000\u007f 　"]) {
+      assert.equal("summary" in run(summary), false, JSON.stringify(summary));
+    }
+    assert.equal(run("\u{1F680} go").summary, "go");
+    // The hash covers the projection, so a row whose summary is all emoji hashes as one with no summary at all.
+    const base = { ...common, kind: "run", block: "1", day: "20783", mode: "live", ok: true, costUsd6: "1", suggestions: 0, proposals: 0 };
+    assert.equal(rowHash(project({ ...base, summary: "\u{1F680}" })), rowHash(project(base)));
+    assert.equal(publishedLine(project({ ...base, summary: "\u{1F680}" })).includes("no text"), false);
   });
 
   it("marks a run that the daily LLM cap stopped as capped, and no other", () => {

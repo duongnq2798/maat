@@ -76,14 +76,13 @@ export function clean(text) {
 }
 
 /**
- * The spec's sanitize(text, max): clean the text, "(no text)" when nothing is left, and when it is longer than max the
- * longest cut that fits: a prefix ending just before one of its spaces followed by " ...", or "..." alone.
+ * The spec's sanitize(text, max): clean the text, "(no text)" when nothing is left, and when that is longer than max
+ * the longest cut that fits: a prefix ending just before one of its spaces followed by " ...", or "..." alone.
  * @param {string} text
  * @param {number} max
  */
 export function sanitize(text, max) {
-  const t = clean(text);
-  if (t === "") return "(no text)";
+  const t = clean(text) || "(no text)";
   if (t.length <= max) return t;
   for (let i = t.lastIndexOf(" "); i > 0; i = t.lastIndexOf(" ", i - 1)) {
     if (i + 4 <= max) return `${t.slice(0, i)} ...`;
@@ -105,7 +104,8 @@ const BY_KIND = new Map([
 
 /**
  * The public projection of one journal row (spec §3.2): the common fields and its kind's fields, as they are on disk.
- * A run's summary is sanitized to 600 characters and left out when nothing is left of it; `capped` is true when its
+ * A run's summary is sanitized to 600 characters and left out when nothing is left of it after sanitizer steps 1 to 3
+ * (only spaces, emoji or other dropped characters), so it is never "(no text)"; `capped` is true when its
  * error says the daily LLM cap stopped the round. Every other field, the raw rationale and every error text included,
  * stays on the PC.
  * @param {Record<string, unknown>} row

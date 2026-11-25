@@ -29,7 +29,7 @@ Only these fields of each row, as they are on disk. A field the row does not hav
 | Row kind | Fields |
 | --- | --- |
 | every kind | `ts`, `kind`, `runId`, `commit`, `prev`, `hash` |
-| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (sanitized to 600 characters; left out when empty), `capped` (`true` when the daily LLM cap stopped the round) |
+| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (sanitized to 600 characters; left out when nothing is left of it, as of a summary of only spaces or emoji), `capped` (`true` when the daily LLM cap stopped the round) |
 | `intent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gasUsed`, `decision` |
 | `sent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gas` |
 | `reconcile` | `intentId`, `action`, `txHash`, `outcome`, `decision` |
