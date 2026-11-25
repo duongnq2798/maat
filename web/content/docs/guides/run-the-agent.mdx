@@ -428,6 +428,9 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 | `probe <AT>: scheduled` | At start, for an instant still to come. |
 | `probe <AT>: <OUTCOME> before this start; not run again` | At start, for an instant that `state.json` already holds. |
 | `probe <AT>: <OUTCOME> (expected <EXPECTED>), sent <N>` | After a probe, with `; ` and the reason when it sent nothing. |
+| `probe <AT>: not run, the agent is stopping` | After Ctrl-C, for a probe that was waiting for a round to end. The next start journals it as missed. |
+
+To rehearse the probes before their instants, run [probe-fork.ts](/docs/reference/agent-scripts#probe-forkts) on a local fork.
 
 ## What the agent keeps in its data folder
 

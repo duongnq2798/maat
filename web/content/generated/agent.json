@@ -220,6 +220,7 @@
     "first-decision.ts",
     "gen-abis.ts",
     "heartbeat.ts",
+    "probe-fork.ts",
     "restart-loop.ts",
     "smoke-claude.ts",
     "verify-decision.ts"
