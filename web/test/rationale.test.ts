@@ -60,11 +60,13 @@ describe("exportRationales", () => {
 });
 
 // The vault's two Decision events on Base mainnet, as their transaction receipts record them: the owner-sent BUY the
-// vault refused with reason 6 (MARKET_CLOSED) and the one it allowed. Both commit to the same rationaleHash.
+// vault refused with reason 6 (MARKET_CLOSED) and the one it allowed. Both commit to the same rationaleHash. ts is the
+// timestamp of each block (1795530495 and 1795539542) as an ISO string.
 const MAINNET = [
   {
     txHash: "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
     block: 61_700_601,
+    ts: "2026-11-24T14:28:15.000Z",
     intentId: "0xdc06ec8e29767044d325cc10445a942d26a463a4ed08487b013c5fed2a59243c",
     allowed: false,
     rationaleHash: "0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
@@ -72,6 +74,7 @@ const MAINNET = [
   {
     txHash: "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8",
     block: 61_745_836,
+    ts: "2026-11-24T16:59:02.000Z",
     intentId: "0x475efb77a4242345466f42fc844ac578b99716db50eca20d0ffe27549a68ee3d",
     allowed: true,
     rationaleHash: "0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
@@ -88,6 +91,10 @@ describe("the committed export (content/generated/rationales.json)", () => {
       const row = rationales.find((r) => r.intentId === m.intentId);
       expect(row?.rationaleHash).toBe(m.rationaleHash);
       expect(verifyRationale(row?.text, m.rationaleHash)).toBe("verified");
+    });
+
+    it(`dates the ${m.allowed ? "allowed" : "refused"} Decision at the time of block ${m.block}`, () => {
+      expect(rationales.find((r) => r.intentId === m.intentId)?.ts).toBe(m.ts);
     });
   }
 
