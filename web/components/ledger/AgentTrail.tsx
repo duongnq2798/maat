@@ -52,10 +52,13 @@ export function SenderLine({ trail, txState }: { trail: DecisionTrail | undefine
     );
   }
   const label = trail.label ? LABEL[trail.label] : null;
+  const unlabeled = trail.call
+    ? { text: "sender unknown", title: "The vault's owner could not be read, so the sender cannot be labeled." }
+    : { text: "sender not labeled", title: "This transaction is not a direct execute call to the vault, so its sender need not be the executor and is not labeled." };
   return (
     <p className="flex flex-wrap items-center gap-2">
-      <span title={label?.title ?? "The vault's owner could not be read, so the sender cannot be labeled."} className={`${CHIP} ${label?.className ?? "bg-surface-soft text-ink-2"}`}>
-        {trail.label ?? "sender unknown"}
+      <span title={label?.title ?? unlabeled.title} className={`${CHIP} ${label?.className ?? "bg-surface-soft text-ink-2"}`}>
+        {trail.label ?? unlabeled.text}
       </span>
       <span className={`${CHIP} border border-line text-ink-2`}>{blobStatusText(trail)}</span>
     </p>

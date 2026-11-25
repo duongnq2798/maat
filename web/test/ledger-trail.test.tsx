@@ -92,8 +92,9 @@ describe("loadLedger reads each Decision's transaction", () => {
     expect([...snapshot.txs.keys()].sort()).toEqual(ROWS.map((r) => hash32(r.n).toLowerCase()).sort());
   });
 
-  it("labels each sender as the spec says, first match wins", () => {
-    expect([1, 2, 3, 4, 5, 6, 7].map((n) => trailOf(n).label)).toEqual(["owner, by hand", "agent", "probe", "brief-driven", "agent", "agent", "agent"]);
+  it("labels each sender as the spec says, first match wins, and leaves a call through another contract unlabeled", () => {
+    // tx.from is the executor only for a direct execute call (spec §4); through another contract it can be anyone.
+    expect([1, 2, 3, 4, 5, 6, 7].map((n) => trailOf(n).label)).toEqual(["owner, by hand", "agent", "probe", "brief-driven", "agent", "agent", null]);
   });
 
   it("ticks the blob hash in the browser: keccak256 of the blob against the Decision's rationaleHash", () => {
@@ -190,6 +191,7 @@ describe("the agent trail on each Decision row", () => {
   it("reads nothing from a call through another contract, and falls back to the exported text", () => {
     timeline();
     expect(within(rowOf(7)).getByText("not a direct execute call")).toBeInTheDocument();
+    expect(within(rowOf(7)).getByText("sender not labeled").getAttribute("title")).toMatch(/not a direct execute call to the vault/);
     expect(within(rowOf(7)).getByText("Rationale not exported yet")).toBeInTheDocument();
     expect(rowOf(7)).not.toHaveTextContent("Builder Code");
   });

@@ -237,7 +237,10 @@ export type BuilderCodeCheck =
 
 export interface DecisionTrail {
   from: Address;
-  /** Null while the vault's owner is unknown (its read failed). */
+  /**
+   * Null while the vault's owner is unknown (its read failed), and for a transaction that is not a direct `execute`
+   * call to the vault: through another contract, tx.from is not the executor, so it says nothing about who sent it.
+   */
   label: SenderLabel | null;
   /** The calldata split as §1 lays it out, or null when the transaction is not a direct `execute` call to the vault. */
   call: ExecuteCall | null;
@@ -284,7 +287,7 @@ export function decisionTrails(
     const state = reference === null ? "no-reference" : d.key === firstKey ? "reference" : codes?.includes(reference) ? "match" : "differs";
     out.set(d.key, {
       from: tx.from,
-      label: ctx.owner ? senderLabel(tx.from, ctx.owner, blob) : null,
+      label: ctx.owner && call ? senderLabel(tx.from, ctx.owner, blob) : null,
       call,
       blobHashOk: call?.blobHash ? call.blobHash.toLowerCase() === d.rationaleHash.toLowerCase() : null,
       builderCode: codes === null ? { state: "none" } : { state, codes, reference },
