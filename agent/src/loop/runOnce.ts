@@ -22,13 +22,16 @@ import type { Journal } from "../ledger/journal.js";
 import type { PendingTx, Store } from "../ledger/store.js";
 import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
+import { oneLine } from "../redact.js";
 import { closedNote, gate, LOGGABLE_REASONS, refusalKey } from "../refusals.js";
-import { REASONS } from "../types.js";
+import { CREDIT_ACTIONS, REASONS } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
 /** What runOnce needs from the chain around a send: gas estimates, receipts, and pending-tx reconciliation. */
 export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "getBlockNumber" | "readContract">;
+/** The smallest unpaid compute bill a round pays back, unless MAAT_BILL_MIN_USD sets it: in dry-run, and in live. */
 export const BILL_MIN_USD6 = 100_000n;
+export const LIVE_BILL_MIN_USD6 = 1_000_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
 /** A pending send with no onchain trace is given up after this much chain time: 10 minutes. */
 export const PENDING_WINDOW_SECONDS = 600n;
@@ -42,6 +45,10 @@ export interface RunDeps {
   mode: "dry-run" | "live";
   defaultDailyComputeUsd6: bigint;
   maxTxPerDay: number;
+  /** A round pays the compute bill back once it is at least this much (MAAT_BILL_MIN_USD). */
+  billMinUsd6: bigint;
+  /** Claude is not called once the UTC day's Claude spend has reached this (MAAT_MAX_LLM_USD_PER_DAY). */
+  maxLlmUsd6PerDay: bigint;
   stateClient: StateClient;
   previewClient: PreviewClient;
   txClient: TxClient;
@@ -50,6 +57,7 @@ export interface RunDeps {
   sender: GuardedSender | null;
   store: Store;
   journal: Pick<Journal, "append">;
+  /** DEFAULT_POLICY when unset. Its creditActions also decides the prompt and whether a credit proposal is dropped. */
   policy?: PolicyParams;
   runId?: string;
 }
@@ -70,7 +78,7 @@ type Decision = { allowed: boolean; reason: string };
 class Halt extends Error {}
 
 const DECISION_EVENT = getAbiItem({ abi: mandateVaultAbi, name: "Decision" });
-const firstLine = (e: unknown) => (e instanceof Error ? e.message : String(e)).split("\n")[0];
+const dollars = (usd6: bigint) => `$${usdc6ToUsd(usd6).toFixed(2)}`;
 
 function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
@@ -124,7 +132,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     try {
       return gasLimit(fn, await d.txClient.estimateGas({ account: d.executor, to: d.vault, data }));
     } catch (e) {
-      throw new Halt(`gas estimate failed for ${fn}: ${firstLine(e)}`);
+      throw new Halt(`gas estimate failed for ${fn}: ${oneLine(e)}`);
     }
   };
 
@@ -132,7 +140,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     try {
       return await d.txClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
     } catch (e) {
-      throw new Halt(`no receipt for ${hash}: ${firstLine(e)}`);
+      throw new Halt(`no receipt for ${hash}: ${oneLine(e)}`);
     }
   };
 
@@ -248,13 +256,15 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
 
     const unpaid = d.store.unpaidUsd6();
-    const policy = evaluatePolicy(
-      s,
-      { dailyComputeUsd6: d.store.dailyComputeUsd6(day, d.defaultDailyComputeUsd6), unpaidUsd6: unpaid },
-      d.policy ?? DEFAULT_POLICY,
-    );
-    const out = await d.proposer.propose({ state: s, policy, billUsd6: unpaid });
-    d.store.recordCompute(day, out.costUsd6);
+    const params = d.policy ?? DEFAULT_POLICY;
+    const policy = evaluatePolicy(s, { dailyComputeUsd6: d.store.dailyComputeUsd6(day, d.defaultDailyComputeUsd6), unpaidUsd6: unpaid }, params);
+    // The cap is checked before each call, so the call that crosses it is the day's last; bills and housekeeping go on.
+    const spent = d.store.computeOn(day);
+    const capped = spent >= d.maxLlmUsd6PerDay;
+    const out = capped
+      ? { ok: false as const, error: `llm cap: ${dollars(spent)} of ${dollars(d.maxLlmUsd6PerDay)} spent on UTC day ${day}; Claude not called`, costUsd6: 0n }
+      : await d.proposer.propose({ state: s, policy, billUsd6: unpaid, creditActions: params.creditActions });
+    if (!capped) d.store.recordCompute(day, out.costUsd6);
     await j.append({
       kind: "run",
       runId,
@@ -270,7 +280,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     });
 
     const queue: Proposal[] = [];
-    if (unpaid >= BILL_MIN_USD6) {
+    if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
       queue.push({ action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale: `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}` });
     }
@@ -278,6 +288,12 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     report.proposals = queue.length;
 
     for (const [index, p] of queue.entries()) {
+      // Credit off: Claude's credit proposal never reaches the preview, whatever the prompt and the policy said.
+      if (!params.creditActions && CREDIT_ACTIONS.has(p.action)) {
+        await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: `credit actions are off: ${p.action} dropped before the preview` });
+        report.skipped++;
+        continue;
+      }
       if (dirty) {
         s = await reread();
         dirty = false;
@@ -360,8 +376,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
   } catch (e) {
     report.status = "halted";
-    // The first line only: viem lists the RPC URL, which may carry a key, on the lines below it.
-    report.haltReason = firstLine(e);
+    // The first line only, redacted: viem lists the RPC URL, which may carry a key, on the lines below it.
+    report.haltReason = oneLine(e);
     await j.append({ kind: "error", runId, message: `halted: ${report.haltReason}` });
   } finally {
     await d.store.save();

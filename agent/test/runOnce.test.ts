@@ -3,17 +3,18 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { HttpRequestError, keccak256, size, toBytes } from "viem";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
 import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
 import { Journal, type JournalRow } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
-import { FixedProposer, type Proposer } from "../src/llm/proposer.js";
+import { FixedProposer, type Proposer, type ProposerInput } from "../src/llm/proposer.js";
 import type { Batch } from "../src/llm/schema.js";
-import { LEGACY_PENDING_WINDOW_BLOCKS, PENDING_WINDOW_SECONDS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
-import type { OnchainIntent } from "../src/types.js";
+import { BILL_MIN_USD6, LEGACY_PENDING_WINDOW_BLOCKS, LIVE_BILL_MIN_USD6, PENDING_WINDOW_SECONDS, runOnce, type RunDeps } from "../src/loop/runOnce.js";
+import { DEFAULT_POLICY } from "../src/policy.js";
+import { CREDIT_ACTIONS, type OnchainIntent } from "../src/types.js";
 import { EXECUTOR, VAULT, standardScene, withCalendar, type FakeChain } from "./fakes/fakeChain.js";
 import { FakeReceipts } from "./fakes/fakeReceipts.js";
 import { FakeSender } from "./fakes/fakeSender.js";
@@ -23,7 +24,20 @@ const SUFFIX = builderSuffix("bc_maattest");
 const DAY = 1_794_000_000n / 86_400n;
 const BUY20: Batch = { summary: "buy", intents: [{ action: "BUY", symbol: "NVDAc", amountUsd: 20, rationale: "underweight" }] };
 
-async function setup(o: { mode?: "dry-run" | "live"; batch?: Batch; proposer?: Proposer; preview?: (i: OnchainIntent) => number | Promise<number>; scene?: FakeChain; store?: Store; maxTxPerDay?: number } = {}) {
+async function setup(
+  o: {
+    mode?: "dry-run" | "live";
+    batch?: Batch;
+    proposer?: Proposer;
+    preview?: (i: OnchainIntent) => number | Promise<number>;
+    scene?: FakeChain;
+    store?: Store;
+    maxTxPerDay?: number;
+    billMinUsd6?: bigint;
+    maxLlmUsd6PerDay?: bigint;
+    creditActions?: boolean;
+  } = {},
+) {
   const dir = await mkdtemp(join(tmpdir(), "maat-run-"));
   const scene = o.scene ?? standardScene();
   const store = o.store ?? (await Store.open(dir));
@@ -42,6 +56,9 @@ async function setup(o: { mode?: "dry-run" | "live"; batch?: Batch; proposer?: P
     mode: o.mode ?? "live",
     defaultDailyComputeUsd6: 500_000n,
     maxTxPerDay: o.maxTxPerDay ?? 40,
+    billMinUsd6: o.billMinUsd6 ?? BILL_MIN_USD6,
+    maxLlmUsd6PerDay: o.maxLlmUsd6PerDay ?? 750_000n,
+    ...(o.creditActions === undefined ? {} : { policy: { ...DEFAULT_POLICY, creditActions: o.creditActions } }),
     stateClient,
     previewClient: {
       readContract: (async (p: { args: readonly [OnchainIntent] }) => (previews.push(p.args[0]), (o.preview ?? (() => 0))(p.args[0]))) as never,
@@ -201,7 +218,7 @@ describe("runOnce", () => {
   });
 
   it("skips an invalid proposal and continues", async () => {
-    const t = await setup({ batch: { summary: "x", intents: [{ action: "BORROW", symbol: "NVDAc", amountUsd: 5, rationale: "r" }, BUY20.intents[0]!] } });
+    const t = await setup({ creditActions: true, batch: { summary: "x", intents: [{ action: "BORROW", symbol: "NVDAc", amountUsd: 5, rationale: "r" }, BUY20.intents[0]!] } });
     const r = await runOnce(t.deps);
     expect(r.sent).toHaveLength(1);
     expect((await t.journal.read()).find((e) => e.kind === "skip")).toMatchObject({ error: "symbol NVDAc does not fit BORROW" });
@@ -715,6 +732,170 @@ describe("runOnce", () => {
       expect(rows.find((e) => e.kind === "mismatch")).toMatchObject({ message: "mismatch: preview MARKET_CLOSED, vault FEED_STALE" });
       expect(rows.filter((e) => e.kind === "intent").at(-1)).toMatchObject({ gate: `MARKET_CLOSED already logged for UTC day ${DAY}` });
     });
+  });
+
+  describe("credit actions off (the default)", () => {
+    const CREDIT: Batch = {
+      summary: "credit",
+      intents: [
+        { action: "SUPPLY", symbol: "NVDAc", amountUsd: 5, rationale: "use as collateral" },
+        { action: "WITHDRAW_COLLATERAL", symbol: "NVDAc", amountUsd: 5, rationale: "withdraw before selling" },
+        { action: "BORROW", symbol: "USDC", amountUsd: 5, rationale: "compute runway" },
+        { action: "REPAY", symbol: "USDC", amountUsd: 5, rationale: "new revenue" },
+        BUY20.intents[0]!,
+      ],
+    };
+    const dropped = (action: string) => `credit actions are off: ${action} dropped before the preview`;
+
+    it("drops every credit proposal from Claude before the preview, journals each one, and still sends the rest", async () => {
+      const t = await setup({ batch: CREDIT });
+      const r = await runOnce(t.deps);
+      expect(r).toMatchObject({ status: "done", proposals: 5, skipped: 4 });
+      expect(t.previews).toHaveLength(1);
+      expect(t.previews[0]).toMatchObject({ action: 0, token: addressOf("NVDAc") });
+      expect(t.receipts.calls().map((c) => (c.args[0] as OnchainIntent).action)).toEqual([0]);
+      const skips = (await t.journal.read()).filter((e) => e.kind === "skip");
+      expect(skips.map((s) => [s.index, s.action, s.symbol, s.error])).toEqual([
+        [0, "SUPPLY", "NVDAc", dropped("SUPPLY")],
+        [1, "WITHDRAW_COLLATERAL", "NVDAc", dropped("WITHDRAW_COLLATERAL")],
+        [2, "BORROW", "USDC", dropped("BORROW")],
+        [3, "REPAY", "USDC", dropped("REPAY")],
+      ]);
+    });
+
+    it("drops them in dry-run too, so the soak shows what live will do", async () => {
+      const t = await setup({ mode: "dry-run", batch: CREDIT });
+      expect(await runOnce(t.deps)).toMatchObject({ status: "done", skipped: 5 });
+      expect(t.previews).toHaveLength(1);
+      expect((await t.journal.read()).filter((e) => e.kind === "skip")).toHaveLength(4);
+    });
+
+    it("previews a credit proposal only when credit actions are on", async () => {
+      const t = await setup({ creditActions: true, batch: { summary: "b", intents: [CREDIT.intents[2]!] } });
+      await runOnce(t.deps);
+      expect(t.previews).toHaveLength(1);
+      expect(t.previews[0]).toMatchObject({ action: 4, amount: 5_000_000n });
+      expect((await t.journal.read()).filter((e) => e.kind === "skip")).toEqual([]);
+    });
+
+    it("asks Claude with credit off and a policy that suggests no credit action", async () => {
+      // 0.1 NVDAc ($18.67) idle in the vault: with credit on, the policy suggests supplying it.
+      const scene = () => standardScene().set(addressOf("NVDAc"), "balanceOf", 10_000_000n);
+      const ask = async (creditActions?: boolean) => {
+        const seen: ProposerInput[] = [];
+        const proposer: Proposer = { propose: async (i) => (seen.push(i), { ok: true, summary: "hold", proposals: [], costUsd6: 0n, model: "fixed" }) };
+        const t = await setup({ scene: scene(), proposer, ...(creditActions === undefined ? {} : { creditActions }) });
+        await runOnce(t.deps);
+        return seen[0]!;
+      };
+      const off = await ask();
+      expect(off.creditActions).toBe(false);
+      expect(off.policy.suggestions.filter((s) => CREDIT_ACTIONS.has(s.action))).toEqual([]);
+      const on = await ask(true);
+      expect(on.creditActions).toBe(true);
+      expect(on.policy.suggestions.map((s) => s.action)).toContain("SUPPLY");
+    });
+  });
+
+  describe("daily LLM spend cap", () => {
+    const counting = (cost = 10_000n) => {
+      const p = { asked: 0, propose: async () => (p.asked++, { ok: true as const, summary: "buy", proposals: BUY20.intents, costUsd6: cost, model: "m" }) };
+      return p;
+    };
+    const spent = async (byDay: [bigint, bigint][]) => {
+      const store = await Store.open(await mkdtemp(join(tmpdir(), "maat-run-")));
+      for (const [day, usd6] of byDay) store.recordCompute(day, usd6);
+      return store;
+    };
+
+    it("skips Claude once the UTC day's spend reaches the cap, and journals llm cap", async () => {
+      const proposer = counting();
+      const store = await spent([[DAY, 750_000n]]);
+      const t = await setup({ store, proposer, billMinUsd6: LIVE_BILL_MIN_USD6 });
+      const r = await runOnce(t.deps);
+      expect(proposer.asked).toBe(0);
+      expect(r).toMatchObject({ status: "done", sent: [], proposals: 0 });
+      expect((await t.journal.read()).find((e) => e.kind === "run")).toMatchObject({
+        ok: false,
+        costUsd6: "0",
+        proposals: 0,
+        error: `llm cap: $0.75 of $0.75 spent on UTC day ${DAY}; Claude not called`,
+      });
+      expect(store.computeOn(DAY)).toBe(750_000n);
+    });
+
+    it("calls Claude below the cap, counting only today's spend", async () => {
+      const proposer = counting();
+      const store = await spent([
+        [DAY - 1n, 5_000_000n],
+        [DAY, 749_999n],
+      ]);
+      const t = await setup({ store, proposer, billMinUsd6: 100_000_000n });
+      expect((await runOnce(t.deps)).sent).toHaveLength(1);
+      expect(proposer.asked).toBe(1);
+      expect(store.computeOn(DAY)).toBe(759_999n);
+    });
+
+    it("lets the call that crosses the cap be the day's last", async () => {
+      const proposer = counting(20_000n);
+      const t = await setup({ store: await spent([[DAY, 740_000n]]), proposer, billMinUsd6: 100_000_000n });
+      await runOnce(t.deps);
+      await runOnce({ ...t.deps, runId: "run-2" });
+      expect(proposer.asked).toBe(1);
+      expect((await t.journal.read()).filter((e) => e.kind === "run").map((e) => e.ok)).toEqual([true, false]);
+    });
+
+    it("still pays the bill on a capped round", async () => {
+      const proposer = counting();
+      const t = await setup({ store: await spent([[DAY - 1n, 1_000_000n], [DAY, 750_000n]]), proposer, billMinUsd6: LIVE_BILL_MIN_USD6 });
+      const r = await runOnce(t.deps);
+      expect(proposer.asked).toBe(0);
+      expect(r.sent).toHaveLength(1);
+      expect(t.receipts.calls()[0]?.args[0]).toMatchObject({ action: 6, amount: 1_750_000n, payee: PAYEE });
+    });
+
+    it("never calls Claude with a cap of 0", async () => {
+      const proposer = counting();
+      const t = await setup({ proposer, maxLlmUsd6PerDay: 0n });
+      await runOnce(t.deps);
+      expect(proposer.asked).toBe(0);
+      expect((await t.journal.read()).find((e) => e.kind === "run")).toMatchObject({ error: `llm cap: $0.00 of $0.00 spent on UTC day ${DAY}; Claude not called` });
+    });
+  });
+
+  describe("smallest bill repayment", () => {
+    it("pays nothing below the minimum and the whole bill once it is reached", async () => {
+      const store = await Store.open(await mkdtemp(join(tmpdir(), "maat-run-")));
+      store.recordCompute(DAY - 1n, 999_999n);
+      const t = await setup({ store, billMinUsd6: LIVE_BILL_MIN_USD6 });
+      await runOnce(t.deps);
+      expect(t.receipts.calls()).toEqual([]);
+      store.recordCompute(DAY - 1n, 1n);
+      await runOnce({ ...t.deps, runId: "run-2" });
+      expect(t.receipts.calls().map((c) => c.args[0])).toEqual([expect.objectContaining({ action: 6, amount: 1_000_000n, payee: PAYEE })]);
+      expect(store.unpaidUsd6()).toBe(0n);
+    });
+
+    it("is $0.10 in dry-run and $1.00 in live unless MAAT_BILL_MIN_USD sets it", () => {
+      expect([BILL_MIN_USD6, LIVE_BILL_MIN_USD6]).toEqual([100_000n, 1_000_000n]);
+    });
+  });
+
+  it("redacts a URL and a secret that reach the first line of a halt reason", async () => {
+    vi.stubEnv("MAAT_TEST_RPC_URL", "https://rpc.example.org/v2/fake-key-0123456789");
+    try {
+      const store = await billed();
+      store.addPending(pendingEntry());
+      const t = await setup({ store });
+      const readContract = (async () => {
+        throw new Error("request to https://rpc.example.org/v2/fake-key-0123456789 failed (fake-key-0123456789)\nURL: https://rpc.example.org/v2/fake-key-0123456789");
+      }) as never;
+      const r = await runOnce({ ...t.deps, txClient: { ...t.deps.txClient, readContract } });
+      expect(r).toMatchObject({ status: "halted", haltReason: "request to [redacted] failed ([redacted])" });
+      expect(JSON.stringify(await t.journal.read())).not.toContain("fake-key");
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("refuses live mode without a sender", async () => {

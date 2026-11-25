@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
-import { SYSTEM_PROMPT } from "../src/llm/prompt.js";
+import { SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
 import { ClaudeProposer, FixedProposer, type CreateMessage } from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 
-const input = async () => {
+const input = async (creditActions = false) => {
   const state = await readVaultState(standardScene().client(), VAULT);
-  return { state, policy: evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n }), billUsd6: 0n };
+  return { state, policy: evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n }), billUsd6: 0n, creditActions };
 };
 const usage = { input_tokens: 10_000, output_tokens: 1_000 };
 const reply = (text: string, stop = "end_turn"): CreateMessage =>
@@ -36,6 +36,17 @@ describe("ClaudeProposer", () => {
     await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(await input());
     expect(seen.system).toEqual([{ type: "text", text: SYSTEM_PROMPT }]);
     expect(JSON.stringify(seen)).not.toContain("cache_control");
+  });
+
+  it("tells Claude credit actions are off unless the round turned them on", async () => {
+    const systems: unknown[] = [];
+    const create: CreateMessage = async (p) => (systems.push(p.system), { model: "claude-sonnet-5-5", stop_reason: "end_turn", content: [{ type: "text", text: '{"summary":"hold","intents":[]}' }], usage });
+    const proposer = new ClaudeProposer({ model: "claude-sonnet-5-5", create });
+    await proposer.propose(await input(false));
+    await proposer.propose(await input(true));
+    expect(systems).toEqual([[{ type: "text", text: systemPrompt({ creditActions: false }) }], [{ type: "text", text: systemPrompt({ creditActions: true }) }]]);
+    expect(SYSTEM_PROMPT).toBe(systemPrompt({ creditActions: false }));
+    expect(SYSTEM_PROMPT).toContain("Credit actions are off: never propose SUPPLY, WITHDRAW_COLLATERAL, BORROW or REPAY");
   });
 
   it("returns proposals and their cost", async () => {

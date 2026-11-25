@@ -58,6 +58,11 @@ export class Store {
     this.data.compute[k] = (BigInt(this.data.compute[k] ?? "0") + usd6).toString();
   }
 
+  /** What the agent spent on Claude on UTC day `day`, failed calls included. */
+  computeOn(day: bigint): bigint {
+    return BigInt(this.data.compute[day.toString()] ?? "0");
+  }
+
   dailyComputeUsd6(today: bigint, fallbackUsd6: bigint): bigint {
     const days: bigint[] = [];
     for (let d = today - 7n; d < today; d++) {

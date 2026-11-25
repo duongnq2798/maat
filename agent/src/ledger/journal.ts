@@ -21,22 +21,67 @@ type Stringified<T> = {
   [K in keyof T]: T[K] extends bigint ? string : T[K] extends bigint | undefined ? string | undefined : T[K];
 };
 
-/** A journal line as read back from disk: every bigint is a decimal string and `ts` is present. */
-export type JournalRow = JournalEntry extends infer E ? (E extends unknown ? Stringified<E> & { ts: string } : never) : never;
+/**
+ * A journal line as read back from disk: every bigint is a decimal string and `ts` is present. `commit` is the git
+ * commit of the agent code that wrote the row (see gitCommit.ts); rows older code wrote have none.
+ */
+export type JournalRow = JournalEntry extends infer E ? (E extends unknown ? Stringified<E> & { ts: string; commit?: string } : never) : never;
 
 const replacer = (_k: string, v: unknown) => (typeof v === "bigint" ? v.toString() : v);
+
+/**
+ * Whether a row was written in dry-run, by this code or older code: a round's `run` row names its mode, a gated
+ * intent row reads "dry-run: would ...", and a housekeeping row a dry-run skipped is noted "dry-run".
+ */
+export function isDryRunRow(r: Record<string, unknown>): boolean {
+  return (
+    (r.kind === "run" && r.mode === "dry-run") ||
+    (typeof r.gate === "string" && r.gate.startsWith("dry-run")) ||
+    (r.kind === "housekeeping" && r.note === "dry-run")
+  );
+}
 
 /** Append-only JSONL. Rows are written from `JournalEntry` and read back as `JournalRow` (bigints as strings). */
 export class Journal {
   private readonly file: string;
 
-  constructor(private readonly dir: string) {
+  /** With `commit`, every row this journal appends carries it. */
+  constructor(
+    private readonly dir: string,
+    private readonly opts: { commit?: string } = {},
+  ) {
     this.file = join(dir, "journal.jsonl");
   }
 
   async append(e: JournalEntry): Promise<void> {
     await mkdir(this.dir, { recursive: true });
-    await appendFile(this.file, JSON.stringify({ ts: new Date().toISOString(), ...e }, replacer) + "\n");
+    const commit = this.opts.commit === undefined ? {} : { commit: this.opts.commit };
+    await appendFile(this.file, JSON.stringify({ ts: new Date().toISOString(), ...commit, ...e }, replacer) + "\n");
+  }
+
+  /**
+   * The first dry-run row on disk, or null. A line that does not parse (a write cut short by a crash) is passed over:
+   * it cannot be told apart, and every dry-run round that reaches Claude also writes a `run` row naming its mode.
+   */
+  async firstDryRunRow(): Promise<{ ts?: unknown; runId?: unknown } | null> {
+    let text: string;
+    try {
+      text = await readFile(this.file, "utf8");
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+      throw e;
+    }
+    for (const line of text.split("\n")) {
+      if (line.trim().length === 0) continue;
+      let row: unknown;
+      try {
+        row = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      if (row !== null && typeof row === "object" && isDryRunRow(row as Record<string, unknown>)) return row as { ts?: unknown; runId?: unknown };
+    }
+    return null;
   }
 
   async read(): Promise<JournalRow[]> {

@@ -3,13 +3,15 @@ import type { PolicyView } from "../policy.js";
 import type { VaultState } from "../chain/state.js";
 import type { Proposal } from "../intent.js";
 import { costUsd6, type Usage } from "./pricing.js";
-import { renderUserMessage, SYSTEM_PROMPT } from "./prompt.js";
+import { renderUserMessage, systemPrompt } from "./prompt.js";
 import { BATCH_JSON_SCHEMA, BatchSchema, type Batch } from "./schema.js";
 
 export interface ProposerInput {
   state: VaultState;
   policy: PolicyView;
   billUsd6: bigint;
+  /** MAAT_CREDIT_ACTIONS. Off, the prompt tells Claude never to propose a credit action. */
+  creditActions: boolean;
 }
 
 export type ProposerOutput =
@@ -50,8 +52,8 @@ export class ClaudeProposer implements Proposer {
         model: this.opts.model,
         max_tokens: 16000,
         // No cache_control: rounds start 15 to 60 minutes apart, past the 5-minute TTL, so a marker would only add the
-        // 1.25x write with no read. The prompt (about 1,800 characters) is also near the 512-token minimum.
-        system: [{ type: "text", text: SYSTEM_PROMPT }],
+        // 1.25x write with no read. The prompt (about 1,750 to 1,800 characters) is also near the 512-token minimum.
+        system: [{ type: "text", text: systemPrompt({ creditActions: input.creditActions }) }],
         messages: [{ role: "user", content: renderUserMessage(input) }],
         output_config: { effort: "medium", format: { type: "json_schema", schema: BATCH_JSON_SCHEMA } },
         betas: ["server-side-fallback-2026-07-01"],

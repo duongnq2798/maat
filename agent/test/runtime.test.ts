@@ -1,4 +1,5 @@
-import { mkdtemp } from "node:fs/promises";
+import { execFileSync } from "node:child_process";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -8,9 +9,15 @@ import { describe, expect, it } from "vitest";
 import { firstInLogWindows } from "../src/chain/logWindows.js";
 import { loadConfig } from "../src/config.js";
 import { GuardedSender } from "../src/exec/sender.js";
-import type { RunDeps } from "../src/loop/runOnce.js";
+import { Journal } from "../src/ledger/journal.js";
+import { FixedProposer } from "../src/llm/proposer.js";
+import { runOnce, type RunDeps } from "../src/loop/runOnce.js";
+import { DEFAULT_POLICY } from "../src/policy.js";
 import { buildRuntime } from "../src/runtime.js";
+import { standardScene } from "./fakes/fakeChain.js";
 import { FakeSender } from "./fakes/fakeSender.js";
+
+const BUY = { summary: "buy", intents: [{ action: "BUY" as const, symbol: "NVDAc" as const, amountUsd: 20, rationale: "underweight" }] };
 
 const env = async (over: Record<string, string> = {}) => ({
   BASE_RPC_URL: "http://127.0.0.1:1",
@@ -121,5 +128,89 @@ describe("buildRuntime", () => {
   it("rejects an invalid Builder Code before connecting", async () => {
     const cfg = loadConfig(await env({ MAAT_MODE: "live", MAAT_BUILDER_CODE: "Not-Valid" }));
     await expect(buildRuntime(cfg, { proposer: noProposer, connectCdp: async () => new FakeSender() })).rejects.toThrow(/invalid builder code/);
+  });
+
+  describe("guardrails", () => {
+    const LIVE = { MAAT_MODE: "live", MAAT_BUILDER_CODE: "bc_maattest" };
+    const cdp = async () => new FakeSender();
+
+    it("defaults to credit actions off, a $0.75 daily LLM cap, and a $1.00 smallest bill in live, $0.10 in dry-run", async () => {
+      const dry = await buildRuntime(loadConfig(await env()), { proposer: noProposer });
+      expect(dry.policy).toEqual({ ...DEFAULT_POLICY, creditActions: false });
+      expect(dry.maxLlmUsd6PerDay).toBe(750_000n);
+      expect(dry.billMinUsd6).toBe(100_000n);
+      const live = await buildRuntime(loadConfig(await env(LIVE)), { proposer: noProposer, connectCdp: cdp });
+      expect(live.policy?.creditActions).toBe(false);
+      expect(live.maxLlmUsd6PerDay).toBe(750_000n);
+      expect(live.billMinUsd6).toBe(1_000_000n);
+      const forced = await buildRuntime(loadConfig(await env(LIVE)), { proposer: noProposer, forceDryRun: true });
+      expect(forced.billMinUsd6).toBe(100_000n);
+    });
+
+    it("takes MAAT_CREDIT_ACTIONS, MAAT_MAX_LLM_USD_PER_DAY and MAAT_BILL_MIN_USD from the environment", async () => {
+      const over = { MAAT_CREDIT_ACTIONS: "on", MAAT_MAX_LLM_USD_PER_DAY: "0.25", MAAT_BILL_MIN_USD: "2.5" };
+      for (const mode of [{}, LIVE]) {
+        const deps = await buildRuntime(loadConfig(await env({ ...mode, ...over })), { proposer: noProposer, connectCdp: cdp });
+        expect([deps.policy?.creditActions, deps.maxLlmUsd6PerDay, deps.billMinUsd6]).toEqual([true, 250_000n, 2_500_000n]);
+      }
+    });
+
+    it("stamps the running code's git commit into every journal row", async () => {
+      const vars = await env();
+      const deps = await buildRuntime(loadConfig(vars), { proposer: new FixedProposer(BUY) });
+      const preview = { readContract: (async () => 0) as never };
+      expect(await runOnce({ ...deps, stateClient: standardScene().client(), previewClient: preview })).toMatchObject({ status: "done", proposals: 1 });
+      const rows = await new Journal(vars.MAAT_DATA_DIR).read();
+      expect(rows.map((r) => r.kind)).toEqual(["run", "intent"]);
+      const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
+      for (const r of rows) expect(r.commit).toMatch(new RegExp(`^${head}(-dirty)?$`));
+    });
+
+    describe("live mode refuses a dry-run's data dir", () => {
+      const journalIn = async (dir: string, rows: object[]) => {
+        await mkdir(dir, { recursive: true });
+        await writeFile(join(dir, "journal.jsonl"), rows.map((r) => JSON.stringify(r) + "\n").join(""));
+      };
+      const dryRound = { ts: "2026-11-25T12:10:00.000Z", kind: "run", runId: "dry-1", block: "1", day: "20782", mode: "dry-run", ok: true, summary: "s", costUsd6: "1", suggestions: 0, proposals: 0 };
+      const liveRound = { ...dryRound, runId: "live-1", mode: "live" };
+
+      it("before any CDP call, when the journal holds a dry-run round", async () => {
+        const vars = await env(LIVE);
+        await journalIn(vars.MAAT_DATA_DIR, [liveRound, dryRound]);
+        let connected = false;
+        const build = buildRuntime(loadConfig(vars), { proposer: noProposer, connectCdp: async () => ((connected = true), new FakeSender()) });
+        await expect(build).rejects.toThrow(
+          `live mode refuses data dir ${vars.MAAT_DATA_DIR}: its journal holds dry-run rows (first: run dry-1 at 2026-11-25T12:10:00.000Z); give live its own MAAT_DATA_DIR`,
+        );
+        expect(connected).toBe(false);
+      });
+
+      it.each([
+        ["an intent row older code gated in dry-run", { ts: "t", kind: "intent", runId: "dry-2", gate: "dry-run: would execute" }],
+        ["a housekeeping row a dry-run skipped", { ts: "t", kind: "housekeeping", runId: "dry-3", call: "syncMultiplier", note: "dry-run" }],
+      ])("when the journal holds %s", async (_what, row) => {
+        const vars = await env(LIVE);
+        await journalIn(vars.MAAT_DATA_DIR, [row]);
+        await expect(buildRuntime(loadConfig(vars), { proposer: noProposer, connectCdp: cdp })).rejects.toThrow(/its journal holds dry-run rows/);
+      });
+
+      it("but starts on a fresh data dir, on one with only live rows, and past a line a crash cut short", async () => {
+        const fresh = await env(LIVE);
+        expect((await buildRuntime(loadConfig(fresh), { proposer: noProposer, connectCdp: cdp })).mode).toBe("live");
+        const vars = await env(LIVE);
+        await journalIn(vars.MAAT_DATA_DIR, [liveRound]);
+        await writeFile(join(vars.MAAT_DATA_DIR, "journal.jsonl"), '{"ts":"t","kind":"ru', { flag: "a" });
+        expect((await buildRuntime(loadConfig(vars), { proposer: noProposer, connectCdp: cdp })).mode).toBe("live");
+      });
+
+      it("and dry-run keeps using its own data dir", async () => {
+        const vars = await env();
+        await journalIn(vars.MAAT_DATA_DIR, [dryRound]);
+        expect((await buildRuntime(loadConfig(vars), { proposer: noProposer })).mode).toBe("dry-run");
+        const forced = await env(LIVE);
+        await journalIn(forced.MAAT_DATA_DIR, [dryRound]);
+        expect((await buildRuntime(loadConfig(forced), { proposer: noProposer, forceDryRun: true })).mode).toBe("dry-run");
+      });
+    });
   });
 });

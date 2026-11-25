@@ -12,7 +12,8 @@ import { Journal, type JournalRow } from "../../src/ledger/journal.js";
 import { Store } from "../../src/ledger/store.js";
 import { FixedProposer } from "../../src/llm/proposer.js";
 import type { Batch } from "../../src/llm/schema.js";
-import { runOnce, type RunDeps } from "../../src/loop/runOnce.js";
+import { BILL_MIN_USD6, runOnce, type RunDeps } from "../../src/loop/runOnce.js";
+import { DEFAULT_POLICY } from "../../src/policy.js";
 import { ACTIONS, type OnchainIntent } from "../../src/types.js";
 import { startAnvil } from "./anvil.js";
 import { deployStack } from "./deploy.js";
@@ -47,6 +48,10 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
       mode: "live",
       defaultDailyComputeUsd6: 500_000n,
       maxTxPerDay: 40,
+      billMinUsd6: BILL_MIN_USD6,
+      maxLlmUsd6PerDay: 750_000n,
+      // The first test supplies and borrows: the credit path is what it checks against the fork.
+      policy: { ...DEFAULT_POLICY, creditActions: true },
       stateClient: pub,
       previewClient: pub,
       txClient: {
