@@ -1,13 +1,17 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { type Address, zeroAddress, zeroHash } from "viem";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { VAULT_UNREACHABLE, type RealVaultDeps } from "@/components/RealVault";
 import { Simulator } from "@/components/Simulator";
 import { FACTS } from "@/content/facts";
 import { dayLabel, formatInt } from "@/content/format";
+import type { LedgerClient } from "@/lib/chain/load";
+import { PREVIEW_ID, previewTokens } from "@/lib/chain/preview";
 
-function setup() {
+function setup(vault?: RealVaultDeps) {
   const user = userEvent.setup();
-  render(<Simulator />);
+  render(<Simulator vaultDeps={vault} />);
   const verdict = () => screen.getByRole("status").firstElementChild as HTMLElement;
   return {
     user,
@@ -328,4 +332,187 @@ describe("Simulator", () => {
     expect(screen.queryByText(/^Now sets the time only\./)).toBeNull();
     expect([...document.querySelectorAll("[data-fork-tag]")].every((t) => t.textContent === "fork")).toBe(true);
   });
+});
+
+const VAULT: Address = "0x00000000000000000000000000000000000Aa001";
+const HEAD = 61_964_493n;
+const tokenOf = (symbol: string): Address => {
+  const t = previewTokens().find((p) => p.symbol === symbol);
+  if (!t) throw new Error(`previewTokens() has no ${symbol}`);
+  return t.address;
+};
+
+interface ReadCall {
+  address: Address;
+  functionName: string;
+  args?: readonly unknown[];
+  blockNumber?: bigint;
+}
+
+/** A vault on a fake Base: previewIntent answers `answer` (a Reason number, an error, or a later number) at HEAD. */
+function fakeVault(answer: number | Error | (() => Promise<number>)) {
+  const calls: ReadCall[] = [];
+  const client = {
+    getBlockNumber: async () => HEAD,
+    readContract: async (c: ReadCall) => {
+      calls.push(c);
+      if (c.functionName !== "previewIntent") throw new Error(`unexpected ${c.functionName}`);
+      if (answer instanceof Error) throw answer;
+      return typeof answer === "function" ? answer() : answer;
+    },
+  } as unknown as LedgerClient;
+  return { deps: { client, vault: VAULT } satisfies RealVaultDeps, calls };
+}
+
+/** The Intent struct previewIntent gets for a BUY: a fixed id, no minOut, no payee and a zero rationale hash. */
+const buyIntent = (token: Address, amount: bigint) => ({ id: PREVIEW_ID, action: 0, token, amount, minOut: 0n, payee: zeroAddress, rationaleHash: zeroHash });
+
+describe("Simulator: asking the real vault", () => {
+  const panel = () => {
+    const el = document.querySelector<HTMLElement>("[data-real-vault]");
+    if (!el) throw new Error("no real-vault panel");
+    return el;
+  };
+  const state = () => panel().getAttribute("data-real-vault");
+  const side = (which: "simulation" | "vault") => panel().querySelector<HTMLElement>(`[data-answer="${which}"]`);
+  const ask = () => screen.getByRole("button", { name: "Ask the real vault" });
+  // The chain code loads on the first ask; its first import in a test run takes longer than waitFor's default second.
+  const settles = (s: string) => vi.waitFor(() => expect(state()).toBe(s), { timeout: 5_000 });
+
+  it("offers it as free and walletless, below the simulated verdict and outside its live region", () => {
+    setup();
+    expect(state()).toBe("idle");
+    expect(panel()).toHaveTextContent("THE REAL VAULT · BASE MAINNET");
+    expect(panel()).toHaveTextContent(
+      "Sends BUY NVDAc · $20 to the deployed vault as previewIntent, a free eth_call at the latest block. No wallet: nothing is signed or sent.",
+    );
+    const status = screen.getByRole("status");
+    expect(status.compareDocumentPosition(panel()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(status).not.toContainElement(panel());
+    expect(ask()).toBeEnabled();
+  });
+
+  it("sends the simulated intent as one previewIntent at the head block, and shows the vault's reason beside the simulation's", async () => {
+    const vault = fakeVault(6); // MARKET_CLOSED
+    const ui = setup(vault.deps);
+    await ui.user.click(ask());
+    await settles("answer");
+    expect(vault.calls).toEqual([
+      { address: VAULT, abi: expect.anything(), functionName: "previewIntent", args: [buyIntent(tokenOf("NVDAc"), 20_000_000n)], blockNumber: HEAD },
+    ]);
+    expect(side("simulation")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "OK");
+    expect(side("simulation")).toHaveTextContent(/^SIMULATION\s*Allowed\s*All checks passed\s*OK$/);
+    expect(side("vault")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
+    expect(side("vault")).toHaveTextContent(/^REAL VAULT · BLOCK 61,964,493\s*Refused\s*Market closed\s*MARKET_CLOSED$/);
+    const match = panel().querySelector("[data-vault-match]");
+    expect(match).toHaveAttribute("data-vault-match", "differ");
+    expect(match).toHaveTextContent(/^They differ\. The simulation is a model: it answers for Thu 5 Nov · 10:30 ET/);
+    // The simulation's own answer does not move, and the verdict stays the only status.
+    expect(ui.reason()).toBe("OK");
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    const live = panel().querySelector("[aria-live]");
+    expect(live).toHaveAttribute("aria-live", "polite");
+    expect(live).toContainElement(side("vault"));
+  });
+
+  it("says so when the vault gives the simulation's answer", async () => {
+    const ui = setup(fakeVault(0).deps);
+    await ui.user.click(ask());
+    await settles("answer");
+    expect(panel().querySelector("[data-vault-match]")).toHaveAttribute("data-vault-match", "same");
+    expect(panel().querySelector("[data-vault-match]")).toHaveTextContent(
+      "Same answer as the simulation. The vault gave it at block 61,964,493, from its live prices, calendar and holdings.",
+    );
+  });
+
+  it("keeps the vault's answer when only the moment moves, and compares it with the simulation's new one", async () => {
+    const ui = setup(fakeVault(0).deps);
+    await ui.user.click(ask());
+    await settles("answer");
+    await ui.user.click(ui.button("Sat 7 Nov"));
+    expect(state()).toBe("answer");
+    expect(side("simulation")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
+    expect(side("vault")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "OK");
+    expect(panel().querySelector("[data-vault-match]")).toHaveTextContent(/^They differ\. The simulation is a model: it answers for Sat 7 Nov · 10:30 ET/);
+  });
+
+  it("fails closed on an RPC error: a clear line, and no reason from the vault", async () => {
+    const ui = setup(fakeVault(new Error("HTTP request failed.")).deps);
+    await ui.user.click(ask());
+    await settles("error");
+    expect(panel()).toHaveTextContent(`${VAULT_UNREACHABLE} HTTP request failed.`);
+    expect(side("vault")).toBeNull();
+    expect(panel().querySelector("[data-vault-match]")).toBeNull();
+    expect(ui.reason()).toBe("OK");
+    // Asking again is allowed.
+    expect(ask()).toBeEnabled();
+  });
+
+  it("fails closed when the vault answers a number that is not a Reason", async () => {
+    const ui = setup(fakeVault(20).deps);
+    await ui.user.click(ask());
+    await settles("error");
+    expect(panel()).toHaveTextContent(VAULT_UNREACHABLE);
+    expect(panel()).toHaveTextContent("20 is not a Reason");
+    expect(side("vault")).toBeNull();
+  });
+
+  it("asks about USDC for the other token, and says so", async () => {
+    const vault = fakeVault(3); // TOKEN_NOT_ALLOWED
+    const ui = setup(vault.deps);
+    await ui.user.click(ui.button("Other token"));
+    expect(panel()).toHaveTextContent("Sends BUY USDC · $20 to the deployed vault");
+    expect(panel()).toHaveTextContent("USDC stands in for the other token: the mandate does not list it for BUY.");
+    await ui.user.click(ask());
+    await settles("answer");
+    expect(vault.calls.map((c) => c.args?.[0])).toEqual([buyIntent(tokenOf("USDC"), 20_000_000n)]);
+    expect(panel().querySelector("[data-vault-match]")).toHaveAttribute("data-vault-match", "same");
+  });
+
+  it("drops the vault's answer when the token or amount changes, and keeps a late answer off the newer intent", async () => {
+    let release: (n: number) => void = () => {};
+    const late = new Promise<number>((resolve) => (release = resolve));
+    let first = true;
+    const vault = fakeVault(() => {
+      if (!first) return Promise.resolve(12); // CONCENTRATION
+      first = false;
+      return late;
+    });
+    const ui = setup(vault.deps);
+    await ui.user.click(ask());
+    await settles("asking");
+    expect(ask()).toBeDisabled();
+    expect(panel()).toHaveTextContent("Asking the vault on Base…");
+    await ui.user.click(ui.button("GOOGLc"));
+    expect(state()).toBe("idle");
+    expect(ask()).toBeEnabled();
+    await ui.user.click(ask());
+    await settles("answer");
+    // The first ask now answers MARKET_CLOSED; a macrotask later, every promise it chains has run.
+    await act(async () => {
+      release(6);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(state()).toBe("answer");
+    expect(side("vault")?.querySelector("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "CONCENTRATION");
+    expect(vault.calls.map((c) => (c.args?.[0] as { token: Address }).token)).toEqual([tokenOf("NVDAc"), tokenOf("GOOGLc")]);
+    await ui.user.click(ui.button("$50"));
+    expect(state()).toBe("idle");
+    expect(side("vault")).toBeNull();
+  });
+
+  it("offers no ask while the amount does not parse", async () => {
+    const ui = setup(fakeVault(0).deps);
+    await ui.user.type(screen.getByRole("textbox", { name: "Amount in US dollars" }), "x");
+    expect(ask()).toBeDisabled();
+  });
+
+  it("asks over the site's public RPCs by default, and fails closed when they cannot be reached", async () => {
+    const ui = setup();
+    await ui.user.click(ask());
+    await vi.waitFor(() => expect(state()).toBe("error"), { timeout: 10_000 });
+    expect(panel()).toHaveTextContent(VAULT_UNREACHABLE);
+    const urls = vi.mocked(fetch).mock.calls.map(([input]) => String(input instanceof Request ? input.url : input));
+    expect(urls.some((u) => u.startsWith("https://base-rpc.publicnode.com"))).toBe(true);
+  }, 15_000);
 });
