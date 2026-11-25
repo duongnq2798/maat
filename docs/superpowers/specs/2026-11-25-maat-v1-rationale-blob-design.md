@@ -7,7 +7,9 @@
   the journal publisher (`feat/journal-publisher`), each without further coordination. Every rule below is meant to
   be checked by a unit test; §5 gives the vectors
 - **Related:** `agent/src/intent.ts`, `agent/src/exec/{builderCode,sender}.ts`, `agent/src/ledger/journal.ts`,
-  `web/lib/chain/rationale.ts`, `contracts/src/Types.sol`
+  `web/lib/chain/rationale.ts`, `contracts/src/Types.sol`, and two pieces that come from other branches: `closedNote`
+  in `agent/src/refusals.ts` (from `fix/refusal-log-per-session`) and `agent/src/gitCommit.ts` (from
+  `feat/agent-guardrails`)
 
 ---
 
@@ -36,8 +38,10 @@ offset    bytes   content
    suffix recognized; schema ids 1 and 2 are not decoded in v1).
 3. The blob region is `B = D[228:S]`. Empty: status `none`. Starts with the 8 bytes `maat:v1:`: validate it (§2.6).
    Anything else: status `foreign` (show its length, decode nothing).
-4. Hash tick: `keccak256(B) == D[196:228]`. The vault emits this word unchanged as the `Decision` log's
-   `rationaleHash` (`MandateVault.sol:112`).
+4. Hash tick, only when `B` is non-empty: `keccak256(B) == D[196:228]`. The vault emits this word unchanged as the
+   `Decision` log's `rationaleHash` (`MandateVault.sol:112`). For status `none` the tick is
+   `verifyRationale(text from the rationales export, D[196:228])` instead, as for the two owner Decisions below:
+   `keccak256` of no bytes (`0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470`) commits to no text.
 
 A decoder never finds the end of the blob by parsing JSON or searching for `}`: the end is the start of the suffix.
 ox `Attribution.fromData(D)` reads from the end, so it returns the same codes with a blob present (§5.6).
@@ -69,14 +73,14 @@ equal to the `rationaleHash` word of `data`) and appended before the suffix. Gas
 | Key | Type | Rule |
 |---|---|---|
 | `b` | integer | Block number of the `VaultState` the intent was built from (`s.blockNumber`) |
-| `c` | string | The agent's git commit, 40 lowercase hex characters; the same value as each journal row's `commit` |
+| `c` | string | The agent's git commit: the value of `gitCommit()` (`agent/src/gitCommit.ts`), the same value `Journal.append` stamps as each journal row's `commit`. `^(?:[0-9a-f]{40}(?:-dirty)?\|unknown)$`: the 40-hex HEAD of a clean checkout, that HEAD followed by `-dirty` when tracked files under `agent/` differ from it, or `unknown` when git cannot tell. A decoder shows `-dirty` and `unknown` as they are, since then `c` does not pin the code that ran |
 | `j` | string | Journal head: the `hash` of the last row in the journal when the blob is built (§3.3); `GENESIS` if there is none. `0x` and 64 lowercase hex |
-| `k` | string, optional | Absent: `t` is the model's text. `"probe"`: a fixed-time probe, and `t` starts with `PROBE v1, not a Claude proposal`. `"bill"`: the agent's PAY_EXPENSE, and `t` is its code-written `Compute bill: ...` line |
-| `m` | string | The model that wrote `t` (the one that answered, after any fallback), `^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$`. Required when `k` is absent, forbidden when `k` is present |
+| `k` | string, optional | Absent: `t` is the model's text. `"probe"`: a fixed-time probe, and `t` starts with `PROBE v1, not a Claude proposal`. `"bill"`: the agent's PAY_EXPENSE, and `t` is its code-written `Compute bill: ...` line. In all three cases, a MARKET_CLOSED log-refusal ends `t` with the closed-market note (§2.5) |
+| `m` | string | The model that wrote `t` (the one that answered, after any fallback), `^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$`, and matches neither `URL_RE` nor `KEY_RE` (§2.3); the encoder refuses to build a blob otherwise. A Bedrock-style id such as `us.anthropic.claude-sonnet-5-5` fits the pattern but matches `URL_RE`. Required when `k` is absent, forbidden when `k` is present |
 | `q` | array of integers, optional | `MaatInbox` brief ids the intent adopts: 1 to 3 strictly ascending safe integers, `>= 0`. Only with `k` absent. `t` is then the agent's templated text, not free model text |
-| `r` | string | The run id, `^[A-Za-z0-9._:-]{1,64}$` (the `runOnce` form `<Date.now()>-<8 hex>` fits) |
+| `r` | string | The run id, `^[A-Za-z0-9._:-]{1,64}$` (the `runOnce` form `<Date.now()>-<8 hex>` fits), and matches neither `URL_RE` nor `KEY_RE` (§2.3); the encoder refuses to build a blob otherwise |
 | `s` | array | One entry per vault token, in `tokens()` order at block `b`: `[sym, roundId, updatedAt, premiumBps]`. At most 16 entries |
-| `t` | string | `sanitize(text, 600)` (§2.3), 1 to 600 characters |
+| `t` | string | `sanitize(text, 600)` (§2.3), or `sanitize(text, 600 - n.length) + n` on a MARKET_CLOSED log-refusal (§2.5); 1 to 600 characters |
 
 No other key is allowed. An absent optional key is omitted, never `null`. `b` is a safe integer `>= 0`. In an `s`
 entry:
@@ -140,25 +144,46 @@ sanitized field therefore never stops the publisher.
 The blob is at most 1,024 bytes, prefix included. When `canon` gives more:
 
 1. `t` becomes the longest of its cuts (§2.3 step 5) with which the blob fits. Cuts fall on spaces and a `"` or `\`
-   costs 2 bytes, so a capped blob can be a few bytes under 1,024.
-2. If `t = "..."` still does not fit, drop `s` entries from the end until it does.
+   costs 2 bytes, so a capped blob can be a few bytes under 1,024. A `t` that ends with the closed-market note `n`
+   (§2.5) is cut only before `n`: its cuts are those of the part before `n`, each followed by `n`.
+2. If the shortest cut (`...`, or `...` followed by `n`) still does not fit, drop `s` entries from the end until it
+   does.
 
-With every other field at its maximum, the blob is 366 bytes with `s` empty and 617 bytes with 3 entries, so step 2
-can only run with 8 or more tokens.
+With every other field at its maximum (`c` with `-dirty`) and `t = "..."`, the blob is 372 bytes with `s` empty and
+623 bytes with 3 symbol entries (701 if every entry falls back to its address). The longest `n` adds 59 bytes. So
+step 2 can only run with 6 or more tokens (8 or more when every entry is named by symbol), with or without `n`.
 
 ### 2.5 Hash
 
 `Intent.rationaleHash = keccak256(blob bytes)`. The blob is ASCII, so this is exactly `rationaleHash(blob)` in
 `agent/src/intent.ts` (`keccak256(toBytes(text))`), and the web's `verifyRationale(blob, hash)` returns `verified`
-with no change. `buildIntent` hashes the blob, not `p.rationale`. The agent builds the blob before `buildIntent`,
-because `previewIntent` needs the final intent.
+with no change. `buildIntent` hashes the blob, not `p.rationale`. The vault's checks never read `rationaleHash`, so
+the preview does not depend on the blob.
+
+**Closed-market note.** When the gate sends a MARKET_CLOSED refusal to be logged onchain, the agent adds the closed
+phase to the text after the preview. Without a blob it appends ` (market closed, <closedNote(s)>)` to the plain
+rationale and re-hashes that (`agent/src/loop/runOnce.ts`, from `fix/refusal-log-per-session`). With a blob, that
+re-hash is replaced by this rule:
+
+- `n = " (market closed, " + closedNote(s) + ")"`. Every `closedNote` value is code-written printable ASCII that none
+  of the four §2.3 patterns matches. The longest, `NYSE holiday: Independence Day (observed)`, makes `n` 59 characters.
+  When `closedNote(s)` is null (no calendar, or the calendar does not say closed), there is no note and no rebuild.
+- `t = sanitize(text, 600 - n.length) + n`, where `text` is the text `t` would hold without the note (§2.1), whatever
+  `k` is. §2.4 step 1 cuts only the part before `n`.
+- After the preview the agent rebuilds the blob with this `t`, keeps every other field (`j` included), sets
+  `rationaleHash` to its `keccak256`, and sends that intent. The `intent` and `sent` rows carry the rebuilt blob and
+  hash.
+
+Sanitizing the joined text instead would cut the note away first, since the model may write 600 characters
+(`MAX_RATIONALE_CHARS` in `agent/src/llm/schema.ts`). V6 and V7 (§5) are the vectors.
 
 ### 2.6 Decoder validation
 
 Status `v1` when all hold: at most 1,024 bytes; every byte in `0x20-0x7E`; the text after `maat:v1:` parses to a
-JSON object; it has only the §2.1 keys, each with its type and rule; and `"maat:v1:" + canon(parsed)` equals the
-bytes (this rejects key order, whitespace and duplicate keys). Otherwise status `invalid`. The hash tick (§1 step 4)
-is shown in every case, since it covers bytes, not format. Decoders do not re-run the sanitizer on `t`.
+JSON object; it has only the §2.1 keys, each with its type and rule (for `c` the `gitCommit()` pattern, and for `m`
+and `r` matching neither `URL_RE` nor `KEY_RE`); and `"maat:v1:" + canon(parsed)` equals the bytes (this rejects
+key order, whitespace and duplicate keys). Otherwise status `invalid`. The blob's hash tick (§1 step 4) is shown for
+`v1`, `invalid` and `foreign`, since it covers bytes, not format. Decoders do not re-run the sanitizer on `t`.
 
 ## 3. Hash-chained journal
 
@@ -178,12 +203,13 @@ change has rows without `hash`: the chain starts at the first row that has one, 
 
 ### 3.2 Projection: the publisher's allowlist
 
-Every kind: `ts`, `kind`, `runId`, `commit`, `prev`, `hash`. `commit` is the agent commit stamped in each row (the
-plan's A4 item); if that branch names the field differently, the projection still exports it as `commit`.
+Every kind: `ts`, `kind`, `runId`, `commit`, `prev`, `hash`. `commit` is the value of `gitCommit()`
+(`agent/src/gitCommit.ts`), stamped by `Journal.append`: the same forms as `c` (§2.1). Rows written before that
+change have none.
 
 | Kind | Further fields |
 |---|---|
-| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`) |
+| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`; absent when the row's `summary` is empty, never `(no text)`), `capped` (`true` when the row's `error` starts with `llm cap: `: the daily LLM cap stopped the round before Claude was called; else absent) |
 | `intent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gasUsed`, `decision` |
 | `sent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gas` |
 | `reconcile` | `intentId`, `action`, `txHash`, `outcome`, `decision` |
@@ -192,10 +218,10 @@ plan's A4 item); if that branch names the field differently, the projection stil
 | `skip` | `index`, `symbol`, `action` |
 | `error` and any other kind | none |
 
-Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error`,
-`message`, `note`, and every field not listed. A field absent on the row is absent in `P`. Values keep their on-disk
-JSON types (bigints are decimal strings). The branch that adds a new row kind (probes, briefs, the daily LLM cap) adds
-its fields to this table; until then the kind exports the common fields only.
+Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error` (a
+`run` row's only trace of it is `capped`), `message`, `note`, and every field not listed. A field absent on the row
+is absent in `P`. Values keep their on-disk JSON types (bigints are decimal strings). The branch that adds a new row
+kind (probes, briefs) adds its fields to this table; until then the kind exports the common fields only.
 
 ### 3.3 What `j` anchors
 
@@ -231,8 +257,9 @@ changes the hash `j` names.
    `hash`; check `prev` against the previous line's `hash` (`GENESIS` for the very first line).
 3. Report the rows verified, the head hash, and the first failing file and line number, if any.
 4. For a Decision with a `v1` blob, find the `sent` or `reconcile` row whose `txHash` is the transaction's hash. None:
-   `pending` (the publisher has not caught up). Found: `anchored` if `j` is `GENESIS` or the `hash` of an earlier row,
-   and, for a `sent` row, its `blob` equals the onchain blob; otherwise `broken`.
+   `pending` (the publisher has not caught up). Found: `anchored` if `j` is the `hash` of an earlier row, or `j` is
+   `GENESIS` and no chained row precedes the found row, and, for a `sent` row, its `blob` equals the onchain blob;
+   otherwise `broken`.
 
 ## 4. Sender labels
 
@@ -268,6 +295,8 @@ as written. Shared inputs:
 | V3 byte cap | `m` as V1, `t = "Fixture text: " + 'He said "no" and "wait". '.repeat(30)` (764 characters; cut at a space to at most 600, then again by the byte cap, to 584) | 1024 | `0x9accf0868e9e52563b653d19c68a2292f9d520bd69478e4b539ca47039a1ae93` |
 | V4 probe | `k = "probe"`, no `m`, `r = "probe-2026-11-27T17:58:00Z"`, `t = "PROBE v1, not a Claude proposal. Expected OK before the 13:00 ET early close."` | 419 | `0x86a5af724c86d1a661cbc504d6f7df361bb0a926ca1a466acf9c3fc85d3aa4b0` |
 | V5 brief-driven | `m` as V1, `q = [7]`, `t = "Brief 7 asked for a 5 USD NVDAc buy; adopted inside the mandate."` | 422 | `0x1912e906089e9d2abfadd10dc0e6d73f1d22986666aeb0dc4a600eca9e9ca7ab` |
+| V6 closed market | `m` and model text as V1, logged as a MARKET_CLOSED refusal on the NYSE holiday 2026-11-26, so `n = " (market closed, NYSE holiday: Thanksgiving)"` (44 characters, §2.5). The preview ran with V1's hash | 482 | `0x8711ec8454ee9a5dc132c4e1dc1c2b161e66d3ac4686d8ba786eb4866910417f` |
+| V7 closed market, cut | `m` as V1, `n` as V6, model text `"Fixture text: " + "NVDAc is under its target. ".repeat(21)` (581 characters, 580 after the trim; cut at a space to at most 600 - 44 = 556, to 549, then `n`: 593) | 943 | `0x25c7887f9483b70fd78eb762e9804f8d4b2aa3399ea672b42c95785850ef3abd` |
 
 V1:
 
@@ -288,12 +317,24 @@ maat:v1:{"b":61745836,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x892d
 maat:v1:{"b":61745836,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff","m":"claude-sonnet-5-5","q":[7],"r":"1795539542000-a1b2c3d4","s":[["NVDAc","36893488147419105055",1795539382,19],["GOOGLc","36893488147419104206",1795536312,15],["AAPLc","36893488147419103860",1795535458,23]],"t":"Brief 7 asked for a 5 USD NVDAc buy; adopted inside the mandate."}
 ```
 
-<details><summary>V3 text and the hex of every vector</summary>
+V6 differs from V1 only in `t`, which ends with the closed-market note:
+
+```
+maat:v1:{"b":61745836,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff","m":"claude-sonnet-5-5","r":"1795539542000-a1b2c3d4","s":[["NVDAc","36893488147419105055",1795539382,19],["GOOGLc","36893488147419104206",1795536312,15],["AAPLc","36893488147419103860",1795535458,23]],"t":"Fixture rationale: NVDAc is under its target weight and the feed is fresh, so buy 5 USD. (market closed, NYSE holiday: Thanksgiving)"}
+```
+
+<details><summary>V3 and V7 text and the hex of every vector</summary>
 
 V3:
 
 ```
 maat:v1:{"b":61745836,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff","m":"claude-sonnet-5-5","r":"1795539542000-a1b2c3d4","s":[["NVDAc","36893488147419105055",1795539382,19],["GOOGLc","36893488147419104206",1795536312,15],["AAPLc","36893488147419103860",1795535458,23]],"t":"Fixture text: He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and \"wait\". He said \"no\" and ..."}
+```
+
+V7:
+
+```
+maat:v1:{"b":61745836,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff","m":"claude-sonnet-5-5","r":"1795539542000-a1b2c3d4","s":[["NVDAc","36893488147419105055",1795539382,19],["GOOGLc","36893488147419104206",1795536312,15],["AAPLc","36893488147419103860",1795535458,23]],"t":"Fixture text: NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its target. NVDAc is under its ... (market closed, NYSE holiday: Thanksgiving)"}
 ```
 
 V1 hex: `0x6d6161743a76313a7b2262223a36313734353833362c2263223a2230313233343536373839616263646566303132333435363738396162636465663031323334353637222c226a223a22307838393264326463653536396337383331333966363264656332393737323936343264333566663765383862636364396432316463623264656665326238346666222c226d223a22636c617564652d736f6e6e65742d352d35222c2272223a22313739353533393534323030302d6131623263336434222c2273223a5b5b224e56444163222c223336383933343838313437343139313035303535222c313739353533393338322c31395d2c5b22474f4f474c63222c223336383933343838313437343139313034323036222c313739353533363331322c31355d2c5b224141504c63222c223336383933343838313437343139313033383630222c313739353533353435382c32335d5d2c2274223a224669787475726520726174696f6e616c653a204e5644416320697320756e64657220697473207461726765742077656967687420616e642074686520666565642069732066726573682c20736f206275792035205553442e227d`
@@ -305,6 +346,10 @@ V3 hex: `0x6d6161743a76313a7b2262223a36313734353833362c2263223a22303132333435363
 V4 hex: `0x6d6161743a76313a7b2262223a36313734353833362c2263223a2230313233343536373839616263646566303132333435363738396162636465663031323334353637222c226a223a22307838393264326463653536396337383331333966363264656332393737323936343264333566663765383862636364396432316463623264656665326238346666222c226b223a2270726f6265222c2272223a2270726f62652d323032362d31312d32375431373a35383a30305a222c2273223a5b5b224e56444163222c223336383933343838313437343139313035303535222c313739353533393338322c31395d2c5b22474f4f474c63222c223336383933343838313437343139313034323036222c313739353533363331322c31355d2c5b224141504c63222c223336383933343838313437343139313033383630222c313739353533353435382c32335d5d2c2274223a2250524f42452076312c206e6f74206120436c617564652070726f706f73616c2e204578706563746564204f4b206265666f7265207468652031333a3030204554206561726c7920636c6f73652e227d`
 
 V5 hex: `0x6d6161743a76313a7b2262223a36313734353833362c2263223a2230313233343536373839616263646566303132333435363738396162636465663031323334353637222c226a223a22307838393264326463653536396337383331333966363264656332393737323936343264333566663765383862636364396432316463623264656665326238346666222c226d223a22636c617564652d736f6e6e65742d352d35222c2271223a5b375d2c2272223a22313739353533393534323030302d6131623263336434222c2273223a5b5b224e56444163222c223336383933343838313437343139313035303535222c313739353533393338322c31395d2c5b22474f4f474c63222c223336383933343838313437343139313034323036222c313739353533363331322c31355d2c5b224141504c63222c223336383933343838313437343139313033383630222c313739353533353435382c32335d5d2c2274223a22427269656620372061736b656420666f722061203520555344204e56444163206275793b2061646f7074656420696e7369646520746865206d616e646174652e227d`
+
+V6 hex: `0x6d6161743a76313a7b2262223a36313734353833362c2263223a2230313233343536373839616263646566303132333435363738396162636465663031323334353637222c226a223a22307838393264326463653536396337383331333966363264656332393737323936343264333566663765383862636364396432316463623264656665326238346666222c226d223a22636c617564652d736f6e6e65742d352d35222c2272223a22313739353533393534323030302d6131623263336434222c2273223a5b5b224e56444163222c223336383933343838313437343139313035303535222c313739353533393338322c31395d2c5b22474f4f474c63222c223336383933343838313437343139313034323036222c313739353533363331322c31355d2c5b224141504c63222c223336383933343838313437343139313033383630222c313739353533353435382c32335d5d2c2274223a224669787475726520726174696f6e616c653a204e5644416320697320756e64657220697473207461726765742077656967687420616e642074686520666565642069732066726573682c20736f206275792035205553442e20286d61726b657420636c6f7365642c204e59534520686f6c696461793a205468616e6b73676976696e6729227d`
+
+V7 hex: `0x6d6161743a76313a7b2262223a36313734353833362c2263223a2230313233343536373839616263646566303132333435363738396162636465663031323334353637222c226a223a22307838393264326463653536396337383331333966363264656332393737323936343264333566663765383862636364396432316463623264656665326238346666222c226d223a22636c617564652d736f6e6e65742d352d35222c2272223a22313739353533393534323030302d6131623263336434222c2273223a5b5b224e56444163222c223336383933343838313437343139313035303535222c313739353533393338322c31395d2c5b22474f4f474c63222c223336383933343838313437343139313034323036222c313739353533363331322c31355d2c5b224141504c63222c223336383933343838313437343139313033383630222c313739353533353435382c32335d5d2c2274223a224669787475726520746578743a204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473207461726765742e204e5644416320697320756e64657220697473202e2e2e20286d61726b657420636c6f7365642c204e59534520686f6c696461793a205468616e6b73676976696e6729227d`
 
 </details>
 
@@ -325,6 +370,9 @@ Two published lines (the second carries V1, whose `j` is the first line's `hash`
 ```
 
 `hash` of line 1: `0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff`. `hash` of line 2: `0x3a54dfb09811088c8f2ffdecf4666c6e34f721a7e4166f1a6557dc3133ec4f8c`.
+
+Line 2's `intentId` is `keccak256("spec-example")`, the §5.6 id, not the agent's `intentId(runId, 0)`
+(`agent/src/intent.ts`). A test that checks rows against that rule skips this fixture.
 
 ### 5.8 Sanitizer
 

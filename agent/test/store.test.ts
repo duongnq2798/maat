@@ -35,12 +35,22 @@ describe("Store", () => {
     expect(s.dailyComputeUsd6(100n, 1n)).toBe(500_000n);
   });
 
-  it("remembers refusal logs per day and reason", async () => {
+  it("remembers refusal logs per key", async () => {
     const s = await Store.open(await dir());
-    s.recordRefusalLog(100n, "MARKET_CLOSED");
-    expect(s.hasLoggedRefusal(100n, "MARKET_CLOSED")).toBe(true);
-    expect(s.hasLoggedRefusal(100n, "FEED_STALE")).toBe(false);
-    expect(s.hasLoggedRefusal(101n, "MARKET_CLOSED")).toBe(false);
+    s.recordRefusalLog({ day: "2026-11-26", reason: "MARKET_CLOSED:holiday" });
+    expect(s.hasLoggedRefusal({ day: "2026-11-26", reason: "MARKET_CLOSED:holiday" })).toBe(true);
+    expect(s.hasLoggedRefusal({ day: "2026-11-26", reason: "MARKET_CLOSED:overnight" })).toBe(false);
+    expect(s.hasLoggedRefusal({ day: "2026-11-26", reason: "FEED_STALE" })).toBe(false);
+    expect(s.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:holiday" })).toBe(false);
+  });
+
+  it("reads the refusals an older state file keyed by UTC day number", async () => {
+    const d = await dir();
+    const { writeFile } = await import("node:fs/promises");
+    await writeFile(join(d, "state.json"), JSON.stringify({ version: 1, compute: {}, paidUsd6: "0", refusals: { "20763": ["MARKET_CLOSED"] }, txByDay: {}, pending: [] }));
+    const s = await Store.open(d);
+    expect(s.hasLoggedRefusal({ day: "20763", reason: "MARKET_CLOSED" })).toBe(true);
+    expect(s.hasLoggedRefusal({ day: "2026-11-06", reason: "MARKET_CLOSED:overnight" })).toBe(false);
   });
 
   it("persists across reopen", async () => {
@@ -48,12 +58,12 @@ describe("Store", () => {
     const s = await Store.open(d);
     s.recordCompute(100n, 123n);
     s.recordTx(100n);
-    s.recordRefusalLog(100n, "FEED_STALE");
+    s.recordRefusalLog({ day: "2026-11-25", reason: "FEED_STALE" });
     await s.save();
     const again = await Store.open(d);
     expect(again.unpaidUsd6()).toBe(123n);
     expect(again.txCount(100n)).toBe(1);
-    expect(again.hasLoggedRefusal(100n, "FEED_STALE")).toBe(true);
+    expect(again.hasLoggedRefusal({ day: "2026-11-25", reason: "FEED_STALE" })).toBe(true);
     expect(JSON.parse(await readFile(join(d, "state.json"), "utf8")).version).toBe(1);
   });
 
@@ -68,10 +78,11 @@ describe("Store", () => {
     const d = await dir();
     const s = await Store.open(d);
     const id = `0x${"aa".repeat(32)}` as const;
-    s.addPending({ intentId: id, action: "PAY_EXPENSE", amount: "300000", gateKind: "execute", preview: "OK", day: "100", block: "5" });
+    const refusal = { day: "2026-11-26", reason: "MARKET_CLOSED:holiday" };
+    s.addPending({ intentId: id, action: "BUY", amount: "300000", gateKind: "log-refusal", preview: "MARKET_CLOSED", day: "100", block: "5", refusal });
     await s.save();
     const again = await Store.open(d);
-    expect(again.pending()).toEqual([{ intentId: id, action: "PAY_EXPENSE", amount: "300000", gateKind: "execute", preview: "OK", day: "100", block: "5" }]);
+    expect(again.pending()).toEqual([{ intentId: id, action: "BUY", amount: "300000", gateKind: "log-refusal", preview: "MARKET_CLOSED", day: "100", block: "5", refusal }]);
     again.setPendingHash(id, `0x${"bb".repeat(32)}`);
     expect(again.pending()[0]?.txHash).toBe(`0x${"bb".repeat(32)}`);
     again.clearPending(id);
