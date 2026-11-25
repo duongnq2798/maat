@@ -1,7 +1,21 @@
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
 import { SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
-import { ANTHROPIC_API_URL, anthropicClient, ClaudeProposer, FixedProposer, ignoredAnthropicEnv, type CreateMessage } from "../src/llm/proposer.js";
+import {
+  AGENT_ENV_FILE,
+  ANTHROPIC_API_URL,
+  anthropicApiKey,
+  anthropicClient,
+  ClaudeProposer,
+  FixedProposer,
+  ignoredAnthropicEnv,
+  ignoredAnthropicKey,
+  type CreateMessage,
+} from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 
@@ -173,8 +187,23 @@ describe("ClaudeProposer", () => {
   });
 });
 
+/** A temp agent/.env holding `text`, or the path of one that does not exist when `text` is null. */
+async function envFile(text: string | null): Promise<string> {
+  const file = join(await mkdtemp(join(tmpdir(), "maat-env-")), ".env");
+  if (text !== null) await writeFile(file, text);
+  return file;
+}
+
 describe("anthropicClient", () => {
   const message = { id: "msg_fake", type: "message", role: "assistant", model: "claude-sonnet-5-5", content: [{ type: "text", text: "{}" }], stop_reason: "end_turn", usage: { input_tokens: 1, output_tokens: 1 } };
+  const recorder = () => {
+    const seen: { url: string; headers: Headers }[] = [];
+    const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
+      seen.push({ url: String(url), headers: new Headers(init?.headers) });
+      return new Response(JSON.stringify(message), { status: 200, headers: { "content-type": "application/json" } });
+    }) as typeof globalThis.fetch;
+    return { seen, fetch };
+  };
 
   it("calls https://api.anthropic.com with ANTHROPIC_API_KEY, whatever ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN say", async () => {
     // A parent process (Claude Code exports ANTHROPIC_BASE_URL) must not get the key or answer for Claude.
@@ -182,12 +211,8 @@ describe("anthropicClient", () => {
     vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "fake-auth-token-from-a-parent");
     vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-fake-agent-key");
     try {
-      const seen: { url: string; headers: Headers }[] = [];
-      const fetch = (async (url: string | URL | Request, init?: RequestInit) => {
-        seen.push({ url: String(url), headers: new Headers(init?.headers) });
-        return new Response(JSON.stringify(message), { status: 200, headers: { "content-type": "application/json" } });
-      }) as typeof globalThis.fetch;
-      const client = anthropicClient({ fetch });
+      const { seen, fetch } = recorder();
+      const client = anthropicClient({ fetch, envFile: await envFile(null) });
       expect(client.baseURL).toBe(ANTHROPIC_API_URL);
       expect(ANTHROPIC_API_URL).toBe("https://api.anthropic.com");
       await client.beta.messages.create({ model: "claude-sonnet-5-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] });
@@ -201,11 +226,30 @@ describe("anthropicClient", () => {
     }
   });
 
-  it("refuses to build without ANTHROPIC_API_KEY instead of using an auth token or a login profile", () => {
+  it("refuses to build without ANTHROPIC_API_KEY instead of using an auth token or a login profile", async () => {
     vi.stubEnv("ANTHROPIC_API_KEY", "");
     vi.stubEnv("ANTHROPIC_AUTH_TOKEN", "fake-auth-token-from-a-parent");
     try {
-      expect(() => anthropicClient()).toThrow("ANTHROPIC_API_KEY is not set");
+      const file = await envFile(null);
+      expect(() => anthropicClient({ envFile: file })).toThrow("ANTHROPIC_API_KEY is not set");
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("sends agent/.env's ANTHROPIC_API_KEY to https://api.anthropic.com, not the one the terminal exported", async () => {
+    // Node's --env-file keeps a variable the terminal already has, so the terminal's key reaches process.env first.
+    vi.stubEnv("ANTHROPIC_API_KEY", "sk-ant-fake-key-from-the-terminal");
+    vi.stubEnv("ANTHROPIC_BASE_URL", "http://127.0.0.1:9/fake-proxy");
+    try {
+      const { seen, fetch } = recorder();
+      const client = anthropicClient({ fetch, envFile: await envFile("MAAT_MODE=dry-run\nANTHROPIC_API_KEY=sk-ant-fake-key-from-agent-env\n") });
+      await client.beta.messages.create({ model: "claude-sonnet-5-5", max_tokens: 16, messages: [{ role: "user", content: "hi" }] });
+      expect(seen).toHaveLength(1);
+      expect(seen[0]!.url).toMatch(/^https:\/\/api\.anthropic\.com\/v1\/messages/);
+      const headerValues = [...seen[0]!.headers.values()].join("\n");
+      expect(headerValues).toContain("sk-ant-fake-key-from-agent-env");
+      expect(headerValues).not.toContain("sk-ant-fake-key-from-the-terminal");
     } finally {
       vi.unstubAllEnvs();
     }
@@ -220,6 +264,46 @@ describe("anthropicClient", () => {
     expect(ignoredAnthropicEnv({ ANTHROPIC_BASE_URL: "http://127.0.0.1:9", ANTHROPIC_AUTH_TOKEN: "fake" })).toBe(
       "maat agent: ignoring ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN: Claude is called only at https://api.anthropic.com, with ANTHROPIC_API_KEY",
     );
+  });
+});
+
+describe("the Claude key", () => {
+  const TERMINAL = "sk-ant-fake-key-from-the-terminal";
+  const FROM_FILE = "sk-ant-fake-key-from-agent-env";
+
+  it("comes from agent/.env, the file npm run agent loads, found from the agent's own folder", () => {
+    expect(AGENT_ENV_FILE).toBe(fileURLToPath(new URL("../.env", import.meta.url)));
+  });
+
+  it("is agent/.env's ANTHROPIC_API_KEY when the file sets one, whatever the environment holds", async () => {
+    const file = await envFile(`# the agent's settings\nMAAT_MODE=dry-run\nANTHROPIC_API_KEY="${FROM_FILE}"\n`);
+    expect(anthropicApiKey({ ANTHROPIC_API_KEY: TERMINAL }, file)).toBe(FROM_FILE);
+    expect(anthropicApiKey({}, file)).toBe(FROM_FILE);
+  });
+
+  it("is the environment's when agent/.env is missing, leaves the key out or leaves it blank", async () => {
+    for (const file of [await envFile(null), await envFile("MAAT_MODE=dry-run\n"), await envFile("ANTHROPIC_API_KEY=\n")]) {
+      expect(anthropicApiKey({ ANTHROPIC_API_KEY: TERMINAL }, file)).toBe(TERMINAL);
+      expect(anthropicApiKey({ ANTHROPIC_API_KEY: "" }, file)).toBeUndefined();
+      expect(anthropicApiKey({}, file)).toBeUndefined();
+    }
+  });
+
+  it("warns once when the environment's key differs from agent/.env's, naming the variable and neither value", async () => {
+    const file = await envFile(`ANTHROPIC_API_KEY=${FROM_FILE}\n`);
+    const line = ignoredAnthropicKey({ ANTHROPIC_API_KEY: TERMINAL }, file);
+    expect(line).toBe("maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env");
+    expect(line).not.toContain(TERMINAL);
+    expect(line).not.toContain(FROM_FILE);
+  });
+
+  it("does not warn when the two keys match, when only one of them is set, or when there is no agent/.env", async () => {
+    const file = await envFile(`ANTHROPIC_API_KEY=${FROM_FILE}\n`);
+    // Without a key in the terminal, Node's --env-file puts agent/.env's into process.env: the same value.
+    expect(ignoredAnthropicKey({ ANTHROPIC_API_KEY: FROM_FILE }, file)).toBeNull();
+    expect(ignoredAnthropicKey({}, file)).toBeNull();
+    expect(ignoredAnthropicKey({ ANTHROPIC_API_KEY: TERMINAL }, await envFile("ANTHROPIC_API_KEY=\n"))).toBeNull();
+    expect(ignoredAnthropicKey({ ANTHROPIC_API_KEY: TERMINAL }, await envFile(null))).toBeNull();
   });
 });
 
