@@ -201,6 +201,9 @@ The local line keeps every field plus `prev` and `hash`; the published line is `
 covers the projection, not the private fields, so a browser can recompute it from the public line. The `Journal`
 class keeps the last hash in memory and must read it back from the last line at start. A journal written before this
 change has rows without `hash`: the chain starts at the first row that has one, and every later row must have one.
+A local line that does not parse as a JSON object is a write a crash cut short: it carries no row, the agent starts a
+fresh line after it, and every reader of the local journal passes over it. The next row's `prev` still names the last
+whole row, so a row removed behind such a line still breaks the chain.
 
 ### 3.2 Projection: the publisher's allowlist
 
@@ -210,7 +213,7 @@ change have none.
 
 | Kind | Further fields |
 |---|---|
-| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`; absent when the row's `summary` is empty, never `(no text)`), `capped` (`true` when the row's `error` starts with `llm cap: `: the daily LLM cap stopped the round before Claude was called; else absent) |
+| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`; absent when the row's `summary` is empty after sanitizer steps 1-3 (§2.3), as one of only spaces, emoji or other dropped characters is, never `(no text)`), `capped` (`true` when the row's `error` starts with `llm cap: `: the daily LLM cap stopped the round before Claude was called; else absent) |
 | `intent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gasUsed`, `decision` |
 | `sent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gas` |
 | `reconcile` | `intentId`, `action`, `txHash`, `outcome`, `decision` |
@@ -244,7 +247,8 @@ changes the hash `j` names.
 ### 3.5 Publisher rules
 
 - It reads the local journal, takes the chained rows after the last published line, projects them, recomputes each
-  `hash` and checks every `prev` link. On any mismatch it stops and pushes nothing.
+  `hash` and checks every `prev` link, passing over a line a crash cut short (§3.1). On any mismatch it stops and
+  pushes nothing.
 - Deny check before each commit: the whole line against `URL_RE` and `KEY_RE`; free-text values (`summary`, and `t`
   decoded from `blob`) also against `HEX_RE` and `LONG_RE`. A hit stops the publisher; it never skips a line, since a
   gap would break the chain. The agent sanitizes the same fields with the same patterns, so a hit is a bug.
