@@ -1,7 +1,8 @@
 import { loadConfig } from "./config.js";
 import { ignoredAnthropicEnv, ignoredAnthropicKey } from "./llm/proposer.js";
 import { heartbeatOf, writeHeartbeat } from "./loop/heartbeat.js";
-import { acquireLock } from "./loop/lock.js";
+import { acquireLock, RoundLock } from "./loop/lock.js";
+import { probeStartup, runProbe, runProbes } from "./loop/probeRound.js";
 import { runOnce } from "./loop/runOnce.js";
 import { runForever } from "./loop/scheduler.js";
 import { oneLine } from "./redact.js";
@@ -29,12 +30,22 @@ async function main(): Promise<void> {
       const ac = new AbortController();
       process.once("SIGINT", () => ac.abort());
       process.once("SIGTERM", () => ac.abort());
-      await runForever({
-        run: () => runOnce(deps),
-        signal: ac.signal,
-        // The restart loop (scripts/restart-loop.ts) reads it to tell a live agent from a stuck or sleeping PC.
-        afterRound: (r) => writeHeartbeat(cfg.dataDir, heartbeatOf(r, new Date(), process.pid)),
-      });
+      // MAAT_PROBES: a bad entry is reported and left out, never a reason not to start.
+      const probes = await probeStartup(cfg.probes, deps, Date.now());
+      for (const p of probes.problems) console.warn(`MAAT_PROBES: ${p}`);
+      for (const line of probes.lines) console.log(line);
+      // Rounds and probes take turns on one lock, so a probe never runs inside a round.
+      const lock = new RoundLock();
+      await Promise.all([
+        runForever({
+          run: () => runOnce(deps),
+          signal: ac.signal,
+          lock,
+          // The restart loop (scripts/restart-loop.ts) reads it to tell a live agent from a stuck or sleeping PC.
+          afterRound: (r) => writeHeartbeat(cfg.dataDir, heartbeatOf(r, new Date(), process.pid)),
+        }),
+        runProbes({ due: probes.due, fire: (at) => runProbe(deps, at), lock, signal: ac.signal }),
+      ]);
     }
   } finally {
     await release();
