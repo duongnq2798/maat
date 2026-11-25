@@ -14,13 +14,14 @@ sources:
   - agent/src/loop/lock.ts
   - agent/src/loop/runOnce.ts
   - agent/src/ledger/journal.ts
+  - agent/src/refusals.ts
   - agent/.gitignore
   - contracts/src/MandateVault.sol
   - deployments/README.md
 next: [guides/pause-withdraw-recover, guides/watch-decisions-onchain, guides/run-the-agent]
 ---
 
-This guide is the [owner](/docs/help/glossary#owner)'s runbook for keeping the Maat agent running on a Windows PC of their own, in a terminal tab that stays open for days. It covers the PC settings that keep the agent awake and on time, a [dry run](/docs/help/glossary#dry-run) in a data folder of its own, the restart loop that starts the agent again when it exits, the heartbeat check that says when its last [round](/docs/help/glossary#round) ended, how to read its [journal](/docs/help/glossary#journal), and how to stop it in an emergency. [Run the agent](/docs/guides/run-the-agent) comes first: it sets up `agent/.env`, the CDP wallet and the [executor](/docs/help/glossary#executor), and this page assumes those steps.
+This guide is the [owner](/docs/help/glossary#owner)'s runbook for keeping the Maat agent running on a Windows PC of their own, in a terminal tab that they open themselves and that stays open for days. It covers the PC settings that keep the agent awake and on time, a [dry run](/docs/help/glossary#dry-run) in a data folder of its own, the restart loop that starts the agent again when it exits, the heartbeat check that says when its last [round](/docs/help/glossary#round) ended, how to read its [journal](/docs/help/glossary#journal), and how to stop it in an emergency. [Run the agent](/docs/guides/run-the-agent) comes first: it sets up `agent/.env`, the CDP wallet and the [executor](/docs/help/glossary#executor), and this page assumes those steps.
 
 <Callout type="note" title="What has run">
 
@@ -35,7 +36,7 @@ The restart loop (`npm run agent:loop`) and the heartbeat check (`npm run agent:
 | A Windows PC on mains power | The agent runs in a terminal tab on it, so the PC has to stay on, awake and online for as long as the agent should run. |
 | Node.js 22.9 or newer | With npm. `agent/package.json` sets the minimum. |
 | The agent set up | `npm ci` run in `agent/`, and `agent/.env` filled in as in [Fill in the settings](/docs/guides/run-the-agent#fill-in-the-settings). |
-| PowerShell as administrator | For the power and clock steps below. The `npm` commands and the journal commands run in a normal PowerShell tab. |
+| PowerShell as administrator | For the power and clock steps below. The `npm` commands and the journal commands run in a normal PowerShell tab that you open yourself. |
 | For the emergency pause only | Foundry's `cast` and the owner keystore `maat-owner`, on any machine. |
 
 ## Prepare the PC
@@ -69,7 +70,7 @@ The `-ac` settings apply on mains power only; on battery the PC keeps its own ti
 
 Windows Update can restart the PC to finish an update. A restart closes the terminal tab, and with it the restart loop and the agent, and nothing starts them again when the PC comes back.
 
-In Settings, open Windows Update and pause updates for the longest time offered, 5 weeks. Then read the date Windows gives for the end of the pause: it must come after the last day the agent has to run, which for Maat's run is 13 December 2026. A 1-week pause started on 25 November 2026 would end on 2 December. If Windows Update already says that a restart is needed, restart the PC before you start the agent.
+In Settings, open Windows Update and pause updates for the longest time offered, 5 weeks. Then read the date Windows gives for the end of the pause: it must come after the last day the agent has to run, which for Maat's run is the end of the Builder Quest, 12 December 2026. A 1-week pause started on 25 November 2026 would end on 2 December. If Windows Update already says that a restart is needed, restart the PC before you start the agent.
 
 </Step>
 
@@ -139,6 +140,8 @@ Why two folders:
 
 Git ignores `agent/data/`, but not `agent/data-dryrun/`: `git status` lists the soak's folder as untracked. Leave it out of every commit.
 
+## Check the three guard settings
+
 Three settings guard the agent's first live runs. Their defaults apply when `agent/.env` leaves them out, and the agent's first line names all three, as `credit=`, `llm-cap=` and `bill-min=`.
 
 | Setting | Default | What it does |
@@ -147,12 +150,23 @@ Three settings guard the agent's first live runs. Their defaults apply when `age
 | `MAAT_MAX_LLM_USD_PER_DAY` | `0.75` | A cap, in dollars, on the Claude cost the agent records for one UTC day. A round that finds the day's recorded cost at or above it does not call Claude. The check comes before each call, so the call that crosses the cap is the day's last. `0` means Claude is never called. |
 | `MAAT_BILL_MIN_USD` | `1.00` in live mode, `0.10` in dry-run mode | The smallest unpaid compute bill a round pays back to `MAAT_EXPENSE_PAYEE`. Dry-run mode includes a start with `--dry-run`. |
 
+With the defaults, the agent's first line ends with `credit=off llm-cap=$0.75/day bill-min=$1.00` in live mode, and with `bill-min=$0.10` in dry-run mode. Check them in that line each time you start the loop.
+
 ## Start the restart loop
 
-The restart loop runs `npm run agent` in `agent/` and starts it again each time it exits. Give it a terminal tab of its own, named so that you know it, such as MAAT AGENT LIVE: Ctrl-C in that tab is the first way to stop the agent. From `agent/`, start the soak with the first command, and the agent in live mode, after [Switch from the soak to live](#switch-from-the-soak-to-live), with the second:
+The restart loop runs `npm run agent` in `agent/` and starts it again each time it exits. Give it a terminal tab of its own, named so that you know it, such as MAAT AGENT LIVE: Ctrl-C in that tab is the first way to stop the agent.
+
+Open that terminal yourself: start Windows PowerShell from the Start menu, or open a new tab in Windows Terminal, then go to `agent/` and type the command in it. Do not start the loop in a terminal that another program opened, such as the terminal panel of a code editor or of another tool: that terminal closes when its program does, and the loop and the agent stop with it. For the same reason, leave the tab open for as long as the agent should run.
+
+For the soak, from `agent/`:
 
 ```powershell title="agent/"
 npm run agent:loop -- --dry-run
+```
+
+For live mode, only after the steps of [Switch from the soak to live](#switch-from-the-soak-to-live):
+
+```powershell title="agent/"
 npm run agent:loop
 ```
 
@@ -172,10 +186,10 @@ These are the lines the loop and the agent print in the tab, with placeholders f
 | `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | After each round. A halted round adds its reason in parentheses. |
 | `round failed: <ERROR>` | A round threw. The error is one line, with URLs, keys and other secret values replaced. The next round runs after <Fact name="offSessionMinutes" />. |
 | `maat agent stopped: <ERROR>` | The agent could not start. The same one-line form. |
-| `restart-loop: agent exited (code <CODE>) after <TIME>; restarting in <WAIT>` | The agent exited, and the loop will start it again. |
+| `restart-loop: agent exited (<HOW>) after <TIME>; restarting in <WAIT>` | The agent exited, and the loop will start it again. `<HOW>` is `code <CODE>`, `signal <SIGNAL>`, or `error` and the error when `npm run agent` could not be started. |
 | `restart-loop: STALE: no round has ended for <AGE>; <LAST_ROUND>` | At a check, when no round has ended for more than 90 minutes. `<LAST_ROUND>` describes the last round as the heartbeat check does, between its `OK:` or `STALE:` and its limit, or reads `no heartbeat yet`. |
 | `restart-loop: heartbeat unreadable: <ERROR>` | At a check, when the heartbeat file could not be read. |
-| `restart-loop: agent exited (<HOW>) after <TIME>; stopped` | After Ctrl-C, once the agent has gone. |
+| `restart-loop: agent exited (<HOW>) after <TIME>; stopped` | After Ctrl-C, once `npm run agent`, the process the loop started, has exited. |
 
 ## Check the heartbeat
 
@@ -242,7 +256,7 @@ Select-String -Path .\data\journal.jsonl -SimpleMatch -Pattern 'credit actions a
 
 ### Stop the soak
 
-Press Ctrl-C in the soak's tab and wait for the line `restart-loop: agent exited (<HOW>) after <TIME>; stopped`. Stop it before the executor changes: from then on, the soak's `MAAT_EXECUTOR` is no longer the vault's executor, and every soak round ends with `wrong-executor`.
+Press Ctrl-C in the soak's tab, wait for the line `restart-loop: agent exited (<HOW>) after <TIME>; stopped`, then check that `agent\data-dryrun\agent.lock` is gone, as in [Stop it on the PC](#stop-it-on-the-pc). Stop it before the executor changes: from then on, the soak's `MAAT_EXECUTOR` is no longer the vault's executor, and every soak round ends with `wrong-executor`.
 
 </Step>
 
@@ -266,7 +280,7 @@ The owner signs `setExecutor` as in [Point the vault at the new executor](/docs/
 
 ### Start the loop in live mode
 
-In the agent's tab, from `agent/`, run `npm run agent:loop`. The agent's first round runs at once. Check its first line: it must read `mode=live`, the CDP executor and `data=./data`, then `credit=off llm-cap=$0.75/day bill-min=$1.00` unless you changed those three settings.
+In the agent's tab, one that you opened yourself as in [Start the restart loop](#start-the-restart-loop), type `npm run agent:loop` from `agent/`. The agent's first round runs at once. Check its first line: it must read `mode=live`, the CDP executor and `data=./data`, then `credit=off llm-cap=$0.75/day bill-min=$1.00` unless you changed those three settings.
 
 </Step>
 
@@ -276,9 +290,9 @@ In the agent's tab, from `agent/`, run `npm run agent:loop`. The agent's first r
 
 ### Stop it on the PC
 
-Press Ctrl-C once in the loop's tab. On Windows the key reaches the agent too, through the console. The agent ends its wait, or finishes the round in progress, releases its lock and exits, and the loop prints `restart-loop: agent exited (<HOW>) after <TIME>; stopped` and exits as well. If the agent has not exited 150 seconds after the Ctrl-C, the loop kills the process it started, `npm run agent`. Stopping the agent changes nothing onchain: the vault keeps its executor and its rules.
+Press Ctrl-C once in the loop's tab. On Windows the key reaches the agent too, through the console. The agent ends its wait, or finishes the round in progress, then releases its lock and exits. The loop prints `restart-loop: agent exited (<HOW>) after <TIME>; stopped` and exits once the process it started, `npm run agent`, has exited, which can be before the agent under it is done with its round. If `npm run agent` is still running 150 seconds after the Ctrl-C, the loop kills that process, and only that one. Stopping the agent changes nothing onchain: the vault keeps its executor and its rules.
 
-Then check that no agent holds the folder. The agent removes its lock file when it exits. For the soak, write `data-dryrun` in place of `data`:
+So check that no agent holds the folder before you start another agent on it or close the tab. The agent removes its lock file when it exits. For the soak, write `data-dryrun` in place of `data`:
 
 ```powershell title="agent/"
 Test-Path .\data\agent.lock
@@ -313,10 +327,11 @@ cast call 0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b "paused()(bool)" --rpc-url 
 
 On 2026-11-25, before any pause, it printed `false` when run in PowerShell with `cast` from Foundry 1.9.0. The two lines use no shell features, so they run as written in PowerShell and in bash.
 
-A pause does not stop the agent: its rounds go on reading the vault and asking Claude, up to the daily cap, until someone stops it on the PC. `false` in place of `true` unpauses, at once and with no timelock. [Pause and unpause](/docs/guides/pause-withdraw-recover#pause-and-unpause) has the details, and [Rotate the executor](/docs/guides/pause-withdraw-recover#rotate-the-executor) is the step to take when the executor's key may have leaked.
+A pause does not stop the agent: its rounds go on reading the vault and asking Claude, up to the daily cap, until someone stops it on the PC. They send no `execute` while the vault is paused, apart from a `REPAY` when `MAAT_CREDIT_ACTIONS` is `on`: the preview of any other intent reads `VAULT_PAUSED`, a refusal the agent does not log onchain. A round can still send `syncMultiplier`, which the pause does not block. `false` in place of `true` unpauses, at once and with no timelock. [Pause and unpause](/docs/guides/pause-withdraw-recover#pause-and-unpause) has the details, and [Rotate the executor](/docs/guides/pause-withdraw-recover#rotate-the-executor) is the step to take when the executor's key may have leaked.
 
 ## Common mistakes
 
+- **Starting the loop in a terminal that another program opened.** That terminal closes with its program, and the loop and the agent stop with it. Open a PowerShell window or a Windows Terminal tab yourself, as in [Start the restart loop](#start-the-restart-loop).
 - **One folder for the soak and live mode.** The start in live mode stops with `live mode refuses data dir` and the folder. Give live mode its own `MAAT_DATA_DIR`.
 - **Two loops on one folder.** The second agent stops at every start with `maat agent stopped: another agent (pid <PID>) is running; lock <FILE>`, and its loop keeps starting it again, with waits that grow to 15 minutes. Run one loop per folder.
 - **A bad setting under the loop.** The agent stops at its start with `maat agent stopped:` and the error, and the loop starts it again with longer and longer waits. Fix `agent/.env`: the next start reads it.
