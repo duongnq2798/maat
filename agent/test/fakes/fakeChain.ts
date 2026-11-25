@@ -51,8 +51,8 @@ export const PRICES = [18667486580n, 28000000000n, 27000000000n]; // NVDA $186.6
 export const MANDATE = {
   sessionMode: 0,
   maxPremiumBps: 100,
-  maxSlippageBps: 100,
-  maxStaleness: 3600,
+  maxSlippageBps: 150,
+  maxStaleness: 90000,
   multiplierCooldown: 86400,
   twapWindow: 1800,
   perTradeCapUsd: 50_000_000n,

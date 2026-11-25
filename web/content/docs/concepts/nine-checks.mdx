@@ -4,7 +4,7 @@ description: The order in which the vault checks a trade, what each check reads,
 type: concept
 audience: [developer, evaluator, watcher]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/MandateVault.sol
   - contracts/src/GuardLib.sol
@@ -38,7 +38,7 @@ first, and the balance guard runs after check 7. A dot in the first column marks
 | 8 | The notional fits the per-trade and daily caps | `SIZE_LIMIT` | `MandateVault._withinCaps` |
 | 9 | After a `BUY`, the stock's weight stays within its cap | `CONCENTRATION` | `MandateVault._weightAfterBuyBps` |
 
-The market checks live in one function. Checks 2 to 7 are in `GuardLib.checkMarket`; check 1 and the guards around it are in `MandateVault._check`, which calls `checkMarket` in the middle.
+The market checks sit in one function. Checks 2 to 7 are in `GuardLib.checkMarket`; check 1 and the guards around it are in `MandateVault._check`, which calls `checkMarket` in the middle.
 
 ```solidity title="contracts/src/GuardLib.sol#L44-L62"
     function checkMarket(MarketCheck memory c) internal view returns (Reason, uint256) {
@@ -67,8 +67,8 @@ Read it top to bottom. Each `if` returns the reason of one check, so the order o
 ## Why the order matters
 
 Market reasons come first, so a refusal names the outside condition that blocked the trade, not a side
-effect of it. On a Saturday the vault reports `MARKET_CLOSED`, not `FEED_STALE`, even though the feed
-is also old by then. The balance guard runs after the market checks for the same reason: an empty vault
+effect of it. On a Saturday the vault reports `MARKET_CLOSED`, not `FEED_STALE`, even when the feed
+is also older than `maxStaleness` by then. The balance guard runs after the market checks for the same reason: an empty vault
 on a Saturday or a holiday still reports `MARKET_CLOSED`.
 
 Tests pin the order:
@@ -101,7 +101,7 @@ Asks the [B20](/docs/help/glossary#b20) token whether its transfers are paused. 
 
 ### 3. Transfer policy
 
-A B20 token can name sender, receiver and executor policies, and the vault asks the policy registry whether each leg of the transfer path is authorized; a leg that is not authorized, or that cannot be read, returns `POLICY_BLOCKED`. For a `BUY` the legs are the pool as sender and as executor, the vault as receiver, and `tx.origin` as executor; for a `SELL` they are the vault and the swap adapter as senders, the adapter and the pool as receivers, and the adapter and `tx.origin` as executors. `tx.origin` is the account that signed the outer transaction, not the [executor](/docs/help/glossary#executor) address that `execute` checks. For an executor that is a plain account (an EOA), such as the agent's [CDP](/docs/help/glossary#cdp-server-wallet) account, the two are the same. If the executor is a contract, for example a multisig owner made executor for an unwind, the address checked is the EOA that submits the transaction, and behind a bundler it is the bundler's address. That account must pass the executor policy of the stock that the [intent](/docs/help/glossary#intent) trades or moves as collateral, and `previewIntent` must be called with `from` set to it, or the [preview](/docs/help/glossary#preview) can give another answer ([tx.origin in the policy check](/docs/security/not-claimed#txorigin-in-the-policy-check)). `SUPPLY` and `WITHDRAW_COLLATERAL` check `tx.origin` the same way. See `test_refusesWhenPolicyBlocksVault`, `test_policyOnSellChecksAdapterAndPool` and `test_revertingPolicyIdFailsClosed`.
+A B20 token can name sender, receiver and executor policies, and the vault asks the policy registry whether each leg of the transfer path is authorized; a leg that is not authorized, or that cannot be read, returns `POLICY_BLOCKED`. For a `BUY` the legs are the pool as sender and as executor, the vault as receiver, and `tx.origin` as executor; for a `SELL` they are the vault and the swap adapter as senders, the adapter and the pool as receivers, and the adapter and `tx.origin` as executors. `tx.origin` is the account that signed the outer transaction, not the [executor](/docs/help/glossary#executor) address that `execute` checks. For an executor that is a plain account with no code, such as the agent's [CDP](/docs/help/glossary#cdp-server-wallet) account, the two are the same. If the executor has code, for example a multisig owner made executor for an unwind, the address checked is the EOA that submits the transaction, and behind a bundler it is the bundler's address. That account must pass the executor policy of the stock that the [intent](/docs/help/glossary#intent) trades or moves as collateral, and `previewIntent` must be called with `from` set to it, or the [preview](/docs/help/glossary#preview) can give another answer ([tx.origin in the policy check](/docs/security/not-claimed#txorigin-in-the-policy-check)). `SUPPLY` and `WITHDRAW_COLLATERAL` check `tx.origin` the same way. See `test_refusesWhenPolicyBlocksVault`, `test_policyOnSellChecksAdapterAndPool` and `test_revertingPolicyIdFailsClosed`.
 
 ### 4. Market open
 
@@ -154,4 +154,4 @@ The four credit actions return `ACTION_NOT_SUPPORTED` when the mandate has no cr
 ## What the checks do not do
 
 They do not judge whether a trade is a good idea. A trade inside every limit is allowed, even a bad one;
-the limits bound how much a bad trade can cost. They also do not predict how a swap will go: `previewIntent` returns the verdict of the checks, not the execution result, so it cannot see `SWAP_FAILED` or `TRANSFER_FAILED`. See [the threat model](/docs/security/threat-model).
+the limits bound how much a bad trade can cost. They also do not predict how the action will go: `previewIntent` returns the verdict of the checks, not the execution result, so it cannot see `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or a `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit adapter's own check. See [the threat model](/docs/security/threat-model).

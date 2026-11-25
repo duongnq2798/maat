@@ -3,7 +3,7 @@ import { mandateRows } from "@/content/mandate";
 
 export function Mandate() {
   const hours = FACTS.timelockHours.value;
-  const chips = [`timelock ${hours}h`, "executor can only call execute()", "mandateHash [after deploy]"];
+  const chips = [`timelock ${hours}h`, "executor can only call execute()", "mandateHash 0x77a277…661b"];
   return (
     <section id="mandate" aria-labelledby="mandate-title" className="border-y border-line bg-surface-soft">
       <div className="wrap grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-center gap-14 py-20 md:py-32">
@@ -27,7 +27,7 @@ export function Mandate() {
         <div className="card overflow-hidden">
           <div className="flex justify-between gap-4 border-b border-line bg-surface-head px-[22px] py-3.5 font-mono text-xs">
             <span className="font-semibold">mandate · Maat #1</span>
-            <span className="text-ink-2">default · not deployed yet</span>
+            <span className="text-ink-2">default · Base mainnet</span>
           </div>
           <dl className="m-0 px-[22px] pb-3.5 pt-2">
             {mandateRows(FACTS.mandate.value).map((r) => (

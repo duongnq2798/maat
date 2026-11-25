@@ -4,7 +4,7 @@ description: How the vault reads Chainlink equity feeds and the Aerodrome pool T
 type: concept
 audience: [developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/lib/PriceLib.sol
   - contracts/src/MandateVault.sol
@@ -114,7 +114,7 @@ The default limit comes from measurement. On the fork, in session, at block <Fac
 | GOOGLc | <Fact name="premiumsBps.GOOGLc" /> |
 | AAPLc | <Fact name="premiumsBps.AAPLc" /> |
 
-A comment in `MaatConfig.sol` records these readings. The design spec started with a limit half the size of the default, and at the fork block that first limit would have refused NVDAc. That is why `maxPremiumBps` is <Fact name="mandate.maxPremiumBps" />. The fork test `test_liveBasketTradesNearNav` in [PriceLibFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) reads all three pools and feeds at that block and asserts that each premium is below the default limit.
+A comment in `MaatConfig.sol` records these readings. The design spec started with a limit half the size of the default, and at the fork block that first limit would have refused NVDAc. That is why `maxPremiumBps` is <Fact name="mandate.maxPremiumBps" />. The [fork test](/docs/help/glossary#fork-test) `test_liveBasketTradesNearNav` in [PriceLibFork.t.sol](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) reads all three pools and feeds at that block and asserts that each premium is below the default limit.
 
 <Callout type="fork" title="Fork only">
 

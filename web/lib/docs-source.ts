@@ -1,7 +1,9 @@
 import { loader } from "fumadocs-core/source";
 import { flattenTree } from "fumadocs-core/page-tree";
 import { docs } from "@/.source/server";
+import { headerFrame } from "@/lib/docs/frontmatter";
 import { pageMarkdown } from "@/lib/docs/markdown";
+import { type OgCard, ogCard } from "@/lib/docs/og";
 import { siteUrl } from "@/lib/site";
 
 /** The docs page tree and page lookup, built from content/docs by fumadocs-mdx. */
@@ -17,14 +19,27 @@ export function pagesInSidebarOrder(): DocsPage[] {
   return flattenTree(source.getPageTree().children).flatMap((item) => source.getNodePage(item) ?? []);
 }
 
-/** The page as Markdown with absolute links back to the site, for /md/*.md and llms-full.txt. */
+/**
+ * The page as Markdown with absolute links back to the site, for /md/*.md and llms-full.txt. Its header line gives what
+ * the page's header gives (headerFrame): the docs home shows no status label and no review date, and the Help pages
+ * show the date without a label. check:out compares each copy with its exported page.
+ */
 export async function getPageMarkdown(page: DocsPage): Promise<string> {
+  const frame = headerFrame(page);
   return pageMarkdown({
     title: page.data.title,
     url: new URL(page.url, siteUrl()).href,
     description: page.data.description,
+    status: frame?.status,
+    lastReviewed: frame?.lastReviewed,
+    sources: page.data.sources,
     body: await page.data.getText("processed"),
   });
+}
+
+/** What a docs page's link preview image shows (lib/docs/og.ts), with its section named as the sidebar names it. */
+export function getPageOgCard(page: DocsPage): OgCard {
+  return ogCard(page, source.getPageTree());
 }
 
 /** Whether a docs page exists, by slug ("concepts/nine-checks"; "" or "index" for the home page). */

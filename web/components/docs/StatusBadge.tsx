@@ -7,7 +7,7 @@ const DOT: Record<DocStatus, string> = {
   planned: "bg-fd-muted-foreground",
 };
 
-/** Whether what a page describes is live on mainnet, tested on a fork only, or planned. */
+/** The project's status label: built and fork-tested, live on mainnet, or planned. */
 export function StatusBadge({ status }: { status: DocStatus }) {
   return (
     <span

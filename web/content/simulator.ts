@@ -17,7 +17,7 @@ import { getDecisions } from "./decisions";
 import { CHECK_LABELS, type EngineCheck } from "./engine";
 import { FACTS } from "./facts";
 import { clockLabel, dayLabel, minuteOfClock, numberWord } from "./format";
-import type { ReasonCode, RefusalCode } from "./reasons";
+import { type ReasonCode, type RefusalCode, reasonText } from "./reasons";
 
 /**
  * BUY intents against the default mandate, one ET day at a time (spec 2026-11-08 §3). Only what can be decided
@@ -397,7 +397,7 @@ export function decodeScenario(search: string): Scenario {
 export function postText(s: Scenario, r: Pick<SimResult, "allowed" | "reason">): string {
   const what = `${formatUsd(s.intent.usd6)} of ${s.intent.token === "OTHER" ? "a token outside the mandate" : s.intent.token}`;
   const when = `${dayLabel(isoOfDay(s.etDay))} at ${clockLabel(s.intent.minute)} ET`;
-  if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat's simulator said no: ${r.reason}.`;
+  if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat's simulator said no: ${reasonText(r.reason)}.`;
   const nine = numberWord(FACTS.checksPerTrade.value).toLowerCase();
   return `I asked Maat's simulator to buy ${what} on ${when}. All ${nine} checks passed. Can you make it say no?`;
 }

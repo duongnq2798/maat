@@ -66,9 +66,9 @@ export const FACTS = {
   mandate: fact<MandateFacts>(
     {
       sessionMode: "REGULAR",
-      maxStalenessSec: 3600,
+      maxStalenessSec: 90_000,
       maxPremiumBps: 100,
-      maxSlippageBps: 100,
+      maxSlippageBps: 150,
       twapWindowSec: 1800,
       multiplierCooldownSec: 86_400,
       perTradeCapUsd: 50,
@@ -85,6 +85,10 @@ export const FACTS = {
     `gasUsed per tx in agent/test/integration/fork-gas.json, written by MAAT_GAS_LOG from ${FORK_TEST} at BLOCK_SESSION (BUY varies a little between runs, the other three do not)`,
   ),
   feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (age 14 s)"),
+  forkRunMaxStalenessSec: fact(
+    3600,
+    "maxStaleness of the vault in the recorded fork run (fork-gas.json): agent/test/integration/deploy.ts at 4492eed (git show 4492eed:agent/test/integration/deploy.ts); the helper now deploys the default mandate's value",
+  ),
   loopMinutes: fact(15, "agent/src/loop/scheduler.ts IN_SESSION_MS, agent loop cadence in session"),
   rebalanceDriftPct: fact(5, "agent/src/policy.ts DEFAULT_POLICY.driftBps, rebalance past a 5-point drift"),
   targetWeightPct: fact(
@@ -111,7 +115,7 @@ export const FACTS = {
   ),
   feedEdgeMin: fact(
     1200,
-    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET",
+    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: assumes Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET (not measured in the repository)",
   ),
   calendar: fact<{ holidays: readonly Holiday[]; earlyCloses: readonly EarlyClose[] }>(
     {
@@ -119,10 +123,20 @@ export const FACTS = {
         { date: "2026-11-26", name: "Thanksgiving" },
         { date: "2026-12-25", name: "Christmas" },
         { date: "2027-01-01", name: "New Year" },
+        { date: "2027-01-18", name: "Martin Luther King Jr. Day" },
+        { date: "2027-02-15", name: "Washington's Birthday" },
+        { date: "2027-03-26", name: "Good Friday" },
+        { date: "2027-05-31", name: "Memorial Day" },
+        { date: "2027-06-18", name: "Juneteenth (observed)" },
+        { date: "2027-07-05", name: "Independence Day (observed)" },
+        { date: "2027-09-06", name: "Labor Day" },
+        { date: "2027-11-25", name: "Thanksgiving" },
+        { date: "2027-12-24", name: "Christmas (observed)" },
       ],
       earlyCloses: [
         { date: "2026-11-27", closeMin: 780 },
         { date: "2026-12-24", closeMin: 780 },
+        { date: "2027-11-26", closeMin: 780 },
       ],
     },
     "contracts/src/MarketCalendar.sol constructor: _addHoliday (names from its comments) and _setEarlyClose",

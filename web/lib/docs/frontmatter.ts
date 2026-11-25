@@ -34,6 +34,32 @@ export const STATUS_LABEL: Record<DocStatus, string> = {
   planned: "Planned",
 };
 
+/**
+ * Each label's meaning, word for word from the table on the status page (test/docs-page.test.tsx compares them). The
+ * page header's label and the Status line of each Markdown copy both give it.
+ */
+export const STATUS_MEANING: Record<DocStatus, string> = {
+  "fork-tested": "Built and tested; the contracts and the send path have run on a Base mainnet fork.",
+  live: "Deployed to Base mainnet by the owner, with the addresses recorded in deployments/README.md.",
+  planned: "Designed but not built.",
+};
+
+/**
+ * What a docs page's header shows of its frontmatter, by its slugs (fumadocs' page.slugs; [] is the docs home). The docs
+ * home has no frame at all: it renders HomeHeader, with no label and no date. The Help pages show the date without a
+ * label: they are aids around the docs, and the label states how far the project is built and tested (status.mdx says
+ * the same). The page (app/(docs)/docs/[[...slug]]/page.tsx) and its Markdown copy (lib/docs-source.ts) both use it,
+ * so a copy claims no more than its page.
+ */
+export function headerFrame(page: {
+  slugs: readonly string[];
+  data: { status: DocStatus; lastReviewed: string };
+}): { status?: DocStatus; lastReviewed: string } | null {
+  if (page.slugs.length === 0) return null;
+  const { status, lastReviewed } = page.data;
+  return page.slugs[0] === "help" ? { lastReviewed } : { status, lastReviewed };
+}
+
 export const AUDIENCE_LABEL: Record<Audience, string> = {
   newcomer: "Newcomer",
   watcher: "Watcher",

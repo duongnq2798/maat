@@ -2,11 +2,13 @@
 import { createStringifier } from "fumadocs-core/mdx-plugins/stringifier";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { componentText } from "@/lib/docs/component-text";
+import { docsData } from "@/lib/docs/generated";
 import { type MdNode } from "@/lib/docs/remark-facts";
 import { type ComponentTextOptions, remarkComponentText } from "@/lib/docs/remark-component-text";
+import { findContract } from "@/lib/docs/signatures";
 
 const PATH = "content/docs/reference/mandate-vault.mdx";
 const ALL = { exists: () => true };
@@ -103,6 +105,34 @@ describe("remarkComponentText", () => {
     );
   });
 
+  it("reads a list of lists, as a grouped FunctionIndex writes its groups", () => {
+    const names = findContract(docsData.surface, "MarketCalendar").functions.map((f) => f.name);
+    const index = `<FunctionIndex contract="MarketCalendar" groups={[["All", ${JSON.stringify(names)}]]} />`;
+    const str = (value: string) => ({ type: "Literal", value });
+    const groups = {
+      type: "mdxJsxAttributeValueExpression",
+      value: `[["All", ${JSON.stringify(names)}]]`,
+      data: {
+        estree: {
+          type: "Program",
+          body: [
+            {
+              type: "ExpressionStatement",
+              expression: {
+                type: "ArrayExpression",
+                elements: [{ type: "ArrayExpression", elements: [str("All"), { type: "ArrayExpression", elements: names.map(str) }] }],
+              },
+            },
+          ],
+        },
+      },
+    };
+    const { nodes, whole } = parse(index, { [index]: flow("FunctionIndex", [attr("contract", "MarketCalendar"), attr("groups", groups)]) });
+    expect(run(index, { type: "root", children: nodes, position: whole })).toBe(
+      componentText("FunctionIndex", { contract: "MarketCalendar", groups: [["All", names]] }, ALL),
+    );
+  });
+
   it("asks the page lookup which pages have shipped, for the router cards", () => {
     const cards = "<RouterCards />";
     const { nodes, whole } = parse(cards, { [cards]: flow("RouterCards") });
@@ -134,6 +164,67 @@ describe("remarkComponentText", () => {
         expect.stringContaining("[Security model →](/docs/security/model)"),
       ]);
       expect(lines.filter((l) => l.endsWith("(coming soon)"))).toHaveLength(3);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("lists a section from the pages and meta.json files under docsDir, as Fumadocs builds the sidebar from them", () => {
+    const dir = mkdtempSync(join(tmpdir(), "maat-docs-"));
+    try {
+      const page = (path: string, title: string, description: string, eol = "\n") =>
+        writeFileSync(join(dir, path), ["---", `title: "${title}"`, `description: ${description}`, "---", "", "Body."].join(eol));
+      writeFileSync(join(dir, "meta.json"), JSON.stringify({ title: "Docs", pages: ["index", "a"] }));
+      page("index.mdx", "Home", "The home.");
+      mkdirSync(join(dir, "a"));
+      writeFileSync(join(dir, "a", "meta.json"), JSON.stringify({ title: "Section A", pages: ["one", "---Group---", "two", "[Home](/docs)"] }));
+      page(join("a", "index.mdx"), "Section A", "What A holds.");
+      page(join("a", "one.mdx"), "One: the first", "Page one.");
+      // A Windows checkout may have CRLF line endings.
+      page(join("a", "two.mdx"), "Two", "Page two.", "\r\n");
+      const tags = '<SectionIndex section="a" />\n\n<SectionIndex />\n';
+      const { nodes, whole } = parse(tags, {
+        '<SectionIndex section="a" />': flow("SectionIndex", [attr("section", "a")]),
+        "<SectionIndex />": flow("SectionIndex"),
+      });
+      expect(run(tags, { type: "root", children: nodes, position: whole }, { docsDir: dir })).toBe(
+        [
+          "- [One: the first](/docs/a/one): Page one.",
+          "",
+          "**Group**",
+          "",
+          "- [Two](/docs/a/two): Page two.",
+          "- [Home](/docs): The home.",
+          "",
+          "- [Section A](/docs/a): What A holds.",
+          "",
+        ].join("\n"),
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("tells the bundler which files a section index read, so next dev rebuilds its Markdown when another page changes", () => {
+    const dir = mkdtempSync(join(tmpdir(), "maat-docs-"));
+    try {
+      writeFileSync(join(dir, "meta.json"), JSON.stringify({ title: "Docs", pages: ["index", "a"] }));
+      writeFileSync(join(dir, "index.mdx"), "---\ntitle: Home\ndescription: The home.\n---\n");
+      mkdirSync(join(dir, "a"));
+      writeFileSync(join(dir, "a", "meta.json"), JSON.stringify({ title: "A", pages: ["one"] }));
+      writeFileSync(join(dir, "a", "index.mdx"), "---\ntitle: A\ndescription: What A holds.\n---\n");
+      writeFileSync(join(dir, "a", "one.mdx"), "---\ntitle: One\ndescription: Page one.\n---\n");
+      const compile = (source: string, tags: Record<string, Omit<MdNode, "position">>) => {
+        const added: string[] = [];
+        const { nodes, whole } = parse(source, tags);
+        const file = { path: PATH, toString: () => source, data: { _compiler: { addDependency: (f: string) => added.push(f) } } };
+        remarkComponentText({ docsDir: dir, exists: () => true })({ type: "root", children: nodes, position: whole }, file);
+        return added;
+      };
+      const all = ["meta.json", "index.mdx", join("a", "meta.json"), join("a", "index.mdx"), join("a", "one.mdx")].map((f) => resolve(dir, f));
+      expect(new Set(compile('<SectionIndex section="a" />', { '<SectionIndex section="a" />': flow("SectionIndex", [attr("section", "a")]) }))).toEqual(new Set(all));
+      // A page without a section index reads no other file, so it depends on none.
+      expect(compile(EXECUTE, { [EXECUTE]: flow("Fn", [attr("contract", "MandateVault"), attr("name", "execute")]) })).toEqual([]);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

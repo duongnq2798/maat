@@ -36,6 +36,7 @@ describe("engine moments (spec §3)", () => {
       ["Token not paused", "transfers active"],
       ["Vault policy", "authorized"],
       ["Market session", "REGULAR · open"],
+      // The replayed run's vault had maxStaleness 3600, not today's 90000 default.
       ["Feed freshness", "14s ≤ 3600s"],
       ["Multiplier stable", "no change 24h"],
       ["DEX premium", "53 ≤ 100 bps"],

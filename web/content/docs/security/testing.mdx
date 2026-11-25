@@ -4,18 +4,26 @@ description: "How each guarantee is tested: contract unit and fork suites, agent
 type: concept
 audience: [evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-23
 sources:
   - contracts/test/MandateVault.t.sol
   - contracts/test/GuardLib.t.sol
   - contracts/test/fork/MandateVaultFork.t.sol
   - contracts/test/MandateVaultAdmin.t.sol
   - contracts/test/MandateVaultCredit.t.sol
+  - contracts/test/MandateVaultMalformed.t.sol
+  - contracts/test/MarketCalendarVectors.t.sol
+  - contracts/test/vectors/gen-vectors.mjs
+  - contracts/test/invariant/MandateVaultInvariants.t.sol
+  - contracts/test/invariant/VaultHandler.sol
+  - contracts/foundry.toml
+  - contracts/test/Deploy.t.sol
   - agent/test/runOnce.test.ts
   - agent/test/sender.test.ts
   - agent/test/cdpPolicy.test.ts
   - agent/test/integration/agent.fork.test.ts
   - web/test/facts.test.ts
+  - web/test/calendar.test.ts
   - web/test/docs-gen.test.ts
   - web/test/docs-facts.test.ts
   - web/test/docs-coverage.test.ts
@@ -25,33 +33,34 @@ sources:
   - web/scripts/check-out.ts
   - web/e2e/docs-a11y.spec.ts
   - web/e2e/docs.spec.ts
+  - web/e2e/simulator.spec.ts
   - contracts/test/mocks/MockB20.sol
   - agent/test/integration/deploy.ts
   - agent/src/addresses.ts
-  - contracts/foundry.toml
   - .gitmodules
   - README.md
 next: [guides/run-the-tests, guides/reproduce-the-fork-run]
 ---
 
-This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. Nothing is deployed, and no test here touches mainnet.
+This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. The owner deployed the four Maat contracts on Base mainnet, but no test here touches mainnet.
 
 ## Layers
 
 | Layer | Where | Runs against | Needs |
 | --- | --- | --- | --- |
-| **Contracts, unit** | `contracts/test/*.t.sol` | Mocks of the tokens, feeds, pools and adapters | Nothing |
-| **Contracts, fork** | `contracts/test/fork/*.t.sol` | Real Base state at two pinned mainnet blocks | A Base archive RPC |
-| **Agent, unit** | `agent/test/*.test.ts` | Fakes for Claude, the CDP wallet and the chain | Nothing |
+| **Contracts, unit** | `contracts/test/*.t.sol` | Mocks of the tokens, feeds, pools and adapters, and committed calendar vectors | Nothing |
+| **Contracts, invariant** | `contracts/test/invariant/*.sol` | Random sequences of calls against the same mocks | Nothing |
+| **Contracts, fork** | `contracts/test/fork/*.t.sol` | Real [Base](/docs/help/glossary#base) state at two pinned mainnet blocks | A Base archive RPC |
+| **Agent, unit** | `agent/test/*.test.ts` | Fakes for Claude, the [CDP wallet](/docs/help/glossary#cdp-server-wallet) and the chain | Nothing |
 | **Agent, fork run** | `agent/test/integration/agent.fork.test.ts` | A local fork of Base, with a scripted proposer and a local sender | A Base archive RPC and `base-anvil` |
 | **Parity, site and docs** | `web/test/*.test.ts` and `*.test.tsx` | The Solidity and TypeScript sources and the committed fork-run gas log | Nothing |
 | **Site, end to end** | `web/e2e/*.spec.ts` | The built static site, in a browser | Playwright's Chromium |
 
-Each layer has its own limit. Unit tests are fast and exact but use stand-ins. Fork tests use the real tokens and pools but cover few paths. No layer touches the real Claude API or the real CDP wallet.
+Each layer has its own limit. Unit tests are fast and exact but use stand-ins. [Fork tests](/docs/help/glossary#fork-test) use the real tokens and pools but cover few paths. No layer touches the real Claude API or the real CDP wallet.
 
 ## Contracts
 
-The unit suites are `MandateVault`, `MandateVaultCredit`, `MandateVaultAdmin`, `GuardLib`, `MarketCalendar`, `PriceLib`, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`. They run against mocks in `contracts/test/mocks`: a mock [B20](/docs/help/glossary#b20) token with switches that make its four B20 reads (`isPaused`, `policyId`, `uiMultiplier` and `effectiveAt`) revert, a mock feed, a mock pool, and mock swap and credit adapters. The mocks are what make the tests exact: a test can make `isPaused` revert, move the clock to a Saturday, or have the swap return a hair less than the floor. The price is that a mock shows the vault's logic and not the behavior of the real contract it stands for. Here is one such test:
+The unit suites are `MandateVault`, `MandateVaultCredit`, `MandateVaultAdmin`, `MandateVaultMalformed`, `GuardLib`, `MarketCalendar`, `MarketCalendarVectors`, `PriceLib`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `Deploy`, which checks the deploy script's payee list. They run against mocks in `contracts/test/mocks`: a mock [B20](/docs/help/glossary#b20) token with switches that make its four B20 reads (`isPaused`, `policyId`, `uiMultiplier` and `effectiveAt`) [revert](/docs/help/glossary#revert), a mock feed, a mock pool, and mock swap and credit adapters. The mocks are what make the tests exact: a test can make `isPaused` revert, move the clock to a Saturday, or have the swap return a hair less than the floor. The price is that a mock shows the [vault](/docs/help/glossary#vault)'s logic and not the behavior of the real contract it stands for. Here is one such test:
 
 ```solidity title="contracts/test/MandateVault.t.sol#L114-L121"
     function test_slippageFloorIsEnforcedEvenIfAgentSendsZero() public {
@@ -70,17 +79,20 @@ The table below maps the guarantees to their tests, in the contracts and in the 
 
 | Guarantee | Test | Kind | What it shows |
 | --- | --- | --- | --- |
-| **[Refusal](/docs/help/glossary#refusal) is logged, not reverted** | [`test_refusalIsLoggedNotReverted`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A `BUY` on a Saturday returns `(false, MARKET_CLOSED)`, emits `Decision`, leaves the USDC where it is and spends the intent id |
-| **A real weekend is refused** | [`test_weekendBuyIsRefusedInBothModes`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Fork | The same refusal at a real Saturday block, in both session modes |
+| **[Refusal](/docs/help/glossary#refusal) is logged, not reverted** | [`test_refusalIsLoggedNotReverted`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A `BUY` on a Saturday returns `(false, MARKET_CLOSED)`, emits [`Decision`](/docs/help/glossary#decision), leaves the USDC where it is and spends the intent id |
+| **A real weekend is refused** | [`test_weekendBuyIsRefusedInBothModes`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Fork | The same refusal at a real Saturday block, in both [session modes](/docs/help/glossary#session-mode) |
 | **Replay reverts** | [`test_replayReverts`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A used intent id reverts with `IntentAlreadyUsed` |
 | **[Slippage floor](/docs/help/glossary#slippage-floor)** | [`test_slippageFloorIsEnforcedEvenIfAgentSendsZero`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol) | Unit | A swap that returns less than the oracle-based floor fails, whatever `minOut` the agent sent |
 | **[Timelock](/docs/help/glossary#timelock)** | [`test_mandateChangeNeedsTimelock`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | A change cannot be applied unqueued or early, and applies once the wait is over |
 | **Repay while paused** | [`test_repayIsAllowedWhileVaultPaused`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) | Unit, mock credit adapter | `REPAY` works on a paused vault, while `SUPPLY`, `BORROW` and `WITHDRAW_COLLATERAL` return `VAULT_PAUSED` |
-| **Compromised [executor](/docs/help/glossary#executor) bounded** | On a fork: [`test_compromisedExecutorIsBounded`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol). Offline, against mocks: [`test_payExpenseRejectsUnknownPayee`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [`test_perTradeCap`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [`test_executorCannotUseOwnerFunctions`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Fork (no credit adapter), and unit | On the fork, a payment to a non-payee and a buy over the cap are refused, `withdraw` reverts, the attacker ends with nothing and the vault keeps its USDC. The unit tests make the same three attempts as the executor against mocks, with the same buy and other amounts for the payment and the withdrawal. They show the vault's logic, not the real tokens, and none checks the attacker's balance |
+| **Compromised [executor](/docs/help/glossary#executor) bounded** | On a fork: [`test_compromisedExecutorIsBounded`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol). Offline, against mocks: [`test_payExpenseRejectsUnknownPayee`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [`test_perTradeCap`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVault.t.sol), [`test_executorCannotUseOwnerFunctions`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Fork (no credit adapter), and unit | On the fork, a payment to an address that is not a [payee](/docs/help/glossary#payee) and a buy over the cap are refused, `withdraw` reverts, the attacker ends with nothing and the vault keeps its USDC. The unit tests make the same three attempts as the executor against mocks, with the same buy and other amounts for the payment and the withdrawal. They show the vault's logic, not the real tokens, and none checks the attacker's balance |
 | **Only the [owner](/docs/help/glossary#owner) can act as owner** | [`test_executorCannotUseOwnerFunctions`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol), [`test_nonOwnerCannotCancelChange`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol), [`test_nonOwnerCannotApplyReadyChanges`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | The executor calling `withdraw`, `fund`, `setExecutor`, `setPaused` or a `queue` function reverts with `NotOwner`, and so does a non-owner calling `cancelChange` or an `apply` function |
 | **A rotated key stops working** | [`test_rotatingExecutorRevokesOldOne`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultAdmin.t.sol) | Unit | After `setExecutor`, the old executor's `execute` reverts with `NotExecutor` |
 | **[Fail closed](/docs/help/glossary#fail-closed)** | [`test_revertingIsPausedFailsClosed`](https://github.com/duongnq2798/maat/blob/main/contracts/test/GuardLib.t.sol) and its siblings | Unit | A reverting pause, policy, calendar or multiplier read gives a refusal and no revert. [The security model](/docs/security/model#fail-closed) lists them |
 | **Concentration counts debt** | [`test_concentrationNetsCreditDebt`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultCredit.t.sol) | Unit, mock credit adapter | Borrowing does not loosen the weight cap, because it is measured on equity net of debt |
+| **The rules hold over random call sequences** | [`MandateVaultInvariants.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/invariant/MandateVaultInvariants.t.sol) | Invariant | The vault's rules hold after every call of every run. [Invariant tests](#invariant-tests) lists the invariants |
+| **A dependency can still revert `execute`** | [`test_feedReturningTooLittleDataRevertsExecute`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) and its seven siblings | Unit | Return data that does not fit the ABI (a feed, a token, a credit adapter view), a revert in a read that no `try` guards (USDC's `balanceOf`, the stock's `decimals`, the pool's `token0`), or a pool answer the TWAP cannot use makes `execute` and `previewIntent` revert, and the intent id stays unused. [The security model](/docs/security/model#fail-closed) lists these cases |
+| **The calendar keeps US Eastern time and the NYSE closures** | [`MarketCalendarVectors.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendarVectors.t.sol) | Unit, committed vectors | The UTC offset at every DST change from 2007 to 2100, and the closures and opening hours on each 2026 and 2027 closure date, match vectors computed outside Solidity. [Calendar vectors](#calendar-vectors) says how |
 | **The calendar only gets stricter** | [`test_ownerCanOnlyMakeItStricter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) | Unit | The calendar owner can add a holiday or an earlier close, and cannot loosen either |
 | **[Preview](/docs/help/glossary#preview) mismatch halts** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "halts when the preview said OK but the vault refused" | Agent unit | The round stops and the journal records the mismatch |
 | **Pending sends are reconciled** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "reconciles a send that threw after broadcast instead of sending again", "drops a pending entry older than the window that never reached the chain" | Agent unit | A send that threw after broadcast is reconciled in the next round, and the agent does not send it again. A pending send with no onchain trace after at least <Fact name="pendingWindowBlocks" /> is dropped. The README calls this row "Exactly-once sends"; [the security model](/docs/security/model#what-the-agent-adds) says what it does not cover |
@@ -90,10 +102,10 @@ The table below maps the guarantees to their tests, in the contracts and in the 
 To run one row yourself, use the test names in the table. From `contracts/`:
 
 ```bash
-forge test --match-test "test_mandateChangeNeedsTimelock|test_expiredChangeReverts"
+forge test --match-test "test_executorCannotUseOwnerFunctions|test_nonOwnerCannotCancelChange|test_nonOwnerCannotApplyReadyChanges"
 ```
 
-The filter is a regular expression, so this runs both tests. A fork row also needs `BASE_RPC_URL` set to a Base archive RPC, as in [Contract fork tests](/docs/guides/run-the-tests#contract-fork-tests). For an agent row, from `agent/` after `npm ci`:
+The filter is a regular expression, so this runs the three tests of the owner row. A fork row also needs `BASE_RPC_URL` set to a Base archive RPC, as in [Contract fork tests](/docs/guides/run-the-tests#contract-fork-tests). For an agent row, from `agent/` after `npm ci`:
 
 ```bash
 npx vitest run test/runOnce.test.ts -t "reconciles a send that threw after broadcast"
@@ -101,21 +113,87 @@ npx vitest run test/runOnce.test.ts -t "reconciles a send that threw after broad
 
 With `-t`, Vitest runs only the tests whose name matches, and reports the file's other tests as skipped.
 
+## Invariant tests
+
+The unit tests check one example each. The invariant suite, [`MandateVaultInvariants.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/invariant/MandateVaultInvariants.t.sol), lets Foundry call a set of handler functions in a random order with random inputs, many calls per run and many runs, and checks the invariants below after every call. It runs on the same mocks as the unit tests: a vault with two listed stocks, an unlisted one, two allowlisted payees and the mock credit adapter, and three valid mandates for the owner to switch between.
+
+### Handlers
+
+No handler reverts itself, so every outcome is counted instead. The trade, expense and credit handlers send intents the way the agent does: before each `execute` they call `previewIntent` as the executor, with `tx.origin` set to the executor too. One send in 16 comes from a stranger and one in 16 reuses the last intent id, to reach the two reverts.
+
+| Handler | What it does |
+| --- | --- |
+| **Trade** | `BUY` and `SELL` of the two listed stocks, and now and then of the unlisted one. Most sizes are well under the per-trade cap, some are near it or over it, and some are zero. The mock swap pays between the slippage floor and the oracle-implied amount, except one time in 32 when it pays under the floor and one time in 32 when the intent's `minOut` is above what it pays |
+| **Expense** | `PAY_EXPENSE` to one of the two allowlisted payees, or to an address off the allowlist one time in four |
+| **Credit** | `SUPPLY`, `BORROW`, `REPAY` and `WITHDRAW_COLLATERAL` on the mock credit adapter, with health factors scripted per call: mostly above the target, sometimes between the floor and the target, sometimes below the floor, and now and then a check after the action that disagrees with the projection |
+| **Time** | Moves the clock into a regular session, by a few minutes, across UTC midnight or by days, so a run can cross nights, weekends, holidays and early closes. It refreshes the feeds as it goes, except that now and then a feed keeps its old answer and goes stale, or moves past the [premium](/docs/help/glossary#premium) limit |
+| **Owner** | Queues, cancels and applies changes between the three mandates at whatever time the run is at, and keeps its own record of when each was queued |
+
+### Invariants
+
+| Invariant | What fails it |
+| --- | --- |
+| `invariant_executeRevertsOnlyWithNotExecutorOrIntentAlreadyUsed` | `execute` reverts with anything but `NotExecutor` for the stranger or `IntentAlreadyUsed` for the reused id, one of those two does not revert, or `previewIntent` reverts |
+| `invariant_spentOnDayStaysWithinTheDailyCap` | `spentOnDay` for a UTC day the run touched, midnight crossings included, is over the largest daily cap in force that day, or differs from the sum of the trades and payments `execute` allowed that day |
+| `invariant_noAllowanceOutlivesACall` | The vault leaves an allowance of USDC or either stock to the swap adapter or the credit adapter after any call |
+| `invariant_usdcLeavesOnlyToAnAdapterOrAPayee` | A USDC transfer out of the vault goes to anyone but the swap adapter, the credit adapter or an allowlisted payee, or the USDC held by the vault, the two adapters and the payees stops adding up to what was minted |
+| `invariant_previewMatchesExecuteUntilItActs` | `previewIntent`, called right before `execute`, gives another reason than `execute`. A preview of `OK` followed by `SWAP_FAILED`, `TRANSFER_FAILED`, `CREDIT_FAILED`, or the adapter's own health check after a `BORROW` or a `WITHDRAW_COLLATERAL`, is not a mismatch: the preview cannot see those. The handler counts a health reason as the adapter's only when the health factor it scripted for after the action gives that reason |
+| `invariant_mandateChangesOnlyThroughATimelockedApply` | `mandateHash` differs from the last mandate applied with `applyMandate`, or an apply succeeds before the timelock (<Fact name="timelockHours" />) or after the grace period (<Fact name="gracePeriodDays" />) that follow the queueing of that exact mandate, or fails inside that window, or fails with another error than the one the handler's record predicts. The handler reads `TIMELOCK` and `GRACE_PERIOD` from the vault |
+
+`afterInvariant` then checks that the run reached what the invariants are about, so that it cannot pass by doing nothing. Each run must have allowed several trades, payments and credit actions, applied and refused at least one mandate change, reached both expected reverts, spent on both sides of a UTC midnight, landed in an open session several times, and refused intents with `MARKET_CLOSED`, `PAYEE_NOT_ALLOWED`, `INSUFFICIENT_BALANCE` and at least six kinds of refusal in all.
+
+### Run them
+
+The invariant suite runs as part of `forge test --no-match-path "test/fork/*"`. The `[invariant]` table in [`foundry.toml`](https://github.com/duongnq2798/maat/blob/main/contracts/foundry.toml) keeps the default campaign short, about 30 to 40 seconds on the machine it was measured on, and `fail_on_revert` makes a reverting handler fail the run, since the handlers are built not to revert. For the suite alone, or for a longer search with the `deep` profile:
+
+```bash
+cd contracts
+forge test --match-path "test/invariant/*"
+FOUNDRY_PROFILE=deep forge test --match-path "test/invariant/*"
+```
+
+Each run starts from a new random seed. When a run fails, Foundry prints the shortened sequence of calls that broke the invariant.
+
+### What the invariants do not cover
+
+- **Real contracts.** The swap adapter pays a scripted amount, the pools' TWAP does not move, and the credit adapter's health factors are scripted. Pool price impact, Aave interest and liquidation are not modelled.
+- **Dependency failures the vault does not catch.** Every mock follows its ABI, none of their plain reads reverts and the pools always give a usable answer, so the first invariant says nothing about the failures that [Fail closed](/docs/security/model#fail-closed) lists. [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows what happens otherwise: `execute` reverts.
+- **Other owner actions.** Only mandate changes are fuzzed. Token and payee changes, `setPaused`, `setExecutor`, `withdraw` and `fund` are not called during a run, so the stock list and the payee allowlist stay fixed.
+- **Other state the vault reads.** The B20 pause flag, the transfer policy and the multiplier never change during a run, so `TOKEN_PAUSED`, `POLICY_BLOCKED` and `MULTIPLIER_COOLDOWN` are not reached. The handlers do not aim at `CONCENTRATION`, `TRANSFER_FAILED` or `CREDIT_FAILED` either, and the coverage check does not require them.
+- **The calendar itself.** The time handler can land on a holiday or after an early close, but the coverage check does not require it to. The calendar vectors below cover those dates.
+- **Proof.** A campaign is a random search of bounded length. A sequence it did not try can still break a property.
+
+## Calendar vectors
+
+[`MarketCalendarVectors.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendarVectors.t.sol) checks `MarketCalendar` against two JSON files in `contracts/test/vectors`, read with `vm.readFile` and `vm.parseJson`. A Node script, [`gen-vectors.mjs`](https://github.com/duongnq2798/maat/blob/main/contracts/test/vectors/gen-vectors.mjs), writes them with `Intl.DateTimeFormat` and the `America/New_York` time zone, so the expected values come from the IANA time zone data in Node and share no date logic with the contract.
+
+| File | What it holds | What the test checks |
+| --- | --- | --- |
+| `us-eastern-dst.json` | The instant of each DST start and end from 2007, when the current US rule began, to 2100, found to the second | `etOffsetSeconds` one second before and at each change |
+| `nyse-calendar.json` | The NYSE holidays and 13:00 ET early closes of 2026 and 2027 that the calendar's constructor preloads, and fixed ET times on each of those dates | `isHoliday` and `earlyCloseMin` on each date, that no other day of 2026 or 2027 is preloaded, and `localTime` and `isOpen` in both session modes at each fixed time |
+
+The holiday list in the script is typed from the dates the contract encodes, so these vectors catch a change to the contract or to its date arithmetic, not a mistake in the list itself. Future years assume the US keeps its current DST rule, which is also what the contract assumes. To regenerate the files, run this from the repository root with Node 24 and check that `git diff` shows no change:
+
+```bash
+node contracts/test/vectors/gen-vectors.mjs
+cd contracts && forge test --match-path test/MarketCalendarVectors.t.sol
+```
+
 ## Fork tests against real Base state
 
-The contract fork tests run the real B20 tokens, Chainlink feeds, Aerodrome pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned mainnet blocks: `BLOCK_SESSION` (<Fact name="forkBlock" />, a Thursday, <Fact name="forkDay" />, in session) and `BLOCK_WEEKEND` (a Saturday, 2026-10-31). Foundry forks the chain locally, so nothing is broadcast. They need a Base archive RPC. This is the README's table:
+The contract fork tests run the real B20 tokens, [Chainlink feeds](/docs/help/glossary#chainlink-equity-feed), [Aerodrome pools](/docs/help/glossary#aerodrome-slipstream) and [Aave V4](/docs/help/glossary#aave-v4) at two pinned mainnet blocks: `BLOCK_SESSION` (<Fact name="forkBlock" />, a Thursday, <Fact name="forkDay" />, in session) and `BLOCK_WEEKEND` (a Saturday, 2026-10-31). Foundry forks the chain locally, so nothing is broadcast. They need a Base archive RPC. Each fork test file and what it shows:
 
 | Test file | What it shows |
 | --- | --- |
 | [`MandateVaultFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultFork.t.sol) | Buys and sells NVDAc in session, buys the basket, refuses a real-weekend buy in both session modes, and bounds a compromised executor |
-| [`MandateVaultCreditFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultCreditFork.t.sol) | The credit loop in session; then, with the clock moved to Saturday, borrowing is refused while repay and withdraw still work |
+| [`MandateVaultCreditFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MandateVaultCreditFork.t.sol) | The credit loop in session; then, with the clock moved to Saturday, a borrow and a collateral withdrawal against open debt are refused with `MARKET_CLOSED`, repay works, and once the debt is repaid the withdrawal works |
 | [`AaveV4CreditAdapterFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/AaveV4CreditAdapterFork.t.sol) | Full supply, borrow, repay and withdraw on the Aave V4 MAG7 Spoke; reserve ids match the chain; a borrow below the minimum [health factor](/docs/help/glossary#health-factor) reverts |
 | [`AerodromeSwapAdapterFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/AerodromeSwapAdapterFork.t.sol) | Buys and sells NVDAc directly against the Slipstream pool |
-| [`PriceLibFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) | The live basket trades near the oracle price |
+| [`PriceLibFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/PriceLibFork.t.sol) | The basket trades near the oracle price at `BLOCK_SESSION` |
 | [`B20Smoke.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/B20Smoke.t.sol) | Reads B20 state through the [precompile](/docs/help/glossary#precompile) and transfers NVDAc |
 | [`DeployFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/DeployFork.t.sol) | The deploy script wires every contract and address correctly |
 
-What a [fork test](/docs/help/glossary#fork-test) does not show:
+What a fork test does not show:
 
 - **It is a block, not a deployment.** It shows what the code does against real state at that block. It says nothing about how the system behaves on mainnet over time.
 - **The vault is funded by a test [cheat code](/docs/help/glossary#cheat-code)** in the two vault fork tests, not by an owner's `fund` call.
@@ -128,7 +206,7 @@ The agent's unit tests use fakes. The fake chain, receipts and sender are in [`a
 
 | Test file | What it covers |
 | --- | --- |
-| [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) | A whole round: [dry run](/docs/help/glossary#dry-run) versus live, the once-per-day refusal log, the daily transaction cap, explicit gas, pending sends and their reconcile, and the preview and `Decision` mismatch |
+| [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) | A whole round: [dry run](/docs/help/glossary#dry-run) versus [live mode](/docs/help/glossary#live-mode), the once-per-day refusal log, the daily transaction cap, explicit gas, pending sends and their reconcile, and the preview and `Decision` mismatch |
 | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts) | The guarded sender: the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix, the vault-only target, the allowed functions and the gas bounds |
 | [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts), [`cdpSender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpSender.test.ts) | The shape of the CDP policy, and the CDP sender against a fake client |
 | [`schema.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/schema.test.ts), [`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts), [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts) | What Claude may propose, how an answer is validated and billed, and how a proposal becomes an intent |
@@ -151,7 +229,7 @@ This is the mismatch test, the one that makes the agent stop a round when its pr
     });
 ```
 
-The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts), goes one step further. It deploys the contracts on a local fork from the compiled artifacts, through its own helper [`deploy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/deploy.ts), with the deploy script's addresses, [mandate](/docs/help/glossary#mandate), basket and credit reserves copied by hand: into `deploy.ts`, except the USDC and basket token addresses, which it takes from the agent's own copy in `agent/src/addresses.ts` (the owner, executor and payee are local test accounts). No test checks that these copies agree with the deploy script. It funds the vault with `fund`, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
+The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/agent.fork.test.ts), goes one step further. It deploys the contracts on a local fork from the compiled artifacts, through its own helper [`deploy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/integration/deploy.ts), with the deploy script's addresses, [mandate](/docs/help/glossary#mandate), basket and credit reserves copied by hand into `deploy.ts`, except the USDC and basket token addresses, which it takes from the agent's own copy in `agent/src/addresses.ts` (the owner, executor and payee are local test accounts). No test checks that these copies agree with the deploy script. It funds the vault with `fund`, and runs rounds with a scripted proposer in place of Claude. It sends through the guarded sender, with a local sender in place of the CDP wallet. It checks that every transaction carries the Builder Code and an explicit gas limit, and that each preview matches the onchain `Decision`. Its gas figures are committed to `fork-gas.json`. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) runs it.
 
 <Callout type="warning" title="Not exercised">
 
@@ -161,30 +239,42 @@ Claude and the CDP wallet are fakes in every agent test. The Claude proposer is 
 
 ## Parity tests: the site and these docs
 
-The website and these docs carry numbers, signatures and code that come from the contracts and the agent. The parity tests read those sources and fail when a page drifts from them. They run offline, in `web/`.
+The website and these docs carry numbers, signatures and code that come from the contracts and the agent. The parity tests read those sources and fail when a page, or the simulator's port of the market calendar, drifts from them. They run offline, in `web/`.
 
 | Gate | What fails it | File |
 | --- | --- | --- |
-| **Facts** | A number on the landing page that differs from the Solidity sources, the agent's policy or the committed fork-run gas log | [`facts.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/facts.test.ts) |
+| **Facts** | A number, a holiday or early close, or a basket token on the landing page (the simulator uses them too) that differs from the Solidity sources (`Types.sol`, `MandateVault.sol`, `IMandateVaultEvents.sol`, `MarketCalendar.sol` and the scripts `MaatConfig.sol`, `Deploy.s.sol` and `BaseAddresses.sol`), the agent's `policy.ts` and `scheduler.ts`, or the fork run's `agent.fork.test.ts`, `anvil.ts`, `deploy.ts` (which funds the vault) and committed `fork-gas.json` gas log, except two numbers: the number of checks per trade (9), which comes from the design spec and which no test counts in `MandateVault.sol`, and the decision engine's feed-freshness limit, which is the recorded fork run's own `maxStaleness` (3600 s, from `deploy.ts` at commit `4492eed`) and which no test compares with that file, because the web job's CI checkout has no history | [`facts.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/facts.test.ts) |
+| **Calendar port** | The simulator's TypeScript port of the market calendar (`web/content/calendar.ts`) that differs from `MarketCalendar.sol`: another daylight-saving rule, or another answer to a date, weekday or offset vector that `contracts/test/MarketCalendar.t.sol` asserts, or to an `isOpen` vector in `REGULAR` mode that any of its tests asserts, except `test_ownerCanOnlyMakeItStricter`, which adds a holiday to the calendar mid-test. The test reads these vectors from that file. It also fails on the port's own checks: the fork block's day and New York time, a round trip of the minutes that matter on every day of the window, the clock changes, the ISO dates it reads and writes and the malformed or impossible ones it rejects, the window from the fork day to the last date the calendar lists, why the market is closed at a given time (a weekend, a holiday, before the open, after the close, an early close), and the open and close of a day, or none when NYSE is closed all day | [`calendar.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/calendar.test.ts) |
 | **Docs facts** | A number only the docs cite (the grace period, the gas cap, the agent's defaults) that differs from the file it names | [`docs-facts.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-facts.test.ts) |
-| **Generated data** | The committed reference data (functions, events, errors, types, addresses and the agent's settings) differs from what the sources now parse to. The test says to run `npm run docs:gen` | [`docs-gen.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-gen.test.ts) |
-| **Coverage** | A public function, event, error, enum, struct, agent setting or script with no reference entry | [`docs-coverage.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-coverage.test.ts) |
-| **Content** | A page whose frontmatter, links, anchors, repository paths or typed numbers are wrong, or whose code excerpt differs from the lines of the file it names | [`docs-content.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-content.test.ts) |
+| **Generated data** | The committed data (functions, events, errors, types, addresses, the agent's settings and scripts, the published ABIs, the deployment table parsed from `deployments/README.md` and the line each contract and agent test starts on) differs from what the sources now parse to. The test says to run `npm run docs:gen` | [`docs-gen.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-gen.test.ts) |
+| **Coverage** | A public function, event, error, enum, struct, agent setting or script with no reference entry, or a Solidity file count or submodule commit under [Scope for a reviewer](#scope-for-a-reviewer) that differs from what git records | [`docs-coverage.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-coverage.test.ts) |
+| **Content** | A page whose frontmatter, links, anchors, repository paths or typed numbers are wrong, whose code excerpt differs from the lines of the file it names, or that cites a test that does not exist. It also fails when an agent message quoted on [Agent scripts](/docs/reference/agent-scripts) is no longer in the agent's code word for word, when the [repository map](/docs/reference/repository-map) names a path the repository does not track, and, since `deployments/README.md` records the Base mainnet addresses of the four Maat contracts, when a page or the note of the ABI JSON files says Maat has no deployment in one of the phrases the test looks for | [`docs-content.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-content.test.ts) |
 | **Structure** | A written page that is not in the information architecture, or a section list out of order | [`docs-ia.test.ts`](https://github.com/duongnq2798/maat/blob/main/web/test/docs-ia.test.ts) |
 | **Markdown copy** | A reference entry, table or diagram whose Markdown text differs from what the component renders on the page | [`component-text-parity.test.tsx`](https://github.com/duongnq2798/maat/blob/main/web/test/component-text-parity.test.tsx) |
 
 The built site is checked too. `npm run check:out` reads the static export and fails when:
 
 - a required file is missing, or a docs page has no Markdown copy;
-- a page loads a third-party script, or loads Google Fonts at runtime;
+- a page loads a third-party script, or the landing page, `/now`, `/gap-index` or a docs page loads Google Fonts at runtime;
 - a docs page lacks `lang="en"`, the docs title suffix, a description of the right length, a canonical link or an absolute OG image;
-- a link points to an anchor that is not on the page, or to a docs page that was not exported;
+- a docs page's `og:image` or `twitter:image` is not the page's own link preview image, or that image is missing or is not a PNG of the size its tags give;
+- a page links a same-page anchor (`#id`) that is not on it, or a docs page links a docs page that was not exported or another file that is not in the export (anchors on other pages are checked by `docs-content.test.ts`);
 - an MDX block component ended up inside a paragraph;
 - a Markdown copy still holds the tag of a component that prints data, such as a reference entry, a table or a diagram, instead of its text;
-- `llms.txt`, `llms-full.txt` or `sitemap.xml` leaves out a docs page;
+- a Markdown copy does not open with the note that points to `llms.txt`, or gives another status label, review date or list of Source of truth files than its page;
+- `llms.txt`, `llms-full.txt` or `sitemap.xml` leaves out a docs page, or `llms.txt` has no status line under its summary, links a docs page's HTML instead of its Markdown copy, or links a file that is not in the export;
+- a published ABI under `/data/abi/` is missing or differs from the committed copy;
+- the search index (`/api/search.json`) is over its gzipped size budget, holds no records, or has a result that opens a page or a heading the export does not have;
+- with `CI` or `VERCEL` set, the site URL's host is `localhost`, `127.0.0.1` or `[::1]`, or an exported file holds an http URL on `localhost` that no docs page writes in its own text;
+- the Right now on Base page, `/now`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/now` or an absolute OG image, or `sitemap.xml` leaves it out;
+- the landing page's live strip or `/now`, which read Base mainnet in the browser, has a reading in the exported HTML (a LIVE pill, a Basescan block link or a verdict line) instead of its reading state;
+- the Weekend Gap Index page, `/gap-index`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/gap-index` or an absolute OG image, or `sitemap.xml` leaves it out;
+- `/gap-index`, which is built from the committed edition files, leaves the NVDAc hours of its first measured window out of its markup (its inline scripts do not count), or has "safe", in any case, anywhere in its HTML, even inside another word;
+- the mainnet ledger page, `/ledger`, shows its waiting state although `deployments/README.md` records a vault, or does not show it while none is recorded; lacks its connecting line, or has a chain reading in its HTML (a "Reading Base mainnet" line or a Basescan transaction link), while a vault is recorded; lacks a description of the right length, an absolute OG image or a canonical link to `/ledger`; loads Google Fonts; or `sitemap.xml` leaves it out;
+- `/data/deployments.json` or `/data/rationales.json`, which `/ledger` reads in the browser, is missing or differs from the generated data it is written from;
 - the landing page fails its own checks, or its CSS or JavaScript contains docs code.
 
-The Playwright end-to-end tests load pages at several widths and fail on page overflow or a console error. They run axe on four pages (the docs home, The nine checks, Run the tests and the `MandateVault` reference) in both themes, and fail on a serious or critical violation. They also exercise search, Copy page as Markdown and the theme toggle.
+The Playwright end-to-end tests load pages at several widths and fail on page overflow or a console error. They run axe in both themes on the docs home and the other pages listed in [`docs-a11y.spec.ts`](https://github.com/duongnq2798/maat/blob/main/web/e2e/docs-a11y.spec.ts), chosen for the most varied markup, and fail on a serious or critical violation. They also exercise search, Copy page as Markdown and the theme toggle. [`simulator.spec.ts`](https://github.com/duongnq2798/maat/blob/main/web/e2e/simulator.spec.ts) drives the landing page's simulator: it makes it refuse by mouse and by keyboard (a Saturday, a second buy that the concentration check refuses, the time slider at <Fact name="nyseClose" />), reproduces a refusal from a share link, falls back to the default for a broken link, takes a date typed on the keyboard, and checks that its longest strings fit at two widths.
 
 These gates prove that numbers, signatures, excerpts, links and the shape of the reference match the code. They do not prove that a sentence is true. The prose on these pages was checked by reading it against the code and the tests, and a reader can do the same with the links above.
 
@@ -193,16 +283,16 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | Not tested | Why it matters |
 | --- | --- |
 | **No audit** | Nobody independent has reviewed the code. See [What Maat does not claim](/docs/security/not-claimed) |
-| **No fuzz or invariant tests** | A search of `contracts/test` and `foundry.toml` for both finds nothing. Every contract test is a fixed example |
+| **Fuzzing beyond the mocks** | The invariant suite runs on mocks only and is the only randomized test: every other contract test, fork tests included, takes fixed inputs, and [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the suite leaves out |
 | **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
-| **Mainnet** | No Maat contract is deployed, so every test is a unit test or a fork |
+| **Mainnet** | The owner deployed the four Maat contracts on Base mainnet, but every test is still a unit test or a fork |
 | **A real split or dividend** | The assumption that the feed includes the multiplier has not been observed across one |
-| **Some failure paths** | No unit test makes the feed's `latestRoundData` or the pool's `observe` revert during `execute`, none makes a plain `balanceOf` or `decimals` read revert, none makes the pool's `token0()` or the stock's `decimals()` revert inside `twapPrice`, none makes a read return data that does not decode, and none calls `withdraw` with a token that has no code |
+| **Some failure paths** | No unit test makes the feed's `latestRoundData` or the pool's `observe` revert during `execute`, none makes a stock's `balanceOf` revert, none makes the stock's `decimals()` revert outside `twapPrice`, and none calls `withdraw` with a token that has no code. A reverting USDC `balanceOf`, a reverting pool `token0()` or stock `decimals()` inside `twapPrice`, reads that return data that does not decode and pool answers the TWAP cannot use are tested in [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol), and `execute` reverts with each |
 | **Reentrancy** | No test has an adapter, a pool or a token call back into the vault during `execute`. [Reentrancy](/docs/security/model#reentrancy) says what the vault relies on instead of a guard |
 | **Static analysis and coverage** | No analyzer configuration or output (Slither, Aderyn, Mythril or another) and no line or branch coverage report is committed. The `forge-lint` comments in the sources, such as the one at `GuardLib.sol` line 130, switch off a named lint rule (`block-timestamp`, `calls-loop`, `require-revert-in-loop`) for the next line or a block of lines. No lint run or its output is committed |
 | **A hostile owner** | The vault has no defense against one, so there is nothing to test |
-| **Continuous integration** | There is no CI in this repository yet. The suites run when someone runs them, so any claim here is as fresh as the last run |
+| **The fork suites in CI** | On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs only the offline suites. The two fork suites need an archive RPC and run by hand, so a fork claim here is as fresh as the last run |
 
 If you can think of a test that belongs on this list, or one that fails, [Report a vulnerability](/docs/security/report-a-vulnerability) says how to tell the team.
 
@@ -228,7 +318,7 @@ The contracts compile through the IR pipeline (`via_ir`) with the optimizer on, 
 | Part | What it holds |
 | --- | --- |
 | **`contracts/src`** | The 15 Solidity files the vault, the calendar and the two adapters are built from: `MandateVault`, `GuardLib`, `MarketCalendar`, `Types` and `IMandateVaultEvents`; the two adapters and their interfaces; the external interfaces; and the `DateLib`, `PriceLib` and `TokenTransfer` libraries |
-| **`contracts/script`** | The deploy configuration, listed apart from `src`: `Deploy.s.sol`, `MaatConfig.sol` (the default mandate, the basket and the credit reserves) and `BaseAddresses.sol` (every Base address). They set every address and default, and `DeployFork.t.sol` tests them |
+| **`contracts/script`** | The deploy configuration, listed apart from `src`: `Deploy.s.sol`, `MaatConfig.sol` (the default mandate, the basket and the credit reserves) and `BaseAddresses.sol` (every Base address). They set every address and default, and `DeployFork.t.sol` tests them on a fork, with `Deploy.t.sol` unit-testing the script's payee list |
 | **Uniswap v4-core** | The only outside code in `src`: `TickMath`, used by `PriceLib` and `AerodromeSwapAdapter`, and `FullMath`, used by `PriceLib`. `TickMath` imports `BitMath` and `CustomRevert` from the same folder. It is a submodule pinned at commit `e50237c` |
 | **forge-std** | A submodule pinned at commit `f3dae6e`, used by the tests and by `Deploy.s.sol` only, never by `src` |
 | **OpenZeppelin** | Not used |
