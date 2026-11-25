@@ -28,7 +28,7 @@ import { roundKit, type Gating, type RunDeps, type RunReport } from "./runOnce.j
  * expects: OK in session, MARKET_CLOSED outside it, which the vault then logs once per NYSE date and closed phase.
  * The vault judges a send at the block that mines it, so an OK probe stops PROBE_DEADLINE_MARGIN_S before the close
  * and a MARKET_CLOSED probe stops when the calendar is open PROBE_DEADLINE_MARGIN_S on. No probe sends more than
- * PROBE_LATE_LIMIT_MS after its instant, or after the agent was stopped.
+ * PROBE_LATE_LIMIT_MS after its instant, and a probe reads, previews and sends nothing more once the agent is stopping.
  */
 
 /** A waiting probe looks at the clock at least this often, so a PC that slept past an instant notices on waking. */
@@ -67,7 +67,8 @@ class ProbeEnd extends Error {
  * Runs the probe of instant `atMs` once; `now` is the clock it judges lateness and its deadline by, and `sleep` the
  * wait between the tries of a failed read, which `signal` (the agent's stop) ends early. Every outcome is journaled as
  * a `probe` row and recorded in state.json, except for an instant state.json already holds, which it leaves alone. It
- * never throws for a failed read or send: that ends the probe `halted`, as a round halts. After a stop it sends nothing.
+ * never throws for a failed read or send: that ends the probe `halted`, as a round halts. After a stop it ends `skipped`
+ * at its next step and sends nothing, unless its send had begun.
  */
 export async function runProbe(
   d: RunDeps,
@@ -93,6 +94,14 @@ export async function runProbe(
   };
 
   /**
+   * Once the agent is stopping, the probe ends `skipped` at its next step: a read's next try, its deadline or open
+   * check, the settling of earlier sends, a preview's gate or the send. A call in progress finishes first.
+   */
+  const stopped = (): void => {
+    if (signal.aborted) throw new ProbeEnd("skipped", STOPPING);
+  };
+
+  /**
    * One failed read does not use up the instant: it is tried again PROBE_RETRY_MS later, up to PROBE_READ_TRIES tries
    * in all, while the next try is at most PROBE_LATE_LIMIT_MS after the instant. Each failed try is an error row. A
    * pause that ends more than PROBE_LATE_LIMIT_MS after the instant (a PC that slept through it) ends the probe
@@ -100,13 +109,15 @@ export async function runProbe(
    */
   const tryRead = async <T>(read: () => Promise<Read<T>>): Promise<Read<T>> => {
     for (let n = 1; ; n++) {
+      stopped();
       const r = await read();
       if (r.ok) return r;
       const again = n < PROBE_READ_TRIES && now() + PROBE_RETRY_MS - atMs <= PROBE_LATE_LIMIT_MS;
       await j.append({ kind: "error", runId, message: `${r.why} (try ${n} of ${PROBE_READ_TRIES}${again ? `, again in ${PROBE_RETRY_MS / 1000} s` : ""})` });
+      stopped();
       if (!again) return { ok: false, why: `${r.why}, after ${n} ${n === 1 ? "try" : "tries"}` };
       await sleep(PROBE_RETRY_MS, signal);
-      if (signal.aborted) throw new ProbeEnd("skipped", STOPPING);
+      stopped();
       if (now() - atMs > PROBE_LATE_LIMIT_MS) {
         const woke = `it woke from a ${PROBE_RETRY_MS / 1000} s pause at ${probeIso(now())}`;
         throw new ProbeEnd("missed", `${woke}, more than ${LATE_MINUTES} minutes after its time; a probe is never run late`);
@@ -178,9 +189,10 @@ export async function runProbe(
     /**
      * Why a MARKET_CLOSED probe may no longer send: the calendar is open PROBE_DEADLINE_MARGIN_S from now, `t`: the
      * later of the clock and a block read fresh (the state's can be minutes old). The calendar's answer for `t` + the
-     * margin covers a send at `t` only, so the clock is read again after the read. When it moved on, the calendar at
-     * `t` + 2 × the margin covers a send until `t` + the margin; reads that end later than that took too long, and the
-     * probe sends nothing.
+     * margin covers a send at `t` only, so the clock is read again after the read. When it moved on, the read took
+     * `took` s, and the calendar is read once more, the margin after `by`: as long after that read's end as it took, and
+     * 1 s more. That answer covers a send until `by`; a second read that ends later took too long, and the probe sends
+     * nothing.
      */
     const nearOpen = async (): Promise<Read<string | null>> => {
       let head: { timestamp: bigint };
@@ -196,31 +208,27 @@ export async function runProbe(
         const chain = head.timestamp + BigInt(Math.floor((now() - from) / 1000));
         return clock > chain ? clock : chain;
       };
-      const t = current();
-      const ahead = t + MARGIN;
       const openAt = async (ts: bigint): Promise<Read<boolean>> => {
         const c = await readCalendarAt(d.stateClient, s.mandate.calendar, s.mandate.sessionMode, ts, k.state().blockNumber);
         return c ? { ok: true, value: c.open } : { ok: false, why: `the calendar could not be read at ${isoOfSeconds(ts)}` };
       };
-      const tooLong = (end: bigint): Read<string | null> => ({
-        ok: false,
-        why: `the calendar read took too long: it ended at ${isoOfSeconds(end)}, more than ${PROBE_DEADLINE_MARGIN_S} s after ${isoOfSeconds(t)}`,
-      });
-      const first = await openAt(ahead);
+      const close = "; a MARKET_CLOSED probe sends nothing that close to an open";
+      const t = current();
+      const first = await openAt(t + MARGIN);
       if (!first.ok) return first;
-      if (first.value) {
-        return { ok: true, value: `the calendar is open at ${isoOfSeconds(ahead)}, ${PROBE_DEADLINE_MARGIN_S} s after ${isoOfSeconds(t)}; a MARKET_CLOSED probe sends nothing that close to an open` };
-      }
+      if (first.value) return { ok: true, value: `the calendar is open at ${isoOfSeconds(t + MARGIN)}, ${PROBE_DEADLINE_MARGIN_S} s after ${isoOfSeconds(t)}${close}` };
       const read = current();
       if (read <= t) return { ok: true, value: null };
-      if (read > ahead) return tooLong(read);
-      const further = ahead + MARGIN;
-      const second = await openAt(further);
+      const took = read - t;
+      const by = read + took + 1n;
+      const second = await openAt(by + MARGIN);
       if (!second.ok) return second;
+      if (second.value) {
+        return { ok: true, value: `the calendar is open at ${isoOfSeconds(by + MARGIN)}, ${PROBE_DEADLINE_MARGIN_S} s after ${isoOfSeconds(by)}, the latest its second read may end${close}` };
+      }
       const end = current();
-      if (end > ahead) return tooLong(end);
-      const why = `the calendar is open at ${isoOfSeconds(further)}, ${2 * PROBE_DEADLINE_MARGIN_S} s after ${isoOfSeconds(t)}, and the reads ended at ${isoOfSeconds(end)}; a MARKET_CLOSED probe sends nothing that close to an open`;
-      return { ok: true, value: second.value ? why : null };
+      if (end <= by) return { ok: true, value: null };
+      return { ok: false, why: `the calendar read took too long: its second read ended at ${isoOfSeconds(end)}, after ${isoOfSeconds(by)}, the latest it may end` };
     };
     /** Why a probe sends nothing although it is ready to: the agent is stopping, or its instant is too long ago. */
     const stopOrLate = (): string | null => {
@@ -240,6 +248,7 @@ export async function runProbe(
       return r.value ?? stopOrLate();
     };
 
+    stopped();
     if (want === "OK") {
       const late = pastDeadline();
       if (late) return await finish("skipped", late);
@@ -248,7 +257,10 @@ export async function runProbe(
       if (!near.ok) return await finish("skipped", `${near.why}; ${UNPLACED}`);
       if (near.value) return await finish("skipped", near.value);
     }
-    if (!(await k.reconcileAll())) {
+    stopped();
+    const settled = await k.reconcileAll();
+    stopped();
+    if (!settled) {
       report.status = "pending-tx";
       return await finish("skipped", "a send from an earlier round may still land; a probe sends nothing until it is settled");
     }
@@ -263,6 +275,7 @@ export async function runProbe(
     }
 
     const gating: Gating = (preview, key, logged) => {
+      if (signal.aborted) return { send: false, why: STOPPING };
       const stop = pastDeadline();
       if (stop) return { send: false, why: stop };
       if (preview !== want) {
@@ -274,6 +287,7 @@ export async function runProbe(
     for (const [index, p] of candidates.entries()) {
       const h = await k.handle(index, p, { k: "probe" }, { gating, beforeSend });
       if (h.outcome !== "skipped") return await finish(h.outcome);
+      stopped();
       // The preview the probe wanted, refused by the gate (a refusal already logged) or by the deadline: stop there.
       if (h.preview === want || pastDeadline()) return await finish("skipped", h.why);
       tried.push(`${p.action} ${p.symbol}: ${h.why}`);

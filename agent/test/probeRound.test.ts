@@ -130,6 +130,19 @@ function slowCalendar(c: RunDeps["stateClient"], takesMs: number, advance: (by: 
   };
 }
 
+/** The state client with its n-th calendar read at an instant, from here on, taking `takes[n]` ms (0 past the list). */
+function timedCalendar(c: RunDeps["stateClient"], takes: readonly number[], advance: (by: number) => void): RunDeps["stateClient"] {
+  let n = 0;
+  return {
+    ...c,
+    multicall: (async (p: CalendarCall) => {
+      const r = await c.multicall(p as never);
+      if (calendarReadAt(p) !== null) advance(takes[n++] ?? 0);
+      return r;
+    }) as never,
+  };
+}
+
 /** Moves the test clock of `t` on by `by` ms. */
 const advanceOf = (t: { clock: () => number; set: (iso: string) => void }) => (by: number) => t.set(new Date(t.clock() + by).toISOString());
 
@@ -261,21 +274,51 @@ describe("runProbe at Friday 27 November 18:01 UTC (13:01 ET, after the early cl
     expect(t.inner.sent).toEqual([]);
   });
 
-  it("still sends when each calendar read takes 5 s, far from an open, and sends nothing when its two reads take over 30 s", async () => {
+  it("still sends when each calendar read takes 5 s, or 20 s after the gas estimate, far from an open", async () => {
     const t = await setup({ clock: F1801 });
     t.deps.stateClient = slowCalendar(t.deps.stateClient, 5_000, advanceOf(t));
     expect(await t.probe(F1801)).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
     expect(t.sleeps).toEqual([]);
     expect(t.store.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" })).toBe(true);
 
+    // Read at 18:01:00 for 18:01:30, then at 18:01:20 for 18:02:11, 30 s after 18:01:41, by when the second must end.
     const slow = await setup({ clock: F1801 });
     slow.receipts.estimate = () => ((slow.deps.stateClient = slowCalendar(slow.deps.stateClient, 20_000, advanceOf(slow))), 200_000n);
-    const r = await slow.probe(F1801);
+    expect(await slow.probe(F1801)).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+    expect(slow.inner.sent).toHaveLength(1);
+  });
+
+  it("sends nothing when its second calendar read after the gas estimate takes over a second longer than its first", async () => {
+    // The first read ends at 18:01:01, 1 s after the check began, so the second may end until 18:01:03.
+    const t = await setup({ clock: F1801 });
+    t.receipts.estimate = () => ((t.deps.stateClient = timedCalendar(t.deps.stateClient, [1_000, 3_000], advanceOf(t))), 200_000n);
+    const r = await t.probe(F1801);
     expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED", sent: [] });
     expect(r.why).toBe(
-      "the calendar read took too long: it ended at 2026-11-27T18:01:40Z, more than 30 s after 2026-11-27T18:01:00Z; a MARKET_CLOSED probe sends nothing it cannot place before an open",
+      "the calendar read took too long: its second read ended at 2026-11-27T18:01:04Z, after 2026-11-27T18:01:03Z, the latest it may end; a MARKET_CLOSED probe sends nothing it cannot place before an open",
     );
-    expect(slow.inner.sent).toEqual([]);
+    expect(t.inner.sent).toEqual([]);
+    expect(t.store.pending()).toEqual([]);
+
+    // Ending at 18:01:03, it still sends.
+    const edge = await setup({ clock: F1801 });
+    edge.receipts.estimate = () => ((edge.deps.stateClient = timedCalendar(edge.deps.stateClient, [1_000, 2_000], advanceOf(edge))), 200_000n);
+    expect(await edge.probe(F1801)).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+  });
+
+  it("tries its first check again 5 s later, like any failed read, when that calendar read takes too long, then sends", async () => {
+    // Its calendar reads: at the instant, then 30 s on (1 s), then once more (3 s), past 18:01:03.
+    const t = await setup({ clock: F1801 });
+    t.deps.stateClient = timedCalendar(t.deps.stateClient, [0, 1_000, 3_000], advanceOf(t));
+    expect(await t.probe(F1801)).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+    expect(t.sleeps).toEqual([5_000]);
+    expect((await t.rows()).filter((e) => e.kind === "error")).toEqual([
+      expect.objectContaining({
+        message:
+          "the calendar read took too long: its second read ended at 2026-11-27T18:01:04Z, after 2026-11-27T18:01:03Z, the latest it may end (try 1 of 3, again in 5 s)",
+      }),
+    ]);
+    expect(t.inner.sent).toHaveLength(1);
   });
 });
 
@@ -356,8 +399,9 @@ describe("runProbe just before Monday 30 November's 09:30 ET open (14:30 UTC)", 
     t.receipts.estimate = () => ((t.deps.stateClient = slowCalendar(t.deps.stateClient, 61_000, advanceOf(t))), 200_000n);
     const r = await t.probe(mon("14:29:00"));
     expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED", sent: [] });
+    // The first read ends at 14:30:01, 61 s after the check began: the second counts from 14:31:03, 62 s later.
     expect(r.why).toBe(
-      "the calendar read took too long: it ended at 2026-11-30T14:30:01Z, more than 30 s after 2026-11-30T14:29:00Z; a MARKET_CLOSED probe sends nothing it cannot place before an open",
+      "the calendar is open at 2026-11-30T14:31:33Z, 30 s after 2026-11-30T14:31:03Z, the latest its second read may end; a MARKET_CLOSED probe sends nothing that close to an open",
     );
     expect(t.receipts.estimates).toHaveLength(1);
     expect(t.inner.sent).toEqual([]);
@@ -366,17 +410,43 @@ describe("runProbe just before Monday 30 November's 09:30 ET open (14:30 UTC)", 
     expect(intentRows(await t.rows())).toEqual([expect.objectContaining({ preview: "MARKET_CLOSED", gate: r.why })]);
   });
 
-  it("still keeps 30 s from the open when its calendar read takes 12 s, by reading the calendar 60 s on as well", async () => {
+  it("still keeps 30 s from the open when its calendar read takes 12 s, by reading the calendar again further on", async () => {
     // Read at 14:29:20 for 14:29:50, the answer comes at 14:29:32: a send then would be mined 28 s before the open.
     const t = await setup({ clock: mon("14:29:20") });
     t.receipts.estimate = () => ((t.deps.stateClient = slowCalendar(t.deps.stateClient, 12_000, advanceOf(t))), 200_000n);
     const r = await t.probe(mon("14:29:20"));
     expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED", sent: [] });
     expect(r.why).toBe(
-      "the calendar is open at 2026-11-30T14:30:20Z, 60 s after 2026-11-30T14:29:20Z, and the reads ended at 2026-11-30T14:29:44Z; a MARKET_CLOSED probe sends nothing that close to an open",
+      "the calendar is open at 2026-11-30T14:30:15Z, 30 s after 2026-11-30T14:29:45Z, the latest its second read may end; a MARKET_CLOSED probe sends nothing that close to an open",
     );
     expect(t.inner.sent).toEqual([]);
     expect(t.store.pending()).toEqual([]);
+  });
+
+  it("sends 60 s before the open when the clock ticks into a new second during a 10 ms calendar read", async () => {
+    // The check begins at 14:29:00.995 and its first read ends at 14:29:01.005: a send then is mined long before 14:30.
+    const t = await setup({ clock: mon("14:29:00") });
+    t.receipts.estimate = () => {
+      t.set("2026-11-30T14:29:00.995Z");
+      t.deps.stateClient = slowCalendar(t.deps.stateClient, 10, advanceOf(t));
+      return 200_000n;
+    };
+    expect(await t.probe(mon("14:29:00"))).toMatchObject({ outcome: "sent", expected: "MARKET_CLOSED" });
+    expect(t.inner.sent).toHaveLength(1);
+
+    // 32 s before the open, the same tick skips it: the second read counts from 14:29:31, by when it must end.
+    const near = await setup({ clock: mon("14:29:28") });
+    near.receipts.estimate = () => {
+      near.set("2026-11-30T14:29:28.995Z");
+      near.deps.stateClient = slowCalendar(near.deps.stateClient, 10, advanceOf(near));
+      return 200_000n;
+    };
+    const r = await near.probe(mon("14:29:28"));
+    expect(r).toMatchObject({ outcome: "skipped", expected: "MARKET_CLOSED", sent: [] });
+    expect(r.why).toBe(
+      "the calendar is open at 2026-11-30T14:30:01Z, 30 s after 2026-11-30T14:29:31Z, the latest its second read may end; a MARKET_CLOSED probe sends nothing that close to an open",
+    );
+    expect(near.inner.sent).toEqual([]);
   });
 });
 
@@ -675,6 +745,43 @@ describe("runProbe's own limits", () => {
     expect(await runProbe(real.deps, ms(F1801), real.clock, undefined, stop.signal)).toMatchObject({ outcome: "skipped", why: "the agent is stopping" });
     expect(Date.now() - started).toBeLessThan(2_000);
     expect(real.inner.sent).toEqual([]);
+  });
+
+  it("ends skipped, previewing nothing, when the agent is stopped during a read", async () => {
+    // Stopped while it reads the vault state: its refusal is already logged, but it never gets that far.
+    const t = await setup({ clock: F1801 });
+    t.store.recordRefusalLog({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" });
+    const ac = new AbortController();
+    const c = t.deps.stateClient;
+    t.deps.stateClient = { ...c, getBlock: ((a: never) => (ac.abort(), c.getBlock(a))) as never };
+    const r = await runProbe(t.deps, ms(F1801), t.clock, async () => {}, ac.signal);
+    expect(r).toMatchObject({ outcome: "skipped", sent: [], why: "the agent is stopping" });
+    expect(t.previews).toEqual([]);
+    expect(await t.probeRows()).toEqual([expect.objectContaining({ at: F1801, outcome: "skipped", note: "the agent is stopping" })]);
+
+    // Stopped while it reads the calendar at its instant: an OK probe previews nothing either.
+    const ok = await setup({ clock: F1758 });
+    const stop = new AbortController();
+    const s = ok.deps.stateClient;
+    ok.deps.stateClient = {
+      ...s,
+      multicall: ((p: CalendarCall) => (calendarReadAt(p) !== null && stop.abort(), s.multicall(p as never))) as never,
+    };
+    const q = await runProbe(ok.deps, ms(F1758), ok.clock, async () => {}, stop.signal);
+    expect(q).toMatchObject({ outcome: "skipped", expected: "OK", sent: [], why: "the agent is stopping" });
+    expect(ok.previews).toEqual([]);
+    expect(ok.receipts.estimates).toEqual([]);
+  });
+
+  it("estimates no gas when the agent is stopped during its preview", async () => {
+    const ac = new AbortController();
+    const t = await setup({ clock: F1758, preview: () => (ac.abort(), 0) });
+    const r = await runProbe(t.deps, ms(F1758), t.clock, async () => {}, ac.signal);
+    expect(r).toMatchObject({ outcome: "skipped", expected: "OK", sent: [], why: "the agent is stopping" });
+    expect(t.previews).toHaveLength(1);
+    expect(t.receipts.estimates).toEqual([]);
+    expect(t.inner.sent).toEqual([]);
+    expect(intentRows(await t.rows())).toEqual([expect.objectContaining({ preview: "OK", gate: "the agent is stopping" })]);
   });
 
   it("sends nothing when the agent is stopped before its send", async () => {
