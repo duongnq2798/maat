@@ -1,5 +1,5 @@
 import { loadConfig } from "./config.js";
-import { ignoredAnthropicEnv } from "./llm/proposer.js";
+import { ignoredAnthropicEnv, ignoredAnthropicKey } from "./llm/proposer.js";
 import { heartbeatOf, writeHeartbeat } from "./loop/heartbeat.js";
 import { acquireLock } from "./loop/lock.js";
 import { runOnce } from "./loop/runOnce.js";
@@ -13,8 +13,7 @@ const usd = (usd6: bigint) => `$${usdc6ToUsd(usd6).toFixed(2)}`;
 
 async function main(): Promise<void> {
   const cfg = loadConfig();
-  const ignored = ignoredAnthropicEnv();
-  if (ignored) console.warn(ignored);
+  for (const line of [ignoredAnthropicEnv(), ignoredAnthropicKey()]) if (line) console.warn(line);
   // Lock before building the runtime: a second process must not even open the Store or connect to CDP.
   const release = await acquireLock(cfg.dataDir);
   try {

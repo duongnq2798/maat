@@ -1,5 +1,6 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { oneLine } from "../redact.js";
 import type { RunReport } from "./runOnce.js";
 
 /** Written to the data dir after every round, failed rounds included. */
@@ -15,13 +16,18 @@ export interface Heartbeat {
   status: RunReport["status"] | "failed";
   runId?: string;
   sent?: number;
-  /** The halt reason or the error, one redacted line. */
+  /** The error of a round that threw, else the halt reason and the error of the round's run line, one redacted line each. */
   error?: string;
 }
 
-/** The heartbeat for a round that returned `report` or threw `error` (already one redacted line). */
+/**
+ * The heartbeat for a round that returned `report` or threw `error` (already one redacted line). A failed Claude call
+ * or the daily LLM cap leaves the round "done", so the error of its run line goes in too, as on the loop's console line.
+ */
 export function heartbeatOf(r: { report: RunReport | null; error: string | null }, now: Date, pid: number): Heartbeat {
-  const why = r.error ?? r.report?.haltReason;
+  const runError = r.report?.error ? oneLine(r.report.error) : undefined;
+  const fromReport = [r.report?.haltReason, runError].filter((s) => s).join("; error: ");
+  const why = r.error ?? (fromReport || undefined);
   return {
     ts: now.toISOString(),
     pid,
