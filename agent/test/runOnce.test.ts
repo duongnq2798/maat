@@ -2,12 +2,15 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HttpRequestError, keccak256, size, toBytes } from "viem";
+import { HttpRequestError, keccak256, pad, size, toBytes, toHex } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
 import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
+import { validateBlob } from "../src/rationale/blob.js";
+import { decodeExecuteInput } from "../src/rationale/calldata.js";
+import { verifyDecision } from "../src/rationale/verify.js";
 import { Journal, type JournalRow } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
 import { FixedProposer, type Proposer, type ProposerInput } from "../src/llm/proposer.js";
@@ -21,6 +24,7 @@ import { FakeSender } from "./fakes/fakeSender.js";
 
 const PAYEE = "0x3333333333333333333333333333333333333333" as const;
 const SUFFIX = builderSuffix("bc_maattest");
+const COMMIT = "0123456789abcdef0123456789abcdef01234567";
 const DAY = 1_794_000_000n / 86_400n;
 const BUY20: Batch = { summary: "buy", intents: [{ action: "BUY", symbol: "NVDAc", amountUsd: 20, rationale: "underweight" }] };
 
@@ -41,7 +45,7 @@ async function setup(
   const dir = await mkdtemp(join(tmpdir(), "maat-run-"));
   const scene = o.scene ?? standardScene();
   const store = o.store ?? (await Store.open(dir));
-  const journal = new Journal(dir);
+  const journal = new Journal(dir, { commit: COMMIT });
   const inner = new FakeSender(EXECUTOR);
   const receipts = new FakeReceipts(inner, VAULT, size(SUFFIX));
   const previews: OnchainIntent[] = [];
@@ -68,10 +72,118 @@ async function setup(
     sender: (o.mode ?? "live") === "live" ? new GuardedSender(inner, { vault: VAULT, suffix: SUFFIX }) : null,
     store,
     journal,
+    commit: COMMIT,
     runId: "run-1",
   };
   return { dir, deps, inner, receipts, store, journal, scene, previews, reads: () => reads };
 }
+
+type IntentRow = Extract<JournalRow, { kind: "intent" | "sent" }>;
+const blobOf = (r: { blob?: string } | undefined) => {
+  const check = validateBlob(r?.blob ?? "");
+  if (check.status !== "v1") throw new Error(`not a v1 blob: ${check.status === "invalid" ? check.problem : ""}`);
+  return check.fields;
+};
+
+describe("the maat:v1 blob on every execute", () => {
+  it("sends execute ‖ blob ‖ Builder Code and estimates gas on exactly those bytes", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "maat-run-"));
+    const store = await Store.open(dir);
+    store.recordCompute(DAY - 1n, 300_000n);
+    const t = await setup({ batch: BUY20, store, scene: standardScene().set(addressOf("NVDAc"), "uiMultiplier", 2n * 10n ** 18n) });
+    expect((await runOnce(t.deps)).status).toBe("done");
+    expect(t.inner.sent).toHaveLength(3);
+    // Every estimate request carries the bytes that were then sent: blob and suffix included.
+    expect(t.receipts.estimates.map((e) => e.data)).toEqual(t.inner.sent.map((s) => s.data));
+    const [sync, bill, buy] = t.inner.sent.map((s) => s.data);
+    expect(decodeExecuteInput(sync!)).toBeNull();
+    for (const data of [bill!, buy!]) {
+      const d = decodeExecuteInput(data)!;
+      expect(d).toMatchObject({ status: "v1", hashTick: true, codes: ["bc_maattest"] });
+      expect(size(data)).toBe(228 + d.blobBytes + size(SUFFIX));
+    }
+    const rows = (await t.journal.read()).filter((e): e is IntentRow => e.kind === "sent");
+    expect(rows.map((r) => r.blob)).toEqual([bill, buy].map((data) => decodeExecuteInput(data!)!.blob));
+  });
+
+  it("builds the blob from the state block, the commit, the journal head, the model and the run", async () => {
+    const t = await setup({ batch: BUY20 });
+    await runOnce(t.deps);
+    const all = await t.journal.read();
+    const run = all.find((e) => e.kind === "run")!;
+    const sent = all.find((e): e is IntentRow => e.kind === "sent")!;
+    expect(blobOf(sent)).toEqual({
+      b: 100,
+      c: COMMIT,
+      j: run.hash,
+      m: "fixed",
+      r: "run-1",
+      s: [
+        ["NVDAc", "1", 1_794_000_000 - 30, null],
+        ["GOOGLc", "1", 1_794_000_000 - 30, null],
+        ["AAPLc", "1", 1_794_000_000 - 30, null],
+      ],
+      t: "underweight",
+    });
+    expect(sent.rationaleHash).toBe(keccak256(toBytes(sent.blob!)));
+    expect((t.receipts.calls()[0]!.args[0] as OnchainIntent).rationaleHash).toBe(sent.rationaleHash);
+  });
+
+  it("takes j fresh for each blob: the hash of the last row written before it", async () => {
+    const t = await setup({ batch: { summary: "two", intents: [BUY20.intents[0]!, { ...BUY20.intents[0]!, symbol: "AAPLc" }] } });
+    await runOnce(t.deps);
+    const all = await t.journal.read();
+    const sent = all.filter((e): e is IntentRow => e.kind === "sent");
+    expect(sent).toHaveLength(2);
+    // The second blob is built after the first intent's sent and settled rows.
+    const before = all[all.indexOf(sent[1]!) - 1]!;
+    expect(before).toMatchObject({ kind: "intent", index: 0 });
+    expect(blobOf(sent[1]).j).toBe(before.hash);
+    expect(blobOf(sent[0]).j).toBe(all.find((e) => e.kind === "run")!.hash);
+  });
+
+  it("marks the compute bill's blob with k = bill and no model", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "maat-run-"));
+    const store = await Store.open(dir);
+    store.recordCompute(DAY - 1n, 300_000n);
+    const t = await setup({ store });
+    await runOnce(t.deps);
+    const sent = (await t.journal.read()).find((e): e is IntentRow => e.kind === "sent")!;
+    expect(blobOf(sent)).toMatchObject({ k: "bill", t: `Compute bill: $0.300000 of Claude API usage unpaid as of UTC day ${DAY}` });
+    expect(blobOf(sent)).not.toHaveProperty("m");
+  });
+
+  it("journals the blob in dry-run too, without estimating or sending", async () => {
+    const t = await setup({ mode: "dry-run", batch: BUY20 });
+    await runOnce(t.deps);
+    const row = (await t.journal.read()).find((e): e is IntentRow => e.kind === "intent")!;
+    expect(blobOf(row)).toMatchObject({ m: "fixed", t: "underweight" });
+    expect(row.rationaleHash).toBe(keccak256(toBytes(row.blob!)));
+    expect(t.receipts.estimates).toEqual([]);
+  });
+
+  it("names the model that answered, and skips a proposal whose model id the blob refuses, before the preview", async () => {
+    const answered = (model: string): Proposer => ({ propose: async () => ({ ok: true, summary: "buy", proposals: BUY20.intents, costUsd6: 0n, model }) });
+    const ok = await setup({ proposer: answered("claude-sonnet-5-5") });
+    await runOnce(ok.deps);
+    expect(blobOf((await ok.journal.read()).find((e): e is IntentRow => e.kind === "sent"))).toMatchObject({ m: "claude-sonnet-5-5" });
+
+    const t = await setup({ proposer: answered("us.anthropic.claude-sonnet-5-5") });
+    const r = await runOnce(t.deps);
+    expect(r).toMatchObject({ status: "done", sent: [], skipped: 1 });
+    expect(t.previews).toEqual([]);
+    expect((await t.journal.read()).find((e) => e.kind === "skip")).toMatchObject({ error: expect.stringMatching(/^blob: m is not a model id/) });
+  });
+
+  it("sanitizes the model's text into t and keeps the raw text in the private rationale field", async () => {
+    const raw = "Buy — see https://example.com/x and key sk-fake0123456789abcdefXYZ.";
+    const t = await setup({ batch: { summary: "buy", intents: [{ ...BUY20.intents[0]!, rationale: raw }] } });
+    await runOnce(t.deps);
+    const sent = (await t.journal.read()).find((e): e is IntentRow => e.kind === "sent")!;
+    expect(sent.rationale).toBe(raw);
+    expect(blobOf(sent).t).toBe("Buy - see [url] and key [key].");
+  });
+});
 
 describe("runOnce", () => {
   it("does nothing when the vault state is unavailable", async () => {
@@ -345,7 +457,23 @@ describe("runOnce", () => {
       expect(t.store.unpaidUsd6()).toBe(0n);
     });
 
-    const windows = (t: { receipts: FakeReceipts }) => t.receipts.logQueries.map((q) => [q.fromBlock, q.toBlock]);
+    it("puts the tx hash of a Decision found in the logs on the applied reconcile row, so npm run verify anchors it", async () => {
+      const t = await setup({ store: await billed() });
+      t.inner.failAfterBroadcast = new Error("socket hang up");
+      expect((await runOnce(t.deps)).status).toBe("halted");
+      t.inner.failAfterBroadcast = undefined;
+      expect((await runOnce({ ...t.deps, runId: "run-2" })).status).toBe("done");
+      const txHash = pad(toHex(1), { size: 32 });
+      const rows = await t.journal.read();
+      expect(rows.map((r) => r.kind)).not.toContain("sent");
+      expect(rows.find((r) => r.kind === "reconcile")).toMatchObject({ outcome: "applied", txHash, note: "Decision found in the vault's logs" });
+      const journal = [{ name: "journal.jsonl", text: await readFile(join(t.dir, "journal.jsonl"), "utf8") }];
+      const report = verifyDecision({ input: t.inner.sent[0]!.data, txHash, journal });
+      expect(report.checks.find((c) => c.name === "anchor")).toMatchObject({ status: "pass" });
+      expect(report.verdict).toBe("PASS");
+    });
+
+    const windows =(t: { receipts: FakeReceipts }) => t.receipts.logQueries.map((q) => [q.fromBlock, q.toBlock]);
 
     it("searches the logs in bounded windows from the send's block and stops at the Decision", async () => {
       const t = await setup({ store: await billed() });
@@ -653,25 +781,47 @@ describe("runOnce", () => {
       ]);
     });
 
-    it("hashes the rationale it journals and sends, Claude's text and the phase note together", async () => {
+    it("rebuilds a MARKET_CLOSED log's blob with the closed-market note after the preview, and hashes the final blob", async () => {
       const t = await week();
       await t.round(THU_1000_ET);
-      const rows = (await t.journal.read()).filter(isRow);
+      const all = await t.journal.read();
+      const rows = all.filter(isRow);
       expect(rows.map((r) => r.kind)).toEqual(["sent", "intent"]);
       const sent = t.receipts.calls()[0]!.args[0] as OnchainIntent;
+      const onchain = decodeExecuteInput(t.inner.sent[0]!.data)!;
+      expect(onchain).toMatchObject({ status: "v1", hashTick: true });
+      expect(onchain.fields!.t).toBe(CLOSED("NYSE holiday: Thanksgiving"));
+      // The rebuild keeps every other field, j included: still the round's run row.
+      expect(onchain.fields!.j).toBe(all.find((e) => e.kind === "run")!.hash);
+      // The preview ran on the blob before the note; the vault's checks never read rationaleHash.
+      expect(t.previews[0]!.rationaleHash).not.toBe(sent.rationaleHash);
       for (const r of rows) {
         expect(r.rationale).toBe(CLOSED("NYSE holiday: Thanksgiving"));
-        expect(r.rationaleHash).toBe(keccak256(toBytes(r.rationale)));
+        expect(r.blob).toBe(onchain.blob);
+        expect(r.rationaleHash).toBe(keccak256(toBytes(r.blob!)));
         expect(sent.rationaleHash).toBe(r.rationaleHash);
       }
     });
 
-    it("journals in dry-run the noted rationale a log would carry, with its hash", async () => {
+    it("cuts a long rationale before the closed-market note, never the note", async () => {
+      const scene = withCalendar(standardScene());
+      scene.block = { ...scene.block, timestamp: THU_1000_ET };
+      const long = "NVDAc is under its target. ".repeat(22).trim();
+      const t = await setup({ batch: { summary: "buy", intents: [{ ...BUY20.intents[0]!, rationale: long }] }, preview: () => 6, scene });
+      t.receipts.verdict = () => ({ allowed: false, reason: 6 });
+      expect((await runOnce(t.deps)).sent).toHaveLength(1);
+      const f = decodeExecuteInput(t.inner.sent[0]!.data)!.fields!;
+      expect(f.t.endsWith("NVDAc is ... (market closed, NYSE holiday: Thanksgiving)")).toBe(true);
+      expect(f.t.length).toBeLessThanOrEqual(600);
+    });
+
+    it("journals in dry-run the noted blob a log would carry, with its hash", async () => {
       const t = await week(6, "dry-run");
       await t.round(FRI_1400_ET);
       const [row] = await t.intents();
       expect(row).toMatchObject({ gate: "dry-run: would log-refusal", rationale: CLOSED("early close 13:00 ET") });
-      expect(row!.rationaleHash).toBe(keccak256(toBytes(row!.rationale)));
+      expect(blobOf(row).t).toBe(CLOSED("early close 13:00 ET"));
+      expect(row!.rationaleHash).toBe(keccak256(toBytes(row!.blob!)));
     });
 
     it("records the key stored at send time when a round after a restart settles the send", async () => {

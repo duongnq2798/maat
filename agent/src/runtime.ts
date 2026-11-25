@@ -18,12 +18,13 @@ export async function buildRuntime(
     forceDryRun?: boolean;
     connectCdp?: (opts: { accountName: string; expectedAddress: Address }) => Promise<TxSender>;
     proposer?: Proposer;
-    /** The commit stamped into every journal row; gitCommit() of the running code when unset. */
+    /** The commit stamped into every journal row and every blob's c; gitCommit() of the running code when unset. */
     commit?: string;
   } = {},
 ): Promise<RunDeps> {
   const mode = o.forceDryRun ? "dry-run" : cfg.mode;
-  const journal = new Journal(cfg.dataDir, { commit: o.commit ?? gitCommit() });
+  const commit = o.commit ?? gitCommit();
+  const journal = new Journal(cfg.dataDir, { commit });
   // A live agent in a dry-run's data dir would pay the dry-run's Claude bill back from the vault, and its journal would
   // mix rehearsal rows with live ones. Checked before any CDP call. The other way round, a dry-run's rows in live's
   // data dir would make the next live start refuse it.
@@ -69,6 +70,7 @@ export async function buildRuntime(
     sender,
     store: await Store.open(cfg.dataDir),
     journal,
+    commit,
     policy: { ...DEFAULT_POLICY, creditActions: cfg.creditActions },
   };
 }
