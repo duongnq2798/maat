@@ -117,7 +117,8 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
       {fork ? (
         <p className="m-0 font-mono text-xs text-ink-2">
           Recorded by the agent loop on a fork of Base mainnet at block {formatInt(fork.block)}, against the real B20
-          tokens, Aerodrome pools and the Aave V4 Equities Hub. Mainnet rows will link to Basescan.
+          tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault&apos;s mainnet decisions, each linked to Basescan,
+          are on the mainnet ledger.
         </p>
       ) : null}
     </>

@@ -53,6 +53,14 @@ describe("LedgerTable", () => {
     expect(screen.getByText("No refused decisions yet.")).toBeInTheDocument();
   });
 
+  it("says in the fork note that the vault's mainnet decisions are on the mainnet ledger, and promises no link", () => {
+    setup();
+    expect(screen.getByText(NOTE).textContent).toBe(
+      "Recorded by the agent loop on a fork of Base mainnet at block 53,551,627, against the real B20 tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault's mainnet decisions, each linked to Basescan, are on the mainnet ledger.",
+    );
+    expect(screen.queryByText(/will link/)).toBeNull();
+  });
+
   it("drops the fork note when no row comes from the fork", () => {
     setup(getDecisions().map((r) => ({ ...r, source: "base-mainnet" as const })));
     expect(screen.queryByText(NOTE)).toBeNull();
