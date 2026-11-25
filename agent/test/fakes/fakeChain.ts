@@ -49,6 +49,8 @@ export const FEEDS: Address[] = [
   "0x7777777777777777777777777777777777777773",
 ];
 export const PRICES = [18667486580n, 28000000000n, 27000000000n]; // NVDA $186.67, GOOGL $280, AAPL $270
+/** The pool every token's config names; it answers observe() and token0() only when a test sets them. */
+export const POOL: Address = "0x8888888888888888888888888888888888888888";
 
 export const MANDATE = {
   sessionMode: 0,
@@ -135,7 +137,7 @@ export function standardScene(): FakeChain {
     .set(VAULT, "spentOnDay", 0n)
     .set(VAULT, "tokenConfig", (args) => {
       const i = BASKET.findIndex((t) => getAddress(t.address) === getAddress(args[0] as Address));
-      return [true, FEEDS[i], "0x8888888888888888888888888888888888888888", 4000];
+      return [true, FEEDS[i], POOL, 4000];
     })
     .set(VAULT, "lastMultiplier", 1_000_000_000_000_000_000n)
     .set(USDC, "balanceOf", 100_000_000n)
