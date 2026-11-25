@@ -19,7 +19,7 @@ In Maat the agent does not run the checklist itself. Claude proposes, and the [v
 
 ## The checklist
 
-A `BUY` meets the first twelve rows in this order; then come a payment, the credit actions, and the two ways the action itself can fail. There are <Fact name="refusalCount" /> rows, one per refusal code. Where a code is returned from more than one line, the row links the first; [`/reasons.json`](/reasons.json) lists them all, and [reasons-json.test.ts](https://github.com/duongnq2798/maat/blob/main/web/test/reasons-json.test.ts) reads the contracts to keep every line in step.
+A `BUY` meets the first twelve rows in this order; then come a payment, the credit actions, and the two ways the action itself can fail. There are <Fact name="refusalCount" /> rows, one per refusal code. Where a code is returned from more than one line, the row links the first; <a href="/reasons.json">/reasons.json</a> lists them all, and [reasons-json.test.ts](https://github.com/duongnq2798/maat/blob/main/web/test/reasons-json.test.ts) reads the contracts to keep every line in step.
 
 | Check | What it stops | Reason | Source |
 | --- | --- | --- | --- |
@@ -56,4 +56,4 @@ Where the checks live decides what an agent can prove. Each pattern below can ru
 
 ## Ask the vault before you trade
 
-Any agent can ask the same contracts the same questions, read-only. `previewIntent` returns the reason `execute` would reach for an intent now, before it acts. It cannot predict a failure of the action itself: `SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit call. The market-guard skill ([`/skill.md`](/skill.md)) wraps it and the calendar in a Node script with no dependencies. [`/reasons.json`](/reasons.json) lists every reason with its id, meaning, group, the check above and each line that returns it, so a tool can decode a `Decision` without reading the contracts.
+Any agent can ask the same contracts the same questions, read-only. `previewIntent` returns the reason `execute` would reach for an intent now, before it acts. It cannot predict a failure of the action itself: `SWAP_FAILED`, `TRANSFER_FAILED`, or a `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` from the credit call. The market-guard skill (<a href="/skill.md">/skill.md</a>) wraps it and the calendar in a Node script with no dependencies. <a href="/reasons.json">/reasons.json</a> lists every reason with its id, meaning, group, the check above and each line that returns it, so a tool can decode a `Decision` without reading the contracts.

@@ -112,8 +112,11 @@ describe(`content/docs/${SLUG}.mdx`, () => {
     expect(missing).toEqual([]);
   });
 
-  it("links /reasons.json and the market-guard skill", () => {
-    expect(source).toContain("](/reasons.json)");
-    expect(source).toContain("](/skill.md)");
+  it("links /reasons.json and the market-guard skill as plain anchors, never as Markdown links", () => {
+    // A Markdown link goes through the docs' Link component, whose prefetch asks for a route under the file that the
+    // static export does not have (/reasons.json/__next._tree.txt), a 404 in the console. A JSX <a> is left alone.
+    expect(source).toContain('<a href="/reasons.json">/reasons.json</a>');
+    expect(source).toContain('<a href="/skill.md">/skill.md</a>');
+    expect(source).not.toMatch(/\]\(\/(?:reasons\.json|skill\.md)\)/);
   });
 });
