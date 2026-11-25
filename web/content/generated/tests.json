@@ -40,6 +40,12 @@
     "round-trips through calldata": 19,
     "finds no code in plain calldata": 25
   },
+  "agent/test/calendarAt.test.ts": {
+    "readCalendarAt": 8,
+    "reads the calendar's verdict and NYSE date for any instant, not just the block's": 9,
+    "asks isOpen under the given session mode, at the instant": 22,
+    "is null when a calendar view fails or the multicall throws": 33
+  },
   "agent/test/calldata.test.ts": {
     "the execute calldata layout (spec §1)": 32,
     "execute(Intent) has the selector 0x4ad3993f and is always 228 bytes": 33,
@@ -209,7 +215,10 @@
     "holds and releases": 9,
     "takes over a lock left by a dead process": 18,
     "treats a fresh lock file with unreadable content as held": 24,
-    "takes over an unreadable lock file older than 60 s": 30
+    "takes over an unreadable lock file older than 60 s": 30,
+    "RoundLock": 41,
+    "runs one holder at a time, first come first served, and counts who waits": 42,
+    "is released when its holder throws": 58
   },
   "agent/test/logWindows.test.ts": {
     "firstInLogWindows": 27,
@@ -276,6 +285,68 @@
     "prices an attempt without a model at the response model": 65,
     "prices a message attempt that names no model at the requested model, not at the fallback that answered": 70,
     "prices the top-level usage when iterations is empty or null": 81
+  },
+  "agent/test/probeRound.test.ts": {
+    "runProbe at Friday 27 November 17:58 UTC (12:58 ET, two minutes before the 13:00 early close)": 94,
+    "sends a $1 OK BUY whose blob carries k = probe and the spec's text, and that npm run verify passes": 95,
+    "sends at 17:59:30 UTC, its deadline, but not a second after": 129,
+    "is still an OK probe, skipped with its reason, when it only gets the lock after the close": 144,
+    "stops before anything is stored or sent when the deadline passes during its preview or its gas estimate": 154,
+    "runProbe at Friday 27 November 18:01 UTC (13:01 ET, after the early close)": 178,
+    "sends the intent so the vault logs MARKET_CLOSED, with the early-close note, once per NYSE date and phase": 179,
+    "sends nothing when the preview says OK although the calendar is closed at the probe's time": 196,
+    "runProbe on Thanksgiving, Thursday 26 November 14:31 UTC": 206,
+    "logs MARKET_CLOSED with the holiday's name when no holiday refusal is logged for that NYSE date": 207,
+    "is skipped, journaled with the reason, when the holiday refusal is already logged that NYSE date": 214,
+    "a probe never bypasses a guardrail": 226,
+    "previews every candidate and sends only the one whose preview is what the calendar expects": 227,
+    "sends nothing on any other preview, an RPC failure included": 240,
+    "stops on MAAT_MAX_TX_PER_DAY and sends nothing": 258,
+    "stores the pending entry before the intent leaves, so a send that fails after broadcast is settled next round": 270,
+    "sends nothing while a send from an earlier round may still land": 288,
+    "drops a credit action before the preview on the path probes share, and only ever proposes a BUY or a SELL": 299,
+    "only journals what it would send in dry-run": 316,
+    "runProbe's own limits": 325,
+    "never runs late: a probe that gets the lock more than 10 minutes after its time is journaled as missed": 326,
+    "refuses a fourth probe on the same UTC day, also when a restart listed other instants": 339,
+    "is skipped when the vault state or the calendar at its time cannot be read": 357,
+    "does nothing for an instant the store already recorded": 368,
+    "probeStartup": 377,
+    "reports every bad MAAT_PROBES value without throwing, journals a past one as missed, and schedules the rest": 380,
+    "on a restart, says what became of each earlier probe and never runs or journals it again": 398,
+    "runProbes": 414,
+    "wakes at least once a minute until each instant, then runs it under the round lock": 425,
+    "waits for a round that holds the lock, and goes on to the next probe when one fails": 449,
+    "stops waiting when the agent is stopped": 479
+  },
+  "agent/test/probeWeek.test.ts": {
+    "MAAT_PROBES=2026-11-26T14:31:00Z,2026-11-27T17:58:00Z,2026-11-27T18:01:00Z over 25 to 30 November": 98,
+    "logs the Thanksgiving refusal at 14:31, sends OK at 17:58 and logs MARKET_CLOSED at 18:01": 99,
+    "skips the 14:31 probe when a round already logged the holiday refusal that NYSE date": 131,
+    "skips the 17:58 OK probe, with the reason, when a round holds the lock past 17:59:30 UTC, and still logs 18:01": 148
+  },
+  "agent/test/probes.test.ts": {
+    "MAAT_PROBES": 27,
+    "is read as one raw string, so no value can stop the agent from starting": 28,
+    "takes comma-separated UTC instants, in any order, and runs them in time order": 42,
+    "has nothing to run when unset or blank": 48,
+    "leaves out an entry that is not an ISO-8601 UTC instant, and says so": 53,
+    "runs a duplicated instant once and says so": 63,
+    "planProbes": 76,
+    "schedules what is still to come, calls missed what passed before the start, and never reruns a probe": 79,
+    "calls missed an instant that passed before the start even by a second": 87,
+    "probeDeadline": 93,
+    "is 17:59:30 UTC on Friday 27 November, 30 s before the 13:00 ET early close": 94,
+    "is 30 s before 16:00 ET on a full day, in both EST and EDT": 100,
+    "under FEED_24_5 is 30 s before 20:00 ET on a Friday and before midnight ET on another day": 108,
+    "probeText": 118,
+    "starts as the spec requires and says what the probe expects (the 17:58 text is spec vector V4's)": 119,
+    "probeCandidates": 126,
+    "buys $1 of the least held token, in tokens() order on a tie, with nothing to sell in an all-USDC vault": 135,
+    "buys the most underweight token that $1 more keeps within its maxWeightBps, then sells $1 of the largest holding": 139,
+    "does not buy a token that $1 more would push over its maxWeightBps": 151,
+    "has no candidate when $1 does not fit the per-trade cap or what is left of the daily cap": 158,
+    "does not buy with less than $1 of USDC": 164
   },
   "agent/test/prompt.test.ts": {
     "prompt": 8,
@@ -494,14 +565,16 @@
     "cutTo picks the longest cut that is at most max characters": 89
   },
   "agent/test/scheduler.test.ts": {
-    "scheduler": 7,
-    "uses 15 min in session and 1 h otherwise": 8,
-    "runs rounds back to back, survives a failing round, stops on abort": 16,
-    "logs a failed round as one redacted line: no stack, URL, key or secret": 38,
-    "logs a halted round's reason on its line": 59,
-    "puts the error of the round's run line on its line, so a failed Claude call does not read as a clean round": 71,
-    "calls afterRound after every round, failed ones too, and survives its failure": 100,
-    "does not start a round after abort": 129
+    "scheduler": 8,
+    "uses 15 min in session and 1 h otherwise": 9,
+    "runs rounds back to back, survives a failing round, stops on abort": 17,
+    "logs a failed round as one redacted line: no stack, URL, key or secret": 39,
+    "logs a halted round's reason on its line": 60,
+    "puts the error of the round's run line on its line, so a failed Claude call does not read as a clean round": 72,
+    "calls afterRound after every round, failed ones too, and survives its failure": 101,
+    "does not start a round after abort": 130,
+    "runForever with a round lock": 139,
+    "takes the lock for each round, so a probe waiting on it runs between rounds, never during one": 140
   },
   "agent/test/schema.test.ts": {
     "proposal schema": 4,
@@ -560,7 +633,9 @@
     "persists across reopen": 56,
     "refuses a state file from a future version": 70,
     "keeps pending transactions across reopen until cleared": 77,
-    "opens a state file written before the pending list existed": 92
+    "opens a state file written before the pending list existed": 92,
+    "remembers what became of each probe across reopen, and counts the ones that ran on a UTC day": 99,
+    "opens a state file written before probes existed": 119
   },
   "agent/test/twap.test.ts": {
     "pool TWAP, as contracts/src/lib/PriceLib.sol computes it": 5,

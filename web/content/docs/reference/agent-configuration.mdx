@@ -4,9 +4,11 @@ description: "Every environment variable the agent reads: whether it is required
 type: reference
 audience: [builder, developer]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-25
 sources:
   - agent/src/config.ts
+  - agent/src/probes.ts
+  - agent/src/loop/probeRound.ts
   - agent/.env.example
   - agent/README.md
   - agent/src/runtime.ts
@@ -128,6 +130,18 @@ The most the agent spends on Claude in one UTC day, in US dollars, by default <F
 <EnvVar name="MAAT_BILL_MIN_USD" />
 
 The smallest unpaid [compute bill](/docs/help/glossary#compute-bill), in US dollars, that a round pays with a `PAY_EXPENSE`. It is optional, and when it is set it must be a positive number. Unset, the minimum is <Fact name="liveBillMinUsd" /> in live mode and <Fact name="billMinUsd" /> in dry-run, where the bill payment only shows in the journal. A set value applies in both modes. A higher minimum means fewer, larger payments, each still bound by the vault's per-trade and daily caps. The startup line shows the minimum in force as `bill-min=`.
+
+### MAAT_PROBES
+
+<EnvVar name="MAAT_PROBES" />
+
+The instants at which the agent probes the vault: UTC times, comma-separated, written `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MMZ`, such as `2026-11-27T17:58:00Z`. Unset, it runs no probes, and `--once` never runs one. At each instant the running loop runs one probe, under the same lock as its rounds, so a probe never runs inside a [round](/docs/help/glossary#round). A probe makes no Claude call. It reads the calendar at its instant and expects `OK` when the market is open there, `MARKET_CLOSED` when it is closed. It builds a one-dollar `BUY` of the least held token that one more dollar keeps within its `maxWeightBps`, then a one-dollar `SELL` of the largest holding, [previews](/docs/help/glossary#preview) each and sends the first whose preview is what it expects. A `MARKET_CLOSED` goes out only when that refusal is not yet logged for the NYSE date and closed phase. The [rationale blob](/docs/help/glossary#rationale-blob) has `k` set to `probe` and a text that starts `PROBE v1, not a Claude proposal`. Credit actions stay off, `MAAT_MAX_TX_PER_DAY` holds, and the pending entry is stored before the send, as in a round.
+
+- **At most 3 a UTC day.** The earliest 3 run, and `state.json` counts them across restarts. A fourth, a repeat or a value that is not such an instant is left out with a `MAAT_PROBES:` warning at start, and the agent still starts.
+- **Never late.** An instant that passed while the agent was down is journaled as `missed` at start, and so is a probe that gets the lock more than 10 minutes after its instant.
+- **A deadline for `OK`.** A probe that expects `OK` and cannot send 30 seconds before the close the calendar reports for its NYSE date is skipped: on 27 November, the 13:00 ET early close, that is 17:59:30 UTC.
+
+Each probe writes a `probe` line to the journal with `at`, `expected` and `outcome`: `sent`, `dry-run`, `skipped`, `halted`, `missed` or `capped`. Its `note`, the reason it sent nothing, stays on the PC.
 
 ### CDP_ACCOUNT_NAME
 

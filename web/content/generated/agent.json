@@ -127,6 +127,15 @@
       "requiredInLive": false
     },
     {
+      "name": "MAAT_PROBES",
+      "example": "",
+      "note": "Probe instants, comma-separated UTC times as YYYY-MM-DDTHH:MM:SSZ (or YYYY-MM-DDTHH:MMZ), at most 3 per UTC day. At each one the running loop sends one $1 probe intent, with no Claude call, under every round guardrail. A bad, repeated or fourth-of-the-day entry is left out with a warning at start; a past one is journaled as missed.",
+      "readBy": "agent",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
       "name": "ANTHROPIC_API_KEY",
       "example": "",
       "note": "Anthropic API key. The agent calls Claude only at https://api.anthropic.com, with this key.",
