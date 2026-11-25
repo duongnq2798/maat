@@ -43,6 +43,7 @@ const SHIPPED: readonly string[] = [
   "guides/change-a-rule",
   "guides/pause-withdraw-recover",
   "guides/watch-decisions-onchain",
+  "guides/verify-by-hand",
   "reference/repository-map",
   "reference/mandate-vault",
   "reference/events",

@@ -8,6 +8,7 @@
     "run-the-agent",
     "change-a-rule",
     "pause-withdraw-recover",
-    "watch-decisions-onchain"
+    "watch-decisions-onchain",
+    "verify-by-hand"
   ]
 }

@@ -190,6 +190,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "Watch decisions onchain",
         "Read a vault's Decision events with cast, decode them as the agent does with viem, match them to the agent's journal, and watch the owner's actions.",
       ),
+      page(
+        "guides/verify-by-hand",
+        "Verify Maat by hand",
+        "Five read-only cast commands to check the mainnet vault yourself: its source, owner, executor and mandate, both Decisions, the calendar and a rationale hash.",
+      ),
     ],
   },
   {
