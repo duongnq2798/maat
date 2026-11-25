@@ -209,7 +209,7 @@ Every field comes from the agent's read of the vault, the policy's numbers and s
 
 The request itself:
 
-```typescript title="agent/src/llm/proposer.ts#L73-L83"
+```typescript title="agent/src/llm/proposer.ts#L112-L122"
       res = await this.create({
         model: this.opts.model,
         max_tokens: 16000,
@@ -224,7 +224,7 @@ The request itself:
 ```
 
 - **Model.** The value of `MAAT_LOOP_MODEL`, by default `claude-sonnet-5-5` ([MAAT_LOOP_MODEL](/docs/reference/agent-configuration#maat_loop_model)).
-- **Where it goes.** The client always calls `https://api.anthropic.com` with `ANTHROPIC_API_KEY`. It ignores `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, which a parent process may have set, and prints one warning at startup when either is set (`calls https://api.anthropic.com with ANTHROPIC_API_KEY, whatever ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN say` in `proposer.test.ts`).
+- **Where it goes.** The client always calls `https://api.anthropic.com` with `ANTHROPIC_API_KEY`. It ignores `ANTHROPIC_BASE_URL` and `ANTHROPIC_AUTH_TOKEN`, which a parent process may have set, and prints one warning at startup when either is set (`calls https://api.anthropic.com with ANTHROPIC_API_KEY, whatever ANTHROPIC_BASE_URL and ANTHROPIC_AUTH_TOKEN say` in `proposer.test.ts`). The key comes from `agent/.env` when the file sets one, over one that the terminal already holds (`sends agent/.env's ANTHROPIC_API_KEY to https://api.anthropic.com, not the one the terminal exported` in `proposer.test.ts`).
 - **Answer.** `output_config` sets the effort to `medium` and asks for JSON that matches `BATCH_JSON_SCHEMA`. An answer that stops at `max_tokens` is dropped as truncated.
 - **Caching.** The request carries no `cache_control` mark, so nothing is written to the prompt cache. Rounds start at least <Fact name="loopMinutes" /> apart, longer than the cache's 5-minute lifetime, so a mark would only add the price of a cache write, 1.25 times the input price, with no cheaper read to follow (`asks for no prompt caching` in `proposer.test.ts`). The system prompt holds no data from the round, so it is the same every round (`prompt.test.ts` checks that it has no timestamp). The cost still counts any cache reads and writes the response reports at their own prices.
 - **Fallback.** The request opts into the `server-side-fallback-2026-07-01` beta with `fallbacks` set to `"default"`. A comment in `proposer.ts` says that a `fallback` block in the response marks where one model's output gives way to the next, so the agent keeps only the text after the last such block. The journal's `run` line does not record which model answered. When the response lists its attempts in `usage.iterations`, the cost is the sum of the attempts, each billed at the model its entry names. A `message` entry that names no model is the requested model's attempt and is billed at that model's price; any other entry without a model is billed at the model the response reports (`prices a message attempt that names no model at the requested model, not at the fallback that answered` in `pricing.test.ts`). Without that list, the whole answer is billed under the model name the response reports, and a name missing from the price table at the `claude-opus-4-8` rate.

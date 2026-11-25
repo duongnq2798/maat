@@ -285,6 +285,14 @@ describe("runOnce", () => {
     expect((await t.journal.read()).find((e) => e.kind === "run")).toMatchObject({ ok: false, error: "invalid proposal JSON: x", costUsd6: "30000" });
   });
 
+  it("reports the error of its run line, for the loop's line after the round, and none when Claude answered", async () => {
+    const failed = await setup({ proposer: { propose: async () => ({ ok: false, error: "claude: 401 invalid x-api-key", costUsd6: 0n }) } });
+    expect(await runOnce(failed.deps)).toMatchObject({ status: "done", error: "claude: 401 invalid x-api-key" });
+    expect((await failed.journal.read()).find((e) => e.kind === "run")).toMatchObject({ ok: false, error: "claude: 401 invalid x-api-key" });
+    const answered = await setup();
+    expect(await runOnce(answered.deps)).not.toHaveProperty("error");
+  });
+
   it("syncs a changed multiplier before trading", async () => {
     const t = await setup({ batch: BUY20, scene: standardScene().set(addressOf("NVDAc"), "uiMultiplier", 2n * 10n ** 18n) });
     await runOnce(t.deps);
@@ -964,7 +972,7 @@ describe("runOnce", () => {
       const t = await setup({ store, proposer, billMinUsd6: LIVE_BILL_MIN_USD6 });
       const r = await runOnce(t.deps);
       expect(proposer.asked).toBe(0);
-      expect(r).toMatchObject({ status: "done", sent: [], proposals: 0 });
+      expect(r).toMatchObject({ status: "done", sent: [], proposals: 0, error: `llm cap: $0.75 of $0.75 spent on UTC day ${DAY}; Claude not called` });
       expect((await t.journal.read()).find((e) => e.kind === "run")).toMatchObject({
         ok: false,
         costUsd6: "0",

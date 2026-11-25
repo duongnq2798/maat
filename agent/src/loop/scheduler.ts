@@ -37,9 +37,11 @@ export async function runForever(o: {
     let error: string | null = null;
     try {
       report = await o.run();
-      const line = `round ${report.runId}: ${report.status}, sent ${report.sent.length}, skipped ${report.skipped}`;
+      const counts = `round ${report.runId}: ${report.status}, sent ${report.sent.length}, skipped ${report.skipped}`;
       // runOnce already redacted the halt reason (oneLine).
-      log(report.haltReason ? `${line} (${report.haltReason})` : line);
+      const line = report.haltReason ? `${counts} (${report.haltReason})` : counts;
+      // A failed Claude call leaves the round "done", so the run line's error goes on the line too.
+      log(report.error ? `${line}; error: ${oneLine(report.error)}` : line);
     } catch (e) {
       error = `${e instanceof Error && e.name !== "Error" ? `${e.name}: ` : ""}${oneLine(e)}`;
       log(`round failed: ${error}`);

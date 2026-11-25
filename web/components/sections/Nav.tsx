@@ -2,7 +2,8 @@ import { NavBar, NavDock } from "@/components/live/NavDock";
 import { Mark } from "@/components/ui/Mark";
 import { SITE } from "@/lib/site";
 
-// Section anchors on the landing; "Ledger" is its own page, /ledger, with the fork run and the mainnet vault.
+// Section anchors on the landing; "Ledger" is its own page, /ledger, the mainnet vault's every Decision. The Gap Index
+// is linked from the problem section and the phone menu: one more link here would wrap the docked bar at 1280 px.
 const LINKS = [
   { href: "#how", label: "How it works" },
   { href: "#reasons", label: "Refusals" },
@@ -11,9 +12,18 @@ const LINKS = [
   { href: "#mandate", label: "Mandate" },
 ] as const;
 
+/** The phone menu (plan 2026-11-25 Move 4): the site's pages, which the section links above do not reach on a phone. */
+const MENU = [
+  { href: "/ledger", label: "Ledger" },
+  { href: "/now", label: "Now" },
+  { href: "/gap-index", label: "Gap Index" },
+  { href: SITE.docsUrl, label: "Docs" },
+] as const;
+
 /**
  * The site's top bar, in NavBar: white, and pinned from lg. Off the landing (`onLanding={false}`), its section anchors
- * point back at the landing. On the landing it docks the page's live reading once the hero has scrolled away.
+ * point back at the landing. On the landing it docks the page's live reading once the hero has scrolled away. Up to
+ * 720 px the links give way to a Menu disclosure, a <details>, so it opens without JavaScript.
  */
 export function Nav({ onLanding = true }: { onLanding?: boolean }) {
   const to = (href: string) => (onLanding || !href.startsWith("#") ? href : `/${href}`);
@@ -30,7 +40,27 @@ export function Nav({ onLanding = true }: { onLanding?: boolean }) {
               {l.label}
             </a>
           ))}
-          <a href={SITE.docsUrl} className="navlink">
+          <details data-phone-menu="" className="relative min-[721px]:hidden">
+            <summary className="navlink flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+              Menu
+              <span aria-hidden="true" className="text-[11px] text-ink-2">
+                ▾
+              </span>
+            </summary>
+            <ul
+              aria-label="Pages"
+              className="absolute left-0 top-full z-40 m-0 mt-2 flex w-48 list-none flex-col gap-0.5 rounded-[14px] border border-line bg-white p-1.5 shadow-[0_18px_40px_-18px_color-mix(in_srgb,var(--color-ink)_35%,transparent)]"
+            >
+              {MENU.map((l) => (
+                <li key={l.href}>
+                  <a href={l.href} className="block rounded-[10px] px-3 py-2.5 text-[15px] text-ink hover:bg-line-soft">
+                    {l.label}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </details>
+          <a href={SITE.docsUrl} className="navlink max-[720px]:hidden">
             Docs
           </a>
           <a href={SITE.repoUrl} className="pill-dark ml-2 px-[18px] py-[11px]">

@@ -216,7 +216,7 @@ The agent's unit tests use fakes. The fake chain, receipts and sender are in [`a
 
 This is the mismatch test, the one that makes the agent stop a round when its preview said OK and the vault refused:
 
-```typescript title="agent/test/runOnce.test.ts#L863-L873"
+```typescript title="agent/test/runOnce.test.ts#L871-L881"
     it("halts when the preview said OK but the vault refused", async () => {
       const t = await setup({ batch: TWO });
       t.receipts.verdict = () => ({ allowed: false, reason: 15 });

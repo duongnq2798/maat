@@ -30,6 +30,14 @@ Give the dry run and the live agent separate data directories (`MAAT_DATA_DIR`).
 
 Claude is called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. If `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, the agent prints one warning at startup and ignores it. `MAAT_MAX_LLM_USD_PER_DAY` (default 0.75) caps the Claude cost of one UTC day: once it is reached, the day's later rounds skip Claude and still settle bills.
 
+The key in `agent/.env` wins over one your terminal already has. Node's `--env-file` keeps a variable that is already set, so for every other setting the terminal's value wins, but the agent reads `ANTHROPIC_API_KEY` from `agent/.env` itself. When the terminal's key differs, the agent prints this at startup, with neither value, and calls Claude with the key in `agent/.env`:
+
+```text
+maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env
+```
+
+When `agent/.env` has no `ANTHROPIC_API_KEY`, or leaves it blank, the terminal's is used. A round whose Claude call fails, or that the daily cap stops, can still end `done`, so the loop's line after it carries the `run` line's error, cut to one line with URLs and keys redacted: `round <RUN_ID>: done, sent <N>, skipped <M>; error: claude: <ERROR>`. The same error goes in `heartbeat.json`, and `npm run agent:heartbeat` prints it in parentheses on its `OK` line.
+
 ## Live run (owner only)
 
 1. **Builder Code:** register the project at https://dashboard.base.org, go to Settings → Builder Code, then set `MAAT_BUILDER_CODE=bc_...`. The code must match `^[a-z0-9_]{1,32}$`.
