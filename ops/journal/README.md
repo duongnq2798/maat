@@ -61,9 +61,11 @@ Leave the window open; it runs a round at once and then every 15 minutes.
 On its first run it creates its checkout, `maat-agent-journal`, in the folder that holds your clone (beside it, never
 inside it). That checkout has one branch, `agent-journal`, and its `origin` is
 `https://github.com/duongnq2798/maat.git`. The first push creates the branch on GitHub. Git signs in with your own
-login, through Git Credential Manager; if it opens a sign-in window, sign in there. The publisher never asks for a
-password or a token, and Git never prompts in the terminal (`GIT_TERMINAL_PROMPT=0`): a missing login shows as a
-failed push, and the next round tries again.
+login, through Git Credential Manager; if it opens a sign-in window, sign in there within 5 minutes. The publisher
+never asks for a password or a token, and Git never prompts in the terminal (`GIT_TERMINAL_PROMPT=0`): a missing login
+shows as a failed push, and the next round tries again. No git command can hold the loop for good: a fetch or push
+that takes more than 5 minutes, any other git command that takes more than 1 minute, and a transfer that stalls under
+1,000 bytes a second for 60 seconds are ended, and the next round tries again.
 
 If the agent runs from another folder than this clone, or `MAAT_DATA_DIR` in `agent\.env` names a folder other than
 the live agent's, give the folder yourself, relative to `agent\` or absolute:
@@ -90,6 +92,7 @@ When no git command is running, delete `maat-agent-journal\.git\index.lock` and 
 | `... has no chained row yet (rows with prev and hash)` | The agent does not chain its rows yet: it runs an older release |
 | `...; passed over journal.jsonl line <N>, cut short by a crash` | A crash or power loss cut one of the agent's writes short. The agent started a fresh line after it, and its chain goes on from the last whole row, so nothing is missing. Nothing to do; leave the line in the file |
 | `will try again in 15 min: git push failed: ...` | The network or the login failed. It keeps running; a commit it could not push goes up with the next round |
+| `will try again in 15 min: git fetch did not finish within 300 s and was ended` (or `git push`, or another command within 60 s) | GitHub stalled, or a sign-in window was left open. It keeps running and tries again next round |
 | `STOPPED: ...` | It exited (code 1) and pushes nothing until you start it again. See below |
 
 ## When it stops
@@ -146,10 +149,11 @@ cd ops\journal
 npm test
 ```
 
-They need Node.js and git, and no network: the end-to-end tests push to a temporary bare repository. They cover the
-spec's vectors, the allowlist, the deny check, a broken chain, a line a crash cut short, a row that is never appended twice, `index.json`, two
-pushes, a forced remote change that stops the next round, and the guard that lets it push nothing but `agent-journal`.
-CI does not run them; the web unit test `web/test/journal-publisher.test.ts`, which CI runs, checks the fixture chain
+They need Node.js and git, and no network: the end-to-end tests push to a temporary bare repository, and the stalled
+fetch goes to a server on `127.0.0.1`. They cover the spec's vectors, the allowlist, the deny check, a broken chain, a
+line a crash cut short, a row that is never appended twice, `index.json`, two pushes, a forced remote change that stops
+the next round, a rehearsal refused on the public remote, a stalled fetch that is ended, and the guard that lets it
+push nothing but `agent-journal`. CI does not run them; the web unit test `web/test/journal-publisher.test.ts`, which CI runs, checks the fixture chain
 with viem's keccak256 and that the publisher writes exactly the fixture's files.
 
 | File | What it holds |

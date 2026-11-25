@@ -2,6 +2,7 @@
 // It can push one refspec only, agent-journal to agent-journal with no force, and it has no command that rewrites
 // history or moves a branch backwards.
 import { spawnSync } from "node:child_process";
+import { PublishRetry } from "./errors.mjs";
 
 export const BRANCH = "agent-journal";
 export const REMOTE = "origin";
@@ -56,23 +57,39 @@ export function redact(text) {
  * @typedef {(args: readonly string[], cwd: string) => GitResult} GitRun
  */
 
+/** How long a fetch or a push may take, sign-in window included, before it is ended and the next round tries again. */
+export const NETWORK_TIMEOUT_MS = 300_000;
+/** How long any other git command may take, such as a commit waiting on a signing prompt. */
+export const LOCAL_TIMEOUT_MS = 60_000;
+/** Git ends an HTTP transfer that moves under 1,000 bytes a second for 60 seconds. */
+const LOW_SPEED_ENV = { GIT_HTTP_LOW_SPEED_LIMIT: "1000", GIT_HTTP_LOW_SPEED_TIME: "60" };
+
 /**
  * Runs git through checkGitArgs. Git never prompts in the terminal (GIT_TERMINAL_PROMPT=0), so a missing login fails
  * at once instead of hanging the loop; a credential helper, such as Git Credential Manager on Windows, still works.
- * @param {{ env?: Record<string, string> }} [o]
+ * No command runs for good: a stalled transfer fails on git's low-speed limit, and a command past its time limit is
+ * ended and thrown as a PublishRetry, so the loop says so and tries again next round.
+ * @param {{ env?: Record<string, string>, networkTimeoutMs?: number, localTimeoutMs?: number, spawn?: typeof spawnSync }} [o]
  * @returns {GitRun}
  */
 export function gitRunner(o = {}) {
+  const spawn = o.spawn ?? spawnSync;
   return (args, cwd) => {
     checkGitArgs(args);
-    const r = spawnSync("git", [...args], {
+    const network = args[0] === "fetch" || args[0] === "push";
+    const timeout = network ? (o.networkTimeoutMs ?? NETWORK_TIMEOUT_MS) : (o.localTimeoutMs ?? LOCAL_TIMEOUT_MS);
+    const r = spawn("git", [...args], {
       cwd,
       encoding: "utf8",
-      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...o.env },
+      env: { ...process.env, GIT_TERMINAL_PROMPT: "0", ...LOW_SPEED_ENV, ...o.env },
       windowsHide: true,
       maxBuffer: 512 * 1024 * 1024,
+      timeout,
     });
+    if (r.error && /** @type {NodeJS.ErrnoException} */ (r.error).code === "ETIMEDOUT") {
+      throw new PublishRetry(`git ${args[0]} did not finish within ${timeout / 1000} s and was ended`);
+    }
     if (r.error) throw r.error;
-    return { code: r.status ?? 1, stdout: r.stdout, stderr: r.stderr };
+    return { code: r.status ?? 1, stdout: String(r.stdout), stderr: String(r.stderr) };
   };
 }
