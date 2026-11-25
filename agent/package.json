@@ -11,7 +11,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:integration": "vitest run --config vitest.integration.config.ts",
-    "agent": "node --env-file-if-exists=.env --import tsx src/main.ts"
+    "agent": "node --env-file-if-exists=.env --import tsx src/main.ts",
+    "agent:loop": "node --import tsx scripts/restart-loop.ts",
+    "agent:heartbeat": "node --import tsx scripts/heartbeat.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",

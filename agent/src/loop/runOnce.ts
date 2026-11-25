@@ -12,25 +12,31 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
+import { firstInLogWindows } from "../chain/logWindows.js";
 import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
 import { SendRefused, type GuardedSender } from "../exec/sender.js";
-import { buildIntent, type Proposal } from "../intent.js";
+import { buildIntent, rationaleHash, type Proposal } from "../intent.js";
 import type { Journal } from "../ledger/journal.js";
 import type { PendingTx, Store } from "../ledger/store.js";
 import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
-import { gate } from "../refusals.js";
-import { REASONS, type ReasonName } from "../types.js";
+import { oneLine } from "../redact.js";
+import { closedNote, gate, LOGGABLE_REASONS, refusalKey } from "../refusals.js";
+import { CREDIT_ACTIONS, REASONS } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
 /** What runOnce needs from the chain around a send: gas estimates, receipts, and pending-tx reconciliation. */
-export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "readContract">;
+export type TxClient = Pick<PublicClient, "waitForTransactionReceipt" | "estimateGas" | "getTransaction" | "getLogs" | "getBlockNumber" | "readContract">;
+/** The smallest unpaid compute bill a round pays back, unless MAAT_BILL_MIN_USD sets it: in dry-run, and in live. */
 export const BILL_MIN_USD6 = 100_000n;
+export const LIVE_BILL_MIN_USD6 = 1_000_000n;
 export const RECEIPT_TIMEOUT_MS = 120_000;
-/** A pending send with no onchain trace is given up after this many blocks (controller ruling: 300, ~10 min on Base). */
-export const PENDING_WINDOW_BLOCKS = 300n;
+/** A pending send with no onchain trace is given up after this much chain time: 10 minutes. */
+export const PENDING_WINDOW_SECONDS = 600n;
+/** The same window for an entry older code stored without a timestamp: 10 minutes of Base's 200 ms blocks. */
+export const LEGACY_PENDING_WINDOW_BLOCKS = 3_000n;
 
 export interface RunDeps {
   vault: Address;
@@ -39,6 +45,10 @@ export interface RunDeps {
   mode: "dry-run" | "live";
   defaultDailyComputeUsd6: bigint;
   maxTxPerDay: number;
+  /** A round pays the compute bill back once it is at least this much (MAAT_BILL_MIN_USD). */
+  billMinUsd6: bigint;
+  /** Claude is not called once the UTC day's Claude spend has reached this (MAAT_MAX_LLM_USD_PER_DAY). */
+  maxLlmUsd6PerDay: bigint;
   stateClient: StateClient;
   previewClient: PreviewClient;
   txClient: TxClient;
@@ -47,6 +57,7 @@ export interface RunDeps {
   sender: GuardedSender | null;
   store: Store;
   journal: Pick<Journal, "append">;
+  /** DEFAULT_POLICY when unset. Its creditActions also decides the prompt and whether a credit proposal is dropped. */
   policy?: PolicyParams;
   runId?: string;
 }
@@ -67,7 +78,7 @@ type Decision = { allowed: boolean; reason: string };
 class Halt extends Error {}
 
 const DECISION_EVENT = getAbiItem({ abi: mandateVaultAbi, name: "Decision" });
-const firstLine = (e: unknown) => (e as Error).message.split("\n")[0];
+const dollars = (usd6: bigint) => `$${usdc6ToUsd(usd6).toFixed(2)}`;
 
 function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
@@ -121,7 +132,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     try {
       return gasLimit(fn, await d.txClient.estimateGas({ account: d.executor, to: d.vault, data }));
     } catch (e) {
-      throw new Halt(`gas estimate failed for ${fn}: ${firstLine(e)}`);
+      throw new Halt(`gas estimate failed for ${fn}: ${oneLine(e)}`);
     }
   };
 
@@ -129,14 +140,24 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     try {
       return await d.txClient.waitForTransactionReceipt({ hash, timeout: RECEIPT_TIMEOUT_MS });
     } catch (e) {
-      throw new Halt(`no receipt for ${hash}: ${firstLine(e)}`);
+      throw new Halt(`no receipt for ${hash}: ${oneLine(e)}`);
     }
   };
+
+  /**
+   * The vault's Decision for `id` in blocks [from, to], one bounded eth_getLogs window at a time, oldest first. A range
+   * error (the fallback RPC may allow only 200 blocks) halves the window.
+   */
+  const decisionInLogs = (id: Hex, from: bigint, to: bigint): Promise<Decision | undefined> =>
+    firstInLogWindows(from, to, async ({ fromBlock, toBlock }): Promise<Decision | undefined> => {
+      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: id }, fromBlock, toBlock });
+      return decisionIn(logs, d.vault, id);
+    });
 
   /** Applies a mined execute()'s Decision to the store, clears the pending entry, and checks it against the preview. */
   const settle = async (p: PendingTx, decision: Decision): Promise<void> => {
     if (p.action === "PAY_EXPENSE" && decision.allowed) d.store.recordPaid(BigInt(p.amount));
-    if (p.gateKind === "log-refusal") d.store.recordRefusalLog(BigInt(p.day), p.preview as ReasonName);
+    if (p.gateKind === "log-refusal") d.store.recordRefusalLog(p.refusal ?? { day: p.day, reason: p.preview });
     d.store.clearPending(p.intentId);
     await d.store.save();
     if (decision.reason !== p.preview) {
@@ -160,6 +181,11 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await j.append({ ...base, outcome: "pending", note });
       return "pending" as const;
     };
+    const apply = async (decision: Decision, note: string) => {
+      await j.append({ ...base, outcome: "applied", decision, note });
+      await settle(p, decision);
+      return "settled" as const;
+    };
 
     // A known transaction is looked up first, so it cannot be mined between the usedIntent read and this one.
     let tx: { blockNumber: bigint | null } | null = null;
@@ -170,24 +196,30 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         if (!(e instanceof TransactionNotFoundError)) throw e;
       }
     }
-    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId] });
+    // A mined send carries its own Decision: its receipt is read before any log search.
+    const receipt = tx && tx.blockNumber !== null ? await receiptOf(p.txHash!) : null;
+    const mined = receipt ? decisionIn(receipt.logs, d.vault, p.intentId) : undefined;
+    if (mined) return apply(mined, "Decision read from the tx receipt");
+    // usedIntent is read at a fresh head, so a used intent's Decision lies between the send's block and that head.
+    const head = await d.txClient.getBlockNumber({ cacheTime: 0 });
+    const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId], blockNumber: head });
     if (used) {
-      const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: p.intentId }, fromBlock: BigInt(p.block) });
-      const decision = decisionIn(logs, d.vault, p.intentId);
-      if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block}`);
-      await j.append({ ...base, outcome: "applied", decision });
-      await settle(p, decision);
-      return "settled";
+      const decision = await decisionInLogs(p.intentId, BigInt(p.block), head);
+      if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block} to ${head}`);
+      return apply(decision, "Decision found in the vault's logs");
     }
-    if (tx && tx.blockNumber !== null) {
-      const r = await receiptOf(p.txHash!);
-      if (r.status === "reverted") return drop("tx reverted; the intent was not used");
+    if (receipt) {
+      if (receipt.status === "reverted") return drop("tx reverted; the intent was not used");
       return wait("tx mined but usedIntent is still false; the RPC may lag");
     }
     if (tx) return wait("tx is still in the mempool");
-    const age = s.blockNumber - BigInt(p.block);
-    if (age < PENDING_WINDOW_BLOCKS) return wait(`no onchain trace yet (${age} of ${PENDING_WINDOW_BLOCKS} blocks)`);
-    return drop(`intent not used and no tx found after ${age} blocks`);
+    // Aged in chain time, so a faster block interval cannot shrink the window. Entries without a timestamp age in blocks.
+    const timed = p.timestamp !== undefined;
+    const age = timed ? s.timestamp - BigInt(p.timestamp!) : s.blockNumber - BigInt(p.block);
+    const window = timed ? PENDING_WINDOW_SECONDS : LEGACY_PENDING_WINDOW_BLOCKS;
+    const unit = timed ? "s" : "blocks";
+    if (age < window) return wait(`no onchain trace yet (${age} of ${window} ${unit})`);
+    return drop(`intent not used and no tx found after ${age} ${unit}`);
   };
 
   try {
@@ -224,13 +256,15 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
 
     const unpaid = d.store.unpaidUsd6();
-    const policy = evaluatePolicy(
-      s,
-      { dailyComputeUsd6: d.store.dailyComputeUsd6(day, d.defaultDailyComputeUsd6), unpaidUsd6: unpaid },
-      d.policy ?? DEFAULT_POLICY,
-    );
-    const out = await d.proposer.propose({ state: s, policy, billUsd6: unpaid });
-    d.store.recordCompute(day, out.costUsd6);
+    const params = d.policy ?? DEFAULT_POLICY;
+    const policy = evaluatePolicy(s, { dailyComputeUsd6: d.store.dailyComputeUsd6(day, d.defaultDailyComputeUsd6), unpaidUsd6: unpaid }, params);
+    // The cap is checked before each call, so the call that crosses it is the day's last; bills and housekeeping go on.
+    const spent = d.store.computeOn(day);
+    const capped = spent >= d.maxLlmUsd6PerDay;
+    const out = capped
+      ? { ok: false as const, error: `llm cap: ${dollars(spent)} of ${dollars(d.maxLlmUsd6PerDay)} spent on UTC day ${day}; Claude not called`, costUsd6: 0n }
+      : await d.proposer.propose({ state: s, policy, billUsd6: unpaid, creditActions: params.creditActions });
+    if (!capped) d.store.recordCompute(day, out.costUsd6);
     await j.append({
       kind: "run",
       runId,
@@ -246,7 +280,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     });
 
     const queue: Proposal[] = [];
-    if (unpaid >= BILL_MIN_USD6) {
+    if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
       queue.push({ action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale: `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}` });
     }
@@ -254,6 +288,12 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     report.proposals = queue.length;
 
     for (const [index, p] of queue.entries()) {
+      // Credit off: Claude's credit proposal never reaches the preview, whatever the prompt and the policy said.
+      if (!params.creditActions && CREDIT_ACTIONS.has(p.action)) {
+        await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: `credit actions are off: ${p.action} dropped before the preview` });
+        report.skipped++;
+        continue;
+      }
       if (dirty) {
         s = await reread();
         dirty = false;
@@ -266,20 +306,25 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       }
       const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
       const preview = pv.result;
-      const logged = preview !== "OK" && preview !== "UNKNOWN" && d.store.hasLoggedRefusal(day, preview);
-      const g = gate(preview, logged);
+      const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
+      const g = gate(preview, key, key !== null && d.store.hasLoggedRefusal(key));
+      // A MARKET_CLOSED log names the closed phase. The vault's checks never read rationaleHash, so the preview stands.
+      const note = g.send && g.kind === "log-refusal" && preview === "MARKET_CLOSED" ? closedNote(s) : null;
+      const rationale = note ? `${p.rationale} (market closed, ${note})` : p.rationale;
+      const intent = note ? { ...b.intent, rationaleHash: rationaleHash(rationale) } : b.intent;
       const row = {
         kind: "intent" as const,
         runId,
         index,
-        intentId: b.intent.id,
+        intentId: intent.id,
         action: p.action,
         symbol: p.symbol,
         amountUsd6: b.amountUsd6,
-        rationale: p.rationale,
-        rationaleHash: b.intent.rationaleHash,
+        rationale,
+        rationaleHash: intent.rationaleHash,
         preview,
         ...(pv.error === undefined ? {} : { previewError: pv.error }),
+        ...(key && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
       };
       if (!g.send || !sender) {
         await j.append({ ...row, gate: g.send ? `dry-run: would ${g.kind}` : g.why });
@@ -290,23 +335,25 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       // Persist the intent as pending before it can leave the process, so a crash, a receipt timeout or a send that
       // fails after broadcast is reconciled next round instead of being billed or logged twice.
       checkCap();
-      const data = encodeExecute(b.intent);
+      const data = encodeExecute(intent);
       const gas = await gasFor("execute", data);
       const entry: PendingTx = {
-        intentId: b.intent.id,
+        intentId: intent.id,
         action: p.action,
-        amount: b.intent.amount.toString(),
+        amount: intent.amount.toString(),
         gateKind: g.kind,
         preview,
         day: day.toString(),
+        ...(g.kind === "log-refusal" && key ? { refusal: key } : {}),
         block: s.blockNumber.toString(),
+        timestamp: s.timestamp.toString(),
       };
       d.store.addPending(entry);
       d.store.recordTx(day);
       await d.store.save();
       let hash: Hex;
       try {
-        hash = await sender.send({ to: d.vault, data, idempotencyKey: b.intent.id, gas });
+        hash = await sender.send({ to: d.vault, data, idempotencyKey: intent.id, gas });
       } catch (e) {
         if (e instanceof SendRefused) d.store.clearPending(entry.intentId); // refused before anything was broadcast
         throw e;
@@ -322,14 +369,15 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         d.store.clearPending(entry.intentId); // a reverted execute() leaves the intent unused
         throw new Halt(`tx ${hash} reverted`);
       }
-      const decision = decisionIn(receipt.logs, d.vault, b.intent.id);
-      if (!decision) throw new Halt(`no Decision for intent ${b.intent.id} in tx ${hash}`);
+      const decision = decisionIn(receipt.logs, d.vault, intent.id);
+      if (!decision) throw new Halt(`no Decision for intent ${intent.id} in tx ${hash}`);
       await j.append({ ...row, gate: g.kind, txHash: hash, gasUsed: receipt.gasUsed, decision });
       await settle(entry, decision);
     }
   } catch (e) {
     report.status = "halted";
-    report.haltReason = (e as Error).message;
+    // The first line only, redacted: viem lists the RPC URL, which may carry a key, on the lines below it.
+    report.haltReason = oneLine(e);
     await j.append({ kind: "error", runId, message: `halted: ${report.haltReason}` });
   } finally {
     await d.store.save();

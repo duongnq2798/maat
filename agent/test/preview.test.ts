@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { previewIntent, type PreviewClient } from "../src/chain/preview.js";
 import type { OnchainIntent } from "../src/types.js";
 
@@ -30,6 +30,15 @@ describe("previewIntent", () => {
   });
   it("returns UNKNOWN with the RPC error when the call fails", async () => {
     expect(await previewIntent(client(async () => Promise.reject(new Error("timeout\nmore detail")), []), VAULT, EXEC, intent)).toEqual({ result: "UNKNOWN", error: "timeout" });
+  });
+  it("redacts the RPC error it returns, since the journal keeps it", async () => {
+    vi.stubEnv("BASE_RPC_URL", "https://rpc.example.org/v2/fakeRpcKeyForPreview");
+    try {
+      const fail = async () => Promise.reject(new Error("call to https://rpc.example.org/v2/fakeRpcKeyForPreview failed (key fakeRpcKeyForPreview)\nmore"));
+      expect(await previewIntent(client(fail, []), VAULT, EXEC, intent)).toEqual({ result: "UNKNOWN", error: "call to [redacted] failed (key [redacted])" });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
   it("returns UNKNOWN for a reason id the agent does not know", async () => {
     expect(await previewIntent(client(async () => 42, []), VAULT, EXEC, intent)).toEqual({ result: "UNKNOWN", error: "unknown reason id 42" });
