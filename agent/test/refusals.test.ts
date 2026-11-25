@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { CalendarDay } from "../src/chain/state.js";
 import { closedNote, closedPhase, gate, HOLIDAY_NAMES, LOGGABLE_REASONS, refusalKey } from "../src/refusals.js";
-import { CALENDAR_MATH } from "./fakes/fakeChain.js";
+import { CALENDAR_MATH, CALENDAR_VECTORS } from "./fakes/fakeChain.js";
 
 const REGULAR = 0;
 const FEED_24_5 = 1;
@@ -110,6 +110,7 @@ describe("refusalKey", () => {
     expect(key("MARKET_CLOSED", NOV25 + 39 * HOUR)).toEqual({ day: "2026-11-26", reason: "MARKET_CLOSED:holiday" });
     expect(key("MARKET_CLOSED", NOV25 + 50 * HOUR)).toEqual({ day: "2026-11-26", reason: "MARKET_CLOSED:holiday" }); // Thu 21:00 ET
     expect(key("MARKET_CLOSED", NOV25 + 61 * HOUR)).toEqual({ day: "2026-11-27", reason: "MARKET_CLOSED:overnight" });
+    expect(key("MARKET_CLOSED", NOV25 + 66 * HOUR + 60)).toEqual({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" }); // Fri 13:01 ET
     expect(key("MARKET_CLOSED", NOV25 + 67 * HOUR)).toEqual({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" });
     expect(key("FEED_STALE", NOV25 + 28 * HOUR + 30 * 60)).toEqual({ day: "2026-11-25", reason: "FEED_STALE" });
   });
@@ -176,5 +177,19 @@ describe("parity with MarketCalendar.sol", () => {
     expect(early.length).toBeGreaterThan(0);
     expect([...CALENDAR_MATH.holidays]).toEqual(holidays);
     expect([...CALENDAR_MATH.earlyCloseMin]).toEqual(early);
+  });
+});
+
+describe("parity with the NYSE calendar vectors", () => {
+  it("names each preloaded holiday as the vectors do", () => {
+    expect(Object.entries(HOLIDAY_NAMES)).toEqual(CALENDAR_VECTORS.holidays.map((h) => [h.date, h.name]));
+  });
+
+  it("is null exactly when the vectors expect the session open, at every fixed ET time they check", () => {
+    expect(CALENDAR_VECTORS.sessionChecks.length).toBeGreaterThan(0);
+    for (const c of CALENDAR_VECTORS.sessionChecks) {
+      expect(closedPhase(calendarAt(c.ts), REGULAR) === null, `${c.date} ${c.et} REGULAR`).toBe(c.regularOpen);
+      expect(closedPhase(calendarAt(c.ts), FEED_24_5) === null, `${c.date} ${c.et} FEED_24_5`).toBe(c.feedOpen);
+    }
   });
 });

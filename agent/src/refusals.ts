@@ -47,11 +47,23 @@ const CLOSE_MIN = 960; // 16:00
 const FEED_EDGE_MIN = 1200; // 20:00
 const REGULAR = SESSION_MODES.indexOf("REGULAR");
 
-/** Names for the holidays MarketCalendar's constructor adds, keyed by NYSE date. */
+/**
+ * Names for the holidays MarketCalendar's constructor adds, keyed by NYSE date, in its order and with its comments'
+ * words (a parity test reads contracts/src/MarketCalendar.sol). A holiday the owner adds later is "NYSE holiday".
+ */
 export const HOLIDAY_NAMES: Readonly<Record<string, string>> = {
   "2026-11-26": "Thanksgiving",
   "2026-12-25": "Christmas",
   "2027-01-01": "New Year",
+  "2027-01-18": "Martin Luther King Jr. Day",
+  "2027-02-15": "Washington's Birthday",
+  "2027-03-26": "Good Friday",
+  "2027-05-31": "Memorial Day",
+  "2027-06-18": "Juneteenth (observed)",
+  "2027-07-05": "Independence Day (observed)",
+  "2027-09-06": "Labor Day",
+  "2027-11-25": "Thanksgiving",
+  "2027-12-24": "Christmas (observed)",
 };
 
 /** The closed phase at `c`, decided branch for branch as MarketCalendar.isOpen does; null when the session is open. */

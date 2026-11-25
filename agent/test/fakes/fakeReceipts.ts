@@ -2,7 +2,9 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   encodeEventTopics,
+  InvalidInputRpcError,
   parseAbiParameters,
+  RpcRequestError,
   size,
   slice,
   type Address,
@@ -31,6 +33,8 @@ export class FakeReceipts {
   /** Broadcast but not mined: no receipt, getTransaction has blockNumber null. */
   mempool = new Set<Hex>();
   logQueries: { fromBlock: bigint; toBlock: bigint; intentId: unknown }[] = [];
+  /** The widest getLogs range the RPC accepts; a wider one is refused with mainnet.base.org's message. */
+  logRangeCap: bigint | null = null;
   /** The block every mined transaction lands in; getLogs returns its logs only to a range that holds it. */
   minedAt = 101n;
   /** What getBlockNumber returns. */
@@ -111,6 +115,11 @@ export class FakeReceipts {
       }) as never,
       getLogs: (async ({ args, fromBlock, toBlock }: { args: { intentId: Hex }; fromBlock: bigint; toBlock: bigint }) => {
         this.logQueries.push({ fromBlock, toBlock, intentId: args.intentId });
+        if (this.logRangeCap !== null && toBlock - fromBlock + 1n > this.logRangeCap) {
+          throw new InvalidInputRpcError(
+            new RpcRequestError({ body: { method: "eth_getLogs" }, error: { code: -32000, message: `eth_getLogs is limited to a ${this.logRangeCap} range` }, url: "http://127.0.0.1:1" }),
+          );
+        }
         if (this.minedAt < fromBlock || this.minedAt > toBlock) return [];
         return this.mined()
           .filter((x) => x.id === args.intentId)

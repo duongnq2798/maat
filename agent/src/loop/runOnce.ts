@@ -12,7 +12,7 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
-import { logWindows } from "../chain/logWindows.js";
+import { firstInLogWindows } from "../chain/logWindows.js";
 import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
@@ -136,15 +136,15 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     }
   };
 
-  /** The vault's Decision for `id` in blocks [from, to], one bounded eth_getLogs window at a time, oldest first. */
-  const decisionInLogs = async (id: Hex, from: bigint, to: bigint): Promise<Decision | undefined> => {
-    for (const { fromBlock, toBlock } of logWindows(from, to)) {
+  /**
+   * The vault's Decision for `id` in blocks [from, to], one bounded eth_getLogs window at a time, oldest first. A range
+   * error (the fallback RPC may allow only 200 blocks) halves the window.
+   */
+  const decisionInLogs = (id: Hex, from: bigint, to: bigint): Promise<Decision | undefined> =>
+    firstInLogWindows(from, to, async ({ fromBlock, toBlock }): Promise<Decision | undefined> => {
       const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: id }, fromBlock, toBlock });
-      const decision = decisionIn(logs, d.vault, id);
-      if (decision) return decision;
-    }
-    return undefined;
-  };
+      return decisionIn(logs, d.vault, id);
+    });
 
   /** Applies a mined execute()'s Decision to the store, clears the pending entry, and checks it against the preview. */
   const settle = async (p: PendingTx, decision: Decision): Promise<void> => {

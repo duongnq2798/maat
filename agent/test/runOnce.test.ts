@@ -340,6 +340,43 @@ describe("runOnce", () => {
       expect(t.store.unpaidUsd6()).toBe(0n);
     });
 
+    it("halves the log window on a range error, down to the fallback RPC's 200 blocks, and still finds the Decision", async () => {
+      const t = await setup({ store: await billed() });
+      t.inner.failAfterBroadcast = new Error("socket hang up");
+      await runOnce(t.deps);
+      t.inner.failAfterBroadcast = undefined;
+      t.receipts.logRangeCap = 200n;
+      t.receipts.minedAt = 100n + 500n;
+      t.receipts.head = 100n + 1_000n;
+      expect(await runOnce({ ...t.deps, runId: "run-2" })).toMatchObject({ status: "done", sent: [] });
+      expect(windows(t)).toEqual([
+        [100n, 1_100n],
+        [100n, 1_100n],
+        [100n, 1_100n],
+        [100n, 1_100n],
+        [100n, 661n],
+        [100n, 380n],
+        [100n, 299n],
+        [300n, 499n],
+        [500n, 699n],
+      ]);
+      expect((await t.journal.read()).find((e) => e.kind === "reconcile")).toMatchObject({ outcome: "applied", note: "Decision found in the vault's logs" });
+      expect(t.store.unpaidUsd6()).toBe(0n);
+    });
+
+    it("halts when even a 200-block log window is refused", async () => {
+      const t = await setup({ store: await billed() });
+      t.inner.failAfterBroadcast = new Error("socket hang up");
+      await runOnce(t.deps);
+      t.inner.failAfterBroadcast = undefined;
+      t.receipts.logRangeCap = 100n;
+      t.receipts.head = 100n + 1_000n;
+      const r = await runOnce({ ...t.deps, runId: "run-2" });
+      expect(r.status).toBe("halted");
+      expect(windows(t).at(-1)).toEqual([100n, 299n]);
+      expect(t.store.pending()).toHaveLength(1);
+    });
+
     it("searches every window up to the head before it halts on a used intent with no Decision", async () => {
       const t = await setup({ store: await billed() });
       t.inner.failAfterBroadcast = new Error("socket hang up");
@@ -391,6 +428,17 @@ describe("runOnce", () => {
       const r = await runOnce({ ...t.deps, runId: "run-2" });
       expect(r).toMatchObject({ status: "pending-tx", sent: [] });
       expect(t.inner.sent).toHaveLength(1);
+    });
+
+    it("keeps a pending send with no trace that is 300 s old", async () => {
+      const store = await billed();
+      store.addPending(pendingEntry({ block: "100" }));
+      const t = await setup({ store });
+      t.scene.block = { number: 100n + 1_500n, timestamp: SENT_AT + 300n };
+      expect(await runOnce(t.deps)).toMatchObject({ status: "pending-tx", sent: [] });
+      expect((await t.journal.read()).at(-1)).toMatchObject({ kind: "reconcile", outcome: "pending", intentId: ID, note: "no onchain trace yet (300 of 600 s)" });
+      expect(store.pending()).toHaveLength(1);
+      expect(t.inner.sent).toEqual([]);
     });
 
     it("waits out the window in chain time, however many blocks pass", async () => {
@@ -481,7 +529,9 @@ describe("runOnce", () => {
     const THU_1400_ET = utc(43);
     const THU_2100_ET = utc(50); // 02:00 UTC on Friday 27 November
     const FRI_0800_ET = utc(61);
-    const FRI_1400_ET = utc(67); // after the 13:00 ET early close
+    const FRI_1259_ET = utc(65, 59);
+    const FRI_1301_ET = utc(66, 1); // one minute after the 13:00 ET early close
+    const FRI_1400_ET = utc(67);
     const CLOSED = (note: string) => `underweight (market closed, ${note})`;
 
     type Row = Extract<JournalRow, { kind: "intent" | "sent" }>;
@@ -534,6 +584,7 @@ describe("runOnce", () => {
         [already, "underweight"],
         [already, "underweight"],
       ]);
+      expect(t.store.hasLoggedRefusal({ day: "2026-11-26", reason: "MARKET_CLOSED:holiday" })).toBe(true);
     });
 
     it("logs Friday's overnight and early-close refusals, whatever the week logged before", async () => {
@@ -549,6 +600,19 @@ describe("runOnce", () => {
       ]);
       expect(t.inner.sent).toHaveLength(4);
       expect(t.store.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:overnight" })).toBe(true);
+      expect(t.store.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" })).toBe(true);
+    });
+
+    it("keys a refusal at Friday 13:01 ET to the early close, and none while the shortened session is open", async () => {
+      const t = await week();
+      expect((await t.round(FRI_1259_ET)).sent).toEqual([]);
+      expect((await t.round(FRI_1301_ET)).sent).toHaveLength(1);
+      expect((await t.round(FRI_1400_ET)).sent).toEqual([]);
+      expect((await t.intents()).map((r) => [r.gate, r.rationale])).toEqual([
+        ["MARKET_CLOSED but the calendar is open at the state block; left to a round that reads the closed phase", "underweight"],
+        ["log-refusal", CLOSED("early close 13:00 ET")],
+        ["MARKET_CLOSED already logged for NYSE date 2026-11-27 (early-close)", "underweight"],
+      ]);
       expect(t.store.hasLoggedRefusal({ day: "2026-11-27", reason: "MARKET_CLOSED:early-close" })).toBe(true);
     });
 

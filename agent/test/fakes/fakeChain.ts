@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { getAddress, type Address } from "viem";
 import type { StateClient } from "../../src/chain/state.js";
 import { USDC, BASKET } from "../../src/addresses.js";
@@ -73,13 +75,20 @@ const nthSunday = (y: number, m: number, n: number) => {
   return first + ((7 - weekdayOf(first)) % 7) + (n - 1) * 7;
 };
 
-/** MarketCalendar's math, line for line: the holidays and early closes its constructor sets. */
+/** The NYSE closures MarketCalendar's constructor preloads, as contracts/test/vectors/gen-vectors.mjs wrote them. */
+export interface CalendarVectors {
+  holidays: { date: string; etDay: number; name: string }[];
+  earlyCloses: { date: string; etDay: number; closeMin: number }[];
+  sessionChecks: { date: string; et: string; ts: number; regularOpen: boolean; feedOpen: boolean }[];
+}
+export const CALENDAR_VECTORS: CalendarVectors = JSON.parse(
+  readFileSync(join(import.meta.dirname, "..", "..", "..", "contracts", "test", "vectors", "nyse-calendar.json"), "utf8"),
+);
+
+/** MarketCalendar's math, line for line, with the holidays and early closes its constructor sets. */
 export const CALENDAR_MATH = {
-  holidays: new Set([civilDay(2026, 11, 26), civilDay(2026, 12, 25), civilDay(2027, 1, 1)]),
-  earlyCloseMin: new Map([
-    [civilDay(2026, 11, 27), 780],
-    [civilDay(2026, 12, 24), 780],
-  ]),
+  holidays: new Set(CALENDAR_VECTORS.holidays.map((h) => h.etDay)),
+  earlyCloseMin: new Map(CALENDAR_VECTORS.earlyCloses.map((e) => [e.etDay, e.closeMin] as const)),
   etOffsetSeconds(ts: number): number {
     const y = new Date(ts * 1000).getUTCFullYear();
     const dstStart = nthSunday(y, 3, 2) * DAY_S + 7 * 3600;
