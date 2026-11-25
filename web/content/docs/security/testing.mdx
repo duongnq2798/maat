@@ -4,11 +4,17 @@ description: "How each guarantee is tested: contract unit and fork suites, agent
 type: concept
 audience: [evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-23
+lastReviewed: 2026-11-25
 sources:
   - contracts/test/MandateVault.t.sol
   - contracts/test/GuardLib.t.sol
   - contracts/test/fork/MandateVaultFork.t.sol
+  - contracts/test/fork/LiveVault.t.sol
+  - contracts/test/fork/LiveVaultInvariants.t.sol
+  - contracts/test/fork/LiveVaultTrailingRationaleFork.t.sol
+  - contracts/test/fork/live/LiveHandlers.sol
+  - .github/workflows/live-fork.yml
+  - .github/scripts/live-fork.mjs
   - contracts/test/MandateVaultAdmin.t.sol
   - contracts/test/MandateVaultCredit.t.sol
   - contracts/test/MandateVaultMalformed.t.sol
@@ -42,7 +48,7 @@ sources:
 next: [guides/run-the-tests, guides/reproduce-the-fork-run]
 ---
 
-This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. The owner deployed the four Maat contracts on Base mainnet, but no test here touches mainnet.
+This page maps each guarantee in the [security model](/docs/security/model) to the test that shows it, says what kind of test it is, and says what is not tested. You can run every test yourself, and most need no wallet, RPC URL or API key. Test counts are left out on purpose, because they go stale: [Run the tests](/docs/guides/run-the-tests) shows the commands, and the output tells you the counts today. The owner deployed the four Maat contracts on Base mainnet, but no test here sends a transaction there: the live fork suites copy the deployed vault's state into a local fork.
 
 ## Layers
 
@@ -50,7 +56,7 @@ This page maps each guarantee in the [security model](/docs/security/model) to t
 | --- | --- | --- | --- |
 | **Contracts, unit** | `contracts/test/*.t.sol` | Mocks of the tokens, feeds, pools and adapters, and committed calendar vectors | Nothing |
 | **Contracts, invariant** | `contracts/test/invariant/*.sol` | Random sequences of calls against the same mocks | Nothing |
-| **Contracts, fork** | `contracts/test/fork/*.t.sol` | Real [Base](/docs/help/glossary#base) state at two pinned mainnet blocks | A Base archive RPC |
+| **Contracts, fork** | `contracts/test/fork/*.t.sol` | Real [Base](/docs/help/glossary#base) state at two pinned mainnet blocks, and the deployed vault at a recent block ([Live fork run](#live-fork-run-against-the-deployed-vault)) | A Base archive RPC |
 | **Agent, unit** | `agent/test/*.test.ts` | Fakes for Claude, the [CDP wallet](/docs/help/glossary#cdp-server-wallet) and the chain | Nothing |
 | **Agent, fork run** | `agent/test/integration/agent.fork.test.ts` | A local fork of Base, with a scripted proposer and a local sender | A Base archive RPC and `base-anvil` |
 | **Parity, site and docs** | `web/test/*.test.ts` and `*.test.tsx` | The Solidity and TypeScript sources and the committed fork-run gas log | Nothing |
@@ -96,7 +102,8 @@ The table below maps the guarantees to their tests, in the contracts and in the 
 | **The calendar only gets stricter** | [`test_ownerCanOnlyMakeItStricter`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendar.t.sol) | Unit | The calendar owner can add a holiday or an earlier close, and cannot loosen either |
 | **[Preview](/docs/help/glossary#preview) mismatch halts** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "halts when the preview said OK but the vault refused" | Agent unit | The round stops and the journal records the mismatch |
 | **Pending sends are reconciled** | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "reconciles a send that threw after broadcast instead of sending again", "drops a pending entry older than the window that never reached the chain" | Agent unit | A send that threw after broadcast is reconciled in the next round, and the agent does not send it again. A pending send with no onchain trace after at least <Fact name="pendingWindowMinutes" /> of chain time is dropped. The README calls this row "Exactly-once sends"; [the security model](/docs/security/model#what-the-agent-adds) says what it does not cover |
-| **The sender only reaches the vault** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses calldata that does not decode" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
+| **The sender only reaches the vault** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses calldata that does not decode, or carries bytes after the call" | Agent unit | The guarded sender refuses a foreign address, an owner function and calldata it cannot decode |
+| **Every `execute` carries its blob** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses a blob whose keccak256 is not the intent's rationaleHash" | Agent unit | An `execute` whose [rationale blob](/docs/help/glossary#rationale-blob) does not hash to its `rationaleHash` is refused |
 | **The gas limit is bounded** | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses a missing, zero or over-cap gas limit" | Agent unit | A missing, zero or over-cap limit is refused, and a limit at the cap is sent |
 
 To run one row yourself, use the test names in the table. From `contracts/`:
@@ -197,8 +204,31 @@ What a fork test does not show:
 
 - **It is a block, not a deployment.** It shows what the code does against real state at that block. It says nothing about how the system behaves on mainnet over time.
 - **The vault is funded by a test [cheat code](/docs/help/glossary#cheat-code)** in the two vault fork tests, not by an owner's `fund` call.
-- **Several paths have no fork test.** No fork test pauses the vault, rotates the executor, queues a rule change or withdraws a stock. The compromised-executor test deploys the vault without a credit adapter, so it does not try a borrow.
+- **Several paths have no fork test.** No fork test pauses the vault or withdraws a stock. [`QueueReserveCapsFork.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/QueueReserveCapsFork.t.sol) and the live fork suites below queue and apply rule changes on the deployed vault, and only `LiveVault.t.sol` rotates the executor, while the owner's wallet holds the executor role. The compromised-executor test of `MandateVaultFork.t.sol` deploys the vault without a credit adapter, and neither compromised-executor test tries a borrow.
 - **The Saturday round of the agent's fork run is the same fork with the clock moved ahead.** The contract fork tests have a real Saturday block, and the agent's run does not.
+
+## Live fork run against the deployed vault
+
+The fork tests above deploy a new vault. Three more suites, `contracts/test/fork/LiveVault*.t.sol`, attack the vault the owner deployed on Base mainnet, at the address in [Base addresses](/docs/reference/base-addresses), with the tokens, feeds, pools, calendar and credit adapter its mandate names. The workflow [`.github/workflows/live-fork.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/live-fork.yml), named "live fork adversarial", runs them once a day at 15:23 UTC, inside the regular session on a trading day, and on demand. It needs no secret. [`live-fork.mjs`](https://github.com/duongnq2798/maat/blob/main/.github/scripts/live-fork.mjs) picks one block per run, 300 blocks behind the head of the first keyless public RPC that serves it (`mainnet.base.org`, then `base-rpc.publicnode.com`), and every suite forks that block, which is also the fuzz seed. A fork read that fails at the RPC makes the call that needed it revert, which a suite reads as a broken property, so when a failed run's forge log has RPC errors, `live-fork.mjs` warns that the RPC failed and reruns the failed suites once, at the same block and seed, through the other RPC. The run fails on a failure whose log has no RPC error, or with no verdict on the vault when the rerun hits RPC errors too, and its summary lists each attempt and the RPC errors it hit. Foundry forks the chain locally, so nothing is signed or broadcast: the suites act as the live executor and owner with `vm.prank`. Pull requests do not run it, and `ci.yml` leaves `test/fork/*` out.
+
+| What it asserts | Test | How |
+| --- | --- | --- |
+| **The six invariants** | The six `invariant_` functions of [`LiveVaultInvariants.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/LiveVaultInvariants.t.sol), under the names [Invariants](#invariants) lists | The offline suite's checks, with live counterparts of its trade, expense and credit handlers and no mocks: random trades, payments and credit actions sent as the live executor, clock moves, and changes between the live mandate and two variants of it, queued and applied as the live owner |
+| **Compromised executor bounded** | [`test_compromisedExecutorIsBounded`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/LiveVault.t.sol) | A payment to an address off the allowlist and one over the per-trade cap are refused, a buy over the cap of each listed stock is refused before any swap, payments to the payee stop at what is left of the daily cap, `withdraw` of USDC and of a stock, `fund`, `setExecutor`, `setPaused`, `cancelChange` and the three queue and three apply functions revert with `NotOwner`, a used intent id reverts, and the attacker gains nothing. While the owner's wallet still holds the executor role, the test first hands the role to a new key on the fork |
+| **Preview matches execute** | [`testFuzz_previewMatchesExecute`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/LiveVault.t.sol) | Random intents of every action: `execute` gives the reason `previewIntent` gave, except the outcomes only acting can reach, and a refusal moves no USDC and no stock |
+| **A trailing rationale blob is accepted** | [`test_refusedBuyCarriesTheBlobHash`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/LiveVaultTrailingRationaleFork.t.sol), [`test_allowedExpenseCarriesTheBlobHash`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/LiveVaultTrailingRationaleFork.t.sol), [`test_blobAtExactly1024Bytes`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/LiveVaultTrailingRationaleFork.t.sol) | The checks of `MandateVaultTrailingRationaleFork.t.sol` at the run's block: `execute(intent)` followed by the blob and an ERC-8021 suffix emits one `Decision` that carries the blob's hash, and `previewIntent` gives the same verdict with or without the trailer |
+
+`forge-config` comments in the suites keep a run short, by hand too: 128 fuzz runs, and 4 invariant runs of 512 calls each. To run the suites yourself, from `contracts/`, with the block and seed a run's summary prints:
+
+```bash
+LIVE_FORK_BLOCK=<block> BASE_RPC_URL=https://mainnet.base.org forge test --match-path "test/fork/LiveVault*" --fuzz-seed <block>
+```
+
+Without `LIVE_FORK_BLOCK`, the suites fork the latest block. What the run does not show:
+
+- **Feeds that move.** The clock moves on the fork, but the Chainlink feeds keep the answers they had at the block, so trades sent after a long enough move are refused as stale.
+- **Every refusal, every run.** The live state decides what a run can reach, so its coverage check asks only for what any block allows: both expected reverts, an applied and a refused mandate change and, unless the vault is paused, an allowed payment and the refusals for a payee off the allowlist and for USDC traded as a stock.
+- **The owner's own funds.** Each suite tops the vault up with the owner's `fund` call, with USDC a cheat code gives the owner.
 
 ## The agent
 
@@ -215,7 +245,7 @@ The agent's unit tests use fakes. The fake chain, receipts and sender are in [`a
 
 This is the mismatch test, the one that makes the agent stop a round when its preview said OK and the vault refused:
 
-```typescript title="agent/test/runOnce.test.ts#L721-L731"
+```typescript title="agent/test/runOnce.test.ts#L871-L881"
     it("halts when the preview said OK but the vault refused", async () => {
       const t = await setup({ batch: TWO });
       t.receipts.verdict = () => ({ allowed: false, reason: 15 });
@@ -283,7 +313,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | Not tested | Why it matters |
 | --- | --- |
 | **No audit** | Nobody independent has reviewed the code. See [What Maat does not claim](/docs/security/not-claimed) |
-| **Fuzzing beyond the mocks** | The invariant suite runs on mocks only and is the only randomized test: every other contract test, fork tests included, takes fixed inputs, and [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the suite leaves out |
+| **Fuzzing beyond the mocks** | Only the [live fork run](#live-fork-run-against-the-deployed-vault) fuzzes against the real contracts, in short campaigns at one block a day. The offline invariant suite runs on mocks, and every other contract test, the other fork tests included, takes fixed inputs. [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the offline suite leaves out |
 | **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
 | **Mainnet** | The owner deployed the four Maat contracts on Base mainnet, but every test is still a unit test or a fork |
@@ -292,7 +322,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | **Reentrancy** | No test has an adapter, a pool or a token call back into the vault during `execute`. [Reentrancy](/docs/security/model#reentrancy) says what the vault relies on instead of a guard |
 | **Static analysis and coverage** | No analyzer configuration or output (Slither, Aderyn, Mythril or another) and no line or branch coverage report is committed. The `forge-lint` comments in the sources, such as the one at `GuardLib.sol` line 130, switch off a named lint rule (`block-timestamp`, `calls-loop`, `require-revert-in-loop`) for the next line or a block of lines. No lint run or its output is committed |
 | **A hostile owner** | The vault has no defense against one, so there is nothing to test |
-| **The fork suites in CI** | On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs only the offline suites. The two fork suites need an archive RPC and run by hand, so a fork claim here is as fresh as the last run |
+| **The fork suites in CI** | On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs only the offline suites. The live fork suites run once a day in their own workflow. The other contract fork tests and the agent's fork run need an archive RPC and run by hand, so a claim based on them is as fresh as the last run |
 
 If you can think of a test that belongs on this list, or one that fails, [Report a vulnerability](/docs/security/report-a-vulnerability) says how to tell the team.
 

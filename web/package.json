@@ -21,6 +21,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@base-org/account": "2.6.0",
     "fumadocs-core": "16.18.1",
     "fumadocs-mdx": "15.5.0",
     "fumadocs-ui": "16.18.1",

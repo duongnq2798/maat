@@ -272,12 +272,12 @@ measurement script and its data are not in the repository, so these figures cann
 | Suggest | Code: a rule-based policy | Equal weights after a 30% USDC reserve, a 5-point drift trigger. Advisory only | [`policy.ts#L13`](agent/src/policy.ts#L13) |
 | Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L27`](agent/src/config.ts#L27) |
 | Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L145-L146`](agent/src/llm/proposer.ts#L145-L146) |
-| Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L47-L71`](agent/src/intent.ts#L47-L71) |
+| Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L72-L95`](agent/src/intent.ts#L72-L95) |
 | Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L14`](agent/src/chain/preview.ts#L14) |
-| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L293-L299`](agent/src/loop/runOnce.ts#L293-L299) |
-| Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; Builder Code appended | [`sender.ts#L26-L53`](agent/src/exec/sender.ts#L26-L53) |
+| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L280-L286`](agent/src/loop/runOnce.ts#L280-L286) |
+| Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; every `execute` carries the maat:v1 blob its `rationaleHash` commits to; Builder Code appended | [`sender.ts#L30-L85`](agent/src/exec/sender.ts#L30-L85) |
 | Decide | The vault | The nine checks; the first failure is the reason; a refusal does not revert | [`MandateVault.sol#L257-L282`](contracts/src/MandateVault.sol#L257-L282) |
-| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L326-L327`](agent/src/loop/runOnce.ts#L326-L327) |
+| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale blob that follows the call in the same transaction; the agent's journal keeps the text and the blob | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L48-L50`](agent/src/intent.ts#L48-L50), [`runOnce.ts#L316-L318`](agent/src/loop/runOnce.ts#L316-L318) |
 
 The model chooses what to try and says why; code bounds its answer; only the vault decides.
 
@@ -544,8 +544,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  30 passed (30)
-         Tests  392 passed (392)
+    Test Files  41 passed (41)
+         Tests  581 passed (581)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -564,10 +564,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  121 passed (121)
-         Tests  2660 passed (2660)
+    Test Files  125 passed (125)
+         Tests  2736 passed (2736)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 52 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 
@@ -620,9 +620,14 @@ CI's web unit tests check the chain it writes, on its fixtures.
 CI ([`.github/workflows/ci.yml`](.github/workflows/ci.yml)) runs the four offline suites above (contracts
 unit, agent unit, web unit and web end to end), a secret scan of the full history and of every commit
 message, and a lint of the workflow itself, on every pull request and every push to `main`. Each run's
-summary shows the counts each runner reported. The contracts fork suite and the agent fork integration suite
-need an archive RPC and run by hand. Lighthouse, a browser audit of the production site, also runs by hand
-([`web/README.md`](web/README.md#deploy-owner)).
+summary shows the counts each runner reported. A second workflow, "live fork adversarial"
+([`.github/workflows/live-fork.yml`](.github/workflows/live-fork.yml)), runs once a day and on demand, never on a
+pull request and with no secret: it forks Base at a recent block through a keyless public RPC and runs
+`contracts/test/fork/LiveVault*.t.sol` against the deployed vault (the six invariants, the compromised-executor
+bound, preview against execute and the trailing rationale blob). A failure whose forge log shows RPC errors is
+rerun once, at the same block and seed, through the other RPC. The other contract fork tests and the agent fork
+integration suite need an archive RPC and run by hand. Lighthouse, a browser audit of the production site, also
+runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
 
 ## Known limitations
 
@@ -736,7 +741,8 @@ owner's GitHub account.
 ## Where things are in this repository
 
 ```text
-.github/                   the CI workflow, its counting script and tests, Dependabot
+.github/                   the CI workflow, its counting script and tests, the live fork workflow and its block
+                           picker, Dependabot
 contracts/                 Foundry project (Solidity 0.8.28, via-IR, hardfork base:Cobalt)
   src/
     MandateVault.sol       the vault: mandate, nine checks, Decision log, timelock, credit routing
