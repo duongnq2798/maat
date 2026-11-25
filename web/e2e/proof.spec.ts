@@ -3,6 +3,7 @@ import { expect, test, type Page } from "@playwright/test";
 import { getAddress, type Address, type Hash, type Hex } from "viem";
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { VERIFIED_ACCOUNT_SCHEMA } from "../app/(site)/proof/verified";
+import { ASK_OPEN } from "../content/ask-open";
 import { PROOF_SENDS } from "../content/proof-sends";
 import { answerBody, decisionLog, executorSetLog, newRpcLog, plainSends, type ProofChain, type ProofRpcLog } from "../test/helpers/fake-proof-chain";
 import { RPC_HOSTS } from "./fake-rpc";
@@ -97,7 +98,8 @@ async function serious(page: Page): Promise<string[]> {
 const LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs", "bounty-claimants"];
 
 test.describe("/proof with the committed deployments table", () => {
-  test("is a public page with the rule, in the state the table gives it, and no nav link yet", async ({ page }) => {
+  // The nav links /proof, in the bar and in the phone menu, once the owner's switch has opened /ask.
+  test(`is a public page with the rule, in the state the table gives it, and ${ASK_OPEN ? "linked from the nav" : "no nav link yet"}`, async ({ page }) => {
     const errors = collectErrors(page);
     const seen = await installProofChain(page, chain(RECORDED?.inbox ?? INBOX, RECORDED?.deployTx ?? null, []));
     await page.goto("/proof");
@@ -108,7 +110,7 @@ test.describe("/proof with the committed deployments table", () => {
     await expect(page.getByRole("heading", { name: "The counting rule" })).toBeVisible();
     await expect(page.locator("[data-proof-rule]")).toContainText("No line is ever added to another.");
     await expect(page.locator("[data-proof-rule] table tbody tr")).toHaveCount(8);
-    await expect(page.locator('nav a[href="/proof"]')).toHaveCount(0);
+    await expect(page.locator('nav a[href="/proof"]')).toHaveCount(ASK_OPEN ? 2 : 0);
     expect((await page.request.get("/sitemap.xml").then((r) => r.text())).includes("/proof</loc>")).toBe(true);
 
     if (RECORDED === null) {
