@@ -7,10 +7,13 @@ status: fork-tested
 lastReviewed: 2026-11-25
 sources:
   - agent/package.json
+  - agent/scripts/restart-loop.ts
+  - agent/scripts/heartbeat.ts
   - agent/src/main.ts
   - agent/src/config.ts
   - agent/src/runtime.ts
   - agent/src/loop/scheduler.ts
+  - agent/src/loop/heartbeat.ts
   - agent/src/loop/lock.ts
   - agent/src/loop/runOnce.ts
   - agent/src/ledger/journal.ts
@@ -25,7 +28,7 @@ This guide is the [owner](/docs/help/glossary#owner)'s runbook for keeping the M
 
 <Callout type="note" title="What has run">
 
-The restart loop (`npm run agent:loop`) and the heartbeat check (`npm run agent:heartbeat`) have run in the agent's unit tests: the loop against a fake agent process and a fake clock, and against one real child process that exits at once. No run of the loop around a real agent is recorded, on Windows or elsewhere, and the Windows notification it raises has not been checked on screen. The heartbeat outputs quoted below were printed by the check on hand-made heartbeat files. The PowerShell commands for the journal and the lock file were run on hand-made files in Windows PowerShell 5.1, and so was the read-only `paused()` call, against the vault on Base mainnet. Of the steps that prepare the PC, only the two read-only queries were run, `powercfg /query` and `w32tm /query /status`. The commands that change a setting and the Windows Update step were not run for this page, so no output of theirs is shown; the `powercfg /change` and `w32tm /resync` lines follow those commands' own help text.
+The restart loop (`npm run agent:loop`) and the heartbeat check (`npm run agent:heartbeat`) have run in the agent's unit tests: the loop against a fake agent process and a fake clock, and against one real child process that exits at once. No run of the loop around a real agent is recorded, on Windows or elsewhere, and the Windows notifications it raises have not been checked on screen. The heartbeat outputs quoted below were printed by the check on hand-made heartbeat files. The PowerShell commands for the journal and the lock file were run on hand-made files in Windows PowerShell 5.1, and so was the read-only `paused()` call, against the vault on Base mainnet. Of the steps that prepare the PC, only the two read-only queries were run, `powercfg /query` and `w32tm /query /status`. The commands that change a setting and the Windows Update step were not run for this page, so no output of theirs is shown; the `powercfg /change` and `w32tm /resync` lines follow those commands' own help text.
 
 </Callout>
 
@@ -135,6 +138,7 @@ MAAT_BUILDER_CODE=<BUILDER_CODE>
 Why two folders:
 
 - **Live mode refuses a folder that holds dry-run lines.** Before any CDP call, a start in live mode reads the folder's journal and stops if it finds a line a dry run wrote, with `live mode refuses data dir <DIR>: its journal holds dry-run rows (first: run <RUN_ID> at <TIME>); give live its own MAAT_DATA_DIR`. A live agent in a dry run's folder would pay the dry runs' Claude bill back from the vault, and its journal would mix rehearsal lines with live ones. If `./data` already holds dry-run lines from an earlier test, rename that folder or point `MAAT_DATA_DIR` at a new one. A new folder starts with no unpaid [compute bill](/docs/help/glossary#compute-bill).
+- **A dry run refuses a folder that holds live lines.** The other way round, a start in dry-run mode, from `MAAT_MODE` or `--dry-run`, stops if the folder's journal holds a live round or a sent transaction, with `dry-run refuses data dir <DIR>: its journal holds live rows (first: run <RUN_ID> at <TIME>); give the dry-run its own MAAT_DATA_DIR`. Its lines would otherwise make the next start in live mode refuse that folder. So once live mode has written to `./data`, a soak needs its own folder again.
 - **One agent per folder.** Each agent locks its folder, so the soak and the live agent cannot share one anyway: the second stops at its start with `another agent (pid <PID>) is running; lock <FILE>`.
 - **Each folder keeps its own counts.** The Claude spend the daily cap below counts, the unpaid bill and the transactions per UTC day are all kept in the folder's `state.json`.
 
@@ -173,6 +177,7 @@ npm run agent:loop
 Everything after `--` goes to each `npm run agent` the loop starts, so `-- --dry-run` makes every start a dry run, whatever `MAAT_MODE` says. The loop refuses `--once` and exits with code 2; for a single round, run `npm run agent -- --once` without the loop. The agent reads `agent/.env` itself at each start. The loop reads only the `MAAT_DATA_DIR` line of it, once when the loop starts, to find the heartbeat, so restart the loop after you change that line.
 
 - **It restarts the agent when it exits.** The agent's own loop survives a failed or halted round, so the agent exits only when it is stopped, when it cannot start (for example on a bad setting, or a lock another agent holds) or when its process dies. The loop waits 10 seconds before it starts the agent again. Each time the agent exits again within 10 minutes of its start, the wait doubles, to 20 seconds, 40 seconds and so on, up to 15 minutes. After a run of at least 10 minutes the wait is back to 10 seconds.
+- **It warns when the agent keeps exiting.** When 3 starts in a row each end less than 10 minutes after they began, the loop prints one `FAILING` line and shows a Windows notification, `Maat agent keeps exiting: 3 starts in a row ended within 10 min (last: <HOW>). Check the agent window.` It goes on starting the agent all the same. It warns again only after a run of at least 10 minutes has ended that stretch and 3 more quick exits follow.
 - **It watches the heartbeat.** The agent writes `heartbeat.json` to its data folder after every round of its loop, failed rounds included; `npm run agent -- --once` writes none. Every 5 minutes the restart loop reads the file. When no round has ended for more than 90 minutes, it prints one `STALE` line and shows a Windows notification, `Maat agent: no round has ended for <AGE>. Check the agent window.` It warns once per stale stretch, and again only after a round has ended and a new stretch begins. A heartbeat older than the agent's start counts from the start, so a file left by an earlier run raises no alarm while the new agent runs its first round.
 - **It only warns.** The agent waits at most <Fact name="offSessionMinutes" /> between rounds, so 90 minutes without a round ending points at a stuck agent or a PC that slept. The loop does not restart an agent that is stuck: you do, after a look at the tab and the journal.
 
@@ -182,11 +187,13 @@ These are the lines the loop and the agent print in the tab, with placeholders f
 | --- | --- |
 | `restart-loop: watching <DIR> for the heartbeat; Ctrl-C stops the agent and this loop` | Once, when the loop starts. `<DIR>` is the full path of the data folder. |
 | `restart-loop: agent started (pid <PID>), start <N>` | Each time the loop starts the agent. `<PID>` is the process the loop started, `npm run agent`, not the agent's own pid that the heartbeat and the lock file give. |
+| `maat agent: ignoring <NAMES>: Claude is called only at https://api.anthropic.com, with ANTHROPIC_API_KEY` | Before the agent's first line, only when `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, in the terminal or in `agent/.env`. `<NAMES>` names the one that is set, or both. The agent does not stop for it. |
 | `maat agent: mode=<MODE> vault=<VAULT> executor=<EXECUTOR> data=<DIR> credit=off llm-cap=$0.75/day bill-min=$1.00` | The agent's first line once its settings load, here with the live defaults. |
 | `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | After each round. A halted round adds its reason in parentheses. |
 | `round failed: <ERROR>` | A round threw. The error is one line, with URLs, keys and other secret values replaced. The next round runs after <Fact name="offSessionMinutes" />. |
 | `maat agent stopped: <ERROR>` | The agent could not start. The same one-line form. |
 | `restart-loop: agent exited (<HOW>) after <TIME>; restarting in <WAIT>` | The agent exited, and the loop will start it again. `<HOW>` is `code <CODE>`, `signal <SIGNAL>`, or `error` and the error when `npm run agent` could not be started. |
+| `restart-loop: FAILING: 3 starts in a row ended within 10 min (last: <HOW>)` | Right after the third such `restarting in` line in a row for starts that each ended within 10 minutes, with the Windows notification. The loop goes on starting the agent. |
 | `restart-loop: STALE: no round has ended for <AGE>; <LAST_ROUND>` | At a check, when no round has ended for more than 90 minutes. `<LAST_ROUND>` describes the last round as the heartbeat check does, between its `OK:` or `STALE:` and its limit, or reads `no heartbeat yet`. |
 | `restart-loop: heartbeat unreadable: <ERROR>` | At a check, when the heartbeat file could not be read. |
 | `restart-loop: agent exited (<HOW>) after <TIME>; stopped` | After Ctrl-C, once `npm run agent`, the process the loop started, has exited. |
@@ -332,9 +339,9 @@ A pause does not stop the agent: its rounds go on reading the vault and asking C
 ## Common mistakes
 
 - **Starting the loop in a terminal that another program opened.** That terminal closes with its program, and the loop and the agent stop with it. Open a PowerShell window or a Windows Terminal tab yourself, as in [Start the restart loop](#start-the-restart-loop).
-- **One folder for the soak and live mode.** The start in live mode stops with `live mode refuses data dir` and the folder. Give live mode its own `MAAT_DATA_DIR`.
-- **Two loops on one folder.** The second agent stops at every start with `maat agent stopped: another agent (pid <PID>) is running; lock <FILE>`, and its loop keeps starting it again, with waits that grow to 15 minutes. Run one loop per folder.
-- **A bad setting under the loop.** The agent stops at its start with `maat agent stopped:` and the error, and the loop starts it again with longer and longer waits. Fix `agent/.env`: the next start reads it.
+- **One folder for the soak and live mode.** The start in live mode stops with `live mode refuses data dir` and the folder, and a soak started on a folder that live mode wrote to stops with `dry-run refuses data dir`. Give each its own `MAAT_DATA_DIR`.
+- **Two loops on one folder.** The second agent stops at every start with `maat agent stopped: another agent (pid <PID>) is running; lock <FILE>`, and its loop keeps starting it again, with waits that grow to 15 minutes, and prints a `FAILING` line once the third start has stopped. Run one loop per folder.
+- **A bad setting under the loop.** The agent stops at its start with `maat agent stopped:` and the error, and the loop starts it again with longer and longer waits, and prints a `FAILING` line and shows a notification once the third start has stopped. Fix `agent/.env`: the next start reads it.
 - **Expecting a heartbeat from `--once`.** Only the agent's loop writes `heartbeat.json`, so after `npm run agent -- --once` the check still finds none, or the last round of an earlier loop.
 - **Setting `MAAT_DATA_DIR` in the terminal.** The terminal's value wins over `agent/.env` for the agent, the restart loop and the heartbeat check alike.
 - **Leaving `agent/data-dryrun/` in a commit.** Git does not ignore it. Check `git status` before you commit.
