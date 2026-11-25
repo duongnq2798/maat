@@ -33,8 +33,9 @@ export const clientRpc =
 
 /**
  * Everything /proof shows, from the chain: every Brief log of the inbox up to the head (the /ask reader), the team set
- * traced at the head, the briefs counted by the rule, then the Verified Account of each outside wallet, read at the
- * head block and judged at its timestamp. An incomplete read gives no column, since its lines show no number.
+ * traced at the head from those logs, the vault's and the committed lists, the briefs counted by the rule, then the
+ * Verified Account of each outside wallet, read at the head block and judged at its timestamp. An incomplete read gives
+ * no column, since its lines show no number.
  */
 export async function readProof(
   client: ProofClient,
@@ -43,7 +44,9 @@ export async function readProof(
   signal?: AbortSignal,
 ): Promise<ProofRead> {
   const read = await readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, signal });
-  const team = await traceTeam(clientRpc(client), { team: lists.team, sends: lists.sends, stops: lists.stops, deployments: config.deployments }, read.head, signal);
+  // The trace takes a team wallet's briefs as its sends from the Brief logs read here, so it reads none twice.
+  const inputs = { team: lists.team, sends: lists.sends, stops: lists.stops, deployments: config.deployments, briefs: read.briefs };
+  const team = await traceTeam(clientRpc(client), inputs, read.head, signal);
   const count = countBriefs(read.briefs, { ...lists, team: team.members });
   const problems = [...(read.complete ? [] : [SCAN_GAP]), ...team.gaps];
   const base = { count, complete: problems.length === 0, problems, head: read.head, team };

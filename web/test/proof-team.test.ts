@@ -8,7 +8,18 @@ import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
 import addresses from "@/content/generated/base-addresses.json";
 import { docsData } from "@/lib/docs/generated";
-import { approvalLog, newRpcLog, proofChainRpc, transferLog, txHash, type FakeTx, type ProofChain } from "./helpers/fake-proof-chain";
+import {
+  approvalLog,
+  decisionLog,
+  executorSetLog,
+  newRpcLog,
+  proofChainRpc,
+  revenueLog,
+  transferLog,
+  txHash,
+  type FakeTx,
+  type ProofChain,
+} from "./helpers/fake-proof-chain";
 
 const HEAD = 62_120_000n;
 const OWNER: Address = "0x3c3a66f713DAE7e4A03Bbd81dB79FF65F42C1D6a";
@@ -139,7 +150,7 @@ describe("the team set of inbox spec §5, traced from the chain", () => {
     const short = { ...INPUTS, sends: INPUTS.sends.filter((s) => s.wallet !== FUNDED) };
     const t = await trace(CHAIN, short);
     expect(t.gaps).toEqual([
-      `web/content/proof-sends.ts lists 0 of the 1 transactions ${lower(FUNDED)} sent by block 62,120,000; node scripts/recount.mjs --sends ${lower(FUNDED)} prints them.`,
+      `${lower(FUNDED)} sent 1 transaction by block 62,120,000, and 1 is missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(FUNDED)} prints it.`,
     ]);
     expect(teamLines(t)).toContain(`Incomplete: ${t.gaps[0]}`);
     // Without FUNDED's list its token is not seen, so TOKEN_KID is not reached.
@@ -154,9 +165,16 @@ describe("the team set of inbox spec §5, traced from the chain", () => {
     expect(m[lower(PULLED)]).toBeUndefined();
   });
 
-  it("refuses a committed transaction that is not that wallet's at that nonce", async () => {
+  it("refuses a committed list out of nonce order", async () => {
     const swapped = { ...INPUTS, sends: [{ wallet: OWNER, txs: [txHash(2), txHash(1), ...[3, 4, 5, 6].map(txHash)] }, ...INPUTS.sends.slice(1)] };
-    await expect(trace(CHAIN, swapped)).rejects.toThrow(`web/content/proof-sends.ts: ${txHash(2)} is not transaction 0 of ${lower(OWNER)}`);
+    await expect(trace(CHAIN, swapped)).rejects.toThrow(
+      `web/content/proof-sends.ts lists the transactions of ${lower(OWNER)} out of nonce order: ${txHash(1)} has nonce 0, after nonce 1.`,
+    );
+  });
+
+  it("refuses a committed transaction another wallet sent, even one past the wallet's nonce", async () => {
+    const wrong = { ...INPUTS, sends: [{ wallet: OWNER, txs: [...[1, 2, 3, 4, 5, 6].map(txHash), txHash(7)] }, ...INPUTS.sends.slice(1)] };
+    await expect(trace(CHAIN, wrong)).rejects.toThrow(`web/content/proof-sends.ts: ${txHash(7)} is not a transaction ${lower(OWNER)} sent`);
   });
 
   it("notes a wallet with code, whose ETH can leave inside another wallet's transaction", async () => {
@@ -176,6 +194,105 @@ describe("the team set of inbox spec §5, traced from the chain", () => {
     await traceTeam(proofChainRpc(CHAIN, seen), INPUTS, HEAD);
     expect(new Set(seen.calls.map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
     expect(seen.calls.map((c) => c.functionName)).toEqual(["owner", "executor", "payees"]);
+  });
+});
+
+const INBOX: Address = "0x00000000000000000000000000000000000B0001";
+const OUTSIDER: Address = "0x00000000000000000000000000000000000f0008";
+const OUTSIDER_KID: Address = "0x00000000000000000000000000000000000f0009";
+const NEWBIE: Address = "0x00000000000000000000000000000000000f000a";
+const PLAIN: Address = "0x00000000000000000000000000000000000f000b";
+/** A contract the owner calls, which calls the vault's notifyRevenue and moves the owner's TOKEN. */
+const MULTI: Address = "0x00000000000000000000000000000000000c0002";
+
+/** After the owner's six committed transactions: it hands the executor the role, and the executor sends 3 Decisions. */
+const HANDOVER: FakeTx[] = [
+  { hash: txHash(20), from: OWNER, nonce: 6, to: VAULT, block: 62_000_095n, logs: [executorSetLog(VAULT, EXECUTOR)] },
+  ...[0, 1, 2].map((i) => ({ hash: txHash(21 + i), from: EXECUTOR, nonce: i, to: VAULT, block: 62_000_100n + BigInt(i), logs: [decisionLog(VAULT, i + 1, USDC)] })),
+];
+/** An outsider calls notifyRevenue, which anyone may call, and moves a token of its own in the same transaction. */
+const OUTSIDE_CALL: FakeTx = {
+  hash: txHash(24),
+  from: OUTSIDER,
+  nonce: 0,
+  to: VAULT,
+  block: 62_000_110n,
+  logs: [revenueLog(VAULT), transferLog(TOKEN, OUTSIDER, OUTSIDER_KID)],
+};
+/** The owner's call through MULTI: a vault log and a Transfer of the owner's TOKEN to NEWBIE. */
+const MULTI_CALL: FakeTx = { hash: txHash(25), from: OWNER, nonce: 7, to: MULTI, block: 62_000_120n, logs: [revenueLog(VAULT), transferLog(TOKEN, OWNER, NEWBIE)] };
+/** The owner sends ETH to PLAIN: no log at all. */
+const plainSend = (nonce: number): FakeTx => ({ hash: txHash(26), from: OWNER, nonce, to: PLAIN, value: 1n, block: 62_000_130n });
+const withTxs = (...extra: FakeTx[]): ProofChain => ({ ...CHAIN, vault: { ...CHAIN.vault!, executor: EXECUTOR }, txs: [...TXS, ...extra] });
+const missing = (w: Address, n: number, k: number) =>
+  `${lower(w)} sent ${n} transactions by block 62,120,000, and ${k} ${k === 1 ? "is" : "are"} missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(w)} prints ${k === 1 ? "it" : "them"}.`;
+
+describe("the sends the trace finds from the vault's logs and the inbox's briefs", () => {
+  it("is complete with the committed lists as they are while the executor sends Decisions and the owner sent setExecutor", async () => {
+    const t = await trace(withTxs(...HANDOVER));
+    expect(t.gaps).toEqual([]);
+    expect(byAddress(t)[lower(EXECUTOR)]).toMatchObject({ hop: 0, why: ["web/content/proof-team.ts (agent executor)", "the vault's executor()"] });
+  });
+
+  it("names the wallet and how many sends are missing when a send left no vault or inbox log and is not committed", async () => {
+    const t = await trace(withTxs(...HANDOVER, plainSend(7)));
+    expect(t.gaps).toEqual([missing(OWNER, 8, 1)]);
+    expect(teamLines(t)).toContain(`Incomplete: ${missing(OWNER, 8, 1)}`);
+    // The missing send is not read, so the wallet it paid is not on the team.
+    expect(byAddress(t)[lower(PLAIN)]).toBeUndefined();
+  });
+
+  it("never counts an outsider's vault log toward a team wallet, nor lets it cover a missing team send", async () => {
+    const t = await trace(withTxs(...HANDOVER, plainSend(7), OUTSIDE_CALL));
+    expect(t.gaps).toEqual([missing(OWNER, 8, 1)]);
+    const m = byAddress(t);
+    expect(m[lower(OUTSIDER)]).toBeUndefined();
+    expect(m[lower(OUTSIDER_KID)]).toBeUndefined();
+    expect(teamLines(t).join("\n")).not.toContain(txHash(24));
+  });
+
+  it("reads a send found from the vault's logs like a committed one, so a Transfer in it adds a wallet at hop 1", async () => {
+    const t = await trace(withTxs(...HANDOVER, MULTI_CALL));
+    expect(t.gaps).toEqual([]);
+    expect(byAddress(t)[lower(NEWBIE)]).toEqual({ address: lower(NEWBIE), hop: 1, why: [`${lower(TOKEN)} from ${lower(OWNER)} in ${txHash(25)}`] });
+  });
+
+  it("counts a send that is both committed and in the vault's logs once", async () => {
+    const both = { ...INPUTS, sends: [{ wallet: OWNER, txs: [...[1, 2, 3, 4, 5, 6].map(txHash), txHash(20)] }, ...INPUTS.sends.slice(1)] };
+    // Counted twice, the setExecutor send would hide the plain send the list and the logs both lack.
+    expect((await trace(withTxs(...HANDOVER, plainSend(7)), both)).gaps).toEqual([missing(OWNER, 8, 1)]);
+    const t = await trace(withTxs(...HANDOVER, MULTI_CALL), both);
+    expect(t.gaps).toEqual([]);
+    expect(byAddress(t)[lower(NEWBIE)]?.why).toEqual([`${lower(TOKEN)} from ${lower(OWNER)} in ${txHash(25)}`]);
+  });
+
+  it("takes a brief as a send of its sender, and only when that wallet sent its transaction", async () => {
+    const brief = (n: number, from: Address, nonce: number): FakeTx => ({ hash: txHash(n), from, nonce, to: INBOX, block: 62_000_140n + BigInt(n) });
+    const chain = withTxs(...HANDOVER, plainSend(7), brief(27, EXECUTOR, 3), brief(28, OUTSIDER, 0));
+    const briefs = [
+      { from: EXECUTOR, txHash: txHash(27) },
+      // A Brief that names the owner, in a transaction another wallet sent: it is not one of the owner's sends.
+      { from: OWNER, txHash: txHash(28) },
+    ];
+    const t = await trace(chain, { ...INPUTS, briefs });
+    expect(t.gaps).toEqual([missing(OWNER, 8, 1)]);
+  });
+
+  it("stops on a chunk of the vault's logs it cannot read", async () => {
+    const chain = { ...withTxs(...HANDOVER), failLogs: [{ from: 62_000_000n, to: 62_000_200n, address: VAULT }] };
+    await expect(trace(chain)).rejects.toThrow("upstream request timed out");
+  });
+
+  it("gives --sends the sends the logs cover, in nonce order, from the same reads", async () => {
+    const chain = withTxs(...HANDOVER, MULTI_CALL, plainSend(8));
+    const covered = await team.loggedSends(proofChainRpc(chain), INPUTS, OWNER, HEAD);
+    expect(covered).toEqual([
+      { hash: txHash(20), nonce: 6n, block: 62_000_095n },
+      { hash: txHash(25), nonce: 7n, block: 62_000_120n },
+    ]);
+    expect(await team.loggedSends(proofChainRpc(chain), INPUTS, EXECUTOR, HEAD)).toEqual(
+      [0, 1, 2].map((i) => ({ hash: txHash(21 + i), nonce: BigInt(i), block: 62_000_100n + BigInt(i) })),
+    );
   });
 });
 

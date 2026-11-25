@@ -13,12 +13,13 @@ import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
 import { inboxDeployment } from "@/lib/chain/inbox";
 import { docsData } from "@/lib/docs/generated";
-import { plainSends, proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
+import { decisionLog, executorSetLog, plainSends, proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
 
 const INBOX: Address = "0x00000000000000000000000000000000000B0001";
 const DEPLOY_TX: Hash = `0x${"d1".repeat(32)}`;
 const DEPLOY = 62_000_000n;
 const OWNER: Address = "0x3c3a66f713DAE7e4A03Bbd81dB79FF65F42C1D6a";
+const EXECUTOR: Address = "0x9bC6E49d42e0659f3ef667B09B67506B348e115A";
 const ALICE: Address = "0x00000000000000000000000000000000000A11cE";
 const BOB: Address = "0x0000000000000000000000000000000000000B0b";
 const UID: Hex = `0x${"a1".repeat(32)}`;
@@ -143,7 +144,7 @@ describe("/proof with a MaatInbox recorded", () => {
   });
 
   it("gives no brief number and no 'Counted to block' when a chunk of the log scan fails", async () => {
-    // Three outside briefs over three 50,000-block chunks; every read of the middle chunk fails.
+    // Three outside briefs over three 50,000-block chunks; every read of the inbox's middle chunk fails.
     const head = DEPLOY + 120_000n;
     const chain: ProofChain = {
       ...CHAIN,
@@ -153,7 +154,7 @@ describe("/proof with a MaatInbox recorded", () => {
         { id: 2, from: BOB, text: "b", block: DEPLOY + 60_000n },
         { id: 3, from: "0x000000000000000000000000000000000000ca01", text: "c", block: DEPLOY + 70_000n },
       ],
-      failLogs: [{ from: DEPLOY + 50_000n, to: DEPLOY + 99_999n }],
+      failLogs: [{ from: DEPLOY + 50_000n, to: DEPLOY + 99_999n, address: INBOX }],
     };
     render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never }} />);
     await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
@@ -165,12 +166,45 @@ describe("/proof with a MaatInbox recorded", () => {
     expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();
   });
 
-  it("gives no brief number when a team wallet sent a transaction its committed list does not hold", async () => {
+  it("counts with today's committed lists while the executor sends Decisions and the owner sent setExecutor", async () => {
+    // The owner's brief (id 2) is its tenth send; setExecutor its eleventh. The executor's three Decisions follow.
+    const chain: ProofChain = {
+      ...CHAIN,
+      vault: { ...CHAIN.vault!, executor: EXECUTOR },
+      txs: [
+        ...CHAIN.txs!,
+        { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: 10, to: VAULT, block: DEPLOY + 10n, logs: [executorSetLog(VAULT, EXECUTOR)] },
+        ...[0, 1, 2].map((i) => ({
+          hash: `0x${(0xe2 + i).toString(16).repeat(32)}` as Hash,
+          from: EXECUTOR,
+          nonce: i,
+          to: VAULT,
+          block: DEPLOY + 20n + BigInt(i),
+          logs: [decisionLog(VAULT, i + 1)],
+        })),
+      ],
+    };
+    render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never }} />);
+    await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+    expect(value("outside-briefs")).toBe("3");
+    expect(value("team-briefs")).toBe("1");
+    expect(screen.getByText(/Counted to block 62,001,000/)).toBeInTheDocument();
+    const team = within(screen.getByRole("table", { name: "Team set" })).getAllByRole("row").slice(1);
+    expect(team.map((r) => r.querySelector("td")?.textContent)).toEqual([OWNER.toLowerCase(), EXECUTOR.toLowerCase()]);
+    expect(team[1]?.textContent).toContain("the vault's executor()");
+  });
+
+  it("gives no brief number when a team wallet sent a transaction that no vault or inbox log gives and its committed list does not hold", async () => {
     const lists = { ...LISTS, sends: PROOF_SENDS.map((s) => ({ ...s, txs: s.txs.slice(0, -1) })) };
     render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never, lists }} />);
     await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
     for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
-    expect(screen.getByText(/web\/content\/proof-sends\.ts lists 8 of the 9 transactions 0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent by block 62,001,000/)).toBeInTheDocument();
+    // Nine plain sends and the owner's brief; the brief is in the inbox's logs, the last plain send nowhere.
+    expect(
+      screen.getByText(
+        "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 10 transactions by block 62,001,000, and 1 is missing: in no vault or MaatInbox log, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends 0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a prints it.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Counted to block/)).toBeNull();
   });
 

@@ -20,8 +20,9 @@ import type { ProofClient } from "@/app/(site)/proof/load";
 // A Base chain as /proof and scripts/recount.mjs read it: the head, one block's time, the inbox's Brief logs, the
 // inbox's deploy receipt, the Coinbase indexer's and EAS's answers, and what the team trace reads: the vault's owner(),
 // executor() and payees(), each wallet's transactions (by hash, by receipt, as its nonce and in its block), its code,
-// and token Transfer logs. `answer` serves the vitest server below and the e2e page.route alike, so the page, the
-// script and the browser all read the same fixture.
+// and the logs of the vault and of tokens. Each brief is a transaction its sender sent to the inbox, as on Base, unless
+// the fixture gives that transaction itself. `answer` serves the vitest server below and the e2e page.route alike, so
+// the page, the script and the browser all read the same fixture.
 
 export class RpcError extends Error {
   constructor(
@@ -86,8 +87,8 @@ export interface ProofChain {
   tokenLogs?: readonly (FakeLog & { block: bigint; txHash: Hash; logIndex?: number })[];
   /** The widest eth_getLogs range answered (default 50,000, base-rpc.publicnode.com's). */
   maxLogRange?: bigint;
-  /** eth_getLogs fails, as a non-range error, for any range that touches one of these. */
-  failLogs?: readonly { from: bigint; to: bigint }[];
+  /** eth_getLogs fails, as a non-range error, for any range that touches one of these (of `address` alone, if given). */
+  failLogs?: readonly { from: bigint; to: bigint; address?: Address }[];
   /** Answer this many requests with HTTP 429 first, as mainnet.base.org does when it rate-limits. */
   rateLimitFirst?: number;
 }
@@ -126,6 +127,38 @@ const TOKEN_ABI = parseAbi([
   "event Approval(address indexed owner, address indexed spender, uint256 value)",
 ]);
 const VAULT_ABI = parseAbi(["function owner() view returns (address)", "function executor() view returns (address)", "function payees() view returns (address[])"]);
+// Three events of contracts/src/IMandateVaultEvents.sol, with Action and Reason as the uint8 the ABI gives them.
+const VAULT_EVENTS = parseAbi([
+  "event Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)",
+  "event ExecutorSet(address indexed executor)",
+  "event RevenueReceived(uint256 amount)",
+]);
+
+/** The vault's Decision log for intent `id`, as execute() emits it: an allowed BUY of 1 unit of `token`. */
+export function decisionLog(vault: Address, id: number, token: Address = ZERO_ADDRESS): FakeLog {
+  return {
+    address: vault,
+    topics: encodeEventTopics({ abi: VAULT_EVENTS, eventName: "Decision", args: { intentId: toHex(id, { size: 32 }), token } }) as Hex[],
+    data: encodeAbiParameters(
+      [{ type: "uint8" }, { type: "uint256" }, { type: "bool" }, { type: "uint8" }, { type: "bytes32" }],
+      [0, 1n, true, 0, ZERO32],
+    ),
+  };
+}
+
+/** The vault's ExecutorSet log, as setExecutor emits it. */
+export function executorSetLog(vault: Address, executor: Address): FakeLog {
+  return { address: vault, topics: encodeEventTopics({ abi: VAULT_EVENTS, eventName: "ExecutorSet", args: { executor } }) as Hex[] };
+}
+
+/** The vault's RevenueReceived log, as notifyRevenue emits it; anyone may call notifyRevenue. */
+export function revenueLog(vault: Address, amount = 1n): FakeLog {
+  return {
+    address: vault,
+    topics: encodeEventTopics({ abi: VAULT_EVENTS, eventName: "RevenueReceived" }) as Hex[],
+    data: encodeAbiParameters([{ type: "uint256" }], [amount]),
+  };
+}
 
 /** An ERC-20 Transfer log of `token` from `from` to `to`. */
 export function transferLog(token: Address, from: Address, to: Address, amount = 1n): FakeLog {
@@ -189,13 +222,41 @@ function rpcLog(log: FakeLog, block: bigint, hash: Hash, logIndex: number) {
   };
 }
 
-/** The inbox's deploy tx when the fixture does not give it: sent by the zero address, which no trace follows. */
+/**
+ * Every transaction of the chain: the fixture's; the inbox's deploy tx when the fixture does not give it, sent by the
+ * zero address, which no trace follows; and, for each brief whose transaction the fixture does not give, a transaction
+ * its sender sent to the inbox, holding that brief's logs, at the next nonce of that sender in block order.
+ */
 function txsOf(c: ProofChain): FakeTx[] {
   const txs = [...(c.txs ?? [])];
-  if (!txs.some((t) => lower(t.hash) === lower(c.deployTx))) {
+  const has = (hash: string) => txs.some((t) => lower(t.hash) === lower(hash));
+  if (!has(c.deployTx)) {
     txs.push({ hash: c.deployTx, from: ZERO_ADDRESS, nonce: 0, to: null, block: c.deployBlock, contractAddress: c.inbox });
   }
+  const sent = new Map<string, FakeBrief[]>();
+  for (const b of [...c.briefs].sort((x, y) => (x.block < y.block ? -1 : x.block > y.block ? 1 : 0))) {
+    const hash = lower(briefHash(b));
+    if (has(hash)) continue;
+    const same = sent.get(hash) ?? [];
+    // The RPC may give one log twice; the transaction holds it once.
+    if (!same.some((s) => s.logIndex === b.logIndex && s.id === b.id)) same.push(b);
+    sent.set(hash, same);
+  }
+  for (const [hash, bs] of sent) {
+    const first = bs[0]!;
+    const nonce = txs.filter((t) => lower(t.from) === lower(first.from) && t.block <= first.block).length;
+    txs.push({ hash: hash as Hash, from: first.from, nonce, to: c.inbox, block: first.block, logs: bs.map((b) => briefLog(c.inbox, b)) });
+  }
   return txs;
+}
+
+/** The Brief log of `b`, as a log of its transaction's receipt. */
+function briefLog(inbox: Address, b: FakeBrief): FakeLog {
+  return {
+    address: inbox,
+    topics: encodeEventTopics({ abi: BRIEF_ABI, eventName: "Brief", args: { id: BigInt(b.id), from: b.from } }) as Hex[],
+    data: encodeAbiParameters([{ type: "string" }], [b.text]),
+  };
 }
 
 const tagBlock = (c: ProofChain, tag: unknown) => (tag === undefined || tag === "latest" ? c.head : BigInt(String(tag)));
@@ -329,7 +390,9 @@ export function answer(c: ProofChain, seen: ProofRpcLog, method: string, params:
       const to = BigInt(filter.toBlock);
       const max = c.maxLogRange ?? 50_000n;
       if (to - from + 1n > max) throw new RpcError(-32600, `exceed maximum block range: ${max}`);
-      if ((c.failLogs ?? []).some((r) => from <= r.to && to >= r.from)) throw new RpcError(-32000, "upstream request timed out");
+      const asked = new Set((Array.isArray(filter.address) ? filter.address : [filter.address ?? ""]).map(lower));
+      const fails = (c.failLogs ?? []).filter((r) => r.address === undefined || asked.has(lower(r.address)));
+      if (fails.some((r) => from <= r.to && to >= r.from)) throw new RpcError(-32000, "upstream request timed out");
       seen.logRanges.push({ from, to });
       if (!Array.isArray(filter.address) && lower(String(filter.address ?? "")) === lower(c.inbox)) {
         return c.briefs.filter((b) => b.block >= from && b.block <= to).map((b) => briefRpcLog(c.inbox, b));

@@ -1,27 +1,32 @@
 /**
- * Each team wallet's sent transactions, in nonce order, for the /proof counting rule (inbox spec §5): ETH funding
- * leaves no log, so the team trace (web/app/(site)/proof/team.ts) reads the ETH and the tokens a team wallet sent from
- * these transactions, and checks the list against the wallet's nonce at the block it counts to. A wallet that sent more
- * transactions than its entry holds leaves /proof incomplete until they are added here. A wallet with no entry has
- * sent none.
+ * The team sends the /proof team trace cannot find from logs (inbox spec §5), each wallet's in nonce order. ETH funding
+ * leaves no log, so the trace (web/app/(site)/proof/team.ts) reads the ETH and the tokens a team wallet sent from the
+ * wallet's sends, and checks them against its nonce at the block it counts to. It finds from logs every send that left
+ * a log of the vault (each execute and each owner-only call that did not revert, and the vault's own deploy) or a Brief
+ * of MaatInbox that names the wallet. The rest go here: other contract deploys, MaatInbox's included, plain ETH and token
+ * transfers, approvals, calls to other contracts, a notifyRevenue or syncMultiplier that logged nothing, and reverted
+ * transactions. While a wallet has sent one that is in neither, /proof is incomplete. A hash here that the logs also
+ * give counts once. A wallet with no entry has sent none that the logs do not give.
  *
- * `node scripts/recount.mjs --rpc https://mainnet.base.org --sends <wallet>` prints a wallet's entry; the owner adds it
- * in a pull request.
+ * `node scripts/recount.mjs --sends <wallet> --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com`
+ * prints the entry a wallet needs, with only the sends the logs do not give; the owner adds it in a pull request.
  *
  * Plain data with no import, so that `node scripts/recount.mjs` reads this file with Node's own type stripping.
  */
 export interface SentTransactions {
   /** 0x and 40 hex digits. */
   wallet: string;
-  /** Transaction hashes, nonce 0 first. */
+  /** Transaction hashes, lowest nonce first. */
   txs: readonly string[];
 }
 
-// The agent executor, 0x9bC6E49d42e0659f3ef667B09B67506B348e115A, had sent none by block 62,201,878 (`--sends` from
-// https://mainnet.base.org on 2026-11-26), so it has no entry yet.
+// The agent executor, 0x9bC6E49d42e0659f3ef667B09B67506B348e115A, had sent none by block 62,223,894 (`--sends`), so it
+// has no entry. Each execute it sends that does not revert leaves a Decision log of the vault, so it needs none.
 export const PROOF_SENDS: readonly SentTransactions[] = [
   // The owner: 9 transactions sent by block 62,201,650, printed by `--sends` from https://mainnet.base.org on
-  // 2026-11-26. Nonces 0 to 3 are the four deploys in deployments/README.md.
+  // 2026-11-26, before the trace read the vault's logs. Nonces 0 to 3 are the four deploys in deployments/README.md.
+  // At block 62,223,804 `--sends` gives 4 of them (nonces 3, 6, 7 and 8) from the vault's logs and needs the other 5;
+  // the 4 stay listed and count once.
   {
     wallet: "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a",
     txs: [

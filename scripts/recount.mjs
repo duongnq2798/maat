@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 // Rebuilds the brief lines of the site's /proof page from Base mainnet alone, by the counting rule of
 // docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5. It reads the deployments table from
-// deployments/README.md and the five lists from web/content/ (the team list, each team wallet's sent transactions, the
-// hop stops, the hide-list and the bounty claimants), then every Brief log of the inbox, the team set traced at the
-// block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless JSON-RPC. The Decision
-// lines of the rule are not rebuilt yet, and it says so.
+// deployments/README.md and the five lists from web/content/ (the team list, the team sends that left no vault or inbox
+// log, the hop stops, the hide-list and the bounty claimants), then every Brief log of the inbox, the team set traced
+// at the block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless JSON-RPC. The
+// Decision lines of the rule are not rebuilt yet, and it says so.
 //
-//   node scripts/recount.mjs [--rpc <url>] [--to-block <n>] [--root <dir>]
-//   node scripts/recount.mjs --sends <wallet> [--rpc <url>] [--to-block <n>]
+//   node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
+//   node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 //
 // No dependency: Node's built-ins and fetch only. It reads the TypeScript lists, and the team trace
 // web/app/(site)/proof/team.ts that the page runs too, with Node's own type stripping, which Node.js 24 has on by
@@ -49,15 +49,18 @@ const RULE = "docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5"
 
 const USAGE = `Rebuilds the /proof brief lines from Base mainnet alone.
 
-  node scripts/recount.mjs [--rpc <url>] [--to-block <n>] [--root <dir>]
-  node scripts/recount.mjs --sends <wallet> [--rpc <url>] [--to-block <n>]
+  node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
+  node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 
   --rpc <url>        a Base mainnet JSON-RPC (default ${DEFAULT_RPC})
+  --logs-rpc <url>   read eth_getLogs from this Base mainnet RPC instead of --rpc (default: --rpc)
   --to-block <n>     count to block n, the block /proof says it counted to, as it prints it or as digits (default: the head)
   --root <dir>       read deployments/README.md and web/content/ from this checkout (default: this script's)
-  --sends <wallet>   print the wallet's sent transactions to block n, in nonce order, as an entry of
-                     web/content/proof-sends.ts. It reads the wallet's nonce at past blocks, which takes an archive
-                     RPC such as https://mainnet.base.org.
+  --sends <wallet>   print the entry of web/content/proof-sends.ts the wallet needs at block n: the transactions it
+                     sent that left no vault log and no Brief of MaatInbox, which the team trace reads instead, in
+                     nonce order. It reads the wallet's nonce at past blocks, which takes an archive RPC such as
+                     https://mainnet.base.org, and the vault's logs, which that RPC serves 200 blocks at a time:
+                     --logs-rpc ${DEFAULT_RPC} reads them 50,000 at a time.
 `;
 
 /** The team trace the page runs, from this script's own checkout. */
@@ -333,17 +336,30 @@ export async function verifiedAccounts(call, list, blockTag, now) {
 }
 
 /**
- * The transactions `wallet` sent by `head`, in nonce order: for each nonce, the first block whose nonce is past it,
- * found by bisection, then the wallet's transaction in that block. Every read but the last block's needs an RPC that
- * answers for past blocks (an archive node).
+ * The transactions `wallet` sent by `head` that `known` does not give, in nonce order, and how many it sent. `known`
+ * holds sends already found, each with its nonce and block (team.ts loggedSends). For every other nonce, the first
+ * block whose nonce is past it is found by bisection between the known sends around it, then the wallet's transaction
+ * in that block. Every read but the last block's needs an RPC that answers for past blocks.
  */
-export async function sentTransactions(call, wallet, head) {
+export async function sentTransactions(call, wallet, head, known = []) {
   const nonceAt = async (block) => BigInt(await call("eth_getTransactionCount", [wallet, hex(block)]));
   const n = await nonceAt(head);
+  const at = new Map(known.map((k) => [k.nonce, k.block]));
   const out = [];
   let lo = 0n;
   for (let k = 0n; k < n; k++) {
+    // Nonce k is sent in or after the block of nonce k - 1, and before the block of any later nonce found.
+    if (at.has(k)) {
+      lo = at.get(k);
+      continue;
+    }
     let hi = head;
+    for (let j = k + 1n; j < n; j++) {
+      if (at.has(j)) {
+        hi = at.get(j);
+        break;
+      }
+    }
     while (lo < hi) {
       const mid = (lo + hi) / 2n;
       if ((await nonceAt(mid)) > k) hi = mid;
@@ -354,7 +370,22 @@ export async function sentTransactions(call, wallet, head) {
     if (!tx) throw new Error(`block ${lo} has no transaction ${k} of ${wallet}`);
     out.push(String(tx.hash).toLowerCase());
   }
-  return out;
+  return { sent: n, txs: out };
+}
+
+/** Every Brief of the recorded inbox to `head`, in id order, each read once, from the inbox's deploy block on. */
+async function inboxBriefs(call, record, head) {
+  let from = SCAN_FLOOR_BLOCK;
+  if (record.deployTx) {
+    const receipt = await call("eth_getTransactionReceipt", [record.deployTx]);
+    if (receipt?.blockNumber) from = BigInt(receipt.blockNumber);
+  }
+  const byKey = new Map();
+  for (const log of await briefLogs(call, record.inbox, from, head)) {
+    const b = decodeBrief(log, record.inbox);
+    if (b) byKey.set(`${b.txHash}:${b.logIndex}`, b);
+  }
+  return { from, briefs: [...byKey.values()].sort((a, b) => a.id - b.id) };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -373,7 +404,7 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
   try {
     args = parseArgs({
       args: argv,
-      options: { rpc: { type: "string" }, "to-block": { type: "string" }, root: { type: "string" }, sends: { type: "string" }, help: { type: "boolean" } },
+      options: { rpc: { type: "string" }, "logs-rpc": { type: "string" }, "to-block": { type: "string" }, root: { type: "string" }, sends: { type: "string" }, help: { type: "boolean" } },
       strict: true,
     }).values;
   } catch (e) {
@@ -391,25 +422,49 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     const toBlock = args["to-block"]?.replace(/[,_]/g, "");
     if (toBlock !== undefined && !/^\d+$/.test(toBlock)) throw new Error(`--to-block ${args["to-block"]} is not a block number`);
     const url = args.rpc ?? DEFAULT_RPC;
-    const call = rpcClient(url);
-    const chainId = Number(BigInt(await call("eth_chainId", [])));
+    const state = rpcClient(url);
+    const chainId = Number(BigInt(await state("eth_chainId", [])));
     if (chainId !== BASE_CHAIN_ID) throw new Error(`the RPC ${url} is on chain id ${chainId}, not Base mainnet (${BASE_CHAIN_ID})`);
-    const latest = BigInt(await call("eth_blockNumber", []));
+    const latest = BigInt(await state("eth_blockNumber", []));
     const head = toBlock === undefined ? latest : BigInt(toBlock);
     if (head > latest) throw new Error(`--to-block ${toBlock} is past the head block, ${latest}`);
-
-    if (args.sends !== undefined) {
-      if (!FULL_ADDRESS.test(args.sends)) throw new Error(`--sends ${args.sends} is not 0x and 40 hex digits`);
-      const wallet = args.sends.toLowerCase();
-      const txs = await sentTransactions(call, wallet, head);
-      say(`// ${plural(txs.length, "transaction", "transactions")} sent by block ${head.toLocaleString("en-US")}, in nonce order, read from ${url}:`);
-      say(`  { wallet: "${wallet}", txs: [${txs.map((h) => `"${h}"`).join(", ")}] },`);
-      return 0;
+    // eth_getLogs goes to --logs-rpc when it is given, as the page reads logs from one RPC and may read the rest from
+    // another; it must be on Base and have reached the block counted to, or logs near it would be missing.
+    const logsUrl = args["logs-rpc"] ?? url;
+    let call = state;
+    if (logsUrl !== url) {
+      const logs = rpcClient(logsUrl);
+      const logsChain = Number(BigInt(await logs("eth_chainId", [])));
+      if (logsChain !== BASE_CHAIN_ID) throw new Error(`the RPC ${logsUrl} is on chain id ${logsChain}, not Base mainnet (${BASE_CHAIN_ID})`);
+      const logsHead = BigInt(await logs("eth_blockNumber", []));
+      if (logsHead < head) throw new Error(`the RPC ${logsUrl} is at block ${logsHead}, before block ${head}, the block counted to`);
+      call = (method, params) => (method === "eth_getLogs" ? logs : state)(method, params);
     }
+    const source = logsUrl === url ? url : `${url}, with eth_getLogs from ${logsUrl}`;
 
     const root = args.root ? resolve(args.root) : resolve(dirname(fileURLToPath(import.meta.url)), "..");
     const rows = parseDeployments(readFileSync(join(root, DEPLOYMENTS_FILE), "utf8"));
     const record = inboxRecord(rows);
+    const deployments = rows.filter((r) => r.network === "Base mainnet").map(({ contract, address, tx }) => ({ contract, address, tx }));
+
+    if (args.sends !== undefined) {
+      if (!FULL_ADDRESS.test(args.sends)) throw new Error(`--sends ${args.sends} is not 0x and 40 hex digits`);
+      const wallet = args.sends.toLowerCase();
+      // The sends the trace reads from the vault's logs and the wallet's briefs, by the same code as the trace.
+      const { loggedSends } = await import(TEAM_MODULE.href);
+      const briefs = record ? (await inboxBriefs(call, record, head)).briefs : [];
+      const known = await loggedSends(call, { deployments, briefs }, wallet, head);
+      const { sent, txs } = await sentTransactions(call, wallet, head, known);
+      say(`// ${plural(Number(sent), "transaction", "transactions")} sent by block ${head.toLocaleString("en-US")}, read from ${source}.`);
+      if (txs.length === 0) {
+        say(`// ${formatCount(known.length)} left a vault or MaatInbox log, which the team trace reads, so the wallet needs no entry in web/content/proof-sends.ts.`);
+      } else {
+        say(`// ${formatCount(known.length)} left a vault or MaatInbox log, which the team trace reads; the other ${formatCount(txs.length)} go in web/content/proof-sends.ts, in nonce order:`);
+        say(`  { wallet: "${wallet}", txs: [${txs.map((h) => `"${h}"`).join(", ")}] },`);
+      }
+      return 0;
+    }
+
     const lists = {
       team: await list(root, "web/content/proof-team.ts", "PROOF_TEAM"),
       sends: await list(root, "web/content/proof-sends.ts", "PROOF_SENDS"),
@@ -421,7 +476,7 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     const { DECISION_NOTE, TEAM_SET_NOTE, teamLines, traceTeam } = await import(TEAM_MODULE.href);
 
     say(`Maat /proof recount, from Base mainnet alone, by the counting rule of ${RULE}.`);
-    say(`RPC ${url}: chain id ${chainId}, head block ${latest.toLocaleString("en-US")}.`);
+    say(`RPC ${source}: chain id ${chainId}, head block ${latest.toLocaleString("en-US")}.`);
     say(
       `Lists: ${plural(lists.team.length, "team wallet", "team wallets")} (web/content/proof-team.ts), ${plural(lists.sends.length, "wallet's sent transactions", "wallets' sent transactions")} (web/content/proof-sends.ts), ${plural(lists.stops.length, "hop stop", "hop stops")} (web/content/proof-stops.ts), ${plural(lists.hidden.length, "hidden id", "hidden ids")} (web/content/ask-hidden.ts), ${plural(lists.bounty.length, "bounty claimant", "bounty claimants")} (web/content/proof-bounty.ts).`,
     );
@@ -433,19 +488,9 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
       return 0;
     }
 
-    let from = SCAN_FLOOR_BLOCK;
-    if (record.deployTx) {
-      const receipt = await call("eth_getTransactionReceipt", [record.deployTx]);
-      if (receipt?.blockNumber) from = BigInt(receipt.blockNumber);
-    }
-    const byKey = new Map();
-    for (const log of await briefLogs(call, record.inbox, from, head)) {
-      const b = decodeBrief(log, record.inbox);
-      if (b) byKey.set(`${b.txHash}:${b.logIndex}`, b);
-    }
-    const briefs = [...byKey.values()].sort((a, b) => a.id - b.id);
-    const deployments = rows.filter((r) => r.network === "Base mainnet").map(({ contract, address, tx }) => ({ contract, address, tx }));
-    const trace = await traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments }, head);
+    const { from, briefs } = await inboxBriefs(call, record, head);
+    // As on the page, the trace takes a team wallet's briefs as its sends from these Brief logs.
+    const trace = await traceTeam(call, { team: lists.team, sends: lists.sends, stops: lists.stops, deployments, briefs }, head);
     const count = countBriefs(briefs, { ...lists, team: trace.members });
     const complete = trace.gaps.length === 0;
     let verified = new Map();
