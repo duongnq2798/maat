@@ -4,7 +4,7 @@ import { keccak256, toBytes, type Address, type Hex } from "viem";
 import type { PreviewResult } from "../chain/preview.js";
 import { GENESIS, MAX_TEXT_CHARS } from "../rationale/blob.js";
 import { canon } from "../rationale/canon.js";
-import { sanitize } from "../rationale/sanitize.js";
+import { clean, sanitize } from "../rationale/sanitize.js";
 
 export type Decision = { allowed: boolean; reason: string };
 
@@ -51,15 +51,16 @@ const BY_KIND: Readonly<Record<string, readonly string[]>> = {
 const LLM_CAP_ERROR = "llm cap: ";
 
 /**
- * The public projection of a row as it is on disk (bigints as decimal strings). A `run` row's summary is sanitized
- * and left out when empty, and its only trace of an error is `capped: true` when the LLM cap stopped the round.
+ * The public projection of a row as it is on disk (bigints as decimal strings). A `run` row's summary is sanitized,
+ * and left out when sanitizer steps 1 to 3 leave nothing of it (only spaces, emoji or other dropped characters), so
+ * it is never "(no text)". Its only trace of an error is `capped: true` when the LLM cap stopped the round.
  */
 export function project(row: Readonly<Record<string, unknown>>): Record<string, unknown> {
   const p: Record<string, unknown> = {};
   const kind = typeof row.kind === "string" ? row.kind : "";
   for (const k of [...COMMON, ...(Object.hasOwn(BY_KIND, kind) ? BY_KIND[kind]! : [])]) if (row[k] !== undefined) p[k] = row[k];
   if (kind === "run") {
-    if (typeof row.summary === "string" && row.summary !== "") p.summary = sanitize(row.summary, MAX_TEXT_CHARS);
+    if (typeof row.summary === "string" && clean(row.summary) !== "") p.summary = sanitize(row.summary, MAX_TEXT_CHARS);
     if (typeof row.error === "string" && row.error.startsWith(LLM_CAP_ERROR)) p.capped = true;
   }
   return p;

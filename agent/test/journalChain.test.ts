@@ -156,6 +156,19 @@ describe("the public projection (spec §3.2)", () => {
     expect(project({ ...run, summary: "", error: "claude: 529 overloaded" })).not.toHaveProperty("error");
   });
 
+  it("leaves out a summary that sanitizer steps 1 to 3 leave empty, so it is never (no text), and hashes the row without it", () => {
+    const run = { ...common, kind: "run", block: "1", day: "2", mode: "live", ok: true, costUsd6: "0", suggestions: 0, proposals: 0 };
+    for (const summary of ["   ", "\u{1F680}", "\u{200B}", " \t\n "]) {
+      const p = project({ ...run, summary });
+      expect(p, JSON.stringify(summary)).not.toHaveProperty("summary");
+      expect(rowHash(p, GENESIS)).toBe(rowHash(project(run), GENESIS));
+    }
+    expect(project({ ...run, summary: " ok \u{1F680} " })).toHaveProperty("summary", "ok");
+    // The hash the journal publisher's project and rowHash (ops/journal/lib/spec.mjs on feat/journal-publisher) give
+    // this row: the publisher recomputes every hash and stops at the first that differs.
+    expect(rowHash(project({ ...run, summary: "\u{1F680}" }), GENESIS)).toBe("0xde98d57d900c39a3cb4cf65ced79dcff78e9ca19f20ed50eb75db238872dfe15");
+  });
+
   it("keeps each kind's allowlisted fields and drops every other", () => {
     const priv = { rationale: "raw", previewError: "e", error: "e", message: "m", note: "n", extra: 1 };
     const sent = { ...common, ...priv, kind: "sent", index: 0, intentId: "0x1", action: "BUY", symbol: "NVDAc", amountUsd6: "1", rationaleHash: "0x2", blob: "maat:v1:{}", preview: "OK", gate: "execute", txHash: "0x3", gas: "9" };

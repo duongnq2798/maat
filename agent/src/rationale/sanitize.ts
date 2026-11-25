@@ -62,14 +62,19 @@ export function cuts(text: string): string[] {
   return out;
 }
 
-/** sanitize(text, max) of spec §2.3: printable ASCII, no URL, long hex, key or long token, at most `max` characters. */
-export function sanitize(text: string, max: number): string {
-  const s = toAscii(text)
+/** Steps 1 to 3 of spec §2.3: printable ASCII, the patterns replaced, spaces collapsed and trimmed. May be empty. */
+export function clean(text: string): string {
+  return toAscii(text)
     .replace(URL_RE, "[url]")
     .replace(HEX_RE, "[hex]")
     .replace(KEY_RE, "[key]")
     .replace(LONG_RE, "[key]")
     .replace(/ {2,}/g, " ")
     .trim();
+}
+
+/** sanitize(text, max) of spec §2.3: printable ASCII, no URL, long hex, key or long token, at most `max` characters. */
+export function sanitize(text: string, max: number): string {
+  const s = clean(text);
   return cutTo(s.length === 0 ? NO_TEXT : s, max);
 }
