@@ -156,6 +156,14 @@ describe("the team trace with the vault's logs seeded from a snapshot", () => {
     expect(full.trace.seed).toBeNull();
   });
 
+  it("still stops on a window of the vault's logs above the seed that it cannot read, and on one below a rejected seed", async () => {
+    const above = { ...CHAIN, failLogs: [{ from: N - SNAPSHOT_REORG_WINDOW, to: HEAD, address: VAULT }] };
+    await expect(run(seedOf(SNAPSHOT), above)).rejects.toThrow("upstream request timed out");
+    const below = { ...CHAIN, failLogs: [{ from: DEPLOY, to: DEPLOY + 100n, address: VAULT }] };
+    const ghost = edited((logs) => [...logs, { ...logs[decisionAt(logs)]!, transactionHash: `0x${"ab".repeat(32)}` as Hash }]);
+    await expect(run(seedOf(ghost), below)).rejects.toThrow("upstream request timed out");
+  });
+
   it("takes the seed as a promise, as the page passes the snapshot it is still fetching", async () => {
     const seeded = await run(Promise.resolve(seedOf(SNAPSHOT)));
     expect(lowest(seeded.seen)).toBe(N - SNAPSHOT_REORG_WINDOW);

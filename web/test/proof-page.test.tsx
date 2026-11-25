@@ -347,6 +347,22 @@ describe("/proof with a MaatInbox recorded", () => {
       for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
       expect(screen.getByText(/0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 11 transactions by block 62,001,000, and 1 is missing/)).toBeInTheDocument();
     });
+
+    it("gives no brief number when a window of the Brief logs cannot be read, with the snapshot in use", async () => {
+      const failing: ProofChain = { ...chain, failLogs: [{ from: DEPLOY, to: DEPLOY + 49_999n, address: INBOX }] };
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(failing), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
+      for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
+      expect(screen.getByText("Some blocks of the Brief logs could not be read, so briefs may be missing.")).toBeInTheDocument();
+      expect(screen.getByText(/^The vault's logs to block 62,000,749 are from the committed snapshot/)).toBeInTheDocument();
+    });
+
+    it("says the briefs could not be read, and shows no number, when a window of the vault's logs above the snapshot cannot be read", async () => {
+      const failing: ProofChain = { ...chain, failLogs: [{ from: N - 150n, to: chain.head, address: VAULT }] };
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(failing), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null }} />);
+      await waitFor(() => expect(screen.getByText(/The briefs could not be read/)).toBeInTheDocument(), { timeout: 15_000 });
+      for (const key of BRIEF_LINES) expect(value(key)).not.toMatch(/^\d/);
+    });
   });
 
   it("switches to the table /data/deployments.json serves at runtime", async () => {
