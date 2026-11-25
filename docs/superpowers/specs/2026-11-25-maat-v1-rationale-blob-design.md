@@ -38,8 +38,10 @@ offset    bytes   content
    suffix recognized; schema ids 1 and 2 are not decoded in v1).
 3. The blob region is `B = D[228:S]`. Empty: status `none`. Starts with the 8 bytes `maat:v1:`: validate it (§2.6).
    Anything else: status `foreign` (show its length, decode nothing).
-4. Hash tick: `keccak256(B) == D[196:228]`. The vault emits this word unchanged as the `Decision` log's
-   `rationaleHash` (`MandateVault.sol:112`).
+4. Hash tick, only when `B` is non-empty: `keccak256(B) == D[196:228]`. The vault emits this word unchanged as the
+   `Decision` log's `rationaleHash` (`MandateVault.sol:112`). For status `none` the tick is
+   `verifyRationale(text from the rationales export, D[196:228])` instead, as for the two owner Decisions below:
+   `keccak256` of no bytes (`0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470`) commits to no text.
 
 A decoder never finds the end of the blob by parsing JSON or searching for `}`: the end is the start of the suffix.
 ox `Attribution.fromData(D)` reads from the end, so it returns the same codes with a blob present (§5.6).
@@ -74,9 +76,9 @@ equal to the `rationaleHash` word of `data`) and appended before the suffix. Gas
 | `c` | string | The agent's git commit: the value of `gitCommit()` (`agent/src/gitCommit.ts`), the same value `Journal.append` stamps as each journal row's `commit`. `^(?:[0-9a-f]{40}(?:-dirty)?\|unknown)$`: the 40-hex HEAD of a clean checkout, that HEAD followed by `-dirty` when tracked files under `agent/` differ from it, or `unknown` when git cannot tell. A decoder shows `-dirty` and `unknown` as they are, since then `c` does not pin the code that ran |
 | `j` | string | Journal head: the `hash` of the last row in the journal when the blob is built (§3.3); `GENESIS` if there is none. `0x` and 64 lowercase hex |
 | `k` | string, optional | Absent: `t` is the model's text. `"probe"`: a fixed-time probe, and `t` starts with `PROBE v1, not a Claude proposal`. `"bill"`: the agent's PAY_EXPENSE, and `t` is its code-written `Compute bill: ...` line. In all three cases, a MARKET_CLOSED log-refusal ends `t` with the closed-market note (§2.5) |
-| `m` | string | The model that wrote `t` (the one that answered, after any fallback), `^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$`. Required when `k` is absent, forbidden when `k` is present |
+| `m` | string | The model that wrote `t` (the one that answered, after any fallback), `^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$`, and matches neither `URL_RE` nor `KEY_RE` (§2.3); the encoder refuses to build a blob otherwise. A Bedrock-style id such as `us.anthropic.claude-sonnet-5-5` fits the pattern but matches `URL_RE`. Required when `k` is absent, forbidden when `k` is present |
 | `q` | array of integers, optional | `MaatInbox` brief ids the intent adopts: 1 to 3 strictly ascending safe integers, `>= 0`. Only with `k` absent. `t` is then the agent's templated text, not free model text |
-| `r` | string | The run id, `^[A-Za-z0-9._:-]{1,64}$` (the `runOnce` form `<Date.now()>-<8 hex>` fits) |
+| `r` | string | The run id, `^[A-Za-z0-9._:-]{1,64}$` (the `runOnce` form `<Date.now()>-<8 hex>` fits), and matches neither `URL_RE` nor `KEY_RE` (§2.3); the encoder refuses to build a blob otherwise |
 | `s` | array | One entry per vault token, in `tokens()` order at block `b`: `[sym, roundId, updatedAt, premiumBps]`. At most 16 entries |
 | `t` | string | `sanitize(text, 600)` (§2.3), or `sanitize(text, 600 - n.length) + n` on a MARKET_CLOSED log-refusal (§2.5); 1 to 600 characters |
 
@@ -178,10 +180,10 @@ Sanitizing the joined text instead would cut the note away first, since the mode
 ### 2.6 Decoder validation
 
 Status `v1` when all hold: at most 1,024 bytes; every byte in `0x20-0x7E`; the text after `maat:v1:` parses to a
-JSON object; it has only the §2.1 keys, each with its type and rule (for `c` the `gitCommit()` pattern); and
-`"maat:v1:" + canon(parsed)` equals the bytes (this rejects key order, whitespace and duplicate keys). Otherwise
-status `invalid`. The hash tick (§1 step 4) is shown in every case, since it covers bytes, not format. Decoders do not
-re-run the sanitizer on `t`.
+JSON object; it has only the §2.1 keys, each with its type and rule (for `c` the `gitCommit()` pattern, and for `m`
+and `r` matching neither `URL_RE` nor `KEY_RE`); and `"maat:v1:" + canon(parsed)` equals the bytes (this rejects
+key order, whitespace and duplicate keys). Otherwise status `invalid`. The blob's hash tick (§1 step 4) is shown for
+`v1`, `invalid` and `foreign`, since it covers bytes, not format. Decoders do not re-run the sanitizer on `t`.
 
 ## 3. Hash-chained journal
 
@@ -207,7 +209,7 @@ change have none.
 
 | Kind | Further fields |
 |---|---|
-| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`) |
+| `run` | `block`, `day`, `mode`, `ok`, `costUsd6`, `suggestions`, `proposals`, `summary` (as `sanitize(summary, 600)`; absent when the row's `summary` is empty, never `(no text)`), `capped` (`true` when the row's `error` starts with `llm cap: `: the daily LLM cap stopped the round before Claude was called; else absent) |
 | `intent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gasUsed`, `decision` |
 | `sent` | `index`, `intentId`, `action`, `symbol`, `amountUsd6`, `rationaleHash`, `blob`, `preview`, `gate`, `txHash`, `gas` |
 | `reconcile` | `intentId`, `action`, `txHash`, `outcome`, `decision` |
@@ -216,10 +218,10 @@ change have none.
 | `skip` | `index`, `symbol`, `action` |
 | `error` and any other kind | none |
 
-Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error`,
-`message`, `note`, and every field not listed. A field absent on the row is absent in `P`. Values keep their on-disk
-JSON types (bigints are decimal strings). The branch that adds a new row kind (probes, briefs, the daily LLM cap) adds
-its fields to this table; until then the kind exports the common fields only.
+Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error` (a
+`run` row's only trace of it is `capped`), `message`, `note`, and every field not listed. A field absent on the row
+is absent in `P`. Values keep their on-disk JSON types (bigints are decimal strings). The branch that adds a new row
+kind (probes, briefs) adds its fields to this table; until then the kind exports the common fields only.
 
 ### 3.3 What `j` anchors
 
@@ -255,8 +257,9 @@ changes the hash `j` names.
    `hash`; check `prev` against the previous line's `hash` (`GENESIS` for the very first line).
 3. Report the rows verified, the head hash, and the first failing file and line number, if any.
 4. For a Decision with a `v1` blob, find the `sent` or `reconcile` row whose `txHash` is the transaction's hash. None:
-   `pending` (the publisher has not caught up). Found: `anchored` if `j` is `GENESIS` or the `hash` of an earlier row,
-   and, for a `sent` row, its `blob` equals the onchain blob; otherwise `broken`.
+   `pending` (the publisher has not caught up). Found: `anchored` if `j` is the `hash` of an earlier row, or `j` is
+   `GENESIS` and no chained row precedes the found row, and, for a `sent` row, its `blob` equals the onchain blob;
+   otherwise `broken`.
 
 ## 4. Sender labels
 
@@ -367,6 +370,10 @@ Two published lines (the second carries V1, whose `j` is the first line's `hash`
 ```
 
 `hash` of line 1: `0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff`. `hash` of line 2: `0x3a54dfb09811088c8f2ffdecf4666c6e34f721a7e4166f1a6557dc3133ec4f8c`.
+
+Line 2's `intentId` is `keccak256("spec-example")`, the §5.6 id, not the agent's `intentId(runId, 0)`
+(`agent/src/intent.ts`). A test that checks rows against that rule skips this fixture.
+
 ### 5.8 Sanitizer
 
 | Input (JS string) | `sanitize(input, 600)` |
