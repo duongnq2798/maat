@@ -213,8 +213,9 @@ export const GUARD_CHECKLIST: readonly GuardCheck[] = [
   {
     code: "MARKET_CLOSED",
     check:
-      "The NYSE session is open for the mandate's session, by the onchain calendar with its holidays, early closes and New York daylight saving.",
-    stops: "Trading while the stock market is closed, when the pool still trades but the equity price feed can go hours without an update.",
+      "The onchain calendar has the market open for the mandate's session. REGULAR is the NYSE session, with its holidays, early closes and New York daylight saving. FEED_24_5 is the window from Sunday evening to Friday evening in which the design assumes the equity feeds update, closed on holidays but not shortened by early closes.",
+    stops:
+      "Trading outside the mandate's session. Under REGULAR, which the deploy script sets, that is trading while the stock market is closed, when the pool still trades but the equity price feed can go hours without an update.",
   },
   {
     code: "BAD_PRICE",
@@ -239,8 +240,9 @@ export const GUARD_CHECKLIST: readonly GuardCheck[] = [
   },
   {
     code: "INSUFFICIENT_BALANCE",
-    check: "The amount is above zero and the vault holds it.",
-    stops: "An intent for funds the vault does not have, or for nothing.",
+    check:
+      "The amount is above zero and no more than the vault holds of the token, or, for a withdrawal of collateral, no more than it has supplied. A borrow checks only that the amount is not zero.",
+    stops: "An intent for funds the vault does not have or has not supplied, or for nothing.",
   },
   {
     code: "SIZE_LIMIT",
@@ -280,8 +282,9 @@ export const GUARD_CHECKLIST: readonly GuardCheck[] = [
   },
   {
     code: "SWAP_FAILED",
-    check: "The swap goes through and returns at least the floor the vault sets from the oracle price and the slippage limit.",
-    stops: "A fill worse than the slippage limit allows: the swap reverts inside execute and no funds move.",
+    check:
+      "The swap goes through. The vault sets a floor from the oracle price and the slippage limit and passes it to its swap adapter, which reverts when the output is below it.",
+    stops: "A fill worse than the slippage limit allows: the adapter's swap reverts, the vault catches it, and no funds move.",
   },
   {
     code: "TRANSFER_FAILED",

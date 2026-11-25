@@ -102,6 +102,15 @@ describe(`content/docs/${SLUG}.mdx`, () => {
     }
   });
 
+  it("links the swap adapter's line that reverts below the vault's floor, and the check 7 reads that revert execute", () => {
+    // The vault passes minOut to the adapter and ignores what the swap returns, so the adapter enforces the floor.
+    const adapter = lineLinks(source).filter(([file]) => file.endsWith("AerodromeSwapAdapter.sol"));
+    expect(adapter).toHaveLength(1);
+    const [file = "", line = 0] = adapter[0] ?? [];
+    expect(readRepo(file).replace(/\r\n/g, "\n").split("\n")[line - 1]).toContain("if (amountOut < minOut) revert InsufficientOutput");
+    expect(source).toContain("[check 7](/docs/concepts/nine-checks#7-pool-price-near-the-oracle)");
+  });
+
   it("links only lines that exist", () => {
     const links = lineLinks(source);
     expect(links.length).toBeGreaterThan(GUARD_CHECKLIST.length);
