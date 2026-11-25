@@ -1,6 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
-import { getAddress, keccak256, toBytes } from "viem";
+import { getAddress, keccak256, toBytes, toHex, type Hash, type Hex } from "viem";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { deploymentConfig } from "../lib/chain/config";
@@ -216,5 +216,75 @@ test.describe("/ledger reading a fake Base mainnet", () => {
     await page.goto("/ledger");
     await expect(page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem")).toHaveCount(3);
     expect(await blockingViolations(page)).toEqual([]);
+  });
+});
+
+// The vault's two Decision events on Base mainnet, with the topics, data, log index, block time and gas their receipts
+// record: the owner-sent 5 USDC BUY of NVDAc the vault refused with reason 6 (MARKET_CLOSED), then the same BUY it
+// allowed. The page reads the committed /data/rationales.json (no stub), so each row must show "Hash verified".
+const DECISION_TOPIC = "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322";
+const NVDAC_TOPIC = "0x000000000000000000000000b20000000000000000000078ee7ce2fe4908108c";
+const MAINNET_RATIONALE_HASH = "0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6";
+const OWNER_TEXT = "Owner-sent first decision: BUY 5 USD of NVDAc";
+const word = (n: bigint) => toHex(n, { size: 32 }).slice(2);
+const MAINNET = [
+  {
+    tx: "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
+    block: 61_700_601n,
+    logIndex: 24,
+    time: 1_795_530_495,
+    gasUsed: 113_352n,
+    intentId: "0xdc06ec8e29767044d325cc10445a942d26a463a4ed08487b013c5fed2a59243c",
+    allowed: false,
+    reason: 6n,
+  },
+  {
+    tx: "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8",
+    block: 61_745_836n,
+    logIndex: 46,
+    time: 1_795_539_542,
+    gasUsed: 702_443n,
+    intentId: "0x475efb77a4242345466f42fc844ac578b99716db50eca20d0ffe27549a68ee3d",
+    allowed: true,
+    reason: 0n,
+  },
+] as const;
+
+test.describe("/ledger reading the vault's two mainnet Decisions with the committed rationales", () => {
+  test.beforeEach(async ({ page }) => {
+    await installFakeChain(page, {
+      ...scenario,
+      logs: MAINNET.map((m) => ({
+        blockNumber: m.block.toString(),
+        logIndex: m.logIndex,
+        transactionHash: m.tx as Hash,
+        topics: [DECISION_TOPIC, m.intentId, NVDAC_TOPIC] as Hex[],
+        // action 0 (BUY), amount 5000000 (5 USDC), allowed, reason, rationaleHash
+        data: `0x${word(0n)}${word(5_000_000n)}${word(m.allowed ? 1n : 0n)}${word(m.reason)}${MAINNET_RATIONALE_HASH.slice(2)}`,
+      })),
+      times: Object.fromEntries(MAINNET.map((m) => [m.block.toString(), m.time])),
+      receipts: {
+        [DEPLOY_TX.toLowerCase()]: { block: DEPLOY, gasUsed: 4_000_000n },
+        ...Object.fromEntries(MAINNET.map((m) => [m.tx, { block: m.block, gasUsed: m.gasUsed }])),
+      },
+    });
+  });
+
+  test("shows Hash verified and the owner's text on both rows", async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.goto("/ledger");
+    const decisions = page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem");
+    await expect(decisions).toHaveCount(2);
+    // Newest first: the allowed BUY, then the refusal.
+    for (const [i, m] of [...MAINNET].reverse().entries()) {
+      const row = decisions.nth(i);
+      await expect(row.getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${m.tx}`);
+      await expect(row).toContainText(m.allowed ? "Allowed" : "Refused");
+      await expect(row.getByText("Hash verified", { exact: true })).toBeVisible();
+      await expect(row.locator("blockquote")).toHaveText(OWNER_TEXT);
+    }
+    await expect(page.getByText("Hash mismatch", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Rationale not exported yet", { exact: true })).toHaveCount(0);
+    expect(errors).toEqual([]);
   });
 });

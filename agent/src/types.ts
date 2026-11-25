@@ -4,6 +4,9 @@ import type { Address, Hex } from "viem";
 export const ACTIONS = ["BUY", "SELL", "SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY", "PAY_EXPENSE"] as const;
 export type ActionName = (typeof ACTIONS)[number];
 
+/** The Aave V4 credit actions. With MAAT_CREDIT_ACTIONS off (the default) the agent suggests, asks for and sends none. */
+export const CREDIT_ACTIONS: ReadonlySet<ActionName> = new Set<ActionName>(["SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY"]);
+
 export const REASONS = [
   "OK",
   "VAULT_PAUSED",

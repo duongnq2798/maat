@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { getAddress, type Address } from "viem";
 import type { StateClient } from "../../src/chain/state.js";
 import { USDC, BASKET } from "../../src/addresses.js";
@@ -64,6 +66,62 @@ export const MANDATE = {
   targetHealthFactor: 2_000_000_000_000_000_000n,
   deriskWindow: 28800,
 };
+
+const DAY_S = 86_400;
+const civilDay = (y: number, m: number, d: number) => Date.UTC(y, m - 1, d) / 86_400_000;
+const weekdayOf = (day: number) => (day + 4) % 7; // 0 = Sunday, as DateLib.weekday
+const nthSunday = (y: number, m: number, n: number) => {
+  const first = civilDay(y, m, 1);
+  return first + ((7 - weekdayOf(first)) % 7) + (n - 1) * 7;
+};
+
+/** The NYSE closures MarketCalendar's constructor preloads, as contracts/test/vectors/gen-vectors.mjs wrote them. */
+export interface CalendarVectors {
+  holidays: { date: string; etDay: number; name: string }[];
+  earlyCloses: { date: string; etDay: number; closeMin: number }[];
+  sessionChecks: { date: string; et: string; ts: number; regularOpen: boolean; feedOpen: boolean }[];
+}
+export const CALENDAR_VECTORS: CalendarVectors = JSON.parse(
+  readFileSync(join(import.meta.dirname, "..", "..", "..", "contracts", "test", "vectors", "nyse-calendar.json"), "utf8"),
+);
+
+/** MarketCalendar's math, line for line, with the holidays and early closes its constructor sets. */
+export const CALENDAR_MATH = {
+  holidays: new Set(CALENDAR_VECTORS.holidays.map((h) => h.etDay)),
+  earlyCloseMin: new Map(CALENDAR_VECTORS.earlyCloses.map((e) => [e.etDay, e.closeMin] as const)),
+  etOffsetSeconds(ts: number): number {
+    const y = new Date(ts * 1000).getUTCFullYear();
+    const dstStart = nthSunday(y, 3, 2) * DAY_S + 7 * 3600;
+    const dstEnd = nthSunday(y, 11, 1) * DAY_S + 6 * 3600;
+    return ts >= dstStart && ts < dstEnd ? 4 * 3600 : 5 * 3600;
+  },
+  localTime(ts: number): [etDay: number, weekday: number, minuteOfDay: number] {
+    const local = ts - this.etOffsetSeconds(ts);
+    const etDay = Math.floor(local / DAY_S);
+    return [etDay, weekdayOf(etDay), Math.floor((local % DAY_S) / 60)];
+  },
+  isOpen(ts: number, mode: number): boolean {
+    const [day, wd, minute] = this.localTime(ts);
+    if (this.holidays.has(day)) return false;
+    if (mode === 0) {
+      if (wd === 0 || wd === 6) return false;
+      return minute >= 570 && minute < (this.earlyCloseMin.get(day) ?? 960);
+    }
+    if (wd === 6) return false;
+    if (wd === 0) return minute >= 1200;
+    if (wd === 5) return minute < 1200;
+    return true;
+  },
+};
+
+/** Answers the calendar's views the way MarketCalendar does, at whatever block timestamp the scene is at. */
+export function withCalendar(f: FakeChain): FakeChain {
+  return f
+    .set(CALENDAR, "isOpen", ([ts, mode]) => CALENDAR_MATH.isOpen(Number(ts), Number(mode)))
+    .set(CALENDAR, "localTime", ([ts]) => CALENDAR_MATH.localTime(Number(ts)).map(BigInt))
+    .set(CALENDAR, "isHoliday", ([day]) => CALENDAR_MATH.holidays.has(Number(day)))
+    .set(CALENDAR, "earlyCloseMin", ([day]) => CALENDAR_MATH.earlyCloseMin.get(Number(day)) ?? 0);
+}
 
 /** $100 USDC, no stock, no debt, market open, all feeds fresh. Tweak with set()/fail() per test. */
 export function standardScene(): FakeChain {
