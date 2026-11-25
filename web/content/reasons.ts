@@ -98,8 +98,8 @@ export const REASON_MEANING: Readonly<Record<RefusalCode, string>> = {
 
 /**
  * The docs' line per refusal: REASON_MEANING with five lines widened to match the code. Meant for the docs table
- * (components/docs/content.tsx) and its Markdown copy (lib/docs/component-text.ts); the landing's Refusals section
- * keeps REASON_MEANING.
+ * (components/docs/content.tsx), its Markdown copy (lib/docs/component-text.ts) and the mainnet ledger's decisions
+ * and refusal chart (lib/chain/reason.ts); the landing's Refusals section keeps REASON_MEANING.
  */
 export const REASON_MEANING_DOCS: Readonly<Record<RefusalCode, string>> = {
   ...REASON_MEANING,

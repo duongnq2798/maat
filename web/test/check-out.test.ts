@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
   checkAbiFiles,
+  checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
   checkGapIndexPage,
   checkLandingIsolation,
+  checkLedgerPage,
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
@@ -484,6 +486,23 @@ describe("checkAbiFiles", () => {
   });
 });
 
+describe("checkDataFiles", () => {
+  const expected = { "data/deployments.json": { network: "Base mainnet", vault: null } };
+  const good = `${JSON.stringify(expected["data/deployments.json"], null, 2)}\n`;
+
+  it("accepts each data file as its route writes it", () => {
+    expect(checkDataFiles(expected, (path) => (path === "data/deployments.json" ? good : undefined))).toEqual([]);
+  });
+
+  it.each([
+    ["a missing file", () => undefined, "missing out/data/deployments.json"],
+    ["a file that is not JSON", () => "{", "out/data/deployments.json is not JSON"],
+    ["other data", () => good.replace("null", '"0x1"'), "out/data/deployments.json is not its generated source (run npm run docs:gen and build again)"],
+  ])("flags %s", (_name, read, problem) => {
+    expect(checkDataFiles(expected, read)).toEqual([problem]);
+  });
+});
+
 describe("checkLocalhost", () => {
   const allowed = new Set(["http://localhost:3000"]);
   const site = new URL("https://maat.example");
@@ -606,5 +625,70 @@ describe("checkSearchIndex", () => {
 
   it("flags an index with no records", () => {
     expect(checkSearchIndex(index(), 1, page)).toEqual(["out/api/search.json holds no search records"]);
+  });
+});
+
+describe("checkLedgerPage", () => {
+  const page = (body: string) =>
+    [
+      '<!DOCTYPE html><html lang="en"><head><title>Mainnet ledger · Maat</title>',
+      '<meta name="description" content="Every decision the vault makes on Base, allowed or refused, read in your browser."/>',
+      '<link rel="canonical" href="https://maat.example/ledger"/>',
+      '<meta property="og:image" content="https://maat.example/opengraph-image.png"/>',
+      '<script src="/_next/static/chunks/ledger.js" async=""></script>',
+      `</head><body><a href="#main">Skip</a><main id="main">${body}</main></body></html>`,
+    ].join("");
+  const URL_ = "https://maat.example/ledger";
+  const SITEMAP = `<url><loc>${URL_}</loc></url>`;
+  const check = (html: string, vault: boolean, sitemap = SITEMAP) => checkLedgerPage({ html, vaultRecorded: vault, sitemap, url: URL_ });
+  const WAITING = page("<p>Waiting for the mainnet deploy</p>");
+  const CONNECTING = page("<p>Connecting to Base…</p>");
+
+  it("passes the waiting page before a vault is recorded, and the connecting page after", () => {
+    expect(check(WAITING, false)).toEqual([]);
+    expect(check(CONNECTING, true)).toEqual([]);
+  });
+
+  it("fails when the static state does not match the deployments table", () => {
+    expect(check(CONNECTING, false)).toEqual(["out/ledger.html does not show the waiting state, but no vault is recorded"]);
+    expect(check(WAITING, true)).toEqual([
+      "out/ledger.html shows the waiting state, but a vault is recorded",
+      "out/ledger.html does not show the connecting line, but a vault is recorded",
+    ]);
+  });
+
+  it("fails a page with a vault recorded that lacks the connecting line or has a chain reading baked in", () => {
+    // The browser reads Base; a reading in the export would be one from build time, shown as if current.
+    expect(check(page("<p>Mainnet ledger</p>"), true)).toEqual(["out/ledger.html does not show the connecting line, but a vault is recorded"]);
+    expect(check(page("<p>Connecting to Base…</p><p>Reading Base mainnet · block 61,745,836</p>"), true)).toEqual([
+      "out/ledger.html has a chain reading in its HTML (Reading Base mainnet)",
+    ]);
+    expect(check(page('<p>Connecting to Base…</p><a href="https://basescan.org/tx/0xab">tx</a>'), true)).toEqual([
+      "out/ledger.html has a chain reading in its HTML (a Basescan transaction link)",
+    ]);
+  });
+
+  it.each([
+    ["a missing meta description", (h: string) => h.replace(/<meta name="description" content="[^"]*"\/>/, ""), "out/ledger.html: meta description is missing, want 50 to 160"],
+    ["a short meta description", (h: string) => h.replace(/content="Every decision[^"]*"/, 'content="Too short."'), "out/ledger.html: meta description is 10 characters, want 50 to 160"],
+    ["a relative og:image", (h: string) => h.replace("https://maat.example/opengraph-image.png", "/opengraph-image.png"), "out/ledger.html: og:image is missing or not an absolute URL"],
+    ["Google Fonts", (h: string) => h.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), "out/ledger.html: the page loads Google Fonts at runtime"],
+  ])("flags %s, as the other pages' checks do", (_name, edit, problem) => {
+    expect(check(edit(CONNECTING), true)).toEqual([problem]);
+  });
+
+  it("fails when the sitemap does not list the page", () => {
+    expect(check(WAITING, false, "<urlset></urlset>")).toEqual([`out/sitemap.xml does not list ${URL_}`]);
+  });
+
+  it("names a missing canonical URL, an anchor without a target and a third-party script", () => {
+    const bad = WAITING.replace('<link rel="canonical" href="https://maat.example/ledger"/>', "")
+      .replace('<a href="#main">', '<a href="#nowhere">')
+      .replace("/_next/static/chunks/ledger.js", "https://cdn.example/x.js");
+    expect(check(bad, false)).toEqual([
+      "out/ledger.html has no canonical URL ending in /ledger",
+      "out/ledger.html: link #nowhere has no target",
+      "out/ledger.html: third-party script https://cdn.example/x.js",
+    ]);
   });
 });

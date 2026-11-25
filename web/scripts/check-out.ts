@@ -4,11 +4,13 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   checkAbiFiles,
+  checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
   checkExport,
   checkGapIndexPage,
   checkLandingIsolation,
+  checkLedgerPage,
   checkLocalhost,
   checkMarkdownCopies,
   checkMarkdownCopy,
@@ -19,7 +21,10 @@ import {
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
 } from "../lib/check-out";
+import rationales from "../content/generated/rationales.json";
+import { deploymentConfig, deploymentsFile } from "../lib/chain/config";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
+import { docsData } from "../lib/docs/generated";
 import { siteUrl } from "../lib/site";
 
 const OUT = fileURLToPath(new URL("../out/", import.meta.url));
@@ -36,6 +41,7 @@ const REQUIRED = [
   "now.html",
   "gap-index.html",
   "docs.html",
+  "ledger.html",
   "api/search.json",
   "llms.txt",
   "llms-full.txt",
@@ -56,6 +62,18 @@ if (existsSync(index)) {
   const html = read("index.html");
   problems.push(...checkExport(html));
   problems.push(...checkLandingIsolation(html, (url) => read(url)));
+}
+
+// The mainnet ledger: its static state follows the deployments table the build read, and the sitemap lists it.
+if (existsSync(join(OUT, "ledger.html")) && existsSync(join(OUT, "sitemap.xml"))) {
+  problems.push(
+    ...checkLedgerPage({
+      html: read("ledger.html"),
+      vaultRecorded: deploymentConfig(docsData.deployments) !== null,
+      sitemap: read("sitemap.xml"),
+      url: new URL("/ledger", siteUrl()).href,
+    }),
+  );
 }
 
 // /now reads Base in the browser too: its export holds the reading state and no chain value. The sitemap lists it.
@@ -114,6 +132,13 @@ problems.push(
   ),
 );
 
+// The ledger page's data, each as its route writes it from the generated sources.
+problems.push(
+  ...checkDataFiles({ "data/deployments.json": deploymentsFile(docsData.deployments), "data/rationales.json": rationales }, (path) =>
+    isFile(join(OUT, path)) ? read(path) : undefined,
+  ),
+);
+
 // On CI and on Vercel the export is about to ship, so no file may still link the localhost fallback of siteUrl().
 if (shipsPublicly()) {
   const files = (dir: string): string[] =>
@@ -142,5 +167,5 @@ if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing, /now, /gap-index and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);

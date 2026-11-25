@@ -32,6 +32,8 @@ Maat's own vault is on Base mainnet, at the address in the `MandateVault` row of
 
 </Callout>
 
+The site's [mainnet ledger](/ledger) does this reading for you in the browser. It reads the vault that `deployments/README.md` records: its events from its deploy block, decoded with the vault's ABI, each exported rationale checked against its `rationaleHash`, and the balances, prices and health factor at the latest block. Below them it keeps the fork run, labeled as a fork. The steps below are for checking it yourself, or for building on the events.
+
 ## Before you start
 
 | Need | Detail |
@@ -352,7 +354,7 @@ Adding a holiday or an earlier close to the vault's calendar is instant too, for
 - **Reading `eta` as the time a change takes effect.** It is the earliest time. The change takes effect only when the owner sends the apply, with the same values, before the window closes.
 - **Waiting for notice of a withdrawal.** `withdraw`, `setPaused` and `setExecutor` are instant, so their events come after the fact.
 - **Querying too wide a range at once.** A provider may refuse it. Use `--query-size` (in Foundry 1.9.0), or start from the deploy block.
-- **Taking the site's ledger for mainnet events.** The ledger on the site shows the decisions of the fork run only. Read a mainnet vault's own events with [step 1](#read-the-events-with-cast).
+- **Taking the landing page's ledger for mainnet events.** The ledger on the landing page shows the decisions of the fork run only. Read a mainnet vault's own events with [step 1](#read-the-events-with-cast), or Maat's vault on the [mainnet ledger](/ledger).
 
 ## Next steps
 

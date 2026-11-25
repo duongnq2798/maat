@@ -15,6 +15,7 @@ export default function sitemap(): MetadataRoute.Sitemap {
   }));
   return [
     { url: base.href, lastModified: new Date(), changeFrequency: "weekly", priority: 1 },
+    { url: new URL("/ledger", base).href, lastModified: new Date(), changeFrequency: "hourly", priority: 0.9 },
     // Right now on Base: a new reading on every visit.
     { url: new URL("/now", base).href, lastModified: new Date(), changeFrequency: "always", priority: 0.8 },
     // The Weekend Gap Index: it changes when an edition is read from Base again.

@@ -102,6 +102,8 @@ forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner 
 
 `--slow` sends the four deploy transactions one at a time, each only after the previous one is confirmed and succeeded, as in go-live.md step 5.
 
+Then fill the table at the top of this file with each contract's address, deploy transaction and date, and in `web/` run `npm run docs:gen` and commit what it rewrites. The docs and the website's `/ledger` page read the vault from that table: the page starts reading the vault's events at the block of the `MandateVault` deploy transaction, so fill its Tx cell too.
+
 ## Smoke test (owner only)
 
 The smoke test is two $5 NVDAc BUY intents: one on a weekend, which the vault must refuse with `reason=6` (`MARKET_CLOSED`), and one in session, which it must allow. Send them **only** as [`go-live.md`](go-live.md) step 7 (weekend) and step 8 (in session) say, with the `execute` calldata that [`agent/scripts/first-decision.ts`](../agent/scripts/first-decision.ts) builds offline. That calldata ends with your Builder Code, each salt gives a new intent id, and the tool prints the `previewIntent` check to run before each send. This file gives no `cast send "$VAULT" "execute(...)"` command for them: a plain one carries no Builder Code, and the vault's first `Decision` cannot be redone.

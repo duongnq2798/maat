@@ -81,7 +81,7 @@ That day is a UTC day, and so is the day of the vault's daily cap, while the led
 
 ## From a ledger row to its reasoning
 
-The ledger on the site shows the decisions of the fork run. These are the same rows, read from the same data:
+The ledger on the landing page shows the decisions of the fork run; the [mainnet ledger](/ledger) reads the vault's own from Base. These are the fork run's rows, read from the same data as the landing page:
 
 <ForkLedger />
 
@@ -106,7 +106,7 @@ itself is worth recording, but say so in the rationale. Compute bills are settle
 
 The real Claude API has never run in a Maat test, and no output from it is committed, so no rationale on this site or in the repository was written by Claude. The Saturday buy in the fork ledger came from the scripted proposer.
 
-The fork rows have no mainnet transaction, because they ran on a local fork. The agent's journal is a file on the operator's machine, so only the operator holds it. Showing the rationale text on the site is [planned, not built](/docs/get-started/status#planned-not-built). This is how to match a decision of a vault on mainnet to the reasoning behind it. Only the operator, or someone the operator shares the file with, can do steps 2 and 3:
+The fork rows have no mainnet transaction, because they ran on a local fork. The agent's journal is a file on the operator's machine, so only the operator holds it. The [mainnet ledger](/ledger) shows a rationale's text only after the operator exports it from the journal (`npm run rationales` in `web/`) and commits it, and only when its hash matches the `rationaleHash` onchain; a store the agent writes as it runs is [planned, not built](/docs/get-started/status#planned-not-built). This is how to match a decision of a vault on mainnet to the reasoning behind it. Only the operator, or someone the operator shares the file with, can do steps 2 and 3:
 
 1. Open the transaction that emitted the `Decision` and read `intentId` and `rationaleHash` from the log.
 2. In the agent's journal, `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default; see [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder)), find the lines with the same `intentId`:

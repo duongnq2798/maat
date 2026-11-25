@@ -163,9 +163,10 @@ links; the docs show the same table on
   ([`0x61622340...23c8`](https://basescan.org/tx/0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8),
   block 61,745,836, 16:59:02 UTC), which swapped 5 USDC for 0.03311718 NVDAc.
 - **Mainnet `Decision` events.** This README keeps no count. Every `Decision` the vault emits is public in its
-  events on Basescan, at the `MandateVault` address in [`deployments/README.md`](deployments/README.md);
-  [Watch decisions onchain](https://maatonbase.xyz/docs/guides/watch-decisions-onchain) shows how to read and
-  decode them.
+  events on Basescan, at the `MandateVault` address in [`deployments/README.md`](deployments/README.md). The
+  [mainnet ledger](https://maatonbase.xyz/ledger) reads them from Base in your browser, with the vault's
+  treasury and mandate. [Watch decisions onchain](https://maatonbase.xyz/docs/guides/watch-decisions-onchain)
+  shows how to read and decode the events yourself.
 - **How a deploy happens.** Only the owner deploys, from their own wallet, following the go-live runbook
   [`deployments/go-live.md`](deployments/go-live.md): deploy, fund, the first `Decision` events (a weekend BUY
   the vault must refuse, then one in session it must allow) and the executor handover, in order.
@@ -326,8 +327,8 @@ on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `449
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Website: landing page with the decision engine, the simulator and the labelled fork ledger, and the docs center. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
-| Live mainnet ledger, dashboard and Base App mini-app manifest (W2), daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
+| Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the mainnet ledger, the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
+| A rationale store the agent writes as it runs, read by the mainnet ledger (W2 follow-up); daily diary and replay page (W3) | **Planned** | [W2 spec §10](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md), [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Guard Service HTTP API, MCP server, Bankr Skill | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | `MandateFactory`: any agent deploys its own vault | **Planned** (stretch goal) | [spec §3.7](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
@@ -553,10 +554,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  65 passed (65)
-         Tests  1990 passed (1990)
+    Test Files  108 passed (108)
+         Tests  2435 passed (2435)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index and 49 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 49 docs pages checked)
    search index: … bytes gzipped, budget 850000
    ```
 
@@ -617,7 +618,8 @@ need an archive RPC and run by hand. Lighthouse, a browser audit of the producti
 - **The agent has not run live on mainnet.** The four Maat contracts are on Base mainnet
   ([Deployments and traction](#deployments-and-traction)), but every agent execution this README reports ran on
   a local fork, with a scripted proposer; the real Claude API and the CDP wallet have been tested only against
-  fakes. The Base App mini-app, x402 revenue and the live dashboard do not exist yet.
+  fakes. x402 revenue does not exist yet. The mainnet ledger at `/ledger` reads the vault's `Decision` events
+  from Base, and the owner's wallet, not the agent, sent the ones it shows so far.
 - **The calendar must be maintained.** It ships with Thanksgiving and Christmas 2026 and every NYSE
   holiday of 2027 (New Year to Christmas observed on 2027-12-24), plus early closes on 2026-11-27, 2026-12-24
   and 2027-11-26. Later holidays need `addHoliday` from the calendar owner. If one is missed, only the price
@@ -662,13 +664,14 @@ counters; and one immutable owner key, with no multisig, controls the vault.
 Planned, roughly in this order. None of this is on `main`, and no dates are promised.
 
 1. Agent #1 running on mainnet, after the owner's deploy ([Deployments and traction](#deployments-and-traction)):
-   the executor handed to the CDP Server Wallet, the live ledger on the website and a Base App mini-app manifest
-   (W2).
-2. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
+   the executor handed to the CDP Server Wallet, and the agent's own `Decision` events, which the website's
+   [`/ledger`](https://maatonbase.xyz/ledger) page reads beside the owner's.
+2. A rationale store the agent writes as it runs, read by `/ledger` (W2 follow-up).
+3. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
    progress in PR #2, open and unmerged.
-3. MCP server and Bankr Skill exposing the same check.
-4. `MandateFactory`: any agent deploys its own vault with its own mandate.
-5. Daily diary and replay page (W3).
+4. MCP server and Bankr Skill exposing the same check.
+5. `MandateFactory`: any agent deploys its own vault with its own mandate.
+6. Daily diary and replay page (W3).
 
 ## Built during the Quest
 
@@ -740,8 +743,8 @@ agent/                     TypeScript agent runtime
   test/                    unit tests with fakes; integration/ runs the Base fork
   scripts/                 cdp-setup.ts (owner, once), first-decision.ts (owner, offline intent builder),
                            gen-abis.ts, smoke-claude.ts (paid API)
-web/                       Next.js landing page, /now, /gap-index, docs center, brand assets, parity tests,
-                           Playwright e2e
+web/                       Next.js landing page, /now, /gap-index, /ledger, docs center, brand assets, parity
+                           tests, Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            Base mainnet address table
 docs/superpowers/          design specs and implementation plans
@@ -758,6 +761,7 @@ SECURITY.md                how to report a security problem privately
 | [Web design spec](docs/superpowers/specs/2026-11-07-maat-web-design.md) | Website goals, design tokens, page structure, parity tests, W2 and W3 |
 | [Docs center spec](docs/superpowers/specs/2026-11-07-maat-docs-center-design.md) | The readers of `/docs`, its honesty rules, pages, content model and quality gates |
 | [Simulator spec](docs/superpowers/specs/2026-11-08-mandate-simulator-design.md) | The landing page's "Try to make it say no" section: a browser simulation of the default mandate's BUY checks over one day, and its parity tests |
+| [W2 ledger spec](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md) | The `/ledger` page: reading the vault from the visitor's browser, the log scan and cache, rationale hash checks, the charts, the waiting state before the deploy |
 | [CI spec](docs/superpowers/specs/2026-11-18-maat-ci-design.md) | The one CI workflow: its jobs and hardening, the secret scan, the counts in each run's summary, `SECURITY.md`, Dependabot and the pre-flip scan |
 | [Readable refusals spec](docs/superpowers/specs/2026-11-20-readable-refusals-design.md) | Plain labels beside the vault's refusal codes on the landing, the simulator, the social images and the docs, and a week map of when the market session check passes |
 | [Live strip spec](docs/superpowers/specs/2026-11-20-maat-web-live-strip-design.md) | The live line under the landing H1 and `/now`: one keyless multicall from the browser reads the 13 B20s with a NAV, judged in `MandateVault`'s order for a BUY |
@@ -769,6 +773,7 @@ SECURITY.md                how to report a security problem privately
 | [Plan W1: website](docs/superpowers/plans/2026-11-07-maat-web-w1.md) | The landing page and brand assets |
 | [Plan: docs center](docs/superpowers/plans/2026-11-07-maat-docs-center.md) | `/docs` inside the website: Fumadocs, the generated reference data, the pages and their gates |
 | [Plan: simulator](docs/superpowers/plans/2026-11-08-mandate-simulator.md) | The calendar and BUY-check ports in `web/content`, the Simulator component, the Try it section and their tests |
+| [Plan W2: mainnet ledger](docs/superpowers/plans/2026-11-20-maat-web-w2-ledger.md) | The chain read layer in `web/lib/chain`, the ledger hook, the charts, the `/ledger` page, the rationale export, and the e2e tests against a fake Base RPC |
 | [Plan: CI](docs/superpowers/plans/2026-11-18-maat-ci.md) | The counting script and its tests, the gitleaks config, the workflow, `SECURITY.md`, Dependabot, and the README and docs text that says what CI runs |
 | [Plan: readable refusals, PR 1](docs/superpowers/plans/2026-11-20-readable-refusals-pr1.md) | The label map and `ReasonTag`, and plain labels on the landing, the simulator, the docs fork ledger and the social images |
 | [Plan: live strip](docs/superpowers/plans/2026-11-20-maat-web-live-strip.md) | The token list, ABI codec, price port, reader, verdict, freshness hook, the strip, `/now`, the simulator's Now note and their tests |

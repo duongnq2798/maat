@@ -12,7 +12,7 @@ describe("the sitemap", () => {
   const entries = sitemap();
   const base = siteUrl();
 
-  it("lists Right now on Base after the landing, as a page that changes on every visit", () => {
+  it("lists Right now on Base after the landing and the ledger, as a page that changes on every visit", () => {
     const now = entries.find((e) => e.url === new URL("/now", base).href);
     expect(now).toBeDefined();
     expect(now?.priority).toBe(0.8);
@@ -20,6 +20,7 @@ describe("the sitemap", () => {
     expect(now?.lastModified).toBeInstanceOf(Date);
     expect(entries.map((e) => e.url)).toEqual([
       base.href,
+      new URL("/ledger", base).href,
       new URL("/now", base).href,
       new URL("/gap-index", base).href,
       new URL("/docs/overview", base).href,
