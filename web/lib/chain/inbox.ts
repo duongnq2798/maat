@@ -78,25 +78,19 @@ export function briefCalldata(text: string): Hex {
 
 /**
  * The code points the agent's prompt replaces before Claude reads a brief (inbox spec §3), and /ask before it shows one:
- * C0 and C1 controls (DEL included), U+200B to U+200F, U+202A to U+202E and U+2066 to U+2069.
+ * every code point of general category Cc (controls) or Cf (format), or with the Default_Ignorable_Code_Point property.
+ * That takes in C0 and C1 controls (DEL included), zero-width characters, direction marks, overrides and isolates, the
+ * word joiner, U+FEFF, the soft hyphen, variation selectors, Hangul fillers and the tag characters U+E0000 to U+E007F.
  */
-const UNSAFE: readonly (readonly [number, number])[] = [
-  [0x00, 0x1f],
-  [0x7f, 0x9f],
-  [0x200b, 0x200f],
-  [0x202a, 0x202e],
-  [0x2066, 0x2069],
-];
+const UNSAFE = /[\p{Cc}\p{Cf}\p{Default_Ignorable_Code_Point}]/gu;
 const REPLACEMENT = String.fromCodePoint(0xfffd);
 
-/** `text` with every code point of UNSAFE replaced by U+FFFD, so a brief cannot hide text or reorder what a reader sees. */
+/**
+ * `text` with every code point of UNSAFE replaced by U+FFFD, so a brief cannot hide text, smuggle ASCII in tag
+ * characters or reorder what a reader sees: each such code point shows as a mark.
+ */
 export function plainBriefText(text: string): string {
-  let out = "";
-  for (const ch of text) {
-    const cp = ch.codePointAt(0)!;
-    out += UNSAFE.some(([lo, hi]) => cp >= lo && cp <= hi) ? REPLACEMENT : ch;
-  }
-  return out;
+  return text.replace(UNSAFE, REPLACEMENT);
 }
 
 /** One Brief event. `text` is the decoded string as sent: show it only through plainBriefText, as text. */

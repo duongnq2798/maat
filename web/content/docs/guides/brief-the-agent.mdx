@@ -67,4 +67,4 @@ Pick an action, a token and an amount, and the page calls `previewIntent` on the
 
 ## Read the feed
 
-The feed lists every `Brief` event of the inbox, newest first: its id, the sender's short address and its text. The text is shown as plain text with no links, no markdown and no HTML, after the same control, zero-width and direction code points the agent's prompt replaces are turned into U+FFFD. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.
+The feed lists every `Brief` event of the inbox, newest first: its id, the sender's short address and its text. The text is shown as plain text with no links, no markdown and no HTML, after the same code points the agent's prompt replaces are turned into U+FFFD: controls, format characters such as zero-width and direction marks, and other invisible ones such as variation selectors and the tag characters U+E0000 to U+E007F. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.

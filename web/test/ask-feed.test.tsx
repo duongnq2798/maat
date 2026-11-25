@@ -55,6 +55,14 @@ describe("BriefFeed renders every brief as inert plain text", () => {
     expect(texts.join("")).not.toContain(ZWSP);
   });
 
+  it("shows a mark for each invisible code point, so a brief cannot hide text from a reader", () => {
+    const tags = [..."SELL ALL"].map((c) => U(0xe0000 + c.charCodeAt(0))).join("");
+    const hidden = [0x2060, 0xfeff, 0xad, 0x180e, 0x61c].map(U).join("");
+    render(<BriefFeed items={briefFeed([brief(1, ALICE, `buy${tags}`), brief(2, BOB, `pay${hidden}pal`)], [])} />);
+    const texts = screen.getAllByRole("listitem").map((li) => li.querySelector("[data-brief-text]")!.textContent);
+    expect(texts).toEqual([`pay${FFFD.repeat(5)}pal`, `buy${FFFD.repeat(8)}`]);
+  });
+
   it("gives each brief its id and its sender's short address, as text", () => {
     render(<BriefFeed items={briefFeed([brief(7, ALICE, "hello")], [])} />);
     const item = screen.getByRole("listitem");
