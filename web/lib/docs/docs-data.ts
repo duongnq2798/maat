@@ -259,6 +259,22 @@ export function generateAbis(root: string): Record<AbiName, unknown[]> {
   return parseAbis(readFileSync(join(root, AGENT_ABI_FILE), "utf8"));
 }
 
+/** The market-guard skill's instructions, which /skill.md serves (app/skill.md/route.ts). */
+export const SKILL_FILE = "skills/maat-market-guard/SKILL.md";
+
+export interface SkillCopy {
+  readonly source: typeof SKILL_FILE;
+  readonly text: string;
+}
+
+/**
+ * SKILL_FILE read from the repo at `root`, with LF line ends, as docs-gen writes it to content/generated/skill.json.
+ * The build reads that copy, never skills/, as it reads the ABIs from abi.json and never agent/.
+ */
+export function generateSkillCopy(root: string): SkillCopy {
+  return { source: SKILL_FILE, text: readFileSync(join(root, SKILL_FILE), "utf8").replace(/\r\n/g, "\n") };
+}
+
 /** JSON as committed: two-space indent and a trailing newline, so the sync test compares text exactly. */
 export function serialize(value: unknown): string {
   return `${JSON.stringify(value, null, 2)}\n`;
