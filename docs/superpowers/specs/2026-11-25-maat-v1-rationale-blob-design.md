@@ -221,6 +221,7 @@ change have none.
 | `housekeeping` | `call`, `token`, `txHash`, `gas`, `gasUsed` |
 | `skip` | `index`, `symbol`, `action` |
 | `probe` | `at`, `expected`, `outcome` (one MAAT_PROBES instant: `at` as `YYYY-MM-DDTHH:MM:SSZ`, `expected` `OK` or `MARKET_CLOSED` when the calendar was read, `outcome` one of `sent`, `dry-run`, `skipped`, `halted`, `missed`, `capped`) |
+| `brief` | `briefId`, `from`, `txHash`, `logIndex`, `block`, `outcome`, `cap`, `adopted`, `reply` (one MaatInbox brief a round decided: `outcome` one of `replied`, `unanswered`, `skipped`; `cap` the cap that skipped it; `adopted` `true` when an intent of the round cites it; `reply` as `sanitize(reply, 200)`, absent like `summary`. The brief's text is never a field) |
 | `error` and any other kind | none |
 
 Never exported: `rationale` (the raw model text; its clean form is `t` inside `blob`), `previewError`, `error` (a

@@ -36,6 +36,7 @@ Only these fields of each row, as they are on disk. A field the row does not hav
 | `mismatch` | `intentId`, `preview`, `decision` |
 | `housekeeping` | `call`, `token`, `txHash`, `gas`, `gasUsed` |
 | `skip` | `index`, `symbol`, `action` |
+| `brief` | `briefId`, `from`, `txHash`, `logIndex`, `block`, `outcome`, `cap`, `adopted`, `reply` (sanitized to 200 characters; left out like a summary). The brief's own text is never in the row |
 | `error` and any other kind | the common fields only |
 
 The raw model text (`rationale`), `previewError`, `error`, `message`, `note` and every other field stay on the PC. So

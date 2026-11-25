@@ -101,14 +101,17 @@ const BY_KIND = new Map([
   ["housekeeping", ["call", "token", "txHash", "gas", "gasUsed"]],
   ["skip", ["index", "symbol", "action"]],
   ["probe", ["at", "expected", "outcome"]],
+  ["brief", ["briefId", "from", "txHash", "logIndex", "block", "outcome", "cap", "adopted"]],
 ]);
+/** The most characters of a brief's reply the projection keeps, as agent/src/briefs/caps.ts MAX_REPLY_CHARS. */
+const MAX_REPLY_CHARS = 200;
 
 /**
  * The public projection of one journal row (spec §3.2): the common fields and its kind's fields, as they are on disk.
  * A run's summary is sanitized to 600 characters and left out when nothing is left of it after sanitizer steps 1 to 3
  * (only spaces, emoji or other dropped characters), so it is never "(no text)"; `capped` is true when its
- * error says the daily LLM cap stopped the round. Every other field, the raw rationale and every error text included,
- * stays on the PC.
+ * error says the daily LLM cap stopped the round. A brief's reply is sanitized to 200 characters the same way. Every
+ * other field, the raw rationale, a brief's note and every error text included, stays on the PC.
  * @param {Record<string, unknown>} row
  * @returns {Record<string, unknown>}
  */
@@ -123,6 +126,8 @@ export function project(row) {
     if (typeof row.summary === "string" && clean(row.summary) !== "") out.summary = sanitize(row.summary, 600);
     if (typeof row.error === "string" && row.error.startsWith("llm cap: ")) out.capped = true;
   }
+  // A MaatInbox brief's reply: sanitized to 200 characters, left out like a summary. The brief's text is never a field.
+  if (kind === "brief" && typeof row.reply === "string" && clean(row.reply) !== "") out.reply = sanitize(row.reply, MAX_REPLY_CHARS);
   return out;
 }
 
@@ -147,9 +152,9 @@ export function publishedLine(P) {
 const found = (re, s) => s.search(re) !== -1;
 
 /**
- * The deny check (spec §3.5): the whole line against URL_RE and KEY_RE, and the free text (a run's summary, and `t`
- * decoded from a maat:v1 blob) also against HEX_RE and LONG_RE. Returns the first hit as the pattern's name and the
- * field it is in, never the text it matched; null when the line may leave the PC.
+ * The deny check (spec §3.5): the whole line against URL_RE and KEY_RE, and the free text (a run's summary, a brief's
+ * reply, and `t` decoded from a maat:v1 blob) also against HEX_RE and LONG_RE. Returns the first hit as the pattern's
+ * name and the field it is in, never the text it matched; null when the line may leave the PC.
  * @param {Record<string, unknown>} P
  * @param {string} line
  * @returns {{ pattern: string, field: string | null } | null}
@@ -163,6 +168,7 @@ export function denyHit(P, line) {
   /** @type {[string, string][]} */
   const texts = [];
   if (typeof P.summary === "string") texts.push(["summary", P.summary]);
+  if (typeof P.reply === "string") texts.push(["reply", P.reply]);
   const t = blobText(P.blob);
   if (t !== null) texts.push(["blob", t]);
   for (const [field, text] of texts) {
