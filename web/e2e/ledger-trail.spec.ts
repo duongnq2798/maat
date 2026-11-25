@@ -240,7 +240,7 @@ test.describe("/ledger Verify it by hand", () => {
     const panel = page.getByRole("region", { name: "Verify it by hand" });
     await expect(panel.getByRole("list", { name: "Five read-only commands" }).getByRole("listitem")).toHaveCount(5);
     await expect(panel.getByRole("region", { name: "Set the RPC and the addresses" })).toContainText(`export VAULT=${VAULT}`);
-    await expect(panel.getByRole("region", { name: "Command 1" })).toContainText(`cast receipt ${DEPLOY_TX} contractAddress`);
+    await expect(panel.getByRole("region", { name: "Command 1", exact: true })).toContainText(`cast receipt ${DEPLOY_TX} contractAddress`);
     await expect(panel.getByRole("region", { name: "Output of command 5" })).toHaveText("0x0baa4c52…57f6");
   });
 });
