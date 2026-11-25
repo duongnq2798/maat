@@ -9,7 +9,7 @@ export function nextDelayMs(r: RunReport | null): number {
   return r?.marketOpen === true ? IN_SESSION_MS : OFF_SESSION_MS;
 }
 
-async function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
+export async function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
   try {
     await delay(ms, undefined, { signal });
   } catch (e) {
@@ -24,6 +24,8 @@ async function abortableSleep(ms: number, signal: AbortSignal): Promise<void> {
 export async function runForever(o: {
   run: () => Promise<RunReport>;
   signal: AbortSignal;
+  /** Held for each round, so a probe (loop/probeRound.ts) waits for the round and a round for the probe. */
+  lock?: { run<T>(fn: () => Promise<T>): Promise<T> };
   sleep?: (ms: number, signal: AbortSignal) => Promise<void>;
   log?: (m: string) => void;
   /** Called after every round, failed ones included (main.ts writes the heartbeat). Its own failure is logged. */
@@ -36,7 +38,7 @@ export async function runForever(o: {
     let report: RunReport | null = null;
     let error: string | null = null;
     try {
-      report = await o.run();
+      report = await (o.lock ? o.lock.run(o.run) : o.run());
       const counts = `round ${report.runId}: ${report.status}, sent ${report.sent.length}, skipped ${report.skipped}`;
       // runOnce already redacted the halt reason (oneLine).
       const line = report.haltReason ? `${counts} (${report.haltReason})` : counts;

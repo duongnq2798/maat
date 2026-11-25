@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunReport } from "../src/loop/runOnce.js";
+import { RoundLock } from "../src/loop/lock.js";
 import { IN_SESSION_MS, nextDelayMs, OFF_SESSION_MS, runForever } from "../src/loop/scheduler.js";
 
 const rep = (marketOpen: boolean | null): RunReport => ({ runId: "r", status: "done", marketOpen, sent: [], skipped: 0, proposals: 0 });
@@ -132,5 +133,33 @@ describe("scheduler", () => {
     let called = false;
     expect(await runForever({ signal: ac.signal, run: async () => ((called = true), rep(true)), sleep: async () => {}, log: () => {} })).toBe(0);
     expect(called).toBe(false);
+  });
+});
+
+describe("runForever with a round lock", () => {
+  it("takes the lock for each round, so a probe waiting on it runs between rounds, never during one", async () => {
+    const ac = new AbortController();
+    const lock = new RoundLock();
+    const order: string[] = [];
+    let probe: Promise<void> | null = null;
+    let rounds = 0;
+    await runForever({
+      signal: ac.signal,
+      lock,
+      run: async () => {
+        order.push(`round ${++rounds} start`);
+        if (rounds === 1) probe = lock.run(async () => void order.push("probe"));
+        await new Promise((r) => setTimeout(r, 0));
+        order.push(`round ${rounds} end`);
+        return rep(true);
+      },
+      sleep: async () => {
+        await new Promise((r) => setTimeout(r, 0));
+        if (rounds === 2) ac.abort();
+      },
+      log: () => {},
+    });
+    await probe;
+    expect(order).toEqual(["round 1 start", "round 1 end", "probe", "round 2 start", "round 2 end"]);
   });
 });
