@@ -30,6 +30,19 @@ describe("heartbeat", () => {
     expect(heartbeatOf({ report: null, error: "HTTP request failed." }, AT, 7)).toEqual({ ts: AT.toISOString(), pid: 7, status: "failed", error: "HTTP request failed." });
   });
 
+  it("carries the error of the round's run line, so a failed Claude call or the LLM cap does not read as a clean round", () => {
+    const failed: RunReport = { ...report, sent: [], proposals: 0, error: "claude: 401 invalid x-api-key" };
+    const beat = heartbeatOf({ report: failed, error: null }, AT, 7);
+    expect(beat).toEqual({ ts: AT.toISOString(), pid: 7, status: "done", runId: "r-1", sent: 0, error: "claude: 401 invalid x-api-key" });
+    expect(describeHeartbeat(beat, minutes(3))).toBe(
+      "last round ended 3 min ago at 2026-11-25T12:00:00.000Z: round r-1 done, sent 0 (claude: 401 invalid x-api-key), agent pid 7",
+    );
+    const leaky = "claude: request to https://api.anthropic.com/v1/messages failed for sk-ant-fake-key-in-an-error\nat a stack line";
+    expect(heartbeatOf({ report: { ...failed, error: leaky }, error: null }, AT, 7).error).toBe("claude: request to [url] failed for [redacted]");
+    const halted: RunReport = { ...failed, status: "halted", haltReason: "daily tx cap 20 reached", error: "invalid proposal JSON: x" };
+    expect(heartbeatOf({ report: halted, error: null }, AT, 7).error).toBe("daily tx cap 20 reached; error: invalid proposal JSON: x");
+  });
+
   it("writes the file whole and reads it back; no file reads as null", async () => {
     const dir = await tmp();
     expect(await readHeartbeat(dir)).toBeNull();
@@ -72,6 +85,17 @@ describe("scripts/heartbeat.ts", () => {
     expect(stale.code).toBe(1);
     expect(stale.out).toMatch(/^STALE: last round ended 1 h 31 min ago/);
     expect((await run(["--max-age-min", "120"], { agentDir, now: minutes(91) })).code).toBe(0);
+  });
+
+  it("prints the error of a fresh round's run line on its OK line, with exit code 0", async () => {
+    const agentDir = await tmp();
+    const failed: RunReport = { ...report, sent: [], proposals: 0, error: "claude: 401 invalid x-api-key" };
+    await writeHeartbeat(join(agentDir, "data"), heartbeatOf({ report: failed, error: null }, AT, 7));
+    expect(await run([], { agentDir, now: minutes(3) })).toEqual({
+      code: 0,
+      out: `OK: last round ended 3 min ago at 2026-11-25T12:00:00.000Z: round r-1 done, sent 0 (claude: 401 invalid x-api-key), agent pid 7 (limit 90 min, ${join(agentDir, "data")})`,
+      err: "",
+    });
   });
 
   it("exits 2 with no heartbeat yet, an unreadable one, or a bad limit", async () => {

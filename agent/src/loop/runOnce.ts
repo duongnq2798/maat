@@ -71,6 +71,8 @@ export interface RunReport {
   skipped: number;
   proposals: number;
   haltReason?: string;
+  /** The error of the round's run line, as journaled: a failed Claude call or the daily LLM cap. */
+  error?: string;
 }
 
 type Decision = { allowed: boolean; reason: string };
@@ -278,6 +280,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       proposals: out.ok ? out.proposals.length : 0,
       ...(out.ok ? {} : { error: out.error }),
     });
+    if (!out.ok) report.error = out.error;
 
     const queue: Proposal[] = [];
     if (unpaid >= d.billMinUsd6) {

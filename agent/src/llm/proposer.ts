@@ -1,3 +1,7 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseEnv } from "node:util";
 import Anthropic from "@anthropic-ai/sdk";
 import type { PolicyView } from "../policy.js";
 import type { VaultState } from "../chain/state.js";
@@ -33,15 +37,50 @@ export type CreateMessage = (params: Record<string, unknown>) => Promise<{
 /** The only host the agent sends its prompt and its API key to. */
 export const ANTHROPIC_API_URL = "https://api.anthropic.com";
 
+/** agent/.env, the file `npm run agent` loads (node --env-file-if-exists=.env, run in agent/), found from this file. */
+export const AGENT_ENV_FILE = join(dirname(fileURLToPath(import.meta.url)), "..", "..", ".env");
+
+/** The ANTHROPIC_API_KEY that `file` sets; undefined when there is no such file or it leaves the key out or blank. */
+function envFileKey(file: string): string | undefined {
+  let text: string;
+  try {
+    text = readFileSync(file, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw e;
+  }
+  return parseEnv(text).ANTHROPIC_API_KEY || undefined;
+}
+
 /**
- * The SDK client, pinned to ANTHROPIC_API_URL and ANTHROPIC_API_KEY. Left to itself the SDK reads ANTHROPIC_BASE_URL
+ * The key the agent sends to Claude: agent/.env's ANTHROPIC_API_KEY when the file sets one, else the environment's.
+ * Node's --env-file keeps a variable the terminal already has, so a key exported there for another tool would
+ * otherwise reach Claude in place of the agent's own.
+ */
+export function anthropicApiKey(env: NodeJS.ProcessEnv = process.env, file: string = AGENT_ENV_FILE): string | undefined {
+  return envFileKey(file) ?? (env.ANTHROPIC_API_KEY || undefined);
+}
+
+/**
+ * The SDK client, pinned to ANTHROPIC_API_URL and anthropicApiKey(). Left to itself the SDK reads ANTHROPIC_BASE_URL
  * (Claude Code exports one to the processes it starts), which would get the key and could answer for Claude, and with
  * no key it falls back to ANTHROPIC_AUTH_TOKEN or a login profile. A key passed in code keeps it from reading either.
  */
-export function anthropicClient(opts: { fetch?: typeof globalThis.fetch } = {}): Anthropic {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
+export function anthropicClient(opts: { fetch?: typeof globalThis.fetch; envFile?: string } = {}): Anthropic {
+  const { envFile, ...client } = opts;
+  const apiKey = anthropicApiKey(process.env, envFile);
   if (!apiKey) throw new Error("ANTHROPIC_API_KEY is not set");
-  return new Anthropic({ ...opts, baseURL: ANTHROPIC_API_URL, apiKey, authToken: null });
+  return new Anthropic({ ...client, baseURL: ANTHROPIC_API_URL, apiKey, authToken: null });
+}
+
+/**
+ * One line for main.ts to print at startup when the environment's ANTHROPIC_API_KEY differs from agent/.env's, the
+ * one anthropicApiKey() sends; null otherwise. It names the variable and never a value.
+ */
+export function ignoredAnthropicKey(env: NodeJS.ProcessEnv = process.env, file: string = AGENT_ENV_FILE): string | null {
+  const fromFile = envFileKey(file);
+  if (!fromFile || !env.ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY === fromFile) return null;
+  return "maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env";
 }
 
 /** The set Anthropic env that anthropicClient overrides, as one line for main.ts to print at startup; null if none. */

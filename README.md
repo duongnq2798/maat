@@ -267,13 +267,13 @@ measurement script and its data are not in the repository, so these figures cann
 | --- | --- | --- | --- |
 | Suggest | Code: a rule-based policy | Equal weights after a 30% USDC reserve, a 5-point drift trigger. Advisory only | [`policy.ts#L13`](agent/src/policy.ts#L13) |
 | Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L27`](agent/src/config.ts#L27) |
-| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L106-L107`](agent/src/llm/proposer.ts#L106-L107) |
+| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L145-L146`](agent/src/llm/proposer.ts#L145-L146) |
 | Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L47-L71`](agent/src/intent.ts#L47-L71) |
 | Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L14`](agent/src/chain/preview.ts#L14) |
-| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L290-L296`](agent/src/loop/runOnce.ts#L290-L296) |
+| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L293-L299`](agent/src/loop/runOnce.ts#L293-L299) |
 | Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; Builder Code appended | [`sender.ts#L26-L53`](agent/src/exec/sender.ts#L26-L53) |
 | Decide | The vault | The nine checks; the first failure is the reason; a refusal does not revert | [`MandateVault.sol#L257-L282`](contracts/src/MandateVault.sol#L257-L282) |
-| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L323-L324`](agent/src/loop/runOnce.ts#L323-L324) |
+| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L326-L327`](agent/src/loop/runOnce.ts#L326-L327) |
 
 The model chooses what to try and says why; code bounds its answer; only the vault decides.
 
@@ -540,7 +540,7 @@ it has not been re-timed.
 
    ```text
     Test Files  30 passed (30)
-         Tests  382 passed (382)
+         Tests  392 passed (392)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -559,8 +559,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  115 passed (115)
-         Tests  2587 passed (2587)
+    Test Files  116 passed (116)
+         Tests  2593 passed (2593)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
    search index: … bytes gzipped, budget 935000
@@ -606,6 +606,8 @@ detail: [Run the tests](https://maatonbase.xyz/docs/guides/run-the-tests).
 
 Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` and `web/`, `npm run verify` in
 `web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/` after a contract change.
+`npm test` in `ops/journal/` runs the journal publisher's tests, which need git and no network and run by hand;
+CI's web unit tests check the chain it writes, on its fixtures.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
@@ -752,6 +754,8 @@ web/                       Next.js landing page, /now, /gap-index, /ledger, docs
                            tests, Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            Base mainnet address table
+ops/journal/               the journal publisher the owner starts beside the agent: it appends the public fields
+                           of the agent's journal to the public agent-journal branch every 15 min, never by force
 docs/superpowers/          design specs and implementation plans
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately
@@ -790,6 +794,7 @@ SECURITY.md                how to report a security problem privately
 | [`agent/README.md`](agent/README.md) | Running the agent, configuration, recovery |
 | [`deployments/go-live.md`](deployments/go-live.md) | The owner's go-live runbook: deploy, fund, the first-decision BUY intents built by `agent/scripts/first-decision.ts`, and the executor handover to the CDP Server Wallet |
 | [`deployments/README.md`](deployments/README.md) | The mainnet deploy reference (environment, dry run, checklist, smoke tests, unwind, executor switch) and the address table |
+| [`ops/journal/README.md`](ops/journal/README.md) | The journal publisher: the fields it copies from the agent's journal to the public `agent-journal` branch, how the owner starts and stops it on Windows, what it prints, and when and why it stops |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
 | [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
 
