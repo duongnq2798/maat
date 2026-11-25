@@ -114,7 +114,8 @@ describe("planAppend", () => {
     assert.deepEqual(p.files.map((f) => f.name), ["2026-11-26.jsonl", "2026-11-27.jsonl"]);
     assert.deepEqual(p.changed, ["2026-11-26.jsonl", "2026-11-27.jsonl"]);
     assert.equal(p.files[0].text.split("\n").length - 1, 2);
-    assert.equal(p.index, `${canon({ days: ["2026-11-26.jsonl", "2026-11-27.jsonl"], head: day2[1].hash, rows: 4, v: 1 })}\n`);
+    // Spec §3.4: index.json is canon({ days, head, rows, v: 1 }) and nothing more, no line feed after it.
+    assert.equal(p.index, canon({ days: ["2026-11-26.jsonl", "2026-11-27.jsonl"], head: day2[1].hash, rows: 4, v: 1 }));
   });
 
   it("never appends a row the branch already has: a second plan over the same journal appends nothing", () => {

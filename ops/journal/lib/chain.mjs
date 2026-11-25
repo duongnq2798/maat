@@ -170,6 +170,6 @@ export function planAppend({ local, files, allowDryRun = false }) {
   if (result.head !== expected || result.rows !== published.rows + fresh.length) {
     throw new PublishStop("the planned day files do not end at the local journal's head; nothing is pushed");
   }
-  const index = `${canon({ days: all.map((f) => f.name), head: result.head, rows: result.rows, v: 1 })}\n`;
+  const index = canon({ days: all.map((f) => f.name), head: result.head, rows: result.rows, v: 1 });
   return { appended: fresh.length, files: all, changed, index, head: result.head, rows: result.rows };
 }
