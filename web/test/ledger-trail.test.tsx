@@ -217,6 +217,17 @@ describe("the agent trail on each Decision row", () => {
     expect(rowOf(2)).toHaveTextContent("· found in the published journal");
     expect(rowOf(3)).toHaveTextContent("· not in the published journal yet");
   });
+
+  it("says the journal's chain is broken, not that a blob is missing, when the chain breaks before its sent row", () => {
+    const fields = { kind: "sent", ts: "2026-11-24T16:59:12.000Z", runId: "r", txHash: hash32(2), blob: VECTORS.V1.blob };
+    const sent = canon({ ...fields, prev: JOURNAL_HASHES[1], hash: keccak256(toBytes(canon({ ...fields, prev: JOURNAL_HASHES[1] }))) });
+    // The second line repeats the first, so the chain breaks at line 2 and the sent row after it is never verified.
+    const broken = verifyJournal([{ name: "d.jsonl", text: [JOURNAL_LINES[0], JOURNAL_LINES[0], sent].map((l) => `${l}\n`).join("") }]);
+    expect(broken.failure?.line).toBe(2);
+    timeline(snapshot, { state: "read", files: ["d.jsonl"], ...broken });
+    expect(rowOf(2)).toHaveTextContent("· not checked: the published journal's chain is broken");
+    expect(rowOf(2)).not.toHaveTextContent("not in the published journal yet");
+  });
 });
 
 describe("the Rounds tab", () => {

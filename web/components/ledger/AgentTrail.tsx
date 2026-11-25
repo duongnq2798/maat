@@ -109,13 +109,17 @@ const ANCHOR: Record<AnchorState, string> = {
   broken: "does not match the published journal",
 };
 
-/** What the page knows about the journal when it checks a blob's anchor. */
-export type AnchorView = AnchorState | "checking" | "absent" | "unreadable";
+/**
+ * What the page knows about the journal when it checks a blob's anchor. "chain-broken": no row that verified names the
+ * transaction, and the chain breaks, so a row after the break may name it but cannot be trusted.
+ */
+export type AnchorView = AnchorState | "checking" | "absent" | "unreadable" | "chain-broken";
 
 const ANCHOR_VIEW: Record<Exclude<AnchorView, AnchorState>, string> = {
   checking: "checking the journal…",
   absent: "no journal published yet",
   unreadable: "the journal could not be read",
+  "chain-broken": "not checked: the published journal's chain is broken",
 };
 
 function Fact({ term, children }: { term: string; children: ReactNode }) {

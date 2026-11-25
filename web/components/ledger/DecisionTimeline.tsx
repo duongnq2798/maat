@@ -72,8 +72,11 @@ function anchorView(d: MainnetDecision, blob: { text: string; j: Hash }, journal
       return "absent";
     case "error":
       return "unreadable";
-    case "read":
-      return anchorState(d.txHash, blob, journal.rows);
+    case "read": {
+      // journal.rows stops at the first line that failed, so "pending" says nothing once the chain is broken.
+      const a = anchorState(d.txHash, blob, journal.rows);
+      return a === "pending" && journal.failure ? "chain-broken" : a;
+    }
   }
 }
 
