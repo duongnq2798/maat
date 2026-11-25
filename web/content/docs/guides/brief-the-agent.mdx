@@ -63,7 +63,7 @@ The page reads the Builder Code from the vault's first [Decision](/docs/help/glo
 
 ## Ask the real vault
 
-Pick an action, a token and an amount, and the page calls `previewIntent` on the live vault at the latest block over the site's public RPCs. It runs the same checks as `execute` and returns the [reason](/docs/help/glossary#reason) the vault would give. It is an `eth_call`: nothing is signed or sent, and no brief is needed.
+Pick an action, a token and an amount, and the page calls `previewIntent` on the live vault at the latest block over the site's public RPCs. `previewIntent` runs the same checks as `execute` and returns the [reason](/docs/help/glossary#reason) the vault would give. `PAY_EXPENSE` also takes a payee, which the page fills in with the first address of the vault's `payees()`, because the vault refuses an expense to any address not on that list. The preview is an `eth_call`: nothing is signed or sent, and no brief is needed.
 
 ## Read the feed
 

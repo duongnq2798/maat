@@ -49,11 +49,19 @@ export interface PreviewRequest {
   action: ActionName;
   token: Address;
   amount: bigint;
+  /** PAY_EXPENSE's payee: MandateVault._checkExpense refuses any address not on the vault's allowlist. */
+  payee?: Address;
 }
 
-/** The Intent struct previewIntent takes, with no minOut, no payee and a zero rationale hash. */
+/** The Intent struct previewIntent takes, with no minOut, the payee or none, and a zero rationale hash. */
 export function previewIntentArgs(req: PreviewRequest) {
-  return { id: PREVIEW_ID, action: ACTIONS.indexOf(req.action), token: req.token, amount: req.amount, minOut: 0n, payee: zeroAddress, rationaleHash: zeroHash };
+  return { id: PREVIEW_ID, action: ACTIONS.indexOf(req.action), token: req.token, amount: req.amount, minOut: 0n, payee: req.payee ?? zeroAddress, rationaleHash: zeroHash };
+}
+
+/** The vault's allowlisted payees, payees(), checksummed. */
+export async function vaultPayees(client: LedgerClient, vault: Address): Promise<Address[]> {
+  const list = (await client.readContract({ address: vault, abi: vaultAbi, functionName: "payees" })) as readonly string[];
+  return list.map((a) => getAddress(a));
 }
 
 export interface PreviewResult {

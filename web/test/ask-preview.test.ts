@@ -1,9 +1,9 @@
 // @vitest-environment node
-import { keccak256, toBytes, zeroAddress, zeroHash, type Address } from "viem";
+import { getAddress, keccak256, toBytes, zeroAddress, zeroHash, type Address } from "viem";
 import { describe, expect, it } from "vitest";
 import { ACTIONS } from "@/content/decisions";
 import type { LedgerClient } from "@/lib/chain/load";
-import { amountUnit, parseAmount, PREVIEW_ID, previewIntent, previewIntentArgs, previewTokens, tokenDecimals } from "@/lib/chain/preview";
+import { amountUnit, parseAmount, PREVIEW_ID, previewIntent, previewIntentArgs, previewTokens, tokenDecimals, vaultPayees } from "@/lib/chain/preview";
 
 const VAULT: Address = "0x00000000000000000000000000000000000Aa001";
 const NVDAC: Address = "0xb20000000000000000000078ee7ce2fE4908108C";
@@ -55,6 +55,11 @@ describe("the preview's inputs", () => {
     for (const bad of ["", "abc", "-1", "1e3", "0.0000001", "1,000", "0x10"]) expect(parseAmount(bad, 6), bad).toBeNull();
   });
 
+  it("puts the payee in the Intent when one is given, as PAY_EXPENSE needs (MandateVault._checkExpense)", () => {
+    const payee: Address = "0x00000000000000000000000000000000000000A1";
+    expect(previewIntentArgs({ action: "PAY_EXPENSE", token: USDC, amount: 7n, payee }).payee).toBe(payee);
+  });
+
   it("builds the Intent previewIntent takes: a fixed id, no minOut, no payee and a zero rationale hash", () => {
     expect(PREVIEW_ID).toBe(keccak256(toBytes("maat:ask:preview")));
     expect(previewIntentArgs({ action: "SELL", token: NVDAC, amount: 7n })).toEqual({
@@ -86,6 +91,18 @@ describe("previewIntent", () => {
   it("throws on a number the Reason enum does not have, and passes an RPC error on", async () => {
     await expect(previewIntent(fakeClient(20).client, VAULT, { action: "BUY", token: NVDAC, amount: 1n })).rejects.toThrow(/20 is not a Reason/);
     await expect(previewIntent(fakeClient(new Error("HTTP 429")).client, VAULT, { action: "BUY", token: NVDAC, amount: 1n })).rejects.toThrow("HTTP 429");
+  });
+});
+
+describe("vaultPayees", () => {
+  it("reads the vault's payees(), checksummed", async () => {
+    const client = {
+      readContract: async (c: { functionName: string; address: Address }) => {
+        expect(c).toMatchObject({ functionName: "payees", address: VAULT });
+        return ["0x00000000000000000000000000000000000000a1"];
+      },
+    } as unknown as LedgerClient;
+    expect(await vaultPayees(client, VAULT)).toEqual([getAddress("0x00000000000000000000000000000000000000a1")]);
   });
 });
 

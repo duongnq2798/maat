@@ -1,15 +1,19 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { encodeAbiParameters, encodeEventTopics, keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
+import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
 import { ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
+import { PreviewForm } from "@/app/(site)/ask/PreviewForm";
 import AskPage, { metadata } from "@/app/(site)/ask/page";
 import { askConfig, askIsOpen, fetchAskConfig } from "@/app/(site)/ask/config";
 import { GET as GET_ASK } from "@/app/data/ask.json/route";
 import { ASK_OPEN } from "@/content/ask-open";
+import { ACTIONS } from "@/content/decisions";
+import { REASONS } from "@/content/reasons";
 import type { CachedLog } from "@/lib/chain/cache";
 import { inboxAbi } from "@/lib/chain/inbox";
+import { shortAddress } from "@/lib/chain/tokens";
 import { docsData } from "@/lib/docs/generated";
 import type { LedgerClient } from "@/lib/chain/load";
 import type { InjectedWallet } from "@/lib/wallet/eip6963";
@@ -337,5 +341,57 @@ describe("/ask once it is open", () => {
     expect(screen.getByText("282 / 280 bytes: 282 bytes is over the 280-byte limit.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send with Fake Wallet" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send with Base Account" })).toBeDisabled();
+  });
+});
+
+describe("the free preview of PAY_EXPENSE", () => {
+  const PAYEE = getAddress("0x000000000000000000000000000000000000fee1");
+  const OTHER = getAddress("0x00000000000000000000000000000000000bad01");
+
+  /** A vault that lists PAYEE in payees() and allows an expense only to it, recording each previewIntent. */
+  function vault() {
+    const asked: { payee: Address; action: number }[] = [];
+    const client = {
+      getBlockNumber: async () => 61_000_000n,
+      readContract: async ({ functionName, args }: { functionName: string; args?: readonly unknown[] }) => {
+        if (functionName === "payees") return [PAYEE.toLowerCase()];
+        if (functionName !== "previewIntent") throw new Error(`unexpected readContract ${functionName}`);
+        const intent = args![0] as { payee: Address; action: number };
+        asked.push({ payee: intent.payee, action: intent.action });
+        return intent.payee.toLowerCase() === PAYEE.toLowerCase() ? 0 : 1 + REASONS.indexOf("PAYEE_NOT_ALLOWED");
+      },
+    } as unknown as LedgerClient;
+    render(<PreviewForm vault={VAULT} client={client} />);
+    return { asked };
+  }
+
+  const form = () => screen.getByRole("form", { name: "Ask the real vault" });
+  const payee = () => within(form()).getByLabelText("Payee") as HTMLInputElement;
+
+  it("asks for a payee only for PAY_EXPENSE, fills in the vault's first payee and names it in the answer", async () => {
+    const { asked } = vault();
+    expect(within(form()).queryByLabelText("Payee")).toBeNull();
+    fireEvent.change(within(form()).getByLabelText("Action"), { target: { value: "PAY_EXPENSE" } });
+    await waitFor(() => expect(payee().value).toBe(PAYEE));
+    expect(within(form()).getByText("Filled with the vault's first payee, from payees().")).toBeInTheDocument();
+    fireEvent.click(within(form()).getByRole("button", { name: "Ask the vault" }));
+    await waitFor(() => expect(form().querySelector('[data-preview-reason="OK"]')).not.toBeNull());
+    expect(asked).toEqual([{ payee: PAYEE, action: ACTIONS.indexOf("PAY_EXPENSE") }]);
+    expect(within(form()).getByRole("status")).toHaveTextContent(`PAY_EXPENSE NVDAc, 20 USDC to ${shortAddress(PAYEE)}, at block 61,000,000: the vault would allow it.`);
+  });
+
+  it("asks about the payee the visitor enters, and refuses to ask without a valid address", async () => {
+    const { asked } = vault();
+    fireEvent.change(within(form()).getByLabelText("Action"), { target: { value: "PAY_EXPENSE" } });
+    await waitFor(() => expect(payee().value).toBe(PAYEE));
+    fireEvent.change(payee(), { target: { value: "not an address" } });
+    fireEvent.click(within(form()).getByRole("button", { name: "Ask the vault" }));
+    expect(await within(form()).findByText("Enter the payee as a 0x address of 40 hex digits.")).toBeInTheDocument();
+    expect(asked).toEqual([]);
+    fireEvent.change(payee(), { target: { value: OTHER } });
+    fireEvent.click(within(form()).getByRole("button", { name: "Ask the vault" }));
+    await waitFor(() => expect(form().querySelector('[data-preview-reason="PAYEE_NOT_ALLOWED"]')).not.toBeNull());
+    expect(asked).toEqual([{ payee: OTHER, action: ACTIONS.indexOf("PAY_EXPENSE") }]);
+    expect(within(form()).getByRole("status")).toHaveTextContent(`to ${shortAddress(OTHER)}`);
   });
 });
