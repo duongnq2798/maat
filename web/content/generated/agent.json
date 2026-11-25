@@ -200,6 +200,10 @@
     {
       "name": "agent:heartbeat",
       "command": "node --import tsx scripts/heartbeat.ts"
+    },
+    {
+      "name": "verify",
+      "command": "node --import tsx scripts/verify-decision.ts"
     }
   ],
   "scriptFiles": [
@@ -208,6 +212,7 @@
     "gen-abis.ts",
     "heartbeat.ts",
     "restart-loop.ts",
-    "smoke-claude.ts"
+    "smoke-claude.ts",
+    "verify-decision.ts"
   ]
 }
