@@ -8,7 +8,7 @@ import { briefTxData } from "@/lib/wallet/suffix";
 import { AGENT_TEST_SUFFIX } from "./helpers/maat-v1";
 
 const sdk = vi.hoisted(() => ({ options: [] as unknown[], provider: { request: async () => null } }));
-vi.mock("@base-org/account", () => ({
+vi.mock("@base-org/account/browser", () => ({
   createBaseAccountSDK: (options: unknown) => {
     sdk.options.push(options);
     return { getProvider: () => sdk.provider };
