@@ -10,7 +10,9 @@ import {spread} from "./VaultHandler.sol";
 
 /// @notice Moves the clock forward: into regular sessions most often, and across nights, weekends, holidays and
 /// UTC midnight. Each move refreshes the feeds, except one feed in 32, which keeps its last answer and may go
-/// stale; one refreshed answer in 32 is off the pool by more than the premium limit.
+/// stale; one refreshed answer in 32 is off the pool by more than the premium limit. Built with no feeds (the
+/// zero address for both), as test/fork/LiveVaultInvariants.t.sol builds it for the real ones, it only moves the
+/// clock.
 contract TimeHandler is CommonBase, StdUtils {
     uint256 internal constant OPEN_MIN = 570; // 09:30 ET
     uint256 internal constant CLOSE_MIN = 960; // 16:00 ET
@@ -62,6 +64,7 @@ contract TimeHandler is CommonBase, StdUtils {
         vm.warp(target);
         if (calendar.isOpen(target, SessionMode.REGULAR)) ++openLandings;
         for (uint256 f; f < 2; ++f) {
+            if (address(feeds[f]) == address(0)) continue; // no feed to refresh
             uint256 s = seed >> (32 * f);
             if (s % 32 == 0) continue; // keeps its last answer, which may go stale
             // within 30 bps of the pool, or 60 to 90 bps off it one time in 32 (the mandates allow 50); bit 4 picks
