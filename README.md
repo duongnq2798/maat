@@ -563,7 +563,7 @@ it has not been re-timed.
          Tests  2587 passed (2587)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
-   search index: … bytes gzipped, budget 850000
+   search index: … bytes gzipped, budget 935000
    ```
 
    The same site is live at [maatonbase.xyz](https://maatonbase.xyz); `npm run dev` serves it on
