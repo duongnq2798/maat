@@ -4,6 +4,7 @@ import { WeekChart } from "@/components/charts/WeekChart";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FACTS } from "@/content/facts";
+import { PUBLISHED } from "@/content/gap-index";
 import type { RefusalCode } from "@/content/reasons";
 
 interface CardProps {
@@ -78,6 +79,11 @@ export function Problem() {
           </div>
         </ProblemCard>
       </div>
+      {/* The weekends measured on Base mainnet: the latest Gap Index edition, by its own title. */}
+      <a href="/gap-index" className="-mt-6 self-start text-[15px] font-medium">
+        Weekend Gap Index · {PUBLISHED[0]!.title}
+        <span aria-hidden="true"> →</span>
+      </a>
     </section>
   );
 }

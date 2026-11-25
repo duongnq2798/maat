@@ -44,6 +44,21 @@ export interface EventParam {
   name: string;
 }
 
+/** One Decision log of the Base mainnet vault as an RPC returned it, with its block's time and its tx's gas. */
+export interface RecordedLog {
+  /** The emitting contract, the MandateVault. */
+  address: `0x${string}`;
+  blockNumber: string;
+  logIndex: number;
+  transactionHash: `0x${string}`;
+  topics: readonly `0x${string}`[];
+  data: `0x${string}`;
+  /** Unix seconds of the block. */
+  blockTime: number;
+  /** The tx's gasUsed, decimal. */
+  gasUsed: string;
+}
+
 const SPEC = "docs/superpowers/specs/2026-11-06-mandate-treasury-design.md";
 const FORK_TEST = "agent/test/integration/agent.fork.test.ts";
 
@@ -145,5 +160,38 @@ export const FACTS = {
   forkVaultUsd: fact(
     200,
     "agent/test/integration/deploy.ts: owner.fund(200_000_000n), the USDC the fork vault starts with",
+  ),
+  mainnetDecisions: fact<readonly RecordedLog[]>(
+    [
+      {
+        address: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
+        blockNumber: "61700601",
+        logIndex: 24,
+        transactionHash: "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
+        topics: [
+          "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322",
+          "0xdc06ec8e29767044d325cc10445a942d26a463a4ed08487b013c5fed2a59243c",
+          "0x000000000000000000000000b20000000000000000000078ee7ce2fe4908108c",
+        ],
+        data: "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+        blockTime: 1795530495,
+        gasUsed: "113352",
+      },
+      {
+        address: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
+        blockNumber: "61745836",
+        logIndex: 46,
+        transactionHash: "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8",
+        topics: [
+          "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322",
+          "0x475efb77a4242345466f42fc844ac578b99716db50eca20d0ffe27549a68ee3d",
+          "0x000000000000000000000000b20000000000000000000078ee7ce2fe4908108c",
+        ],
+        data: "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+        blockTime: 1795539542,
+        gasUsed: "702443",
+      },
+    ],
+    "the vault's Decision log in each tx's receipt (eth_getTransactionReceipt), its block's timestamp (eth_getBlockByNumber) and the tx's gasUsed, read with cast from base-rpc.publicnode.com on 2026-11-25; an eth_getLogs scan of the vault from its deploy block 61,698,517 through block 61,983,761 found these two Decision logs and no other. web/content/docs/get-started/status.mdx records both txs",
   ),
 } as const;

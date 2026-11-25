@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { expect, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { routeLiveRpc } from "./fake-live-rpc";
 import { collectErrors, contentRight, lineCount, measureFit, rightEdge } from "./helpers";
 
@@ -8,6 +8,16 @@ import { collectErrors, contentRight, lineCount, measureFit, rightEdge } from ".
 test.beforeEach(async ({ page }) => {
   await routeLiveRpc(page, "weekend");
 });
+
+/**
+ * The hero's engine card opens on the mainnet vault; the scripted fork run, with its moment toggle and its verdict
+ * window, is the "Fork replay" tab.
+ */
+async function openForkReplay(page: Page) {
+  const tab = page.locator("#top").getByRole("tab", { name: "Fork replay" });
+  await tab.click();
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+}
 
 // 1024: the narrowest width that keeps the hero in two columns, so the engine card shares its row.
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
@@ -19,13 +29,24 @@ for (const width of WIDTHS) {
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
 
-    // Default moment: Saturday, Refused.
+    // The first screen: the engine card on its mainnet face.
+    const mainnet = await measureFit(page);
+    expect(mainnet.overflow).toBeLessThanOrEqual(0);
+    expect(mainnet.clipped).toEqual([]);
+    await page.screenshot({
+      path: `test-results/screens/landing-${width}.png`,
+      fullPage: true,
+      animations: "disabled",
+    });
+
+    // The fork replay's default moment: Saturday, Refused.
+    await openForkReplay(page);
     const saturday = await measureFit(page);
     expect(saturday.overflow).toBeLessThanOrEqual(0);
     expect(saturday.clipped).toEqual([]);
     // `animations: "disabled"` fast-forwards the intro, so the owner sees all nine rows and the verdict.
     await page.screenshot({
-      path: `test-results/screens/landing-${width}.png`,
+      path: `test-results/screens/landing-${width}-fork.png`,
       fullPage: true,
       animations: "disabled",
     });
@@ -53,6 +74,7 @@ for (const width of WIDTHS) {
 
 test("the moment toggle works by mouse and keyboard", async ({ page }) => {
   await page.goto("/");
+  await openForkReplay(page);
   const hero = page.locator("#top");
   // The decision engine's live region, the one that holds the verdict: the live strip above it has a status of its own.
   const verdict = hero.getByRole("status").filter({ has: page.locator("[data-verdict]") });
@@ -84,6 +106,7 @@ for (const width of [1280, 375]) {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/");
     await page.evaluate(() => document.fonts.ready);
+    await openForkReplay(page);
     const hero = page.locator("#top");
     const box = hero.locator('[role="status"] > div');
     const tag = hero.locator('[role="status"] [data-reason-tag]');
@@ -168,6 +191,7 @@ test("the Refusals section fills only the recorded refusal's label in red", asyn
 test("reduced motion shows the final state at once", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");
+  await openForkReplay(page);
   const opacities = await page.evaluate(() =>
     [
       ...document.querySelectorAll<HTMLElement>('#top [aria-label="Mandate checks"] li'),
@@ -179,9 +203,9 @@ test("reduced motion shows the final state at once", async ({ page }) => {
 });
 
 // The same check as e2e/docs-a11y.spec.ts, on the landing. The landing has one theme (no dark variant), so it runs
-// once. Its default state holds every ReasonTag tone: the hero's refused verdict on ink and the simulator's allowed
-// verdict on accent (verdict), the problem cards (refuse) and the Refusals list (neutral); and the ledger's code tags
-// (`text-ink-2` on white, components/LedgerTable.tsx).
+// once. Its default state holds the vault card's recorded Decisions and the simulator's allowed verdict on accent
+// (verdict), the problem cards (refuse) and the Refusals list (neutral), and the ledger's code tags (`text-ink-2` on
+// white, components/LedgerTable.tsx); the hero's fork replay adds its refused verdict on ink.
 test("the landing has no serious or critical axe violations", async ({ page }) => {
   // Reduced motion shows the hero's intro in its final state at once, so axe never measures a row mid-fade.
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -190,7 +214,9 @@ test("the landing has no serious or critical axe violations", async ({ page }) =
   // Hydrated: Post on X carries the absolute share link only once the simulator has read the page's address.
   await expect(page.locator("#try").getByRole("link", { name: "Post on X" })).toHaveAttribute("href", /&url=/);
   const { violations } = await new AxeBuilder({ page }).analyze();
-  const blocking = violations
+  await openForkReplay(page);
+  const replay = await new AxeBuilder({ page }).include("#top").analyze();
+  const blocking = [...violations, ...replay.violations]
     .filter((v) => v.impact === "serious" || v.impact === "critical")
     .map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }));
   expect(blocking).toEqual([]);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isAddress, isHash, type Address, type Hash } from "viem";
 import { z } from "zod";
 import { browserStorage, memoryStorage } from "@/lib/chain/cache";
+import type { TxInput } from "@/lib/chain/ledger";
 import { errorText, loadLedger, verifyVault, type LedgerClient, type LedgerSnapshot } from "@/lib/chain/load";
 import { staticRationaleSource, type RationaleSource } from "@/lib/chain/rationale";
 import { createLedgerClient, rpcUrls } from "@/lib/chain/rpc";
@@ -104,6 +105,8 @@ export function useLedger(deps: LedgerDeps = {}): LedgerState & { retry: () => v
       }
 
       let floor: bigint | undefined;
+      // Decision transactions read so far: a refresh reads only the new ones.
+      const txs = new Map<string, TxInput>();
       let inFlight = false;
       const read = async (first: boolean) => {
         inFlight = true;
@@ -116,6 +119,7 @@ export function useLedger(deps: LedgerDeps = {}): LedgerState & { retry: () => v
             rationaleSource,
             storage,
             floor,
+            txs,
             now: d.now,
             signal,
             onProgress: first ? (p) => !signal.aborted && setState({ mode: "mainnet", snapshot: p, endpoints, loading: true, refreshError: null }) : undefined,

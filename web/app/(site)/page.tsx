@@ -12,30 +12,34 @@ import { Problem } from "@/components/sections/Problem";
 import { Refusals } from "@/components/sections/Refusals";
 import { TreasuryLoop } from "@/components/sections/TreasuryLoop";
 import { TryIt } from "@/components/sections/TryIt";
+import { VaultDecisionsProvider } from "@/components/sections/VaultDecisions";
 
-// The landing runs exactly one read of Base (spec 2026-11-23 section 3.8): the provider's. The strip, HOLD and the
-// ThumbBar's lamp read it.
+// The landing reads Base twice, each once for the whole page. LiveSnapshotProvider reads the market (spec 2026-11-23
+// section 3.8): the strip, HOLD and the ThumbBar's lamp read it. VaultDecisionsProvider reads the mainnet vault's
+// Decisions with /ledger's loader once the page has hydrated: the bar, the hero plate and the engine card read it.
 export default function Page() {
   return (
     <LiveSnapshotProvider>
-      <a href="#main" className="skip-link">
-        Skip to content
-      </a>
-      <AnnouncementBar />
-      <Nav />
-      <main id="main" tabIndex={-1} className="outline-none">
-        <Hero />
-        <BuiltOn />
-        <Problem />
-        <HowItWorks />
-        <Refusals />
-        <TryIt />
-        <Ledger />
-        <Mandate />
-        <TreasuryLoop />
-      </main>
-      <Footer />
-      <ThumbBar />
+      <VaultDecisionsProvider>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
+        <AnnouncementBar />
+        <Nav />
+        <main id="main" tabIndex={-1} className="outline-none">
+          <Hero />
+          <BuiltOn />
+          <Problem />
+          <HowItWorks />
+          <Refusals />
+          <TryIt />
+          <Ledger />
+          <Mandate />
+          <TreasuryLoop />
+        </main>
+        <Footer />
+        <ThumbBar />
+      </VaultDecisionsProvider>
     </LiveSnapshotProvider>
   );
 }

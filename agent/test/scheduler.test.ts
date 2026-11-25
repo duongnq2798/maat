@@ -68,6 +68,35 @@ describe("scheduler", () => {
     expect(lines).toEqual(["round r: halted, sent 0, skipped 0 (daily tx cap 20 reached)"]);
   });
 
+  it("puts the error of the round's run line on its line, so a failed Claude call does not read as a clean round", async () => {
+    const lines: string[] = [];
+    const errors = [
+      'claude: 401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+      "claude: request to https://api.anthropic.com/v1/messages failed for sk-ant-fake-key-in-an-error\nat a stack line",
+    ];
+    for (const error of errors) {
+      const ac = new AbortController();
+      await runForever({
+        signal: ac.signal,
+        run: async () => ({ ...rep(false), error }),
+        sleep: async () => ac.abort(),
+        log: (m) => lines.push(m),
+      });
+    }
+    const ac = new AbortController();
+    await runForever({
+      signal: ac.signal,
+      run: async () => ({ ...rep(false), status: "halted", haltReason: "daily tx cap 20 reached", error: "invalid proposal JSON: x" }),
+      sleep: async () => ac.abort(),
+      log: (m) => lines.push(m),
+    });
+    expect(lines).toEqual([
+      'round r: done, sent 0, skipped 0; error: claude: 401 {"type":"error","error":{"type":"authentication_error","message":"invalid x-api-key"}}',
+      "round r: done, sent 0, skipped 0; error: claude: request to [url] failed for [redacted]",
+      "round r: halted, sent 0, skipped 0 (daily tx cap 20 reached); error: invalid proposal JSON: x",
+    ]);
+  });
+
   it("calls afterRound after every round, failed ones too, and survives its failure", async () => {
     const ac = new AbortController();
     const seen: { status: string | null; error: string | null }[] = [];

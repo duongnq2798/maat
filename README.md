@@ -45,7 +45,7 @@
   Credit runs on the Aave V4 MAG7 Spoke. Agent transactions carry an ERC-8021 Builder Code, and the executor
   is built for a Coinbase CDP Server Wallet.
 - **What is built and tested.** The vault, guard library, onchain NYSE calendar, Aerodrome and Aave V4
-  adapters, deploy script, agent runtime, and the website with a 49-page docs center. CI on `main`
+  adapters, deploy script, agent runtime, and the website with a 51-page docs center. CI on `main`
   ([run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467), 2026-11-19): 220 contract,
   167 agent, 1,494 website unit and 259 end-to-end tests passed.
 - **On Base mainnet.** The owner deployed the four Maat contracts on 2026-11-24. They are unaudited.
@@ -267,13 +267,13 @@ measurement script and its data are not in the repository, so these figures cann
 | --- | --- | --- | --- |
 | Suggest | Code: a rule-based policy | Equal weights after a 30% USDC reserve, a 5-point drift trigger. Advisory only | [`policy.ts#L13`](agent/src/policy.ts#L13) |
 | Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L27`](agent/src/config.ts#L27) |
-| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L106-L107`](agent/src/llm/proposer.ts#L106-L107) |
+| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L145-L146`](agent/src/llm/proposer.ts#L145-L146) |
 | Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L47-L71`](agent/src/intent.ts#L47-L71) |
 | Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L14`](agent/src/chain/preview.ts#L14) |
-| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L290-L296`](agent/src/loop/runOnce.ts#L290-L296) |
+| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L293-L299`](agent/src/loop/runOnce.ts#L293-L299) |
 | Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; Builder Code appended | [`sender.ts#L26-L53`](agent/src/exec/sender.ts#L26-L53) |
 | Decide | The vault | The nine checks; the first failure is the reason; a refusal does not revert | [`MandateVault.sol#L257-L282`](contracts/src/MandateVault.sol#L257-L282) |
-| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L323-L324`](agent/src/loop/runOnce.ts#L323-L324) |
+| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale; the agent's journal keeps the text | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L24-L26`](agent/src/intent.ts#L24-L26), [`runOnce.ts#L326-L327`](agent/src/loop/runOnce.ts#L326-L327) |
 
 The model chooses what to try and says why; code bounds its answer; only the vault decides.
 
@@ -332,7 +332,7 @@ on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `449
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests). The Claude proposer is tested against a fake client and the fork run uses a scripted proposer; no output from the real Claude API is committed yet | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, tested against a fake CDP client only. Never run against real CDP | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the mainnet ledger, the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
+| Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Fork replay. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the mainnet ledger, the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
 | A rationale store the agent writes as it runs, read by the mainnet ledger (W2 follow-up); daily diary and replay page (W3) | **Planned** | [W2 spec §10](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md), [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Guard Service HTTP API, MCP server, Bankr Skill | **Planned** (the Guard Service is part of the unmerged PR #2) | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
@@ -518,15 +518,15 @@ it has not been re-timed.
    `reason: 6` is `MARKET_CLOSED` in [`Types.sol`](contracts/src/Types.sol). `execute` returned normally, the
    vault still holds its 200 USDC, and the intent id is spent, so the same request cannot be replayed.
 
-3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the deploy script's payee list,
-   and the invariant suite, which takes most of the run's time):
+3. **Run every contract unit test** (vault, guards, calendar, price math, both adapters, the briefs inbox, the deploy
+   script's payee list, and the invariant suite, which takes most of the run's time):
 
    ```bash
    forge test --no-match-path "test/fork/*"
    ```
 
    ```text
-   Ran 12 test suites in …: 247 tests passed, 0 failed, 0 skipped (247 total tests)
+   Ran 13 test suites in …: 265 tests passed, 0 failed, 0 skipped (265 total tests)
    ```
 
 4. **Run the agent's tests.** Claude, the Coinbase CDP wallet and the chain are all fakes here, so nothing
@@ -539,8 +539,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  25 passed (25)
-         Tests  217 passed (217)
+    Test Files  30 passed (30)
+         Tests  392 passed (392)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -559,11 +559,11 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  108 passed (108)
-         Tests  2435 passed (2435)
+    Test Files  115 passed (115)
+         Tests  2587 passed (2587)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 49 docs pages checked)
-   search index: … bytes gzipped, budget 850000
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
+   search index: … bytes gzipped, budget 935000
    ```
 
    The same site is live at [maatonbase.xyz](https://maatonbase.xyz); `npm run dev` serves it on
@@ -777,6 +777,7 @@ SECURITY.md                how to report a security problem privately
 | [Weekend Gap Index spec](docs/superpowers/specs/2026-11-21-weekend-gap-index-design.md) | How long each B20's Chainlink feed stays frozen in each closed NYSE window, the Aerodrome swaps meanwhile and the largest pool-vs-feed gap, measured from Base logs and published as dated editions |
 | [Web instrument spec](docs/superpowers/specs/2026-11-23-maat-web-instrument-design.md) | The site redrawn as one weighing instrument: the Balance hero, the live Readout, the annunciator with a lamp per refusal code, the Weekend Scope and the verdict tape, with its motion, type, colour, sources and phases |
 | [maat:v1 blob spec](docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md) | The rationale and sources the agent appends to `execute` calldata, its hash and byte cap, the hash-chained journal and its public `agent-journal` branch, the sender labels, and test vectors |
+| [MaatInbox spec](docs/superpowers/specs/2026-11-25-maat-inbox-design.md) | Briefs to the agent: the inbox contract, what the agent reads from it, the `/ask` notice and the `/proof` counting rule |
 | [Plan 1: core contracts](docs/superpowers/plans/2026-11-06-maat-plan-1-core-contracts.md) | Calendar, price library, guards, swap adapter, vault |
 | [Plan 2A: credit](docs/superpowers/plans/2026-11-06-maat-plan-2a-credit.md) | Aave V4 adapter, credit actions, de-risk window |
 | [Plan 2B: agent runtime](docs/superpowers/plans/2026-11-06-maat-plan-2b-agent-runtime.md) | Claude, CDP, Builder Code, the agent loop and its Base fork test |
