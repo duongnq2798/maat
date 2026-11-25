@@ -12,6 +12,26 @@ import { BRANCH, BRANCH_REF, FETCH_ARGS, gitRunner, PUSH_ARGS, redact, REMOTE, T
 /** The public repository the owner's git login pushes the branch to. */
 export const DEFAULT_REMOTE = "https://github.com/duongnq2798/maat.git";
 
+/**
+ * Whether a remote URL is the public repository, in any of the forms git takes: https or ssh, with or without `.git`.
+ * @param {string} url
+ */
+export function isPublicRepo(url) {
+  return url === DEFAULT_REMOTE || /github\.com[:/]+duongnq2798\/maat(?:\.git)?\/*$/i.test(url.trim());
+}
+
+/**
+ * --allow-dry-run publishes dry-run rows, and a line once pushed stays public, so its remote must be one of the owner's
+ * own: once the public branch holds a dry-run row, the live journal can never be appended there.
+ * @param {boolean} allowDryRun
+ * @param {string} url
+ */
+function refuseDryRunToPublic(allowDryRun, url) {
+  if (allowDryRun && isPublicRepo(url)) {
+    throw new PublishStop(`--allow-dry-run is for a rehearsal against a remote of your own, and this checkout would push to ${redact(url)}, the public repository, where a line stays for good. Give --remote and a new --checkout; nothing was fetched or pushed`);
+  }
+}
+
 const FORCED =
   "the remote agent-journal branch moved in a way that is not a fast-forward of what this checkout last fetched: someone force-pushed it or rewrote it. The publisher never force-pushes and pushed nothing. Compare the branch on GitHub with the checkout's log before you start the publisher again";
 
@@ -58,7 +78,11 @@ export async function publishOnce(o) {
     return r.code === 0 ? r.stdout.trim() : null;
   };
 
-  ensureCheckout(dir, o.remote, run, must);
+  const allowDryRun = o.allowDryRun ?? false;
+  // A remote given, or the default a new checkout gets, is refused before the checkout is made; an existing
+  // checkout's own origin right after it is checked.
+  if (o.remote !== undefined || !existsSync(dir) || readdirSync(dir).length === 0) refuseDryRunToPublic(allowDryRun, o.remote ?? DEFAULT_REMOTE);
+  refuseDryRunToPublic(allowDryRun, ensureCheckout(dir, o.remote, run, must));
 
   // Fetch, and take only a fast-forward of what the checkout saw last.
   const f = run([...FETCH_ARGS]);
@@ -94,7 +118,7 @@ export async function publishOnce(o) {
           .filter((n) => DAY_FILE_RE.test(n))
           .sort()
           .map((name) => ({ name, text: must(["cat-file", "blob", `HEAD:journal/${name}`]) }));
-  const plan = planAppend({ local, files, allowDryRun: o.allowDryRun ?? false });
+  const plan = planAppend({ local, files, allowDryRun });
 
   if (plan.appended > 0) {
     mkdirSync(join(dir, "journal"), { recursive: true });
@@ -136,6 +160,7 @@ export async function publishOnce(o) {
  * @param {string | undefined} remote
  * @param {(args: string[]) => import("./git.mjs").GitResult} run
  * @param {(args: string[]) => string} must
+ * @returns {string} the checkout's origin URL
  */
 function ensureCheckout(dir, remote, run, must) {
   if (!existsSync(dir) || readdirSync(dir).length === 0) {
@@ -162,4 +187,5 @@ function ensureCheckout(dir, remote, run, must) {
   if (head !== BRANCH_REF) throw new PublishStop(`the checkout ${dir} is on ${head || "a detached HEAD"}, not the ${BRANCH} branch`);
   const url = must(["remote", "get-url", REMOTE]).trim();
   if (remote !== undefined && url !== remote) throw new PublishStop(`the checkout's origin is ${redact(url)}, not ${redact(remote)}`);
+  return url;
 }

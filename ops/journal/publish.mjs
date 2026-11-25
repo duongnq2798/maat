@@ -27,7 +27,7 @@ export const USAGE = `Usage: node ops/journal/publish.mjs [options]
   --remote <url>        the remote a new checkout pushes to (default: ${DEFAULT_REMOTE})
   --interval-min <n>    minutes between rounds (default: ${INTERVAL_MIN})
   --once                run one round and exit
-  --allow-dry-run       publish dry-run rows too (for a rehearsal against a remote of your own)`;
+  --allow-dry-run       publish dry-run rows too (for a rehearsal against a remote of your own, never the public one)`;
 
 /**
  * The agent's data folder as the agent resolves it from agent/: --data-dir, else MAAT_DATA_DIR from the environment,

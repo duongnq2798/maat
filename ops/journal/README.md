@@ -104,6 +104,7 @@ someone else changed it is for you to decide.
 | `journal.jsonl line N: ...` with `hash`, `prev` or `no hash` | The local journal's chain is broken: a line was edited or removed, or written by code that does not chain. A line a crash cut short is not one of these: it is passed over | Do not edit `journal.jsonl`. Keep a copy of the file and report it |
 | `journal.jsonl line N: its published line would match URL_RE in field ...` (or `KEY_RE`, `HEX_RE`, `LONG_RE`) | A public field would carry a URL, key or token. The agent sanitizes these fields, so this is a bug | Nothing was pushed. The publisher cannot skip the line without breaking the chain; report it |
 | `journal.jsonl line N is a dry-run row` | The data folder is a dry run's, such as the soak's `data-dryrun` | Point it at the live agent's folder with `--data-dir` |
+| `--allow-dry-run is for a rehearsal against a remote of your own` | A rehearsal would have pushed dry-run rows to the public branch, where they would stay and block the live journal | Give `--remote` and a new `--checkout`, as in the rehearsal below |
 | `the branch's head ... is not in the local journal` | The branch was published from another journal: the wrong data folder, or the journal was replaced | Check `--data-dir` and `MAAT_DATA_DIR` |
 | `the published chain on the branch is broken` | A line on the branch fails its hash check | Look at the branch's history on GitHub |
 | `is on ..., not the agent-journal branch`, `origin is ..., not ...`, `is not a git checkout of its own` | Its checkout was changed by hand, or `--checkout` points at another folder | Point `--checkout` at its own checkout or at an empty folder |
@@ -117,7 +118,7 @@ someone else changed it is for you to decide.
 | `--remote <url>` | `https://github.com/duongnq2798/maat.git` | The remote a new checkout pushes to. An existing checkout keeps its `origin`, and the publisher stops if this option names another |
 | `--interval-min <n>` | `15` | Minutes between rounds |
 | `--once` | off | Run one round and exit: code 0 when it worked, 3 when it should be tried again, 1 when it stopped |
-| `--allow-dry-run` | off | Publish dry-run rows too, for a rehearsal against a remote of your own |
+| `--allow-dry-run` | off | Publish dry-run rows too, for a rehearsal against a remote of your own. It stops before any fetch when the remote is the public `duongnq2798/maat` repository, given, by default or as an existing checkout's `origin` |
 
 ## Rehearse against a local remote
 

@@ -1,7 +1,7 @@
 // End to end: the publisher against a temporary bare repository that stands in for GitHub, with real git.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { appendFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -249,6 +249,35 @@ describe("publishOnce refuses before it commits", () => {
     assert.equal(/fake|rpc\.example/.test(e.message), false);
     assert.equal(w.calls.some((c) => c[0] === "commit" || c[0] === "push"), false);
     assert.equal(w.remoteGit("for-each-ref"), "");
+  });
+
+  it("--allow-dry-run refuses the public repository as origin, given, by default or in the checkout, before any fetch", async () => {
+    const dry = chainRows([liveRun("2026-11-26T14:00:00.000Z", "d1", { mode: "dry-run" })]);
+    writeFileSync(w.journalFile, jsonl(dry));
+    const calls = w.calls.length;
+    // These rounds must never reach GitHub, guard or no guard: a fetch or a push fails the test instead.
+    const offline = (args, cwd) => {
+      if (args[0] === "fetch" || args[0] === "push") throw new Error(`test: git ${args[0]} must not run here`);
+      return w.o.git(args, cwd);
+    };
+    const fresh = join(w.root, "rehearsal");
+    for (const remote of [undefined, "https://github.com/duongnq2798/maat.git", "https://github.com/duongnq2798/maat", "git@github.com:duongnq2798/maat.git", "ssh://git@github.com/duongnq2798/Maat.git/"]) {
+      const e = await stopOf(publishOnce({ ...w.o, checkout: fresh, remote, allowDryRun: true, git: offline }));
+      assert.match(e.message, /--allow-dry-run.*remote of your own/);
+    }
+    assert.equal(existsSync(fresh), false, "no checkout is made for a refused rehearsal");
+    // A checkout made earlier with the public origin is refused too, when no --remote is given.
+    const made = join(w.root, "made");
+    mkdirSync(made);
+    w.git(["init", "-q"], made);
+    w.git(["symbolic-ref", "HEAD", BRANCH], made);
+    w.git(["remote", "add", "origin", "https://github.com/duongnq2798/maat.git"], made);
+    assert.match((await stopOf(publishOnce({ ...w.o, checkout: made, remote: undefined, allowDryRun: true, git: offline }))).message, /--allow-dry-run/);
+    assert.equal(w.calls.slice(calls).some((c) => c[0] === "fetch" || c[0] === "push"), false);
+    // A remote of one's own is fine.
+    const own = join(w.root, "own.git");
+    w.git(["init", "-q", "--bare", own]);
+    assert.equal((await publishOnce({ ...w.o, checkout: join(w.root, "own"), remote: own, allowDryRun: true })).status, "pushed");
   });
 
   it("a checkout on another branch, or pushing to another remote, stops it", async () => {
