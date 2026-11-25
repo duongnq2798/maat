@@ -14,6 +14,7 @@ import { FixedProposer } from "../../src/llm/proposer.js";
 import type { Batch } from "../../src/llm/schema.js";
 import { BILL_MIN_USD6, runOnce, type RunDeps } from "../../src/loop/runOnce.js";
 import { DEFAULT_POLICY } from "../../src/policy.js";
+import { decodeExecuteInput } from "../../src/rationale/calldata.js";
 import { ACTIONS, type OnchainIntent } from "../../src/types.js";
 import { startAnvil } from "./anvil.js";
 import { deployStack } from "./deploy.js";
@@ -67,6 +68,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
       sender,
       store: own?.store ?? store,
       journal: own?.journal ?? journal,
+      commit: "unknown",
       runId,
     });
   });
@@ -82,7 +84,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     (await j.read()).filter((e): e is Extract<JournalRow, { kind: "intent" }> => e.kind === "intent" && e.runId === runId);
   const nonce = () => pub.getTransactionCount({ address: stack.executor as Address });
 
-  /** Every sent tx: to the vault, Builder Code, explicit gas >= its floor, not starved, and successful. */
+  /** Every sent tx: to the vault, Builder Code, an execute's maat:v1 blob, explicit gas >= its floor, not starved, and successful. */
   const checkSent = async (runId: string, hashes: Hex[]) => {
     for (const hash of hashes) {
       const tx = await pub.getTransaction({ hash });
@@ -91,6 +93,8 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
       const fn = call.functionName as GasFunction;
       expect(Object.keys(GAS_FLOOR)).toContain(fn);
       expect(codesIn(tx.input)).toEqual([CODE]);
+      // An execute carries its blob between the call and the suffix, and the intent hashes exactly that blob.
+      if (fn === "execute") expect(decodeExecuteInput(tx.input)).toMatchObject({ status: "v1", hashTick: true, codes: [CODE] });
       expect(getAddress(tx.from)).toBe(getAddress(stack.executor));
       expect(getAddress(tx.to!)).toBe(getAddress(stack.vault));
       expect(receipt.status).toBe("success");

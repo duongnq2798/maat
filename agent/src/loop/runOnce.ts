@@ -17,11 +17,12 @@ import { previewIntent, type PreviewClient } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
 import { encodeExecute, encodeSyncMultiplier, gasLimit, type GasFunction } from "../exec/calls.js";
 import { SendRefused, type GuardedSender } from "../exec/sender.js";
-import { buildIntent, rationaleHash, type Proposal } from "../intent.js";
+import { buildIntent, type BlobContext, type Proposal } from "../intent.js";
 import type { Journal } from "../ledger/journal.js";
 import type { PendingTx, Store } from "../ledger/store.js";
 import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
+import { encodeBlob, type EncodedBlob } from "../rationale/blob.js";
 import { oneLine } from "../redact.js";
 import { closedNote, gate, LOGGABLE_REASONS, refusalKey } from "../refusals.js";
 import { CREDIT_ACTIONS, REASONS } from "../types.js";
@@ -56,7 +57,9 @@ export interface RunDeps {
   /** Required in live mode. Only a GuardedSender: the vault-only, gas-bounded, Builder-Code path. */
   sender: GuardedSender | null;
   store: Store;
-  journal: Pick<Journal, "append">;
+  journal: Pick<Journal, "append" | "head">;
+  /** The blob's c: gitCommit(), the same value the journal stamps on each row. */
+  commit: string;
   /** DEFAULT_POLICY when unset. Its creditActions also decides the prompt and whether a credit proposal is dropped. */
   policy?: PolicyParams;
   runId?: string;
@@ -127,7 +130,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     if (d.store.txCount(day) >= d.maxTxPerDay) throw new Halt(`daily tx cap ${d.maxTxPerDay} reached`);
   };
 
-  // The estimate goes through the public client as the executor; a failed estimate halts (no fallback limit).
+  // The estimate goes through the public client as the executor, on the full calldata GuardedSender.calldata gives;
+  // a failed estimate halts (no fallback limit).
   const gasFor = async (fn: GasFunction, data: Hex): Promise<bigint> => {
     try {
       return gasLimit(fn, await d.txClient.estimateGas({ account: d.executor, to: d.vault, data }));
@@ -240,7 +244,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       }
       checkCap();
       const data = encodeSyncMultiplier(t.address);
-      const gas = await gasFor("syncMultiplier", data);
+      const gas = await gasFor("syncMultiplier", sender.calldata({ to: d.vault, data }));
       d.store.recordTx(day);
       const hash = await sender.send({ to: d.vault, data, idempotencyKey: `sync:${runId}:${t.address}`, gas });
       report.sent.push(hash);
@@ -279,15 +283,17 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       ...(out.ok ? {} : { error: out.error }),
     });
 
-    const queue: Proposal[] = [];
+    // Each proposal carries its author for the blob: k = bill for the line this code writes, m for the model that answered.
+    const queue: { p: Proposal; by: Pick<BlobContext, "k" | "m"> }[] = [];
     if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
-      queue.push({ action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale: `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}` });
+      const rationale = `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}`;
+      queue.push({ p: { action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale }, by: { k: "bill" } });
     }
-    if (out.ok) queue.push(...out.proposals);
+    if (out.ok) queue.push(...out.proposals.map((p) => ({ p, by: { m: out.model } })));
     report.proposals = queue.length;
 
-    for (const [index, p] of queue.entries()) {
+    for (const [index, { p, by }] of queue.entries()) {
       // Credit off: Claude's credit proposal never reaches the preview, whatever the prompt and the policy said.
       if (!params.creditActions && CREDIT_ACTIONS.has(p.action)) {
         await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: `credit actions are off: ${p.action} dropped before the preview` });
@@ -298,7 +304,8 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         s = await reread();
         dirty = false;
       }
-      const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee });
+      // j is the journal head when this blob is built: the last row written before it, this round's or an earlier one's.
+      const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...by } });
       if (!b.ok) {
         await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: b.error });
         report.skipped++;
@@ -308,10 +315,12 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       const preview = pv.result;
       const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
       const g = gate(preview, key, key !== null && d.store.hasLoggedRefusal(key));
-      // A MARKET_CLOSED log names the closed phase. The vault's checks never read rationaleHash, so the preview stands.
+      // A MARKET_CLOSED log names the closed phase: the blob is rebuilt with the note (every other field kept, j
+      // included) and the intent hashes the final blob. The vault's checks never read rationaleHash, so the preview stands.
       const note = g.send && g.kind === "log-refusal" && preview === "MARKET_CLOSED" ? closedNote(s) : null;
       const rationale = note ? `${p.rationale} (market closed, ${note})` : p.rationale;
-      const intent = note ? { ...b.intent, rationaleHash: rationaleHash(rationale) } : b.intent;
+      const blob: EncodedBlob = note ? encodeBlob({ ...b.blobInput, closed: note }) : b.blob;
+      const intent = { ...b.intent, rationaleHash: blob.hash };
       const row = {
         kind: "intent" as const,
         runId,
@@ -322,6 +331,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
         amountUsd6: b.amountUsd6,
         rationale,
         rationaleHash: intent.rationaleHash,
+        blob: blob.blob,
         preview,
         ...(pv.error === undefined ? {} : { previewError: pv.error }),
         ...(key && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
@@ -336,7 +346,9 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       // fails after broadcast is reconciled next round instead of being billed or logged twice.
       checkCap();
       const data = encodeExecute(intent);
-      const gas = await gasFor("execute", data);
+      // Gas is estimated on the bytes the sender will broadcast: the call, the blob and the Builder Code. A refusal
+      // here is the sender's, not a failed estimate.
+      const gas = await gasFor("execute", sender.calldata({ to: d.vault, data, blob: blob.blob }));
       const entry: PendingTx = {
         intentId: intent.id,
         action: p.action,
@@ -353,7 +365,7 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await d.store.save();
       let hash: Hex;
       try {
-        hash = await sender.send({ to: d.vault, data, idempotencyKey: intent.id, gas });
+        hash = await sender.send({ to: d.vault, data, blob: blob.blob, idempotencyKey: intent.id, gas });
       } catch (e) {
         if (e instanceof SendRefused) d.store.clearPending(entry.intentId); // refused before anything was broadcast
         throw e;

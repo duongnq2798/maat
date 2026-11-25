@@ -1,12 +1,15 @@
 import { encodePacked, keccak256, toBytes, zeroAddress } from "viem";
 import { describe, expect, it } from "vitest";
-import { addressOf, USDC } from "../src/addresses.js";
+import { addressOf, BASKET, USDC } from "../src/addresses.js";
 import { readVaultState } from "../src/chain/state.js";
-import { buildIntent, intentId, rationaleHash, type Proposal } from "../src/intent.js";
-import { CREDIT, VAULT, standardScene } from "./fakes/fakeChain.js";
+import { buildIntent, intentId, rationaleHash, sourcesOf, type Proposal } from "../src/intent.js";
+import { encodeBlob, GENESIS } from "../src/rationale/blob.js";
+import { CREDIT, FEEDS, POOL, PRICES, VAULT, standardScene } from "./fakes/fakeChain.js";
 
 const PAYEE = "0x3333333333333333333333333333333333333333" as const;
-const ctx = { runId: "run-1", index: 0, expensePayee: PAYEE };
+const C = "0123456789abcdef0123456789abcdef01234567";
+const J = "0x892d2dce569c783139f62dec297729642d35ff7e88bccd9d21dcb2defe2b84ff" as const;
+const ctx = { runId: "run-1", index: 0, expensePayee: PAYEE, blob: { c: C, j: J, m: "claude-sonnet-5-5" } };
 const p = (over: Partial<Proposal>): Proposal => ({ action: "BUY", symbol: "NVDAc", amountUsd: 20, rationale: "buy the dip", ...over });
 
 describe("buildIntent", async () => {
@@ -28,9 +31,34 @@ describe("buildIntent", async () => {
       amount: 20_000_000n,
       minOut: 0n,
       payee: zeroAddress,
-      rationaleHash: keccak256(toBytes("buy the dip")),
+      rationaleHash: keccak256(toBytes(r.blob.blob)),
     });
     expect(r.clamped).toBe(false);
+  });
+
+  it("hashes the maat:v1 blob, not the rationale: block, commit, journal head, model, run, sources and text", () => {
+    const r = buildIntent(p({}), state, ctx);
+    if (!r.ok) throw new Error(r.error);
+    expect(r.blob.fields).toEqual({ b: 100, c: C, j: J, m: "claude-sonnet-5-5", r: "run-1", s: sourcesOf(state), t: "buy the dip" });
+    expect(r.intent.rationaleHash).toBe(r.blob.hash);
+    expect(r.intent.rationaleHash).not.toBe(rationaleHash("buy the dip"));
+    // What the closed-market rebuild starts from: the same input gives the same blob.
+    expect(encodeBlob(r.blobInput)).toEqual(r.blob);
+    expect(r.blobInput).toMatchObject({ text: "buy the dip", b: 100, r: "run-1" });
+  });
+
+  it("writes a compute bill's blob with k = bill and no model", () => {
+    const text = "Compute bill: $0.420000 of Claude API usage unpaid as of UTC day 20763";
+    const r = buildIntent(p({ action: "PAY_EXPENSE", symbol: "USDC", amountUsd: 0.42, rationale: text }), state, { ...ctx, blob: { c: C, j: GENESIS, k: "bill" } });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.blob.fields).toMatchObject({ k: "bill", j: GENESIS, t: text });
+    expect(r.blob.fields).not.toHaveProperty("m");
+  });
+
+  it("refuses an intent whose blob would break a rule, naming the rule", () => {
+    expect(buildIntent(p({}), state, { ...ctx, blob: { c: C, j: J, m: "us.anthropic.claude-sonnet-5-5" } })).toMatchObject({ ok: false, error: expect.stringMatching(/^blob: m is not a model id/) });
+    expect(buildIntent(p({}), state, { ...ctx, runId: "run 1" })).toMatchObject({ ok: false, error: expect.stringMatching(/^blob: r is not a run id/) });
+    expect(buildIntent(p({}), state, { ...ctx, blob: { c: "dirty", j: J, m: "x" } })).toMatchObject({ ok: false, error: expect.stringMatching(/^blob: c is not/) });
   });
 
   it("clamps a BUY to the USDC balance", () => {
@@ -90,5 +118,38 @@ describe("buildIntent", async () => {
     expect(intentId("run-1", 0)).not.toBe(intentId("run-1", 1));
     expect(intentId("run-1", 0)).not.toBe(intentId("run-2", 0));
     expect(rationaleHash("a")).toBe(keccak256(toBytes("a")));
+  });
+});
+
+describe("sourcesOf: the blob's s, one entry per vault token in tokens() order", async () => {
+  // Tick 0 prices every stock at $100 (see state.test.ts); the feeds say $186.67, $280 and $270.
+  const scene = () => standardScene().set(POOL, "observe", () => [[0n, 0n], [0n, 0n]]).set(POOL, "token0", USDC);
+
+  it("names each token, its round, its updatedAt and the signed premium of its pool over its feed", async () => {
+    const s = await readVaultState(scene().client(), VAULT);
+    const premium = (answer: bigint) => -Number(((answer - 10_000_000_000n) * 10_000n) / answer);
+    expect(sourcesOf(s)).toEqual([
+      ["NVDAc", "1", 1_794_000_000 - 30, premium(PRICES[0]!)],
+      ["GOOGLc", "1", 1_794_000_000 - 30, premium(PRICES[1]!)],
+      ["AAPLc", "1", 1_794_000_000 - 30, premium(PRICES[2]!)],
+    ]);
+    expect(sourcesOf(s)[0]![3]).toBe(-4643);
+  });
+
+  it("falls back to the lowercase address, and to null for a failed read or a price the vault would refuse", async () => {
+    const odd = "0xb2000000000000000000000000000000000000aa" as const;
+    const f = scene()
+      .set(VAULT, "tokens", [...BASKET.map((t) => t.address), odd])
+      .set(VAULT, "tokenConfig", ([token]) => [true, FEEDS[Math.max(0, BASKET.findIndex((t) => t.address.toLowerCase() === String(token).toLowerCase()))], POOL, 4000])
+      .set(odd, "balanceOf", 0n)
+      .set(odd, "decimals", 8)
+      .set(odd, "uiMultiplier", 10n ** 18n)
+      .set(FEEDS[1]!, "latestRoundData", [7n, 0n, 0n, 1_793_999_000n, 7n])
+      .fail(FEEDS[2]!, "latestRoundData");
+    const s = await readVaultState(f.client(), VAULT);
+    const src = sourcesOf(s);
+    expect(src[1]).toEqual(["GOOGLc", "7", 1_793_999_000, null]);
+    expect(src[2]).toEqual(["AAPLc", null, null, null]);
+    expect(src[3]![0]).toBe(odd.toLowerCase());
   });
 });

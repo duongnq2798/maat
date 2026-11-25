@@ -5,7 +5,8 @@
 //
 // The intent is the one the agent builds for a BUY (src/intent.ts buildIntent), encoded by the same code
 // (src/exec/calls.ts encodeExecute) and tagged with the same suffix (src/exec/builderCode.ts builderSuffix and
-// withSuffix, the bytes GuardedSender in src/exec/sender.ts sends):
+// withSuffix). GuardedSender in src/exec/sender.ts sends execute ‖ maat:v1 blob ‖ suffix; the owner's calldata is that
+// layout without the blob, which a reader decodes as "no blob" (docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md):
 // - id: the agent's intentId(runId, index), with runId "first-decision:<salt>" and index 0, or the 32-byte --id as
 //   given. execute() reverts with IntentAlreadyUsed on an id it has seen, so every send needs a new salt.
 // - action 0 (BUY); token from BASKET in src/addresses.ts; amount = the dollars in USDC units (6 decimals).
@@ -13,7 +14,7 @@
 //   expectedOut from the Chainlink price and swaps with minOut = max(intent.minOut, expectedOut x (10000 -
 //   maxSlippageBps) / 10000) (MandateVault._perform), so 0 means "the vault's own oracle floor". A floor set
 //   offline from an old price could only be stale, and the vault would still apply its own.
-// - payee: the zero address (BUY); rationaleHash: keccak256 of the --rationale text.
+// - payee: the zero address (BUY); rationaleHash: keccak256 of the --rationale text (the agent hashes its blob instead).
 // - The amount is not clamped to the vault's USDC balance, which takes a read. The vault answers
 //   INSUFFICIENT_BALANCE instead, after the market checks.
 // --builder-code is the code as Base Dashboard shows it. A hex form (0x and hex digits only) is refused, and the
