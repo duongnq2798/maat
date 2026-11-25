@@ -4,7 +4,7 @@ import { heartbeatOf, writeHeartbeat } from "./loop/heartbeat.js";
 import { acquireLock, RoundLock } from "./loop/lock.js";
 import { probeStartup, runProbe, runProbes } from "./loop/probeRound.js";
 import { runOnce } from "./loop/runOnce.js";
-import { runForever } from "./loop/scheduler.js";
+import { abortableSleep, runForever } from "./loop/scheduler.js";
 import { oneLine } from "./redact.js";
 import { buildRuntime } from "./runtime.js";
 import { usdc6ToUsd } from "./units.js";
@@ -44,7 +44,8 @@ async function main(): Promise<void> {
           // The restart loop (scripts/restart-loop.ts) reads it to tell a live agent from a stuck or sleeping PC.
           afterRound: (r) => writeHeartbeat(cfg.dataDir, heartbeatOf(r, new Date(), process.pid)),
         }),
-        runProbes({ due: probes.due, fire: (at) => runProbe(deps, at), lock, signal: ac.signal }),
+        // A stop also ends a probe's pause before a retry, and the probe then sends nothing.
+        runProbes({ due: probes.due, fire: (at) => runProbe(deps, at, Date.now, abortableSleep, ac.signal), lock, signal: ac.signal }),
       ]);
     }
   } finally {
