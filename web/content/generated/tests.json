@@ -682,6 +682,26 @@
     "test_transferableChecksTxOrigin": 410,
     "test_transferablePolicyReadFailsClosed": 415
   },
+  "contracts/test/MaatInbox.t.sol": {
+    "test_maxBytesIs280": 36,
+    "test_emptyReverts": 40,
+    "test_281BytesReverts": 46,
+    "test_1BytePasses": 52,
+    "test_280BytesPasses": 59,
+    "test_limitCountsBytesNotCharacters": 67,
+    "testFuzz_inBoundsPassesUnchanged": 80,
+    "testFuzz_outOfBoundsReverts": 93,
+    "test_idsIncreaseAcrossSenders": 102,
+    "test_revertedBriefTakesNoId": 113,
+    "testFuzz_idsStrictlyIncreaseFromOne": 120,
+    "testFuzz_etherToBriefReverts": 134,
+    "testFuzz_etherToTheAddressReverts": 144,
+    "test_plainTransferReverts": 155,
+    "test_builderCodeSuffixAccepted": 165,
+    "testFuzz_trailingBytesAccepted": 174,
+    "test_onlyTheCounterIsWritten": 186,
+    "test_deployFromTheGivenDeployer": 197
+  },
   "contracts/test/MandateVault.t.sol": {
     "test_buyInSessionIsAllowed": 16,
     "test_refusalIsLoggedNotReverted": 30,
@@ -890,6 +910,9 @@
   "contracts/test/fork/DeployFork.t.sol": {
     "test_deployWiresEverything": 15
   },
+  "contracts/test/fork/MaatInboxFork.t.sol": {
+    "test_deployThenBriefWithSuffix": 13
+  },
   "contracts/test/fork/MandateVaultCreditFork.t.sol": {
     "test_creditLoopInSession": 80,
     "test_weekendBlocksBorrowButAllowsRepayAndWithdraw": 101
@@ -899,6 +922,12 @@
     "test_basketBuysInSession": 67,
     "test_weekendBuyIsRefusedInBothModes": 75,
     "test_compromisedExecutorIsBounded": 83
+  },
+  "contracts/test/fork/MandateVaultTrailingRationaleFork.t.sol": {
+    "test_refusedBuyCarriesTheBlobHash": 49,
+    "test_allowedExpenseCarriesTheBlobHash": 57,
+    "test_blobAtExactly1024Bytes": 69,
+    "test_suffixMatchesTheAgentTestVector": 84
   },
   "contracts/test/fork/PriceLibFork.t.sol": {
     "test_liveBasketTradesNearNav": 20

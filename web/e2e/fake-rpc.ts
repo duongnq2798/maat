@@ -22,6 +22,8 @@ export interface FakeScenario {
   times: Readonly<Record<string, number>>;
   /** Lowercased tx hash → its block and gas. */
   receipts: Readonly<Record<string, { block: bigint; gasUsed: bigint }>>;
+  /** Lowercased tx hash → its sender, target and input, for eth_getTransactionByHash. A tx not listed is not found. */
+  txs?: Readonly<Record<string, { from: Address; to: Address | null; input: Hex }>>;
   /** Lowercased contract → function name → its result, or a function of the call's args. A missing entry reverts. */
   calls: Readonly<Record<string, Readonly<Record<string, Answer>>>>;
   /** eth_getLogs refuses wider ranges, as publicnode does (50,000). */
@@ -135,6 +137,34 @@ function handle(s: FakeScenario, method: string, params: readonly unknown[]): un
           transactionHash: l.transactionHash,
           transactionIndex: "0x0",
         }));
+    }
+    case "eth_getTransactionByHash": {
+      const hash = String(params[0]).toLowerCase() as Hash;
+      const tx = s.txs?.[hash];
+      if (!tx) return null;
+      const block = s.receipts[hash]?.block ?? s.head;
+      return {
+        blockHash: blockHash(block),
+        blockNumber: toHex(block),
+        chainId: "0x2105",
+        from: tx.from,
+        gas: "0x493e0",
+        gasPrice: "0x1",
+        maxFeePerGas: "0x1",
+        maxPriorityFeePerGas: "0x1",
+        hash,
+        input: tx.input,
+        nonce: "0x0",
+        to: tx.to,
+        transactionIndex: "0x0",
+        type: "0x2",
+        value: "0x0",
+        accessList: [],
+        v: "0x0",
+        yParity: "0x0",
+        r: ZERO32,
+        s: ZERO32,
+      };
     }
     case "eth_getTransactionReceipt": {
       const hash = String(params[0]).toLowerCase() as Hash;
