@@ -326,7 +326,7 @@ The agent's transactions carry the suffix: `GuardedSender` appends it to every s
 
 ### Run it continuously
 
-Start the loop with the command below. Stop it with Ctrl+C. A stop signal ends the wait between rounds and does not interrupt a round in progress: the agent finishes that round, releases its lock and exits.
+Start the loop with the command below. Stop it with Ctrl+C. A stop signal ends the wait between rounds and does not interrupt a round in progress: the agent finishes that round, releases its lock and exits. A [probe](#schedule-probes) in progress sends nothing after the stop, unless its send had already begun, and ends `skipped`, with the reason `the agent is stopping`.
 
 <Callout type="warning" title="Owner only">
 
