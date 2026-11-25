@@ -619,7 +619,8 @@ summary shows the counts each runner reported. A second workflow, "live fork adv
 ([`.github/workflows/live-fork.yml`](.github/workflows/live-fork.yml)), runs once a day and on demand, never on a
 pull request and with no secret: it forks Base at a recent block through a keyless public RPC and runs
 `contracts/test/fork/LiveVault*.t.sol` against the deployed vault (the six invariants, the compromised-executor
-bound, preview against execute and the trailing rationale blob). The other contract fork tests and the agent fork
+bound, preview against execute and the trailing rationale blob). A failure whose forge log shows RPC errors is
+rerun once, at the same block and seed, through the other RPC. The other contract fork tests and the agent fork
 integration suite need an archive RPC and run by hand. Lighthouse, a browser audit of the production site, also
 runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
 
