@@ -25,6 +25,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "weekly",
       priority: 0.8,
     },
+    // The counting rule and the outside briefs, counted from the inbox's logs on every visit.
+    { url: new URL("/proof", base).href, lastModified: new Date(), changeFrequency: "daily", priority: 0.7 },
     ...docs,
   ];
 }

@@ -4,7 +4,7 @@ description: Once /ask opens, send Maat's agent a public brief through MaatInbox
 type: guide
 audience: [watcher, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-25
+lastReviewed: 2026-11-26
 sources:
   - contracts/src/MaatInbox.sol
   - contracts/script/DeployMaatInbox.s.sol
@@ -16,6 +16,11 @@ sources:
   - web/lib/wallet/builder-code.ts
   - web/content/ask-hidden.ts
   - web/content/ask-open.ts
+  - web/content/proof-team.ts
+  - web/content/proof-sends.ts
+  - web/content/proof-stops.ts
+  - web/content/proof-bounty.ts
+  - scripts/recount.mjs
 next: [guides/watch-decisions-onchain, concepts/refusal-codes]
 ---
 
@@ -68,3 +73,11 @@ Pick an action, a token and an amount, and the page calls `previewIntent` on the
 ## Read the feed
 
 The feed lists every `Brief` event of the inbox, newest first: its id, the sender's short address and its text. The text is shown as plain text with no links, no markdown and no HTML, after the same code points the agent's prompt replaces are turned into U+FFFD: controls, format characters such as zero-width and direction marks, and other invisible ones such as variation selectors and the tag characters U+E0000 to U+E007F. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.
+
+## Count the briefs
+
+The [`/proof` page](/proof) publishes the counting rule, section 5 of the inbox spec, word for word, and counts the briefs from the inbox's `Brief` logs in your browser: outside briefs, distinct outside wallets and how many of them hold a Coinbase Verified Account attestation on Base, then team briefs, hidden briefs and bounty claimants, each on its own line. A brief from a team wallet is a team brief, never an outside brief. A hidden brief stays in the outside count. Bounty claimants come from `web/content/proof-bounty.ts`. Until `deployments/README.md` records the inbox, no brief line has a number, and none has one either while any read is incomplete.
+
+The team set is traced from Base at the block the briefs are counted to: the wallets in `web/content/proof-team.ts`, the vault's `owner()`, `executor()` and `payees()`, the deployer of every contract in `deployments/README.md`, and every wallet those funded within 2 hops. ETH funding comes from each team wallet's sent transactions, checked against the wallet's nonce. The trace finds every transaction that left a log of the vault other than `RevenueReceived`, and the transaction of each brief from a team wallet, from those logs, so an `execute` the agent sends needs no list. It skips `RevenueReceived`, since anyone who sends the vault some USDC can make it emit one, and reading those transactions would let anyone slow the count. The rest, such as contract deploys, plain transfers, approvals, a team wallet's own `notifyRevenue` and reverted transactions, are committed in `web/content/proof-sends.ts`. Token funding comes from the `Transfer` logs of those transactions and of each token they approved. The trace stops at the zero address, the vault and the addresses in `web/content/proof-stops.ts`, and the page lists the team set and the stops with why each is there. When a team wallet has sent a transaction that is in neither, the count is incomplete until the owner adds it, and the page names the wallet and how many of its sends are missing; `node scripts/recount.mjs --sends <wallet> --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com` prints the entry, with only the sends no log the trace reads gives. A team wallet delegated to code by EIP-7702 also leaves the count incomplete, since that code can send ETH that no log shows. The Decision lines of the rule are not counted yet.
+
+To rebuild the same lines from the chain alone, run `node scripts/recount.mjs` in a clone of the repository with Node.js 24. The script has no dependency: it reads the deployments table and the five lists from the repository, runs the same team trace as the page, reads the logs and the attestations from a keyless Base RPC, and prints the page's lines in the same words. It exits with 1, and gives no number on a brief line, when the count is incomplete. `--rpc <url>` reads another RPC, `--logs-rpc <url>` reads the logs from another, and `--to-block <n>` stops at the block the page says it counted to, written as the page prints it or as digits.

@@ -564,10 +564,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  129 passed (129)
-         Tests  2863 passed (2863)
+    Test Files  136 passed (136)
+         Tests  2955 passed (2955)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 53 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 
@@ -765,6 +765,7 @@ web/                       Next.js landing page, /now, /gap-index, /ledger, docs
                            tests, Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            Base mainnet address table
+scripts/recount.mjs        rebuilds the brief lines of /proof from Base alone, with no dependency
 skills/maat-market-guard/  the read-only guard other agents call, in BankrBot's skills format: SKILL.md (served
                            at /skill.md), catalog.json, scripts/check.mjs and its offline selftest
 ops/journal/               the journal publisher the owner starts beside the agent: it appends the public fields

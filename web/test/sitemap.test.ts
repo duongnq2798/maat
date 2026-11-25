@@ -23,8 +23,16 @@ describe("the sitemap", () => {
       new URL("/ledger", base).href,
       new URL("/now", base).href,
       new URL("/gap-index", base).href,
+      new URL("/proof", base).href,
       new URL("/docs/overview", base).href,
     ]);
+  });
+
+  it("lists /proof, a public page whose counts are read from the inbox's logs on every visit", () => {
+    const proof = entries.filter((e) => new URL(e.url).pathname === "/proof");
+    expect(proof).toHaveLength(1);
+    expect(proof[0]?.changeFrequency).toBe("daily");
+    expect(proof[0]?.lastModified).toBeInstanceOf(Date);
   });
 
   it("lists /now once, with an absolute URL on the site's origin", () => {
