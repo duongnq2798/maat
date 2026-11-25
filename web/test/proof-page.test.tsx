@@ -340,9 +340,20 @@ describe("/proof with a MaatInbox recorded", () => {
       expect(vaultScans(client.seen).map((r) => r.from)).toEqual([DEPLOY + 951n]);
     });
 
-    it("gives no brief number when the snapshot leaves out a team send's vault log", async () => {
+    it("reads the snapshot's blocks from Base, and counts, when the snapshot leaves out a team send's vault log", async () => {
       const omitted = { ...snapshot, logs: snapshot.logs.filter((l) => l.transactionHash !== `0x${"e1".repeat(32)}`) };
-      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never, fetchSnapshot: async () => omitted, storage: null }} />);
+      const client = proofChainClient(chain);
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchSnapshot: async () => omitted, storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(value("outside-briefs")).toBe("3");
+      expect(screen.queryByText(/^The vault's logs to block/)).toBeNull();
+      expect(screen.queryByText(/is missing/)).toBeNull();
+      expect(vaultScans(client.seen).map((r) => r.from)).toEqual([N - 150n, DEPLOY - 6n]);
+    });
+
+    it("gives no brief number when a team send is in no log and no committed list, with the snapshot in use", async () => {
+      const lists = { ...LISTS, sends: PROOF_SENDS.map((s) => ({ ...s, txs: s.txs.slice(0, -1) })) };
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null, lists }} />);
       await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
       for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
       expect(screen.getByText(/0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 11 transactions by block 62,001,000, and 1 is missing/)).toBeInTheDocument();
@@ -354,7 +365,9 @@ describe("/proof with a MaatInbox recorded", () => {
       await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
       for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
       expect(screen.getByText("Some blocks of the Brief logs could not be read, so briefs may be missing.")).toBeInTheDocument();
-      expect(screen.getByText(/^The vault's logs to block 62,000,749 are from the committed snapshot/)).toBeInTheDocument();
+      // The owner's brief in that window is a send the trace cannot see, so it reads the snapshot's blocks from Base too.
+      expect(screen.getByText(/0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 11 transactions by block 62,001,000, and 1 is missing/)).toBeInTheDocument();
+      expect(screen.queryByText(/^The vault's logs to block/)).toBeNull();
     });
 
     it("says the briefs could not be read, and shows no number, when a window of the vault's logs above the snapshot cannot be read", async () => {

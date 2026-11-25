@@ -2,6 +2,7 @@ import type { Address, Hex, PublicClient } from "viem";
 import { browserStorage, loadCache } from "@/lib/chain/cache";
 import { readBriefs, type InboxDeployment } from "@/lib/chain/inbox";
 import { errorText, type LedgerClient } from "@/lib/chain/load";
+import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
 import { countBriefs, type ProofCount, type ProofLists } from "./count";
 import { LOG_WORKERS, snapshotSeed, traceTeam, type Rpc, type TeamInputs, type TeamTrace, type VaultSeed } from "./team";
 import { readVerifiedAccounts } from "./verified";
@@ -43,13 +44,15 @@ export interface ProofSeeds {
 /**
  * The seed of `vault` that reaches the highest block: the committed snapshot below its reorg window, or the ledger's
  * browser cache. The trace checks every log it takes from either against its receipt (team.ts), so neither is trusted.
+ * A cache that took logs from a snapshot is used only while the site serves that same file, the rule loadLedger keeps
+ * it by (lib/chain/load.ts), so a file that is replaced or removed takes with it what it left in this browser.
  */
 async function vaultSeed(vault: string, seeds: ProofSeeds): Promise<VaultSeed | null> {
-  const file = await Promise.resolve(seeds.snapshot).then(
-    (raw) => snapshotSeed(raw, vault),
-    () => null,
-  );
-  const cached = loadCache(vault as Address, seeds.storage === undefined ? browserStorage() : seeds.storage);
+  const raw = await Promise.resolve(seeds.snapshot).catch(() => null);
+  const file = snapshotSeed(raw, vault);
+  const served = file ? parseSnapshot(raw, vault as Address) : null;
+  const stored = loadCache(vault as Address, seeds.storage === undefined ? browserStorage() : seeds.storage);
+  const cached = stored && (!stored.snapshot || (served !== null && snapshotId(served) === stored.snapshot)) ? stored : null;
   const cache: VaultSeed | null = cached
     ? { source: "cache", vault: vault.toLowerCase(), from: BigInt(cached.from), to: BigInt(cached.to), logs: cached.logs, anchor: null }
     : null;

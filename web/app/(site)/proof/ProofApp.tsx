@@ -228,8 +228,9 @@ export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: 
           It runs on Node.js 24. <code className="font-mono text-[0.9em]">--rpc &lt;url&gt;</code> reads another RPC, and{" "}
           <code className="font-mono text-[0.9em]">--to-block &lt;n&gt;</code> stops at the block this page says it counted to.
           It reads every vault log from the vault&apos;s deploy block, while this page may take the older ones from the
-          committed snapshot once Base confirms each one; <code className="font-mono text-[0.9em]">--snapshot</code> makes
-          the script do the same, and say so.
+          committed snapshot, or from this browser&apos;s ledger cache, once Base confirms each one;{" "}
+          <code className="font-mono text-[0.9em]">--snapshot</code> makes the script take them from the snapshot the same
+          way, and say so.
         </p>
       </Section>
 

@@ -229,14 +229,33 @@ describe("the team trace with the vault's logs seeded from a snapshot", () => {
     expect(lowest(elsewhere.seen)).toBe(DEPLOY);
   });
 
-  it("leaves the count incomplete when the snapshot omits a team send's vault log", async () => {
-    // Without the setExecutor log, the owner's third send is in no log the trace reads and not in its committed list.
+  it("reads the seed's blocks from Base when the snapshot omits a team send's vault log, and gives the lines of a scan from the deploy block", async () => {
+    // Without the setExecutor log, the owner's third send is in no log the seeded trace reads and not in its committed list.
     const omitted = edited((logs) => logs.filter((l) => l.transactionHash !== txHash(3)));
+    const full = await run(undefined);
     const seeded = await run(seedOf(omitted));
-    expect(seeded.trace.seed).not.toBeNull();
-    expect(seeded.trace.gaps).toEqual([
+    expect(seeded.trace.seed).toBeNull();
+    expect(seeded.trace.seedRejected).toBe(`with its logs, ${lower(OWNER)} sent 4 transactions by block 62,120,000 and 1 is missing`);
+    expect(seeded.trace.gaps).toEqual([]);
+    expect(seeded.lines).toEqual(full.lines);
+    expect(lowest(seeded.seen)).toBe(DEPLOY);
+  });
+
+  it("still leaves the count incomplete, with the lines of a scan from the deploy block, when a team send is in no log and no committed list", async () => {
+    const inputs: TeamInputs = { ...INPUTS, sends: [{ wallet: OWNER, txs: [txHash(1)] }] };
+    const full = await run(undefined, CHAIN, inputs);
+    const seeded = await run(seedOf(SNAPSHOT), CHAIN, inputs);
+    expect(full.trace.gaps).toEqual([
       `${lower(OWNER)} sent 4 transactions by block 62,120,000, and 1 is missing: in no vault or MaatInbox log the trace reads, and not in web/content/proof-sends.ts. node scripts/recount.mjs --sends ${lower(OWNER)} --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com prints it.`,
     ]);
+    expect(seeded.lines).toEqual(full.lines);
+    expect(seeded.trace.seed).toBeNull();
+  });
+
+  it("still stops on a window of the seed's blocks it cannot read when it reads them again", async () => {
+    const omitted = edited((logs) => logs.filter((l) => l.transactionHash !== txHash(3)));
+    const below = { ...CHAIN, failLogs: [{ from: DEPLOY, to: DEPLOY + 100n, address: VAULT }] };
+    await expect(run(seedOf(omitted), below)).rejects.toThrow("upstream request timed out");
   });
 
   it("scans the blocks between the vault's deploy and a seed that starts after it", async () => {
@@ -264,6 +283,14 @@ describe("the team trace with the vault's logs seeded from the ledger's browser 
     expect(seeded.trace.seed).toBeNull();
     expect(seeded.trace.seedRejected).toBe(`the receipt of ${txHash(2)} has no log of the vault at index 0 as the ledger's cache has it in block 62,000,010`);
     expect(lowest(seeded.seen)).toBe(DEPLOY);
+  });
+
+  it("reads the cache's blocks from Base when it omits a team send's vault log, so a stale cache cannot keep the count incomplete", async () => {
+    const seeded = await run(cache(SNAPSHOT.logs.filter((l) => l.transactionHash !== txHash(3))));
+    expect(seeded.trace.seed).toBeNull();
+    expect(seeded.trace.gaps).toEqual([]);
+    expect(lowest(seeded.seen)).toBe(DEPLOY);
+    expect(seeded.lines).toEqual((await run(undefined)).lines);
   });
 });
 

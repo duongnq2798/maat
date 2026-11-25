@@ -25,8 +25,9 @@ export interface TeamInputs {
    * Vault logs the caller already holds (snapshotSeed: the committed snapshot; or the ledger's browser cache), or a
    * promise of them. The trace takes from it the logs of VAULT_TOPICS in its range once each one's transaction receipt
    * holds it, and the block it records has that hash, and reads only the other blocks; any difference drops the seed
-   * and the trace reads every block from the vault's deploy. So a seed can leave a log out, which leaves a team send
-   * missing, but it cannot add or change one.
+   * and the trace reads every block from the vault's deploy. So a seed cannot add or change a log. A log it leaves out
+   * leaves a team wallet with fewer sends than its nonce; then the trace reads the seed's blocks from the RPC as well
+   * and walks the hops again, so it gives what it gives with no seed.
    */
   vaultSeed?: VaultSeed | null | PromiseLike<VaultSeed | null>;
 }
@@ -416,6 +417,16 @@ function seedRange(seed: VaultSeed, vault: { address: string; from: bigint }, bl
   return from <= to ? { from, to } : `it holds no block from ${fmt(vault.from)} to ${fmt(block)}`;
 }
 
+/** What logSends gives: the sends the logs give, wallet by wallet, and where the vault's logs came from. */
+interface LoggedSends {
+  of: (wallet: string) => Promise<Send[]>;
+  briefsComplete: boolean;
+  seed: TeamTrace["seed"];
+  seedRejected: string | null;
+  /** With a seed in use: the same sends with the seed's blocks read from the RPC instead, `why` as seedRejected. */
+  unseeded: ((why: string) => Promise<LoggedSends>) | null;
+}
+
 /**
  * The sends the logs give, wallet by wallet: every transaction with a vault log of VAULT_TOPICS from its deploy block to
  * `block`, by its sender, whoever that is (anyone may call syncMultiplier); and each brief's transaction, for the wallet
@@ -431,7 +442,7 @@ async function logSends(
   inputs: Pick<TeamInputs, "briefScan" | "vaultSeed">,
   block: bigint,
   signal?: AbortSignal,
-): Promise<{ of: (wallet: string) => Promise<Send[]>; briefsComplete: boolean; seed: TeamTrace["seed"]; seedRejected: string | null }> {
+): Promise<LoggedSends> {
   const sent = (r: Read, source: string): Send => {
     const { tx, receipt } = r;
     if (!tx || !receipt) throw new Error(`the RPC has no transaction or no receipt for ${r.hash}, ${source}`);
@@ -439,9 +450,20 @@ async function logSends(
     if (tx.blockNumber === null || BigInt(tx.blockNumber) > block) throw new Error(`the RPC gives ${r.hash}, ${source}, no block by ${fmt(block)}`);
     return { ...r, tx: { ...tx, blockNumber: tx.blockNumber } };
   };
-  const byVault = new Map<string, Send[]>();
+  const bySender = async (logs: readonly { transactionHash: string }[]) => {
+    const byVault = new Map<string, Send[]>();
+    const hashes = [...new Set(logs.map((l) => l.transactionHash.toLowerCase()))];
+    for (const r of await mapLimit(hashes, READ_WORKERS, read)) {
+      const s = sent(r, `which left a log of ${VAULT_CONTRACT}`);
+      const from = s.tx.from.toLowerCase();
+      byVault.set(from, [...(byVault.get(from) ?? []), s]);
+    }
+    return byVault;
+  };
+  let byVault = new Map<string, Send[]>();
   let seed: TeamTrace["seed"] = null;
   let seedRejected: string | null = null;
+  let withoutSeed: (() => Promise<{ transactionHash: string }[]>) | null = null;
   if (vault && vault.from <= block) {
     const filter = { address: vault.address, topics: [[...VAULT_TOPICS]] };
     const given = (await inputs.vaultSeed) ?? null;
@@ -464,22 +486,19 @@ async function logSends(
         Promise.all(outside.map((r) => logsIn(rpc, filter, r.lo, r.hi, signal))).then((parts) => parts.flat()),
         seedProblem(rpc, read, vault.address, given, seeded),
       ]);
+      const fromRpc = async () => [...(await logsIn(rpc, filter, usable.from, usable.to, signal)), ...scanned];
       if (problem === null) {
         logs = [...seeded, ...scanned];
         seed = { source: given.source, from: usable.from, to: usable.to, anchor: given.anchor?.block ?? null };
+        withoutSeed = fromRpc;
       } else {
         seedRejected = problem;
-        logs = [...(await logsIn(rpc, filter, usable.from, usable.to, signal)), ...scanned];
+        logs = await fromRpc();
       }
     } else {
       logs = await logsIn(rpc, filter, vault.from, block, signal);
     }
-    const hashes = [...new Set(logs.map((l) => l.transactionHash.toLowerCase()))];
-    for (const r of await mapLimit(hashes, READ_WORKERS, read)) {
-      const s = sent(r, `which left a log of ${VAULT_CONTRACT}`);
-      const from = s.tx.from.toLowerCase();
-      byVault.set(from, [...(byVault.get(from) ?? []), s]);
-    }
+    byVault = await bySender(logs);
   }
   const { briefs, complete } = (await inputs.briefScan) ?? { briefs: [], complete: true };
   const briefsOf = new Map<string, Set<string>>();
@@ -487,7 +506,7 @@ async function logSends(
     const from = checked(b.from, "a Brief log");
     briefsOf.set(from, (briefsOf.get(from) ?? new Set()).add(String(b.txHash).toLowerCase()));
   }
-  const of = async (wallet: string) => {
+  const sendsBy = (byVault: ReadonlyMap<string, Send[]>) => async (wallet: string) => {
     const out = new Map((byVault.get(wallet) ?? []).map((s) => [s.hash, s]));
     for (const r of await mapLimit([...(briefsOf.get(wallet) ?? [])], READ_WORKERS, read)) {
       const s = sent(r, `the transaction of a Brief from ${wallet}`);
@@ -495,7 +514,11 @@ async function logSends(
     }
     return [...out.values()].sort(byNonce);
   };
-  return { of, briefsComplete: complete, seed, seedRejected };
+  const again = withoutSeed;
+  const unseeded = again
+    ? async (why: string): Promise<LoggedSends> => ({ of: sendsBy(await bySender(await again())), briefsComplete: complete, seed: null, seedRejected: why, unseeded: null })
+    : null;
+  return { of: sendsBy(byVault), briefsComplete: complete, seed, seedRejected, unseeded };
 }
 
 /**
@@ -527,8 +550,8 @@ export async function loggedSends(
  */
 export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, signal?: AbortSignal): Promise<TeamTrace> {
   const tag = hex(block);
+  /** Gaps of the rule's own sources; walk() adds those of the hops. */
   const gaps: string[] = [];
-  const notes: string[] = [];
 
   const stops = new Map<string, HopStop>();
   const stop = (address: string, name: string, source: string) => {
@@ -552,14 +575,16 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     sendsOf.set(wallet, txs);
   }
 
-  const members = new Map<string, TeamMember>();
-  const add = (address: string, hop: number, why: string) => {
+  const addTo = (members: Map<string, TeamMember>) => (address: string, hop: number, why: string) => {
     const a = address.toLowerCase();
     if (stops.has(a)) return;
     const m = members.get(a);
     if (!m) members.set(a, { address: a, hop, why: [why] });
     else if (m.hop === hop && !m.why.includes(why)) m.why.push(why);
   };
+  /** The wallets the rule names (hop 0); walk() adds the hops to a copy. */
+  const named = new Map<string, TeamMember>();
+  const add = addTo(named);
 
   for (const t of inputs.team) add(checked(t.address, "web/content/proof-team.ts"), 0, `web/content/proof-team.ts (${t.role})`);
   if (vaultAddress) {
@@ -582,12 +607,19 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     if (from) add(from, 0, `deployer of ${row.contract}`);
     else gaps.push(`deployments/README.md gives no transaction for ${row.contract}, so its deployer is not known.`);
   }
-  const logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs, block, signal);
-
-  /** What one wallet's own transactions show: whom it funded, which tokens it approved, and what is missing. */
-  const fundingOf = async (w: string) => {
+  /**
+   * What one wallet's own transactions show: whom it funded, which tokens it approved, and what is missing; `short`
+   * says how many of its sends neither the logs nor its committed list give, when any are missing.
+   */
+  const fundingOf = (logged: LoggedSends) => async (w: string) => {
     abortIf(signal);
-    const out = { funded: [] as { to: string; why: string }[], approvals: [] as { token: string; at: bigint }[], notes: [] as string[], gaps: [] as string[] };
+    const out = {
+      funded: [] as { to: string; why: string }[],
+      approvals: [] as { token: string; at: bigint }[],
+      notes: [] as string[],
+      gaps: [] as string[],
+      short: null as string | null,
+    };
     const [code, nonce] = await Promise.all([rpc("eth_getCode", [w, tag]), rpc("eth_getTransactionCount", [w, tag])]);
     const bytecode = String(code).toLowerCase();
     const delegated = bytecode.startsWith(DELEGATION_PREFIX);
@@ -624,8 +656,9 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
       if (before && at === BigInt(before.tx.nonce)) throw new Error(`the RPC gives ${before.hash} and ${s.hash} the same nonce of ${w}, ${at}`);
     }
     const missing = Number(n) - sends.length;
+    const one = missing === 1;
+    if (missing > 0) out.short = `${w} sent ${n} ${n === 1n ? "transaction" : "transactions"} by block ${fmt(block)} and ${missing} ${one ? "is" : "are"} missing`;
     if (missing > 0 && !delegated) {
-      const one = missing === 1;
       const sent = `${w} sent ${n} ${n === 1n ? "transaction" : "transactions"} by block ${fmt(block)}, and ${missing} ${one ? "is" : "are"} missing:`;
       out.gaps.push(
         logged.briefsComplete
@@ -650,37 +683,64 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     return out;
   };
 
-  for (let hop = 0; hop < MAX_HOPS; hop++) {
-    const wallets = [...members.values()].filter((m) => m.hop === hop).map((m) => m.address);
-    const results = await mapLimit(wallets, READ_WORKERS, fundingOf);
-    const funded: { to: string; why: string }[] = [];
-    /** Token → the first block one of this hop's wallets approved it in, and those wallets. */
-    const approved = new Map<string, { from: bigint; wallets: Set<string> }>();
-    for (const [i, w] of wallets.entries()) {
-      const r = results[i]!;
-      notes.push(...r.notes);
-      gaps.push(...r.gaps);
-      funded.push(...r.funded);
-      for (const { token, at } of r.approvals) {
-        const a = approved.get(token);
-        if (!a) approved.set(token, { from: at, wallets: new Set([w]) });
-        else {
-          a.wallets.add(w);
-          if (at < a.from) a.from = at;
+  /** The hops from the wallets the rule names, with the sends `logged` gives. */
+  const walk = async (logged: LoggedSends) => {
+    const members = new Map([...named].map(([a, m]) => [a, { ...m, why: [...m.why] }]));
+    const addHop = addTo(members);
+    const out = { members, gaps: [] as string[], notes: [] as string[], short: null as string | null };
+    for (let hop = 0; hop < MAX_HOPS; hop++) {
+      const wallets = [...members.values()].filter((m) => m.hop === hop).map((m) => m.address);
+      const results = await mapLimit(wallets, READ_WORKERS, fundingOf(logged));
+      const funded: { to: string; why: string }[] = [];
+      /** Token → the first block one of this hop's wallets approved it in, and those wallets. */
+      const approved = new Map<string, { from: bigint; wallets: Set<string> }>();
+      for (const [i, w] of wallets.entries()) {
+        const r = results[i]!;
+        out.notes.push(...r.notes);
+        out.gaps.push(...r.gaps);
+        out.short ??= r.short;
+        funded.push(...r.funded);
+        for (const { token, at } of r.approvals) {
+          const a = approved.get(token);
+          if (!a) approved.set(token, { from: at, wallets: new Set([w]) });
+          else {
+            a.wallets.add(w);
+            if (at < a.from) a.from = at;
+          }
         }
       }
-    }
-    // A token a wallet approved can leave it in a transaction a spender sent; its Transfer log still names the wallet.
-    for (const [token, a] of approved) {
-      for (const log of await logsIn(rpc, { address: token, topics: [TRANSFER_TOPIC, [...a.wallets].map(topicOf)] }, a.from, block, signal)) {
-        const [, t1 = "", t2 = ""] = log.topics.map((t) => t.toLowerCase());
-        if (t2 !== "") funded.push({ to: addressOf(t2), why: `${token} from ${addressOf(t1)} in ${log.transactionHash.toLowerCase()}` });
+      // A token a wallet approved can leave it in a transaction a spender sent; its Transfer log still names the wallet.
+      for (const [token, a] of approved) {
+        for (const log of await logsIn(rpc, { address: token, topics: [TRANSFER_TOPIC, [...a.wallets].map(topicOf)] }, a.from, block, signal)) {
+          const [, t1 = "", t2 = ""] = log.topics.map((t) => t.toLowerCase());
+          if (t2 !== "") funded.push({ to: addressOf(t2), why: `${token} from ${addressOf(t1)} in ${log.transactionHash.toLowerCase()}` });
+        }
       }
+      for (const f of funded) addHop(f.to, hop + 1, f.why);
     }
-    for (const f of funded) add(f.to, hop + 1, f.why);
+    return out;
+  };
+
+  let logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs, block, signal);
+  let walked = await walk(logged);
+  // A seed can leave a vault log out, and a log left out can only leave a team wallet with fewer sends than its nonce,
+  // which leaves the count incomplete. Then the blocks the seed gave are read from the RPC and the hops walked again, so
+  // the trace gives what a scan from the deploy block gives, and the extra reads come only with a count that is not
+  // complete. Transactions and receipts already read are not read again.
+  if (walked.short !== null && logged.unseeded) {
+    logged = await logged.unseeded(`with its logs, ${walked.short}`);
+    walked = await walk(logged);
   }
 
-  return { block, members: [...members.values()], stops: [...stops.values()], gaps, notes, seed: logged.seed, seedRejected: logged.seedRejected };
+  return {
+    block,
+    members: [...walked.members.values()],
+    stops: [...stops.values()],
+    gaps: [...gaps, ...walked.gaps],
+    notes: walked.notes,
+    seed: logged.seed,
+    seedRejected: logged.seedRejected,
+  };
 }
 
 /** The trace as text, one line each: the team set, the hop stops, what is not seen, and what is missing. */
