@@ -110,6 +110,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "All refusal reasons the vault can record: what each means, which actions can return it, where it is raised and how the agent reacts.",
       ),
       page(
+        "concepts/agent-checklist",
+        "What an agent must check before trading a tokenized stock",
+        "The checks an onchain agent needs before it trades a tokenized stock, the failure each one stops, and the refusal code and contract line behind it.",
+      ),
+      page(
         "concepts/market-hours",
         "Market hours",
         "How the onchain calendar decides the NYSE session in New York time, with daylight saving, holidays, early closes and the feed edge.",

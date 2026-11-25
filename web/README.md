@@ -122,7 +122,7 @@ When the code gains something public, its reference page needs an entry, or a te
 | an event | reference/events | `<EventEntry contract="<Contract>" name="<Event>" />`; the events of `IMandateVaultEvents` go under `MandateVault` |
 | an error | reference/errors | `<ErrorEntry contract="<Contract>" name="<Error>" />` |
 | an enum or struct in `contracts/src/Types.sol` | reference/types | `<TypeEntry name="<Name>" />` |
-| a member of `Reason` | concepts/refusal-codes | a `### <CODE>` heading under its group's heading, with its Id line, and the code in `REASONS`, in the enum's order, in `REASON_GROUPS`, and in `REASON_LABEL` with a plain label of at most 32 characters and no underscore, in `content/reasons.ts` (`test/refusal-codes.test.ts`, `test/facts.test.ts`, `test/reason-label.test.ts`) |
+| a member of `Reason` | concepts/refusal-codes | a `### <CODE>` heading under its group's heading, with its Id line, and the code in `REASONS`, in the enum's order, in `REASON_GROUPS`, and in `REASON_LABEL` with a plain label of at most 32 characters and no underscore, in `content/reasons.ts` (`test/refusal-codes.test.ts`, `test/facts.test.ts`, `test/reason-label.test.ts`); also every line of `contracts/src` that returns it in `REASON_RAISED_AT`, and its line in `GUARD_CHECKLIST` with the matching row on concepts/agent-checklist (`test/reasons-json.test.ts`, `test/agent-checklist.test.ts`). A contract change that moves a line that returns a reason fails `test/reasons-json.test.ts` until `REASON_RAISED_AT` follows it |
 | a setting in `agent/.env.example` | reference/agent-configuration | a `### <NAME>` heading with `<EnvVar name="<NAME>" />` directly under it |
 | a script in `agent/package.json` | reference/agent-scripts | a `### <name>` heading with `<ScriptEntry name="<name>" />` directly under it |
 | a `.ts` file in `agent/scripts` | reference/agent-scripts | a `### <file>` heading with `<ScriptFile name="<file>" />` directly under it |
@@ -167,6 +167,7 @@ It checks the `out/` the last build left and does not build, so run it after `np
 - `llms.txt`, `llms-full.txt` and `sitemap.xml` list every docs page, and `llms.txt` gives the status under its summary and links each page's Markdown copy.
 - Each ABI under `out/data/abi/` holds the committed ABI.
 - `skill.md`, the market-guard skill's instructions for other agents, is exactly the text of `skills/maat-market-guard/SKILL.md`.
+- `reasons.json`, every refusal reason with its id, meaning, group, checklist line and the contract lines that return it, is what `reasonsFile` in `content/reasons.ts` writes.
 - `/ledger`, the mainnet ledger: while the deployments table records a vault, its connecting line and no chain reading in the HTML (no "Reading Base mainnet" line and no Basescan transaction link: the page reads Base in the browser); the waiting state only while the table has none; a description of 50 to 160 characters, an absolute Open Graph image, a canonical URL ending in `/ledger`, a target for each `#` link, scripts only from `/_next/`, no Google Fonts, and a `sitemap.xml` entry.
 - The search index stays within the gzipped budget in `lib/check-out.ts`, and every result opens an exported page and heading.
 - On CI or Vercel only: no exported file links an `http://localhost` URL (see below).

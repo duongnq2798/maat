@@ -1,6 +1,7 @@
 "use client";
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
+import { RealVault, type RealVaultDeps } from "@/components/RealVault";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
 import type { CheckMark } from "@/content/engine";
@@ -114,7 +115,8 @@ type Copy = "idle" | "copied" | "manual";
 const COPIED = "Link copied.";
 const COPY_BY_HAND = "Copy the link below.";
 
-export function Simulator() {
+/** `vaultDeps` is for tests: the client and vault "Ask the real vault" uses. */
+export function Simulator({ vaultDeps }: { vaultDeps?: RealVaultDeps } = {}) {
   const [s, setS] = useState<Scenario>(DEFAULT_SCENARIO);
   const [amount, setAmount] = useState(amountText(DEFAULT_SCENARIO.intent.usd6));
   const [origin, setOrigin] = useState("");
@@ -422,6 +424,8 @@ export function Simulator() {
             />
           </div>
         ) : null}
+
+        <RealVault intent={s.intent} sim={result.reason} etDay={s.etDay} disabled={!parsed} deps={vaultDeps} />
 
         <div className="border-t border-line px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">

@@ -11,13 +11,14 @@ import { routeLiveRpc } from "./fake-live-rpc";
 const WIDTHS = [360, 768, 1024, 1440, 1920] as const;
 /**
  * Pages checked at every width: the docs home, the Reference section page (the one whose cards come in groups), then
- * the longest pages as they ship (Tasks 8, 13, 14, 15, 16, 17 and 18), and the pages of the health-factor scale and
- * the multiplier flow.
+ * the longest pages as they ship (Tasks 8, 13, 14, 15, 16, 17 and 18), the pages of the health-factor scale and
+ * the multiplier flow, and the agent checklist, whose table holds a sentence in each of its first two columns.
  */
 const PAGES: string[] = [
   "/docs",
   "/docs/reference",
   "/docs/concepts/nine-checks",
+  "/docs/concepts/agent-checklist",
   "/docs/concepts/credit-and-health-factor",
   "/docs/concepts/splits-and-multiplier",
   "/docs/guides/run-the-tests",
@@ -478,7 +479,7 @@ test.describe("previous and next", () => {
   for (const [slug, previous, next] of [
     ["reference/types", "reference/errors", "reference/market-calendar"],
     ["reference/market-calendar", "reference/types", "reference/adapters"],
-    ["concepts/refusal-codes", "concepts/nine-checks", "concepts/market-hours"],
+    ["concepts/refusal-codes", "concepts/nine-checks", "concepts/agent-checklist"],
   ] as const) {
     test(`${slug} pages back to ${previous} and on to ${next}, each card with its page's description`, async ({ page }) => {
       await page.goto(`/docs/${slug}`);
