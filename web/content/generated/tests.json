@@ -1011,6 +1011,12 @@
     "test_readsB20StateThroughPrecompile": 13,
     "test_transfersNvdacOnFork": 22
   },
+  "contracts/test/fork/CreditSupplyWithdrawFork.t.sol": {
+    "test_supplyThenWithdrawFiveDollarsOfNvdac": 85,
+    "test_minimumSupplyAndWithdrawIsOneRawUnit": 150,
+    "test_marketLimitsAtTheForkBlock": 186,
+    "test_supplyAndWithdrawWhileTheMarketIsClosed": 222
+  },
   "contracts/test/fork/DeployFork.t.sol": {
     "test_deployWiresEverything": 15
   },
