@@ -27,6 +27,13 @@ export function deploymentConfig(rows: readonly Deployment[]): VaultDeployment |
   return { vault: getAddress(address), deployTx: tx === "" ? null : (tx as Hash) };
 }
 
+/** The Date cell ("YYYY-MM-DD") of the Base mainnet MandateVault row, or null while the row has no address or no date. */
+export function vaultDeployDate(rows: readonly Deployment[]): string | null {
+  const row = rows.find((r) => r.network === NETWORK && r.contract === VAULT_CONTRACT);
+  if (!row || row.address.trim() === "") return null;
+  return row.date.trim() || null;
+}
+
 export interface DeploymentsFile {
   network: typeof NETWORK;
   chainId: typeof BASE_CHAIN_ID;

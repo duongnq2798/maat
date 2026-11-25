@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { deploymentConfig, deploymentsFile, SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
+import { deploymentConfig, deploymentsFile, SCAN_FLOOR_BLOCK, vaultDeployDate } from "@/lib/chain/config";
 import { docsData } from "@/lib/docs/generated";
 
 const row = (contract: string, address = "", tx = "", network = "Base mainnet") => ({ network, contract, address, tx, date: "" });
@@ -39,6 +39,32 @@ describe("deploymentConfig", () => {
   it("ignores other contracts and other networks", () => {
     expect(deploymentConfig([row("MarketCalendar", VAULT_LOWER)])).toBeNull();
     expect(deploymentConfig([row("MandateVault", VAULT_LOWER, TX, "Base Sepolia")])).toBeNull();
+  });
+});
+
+describe("vaultDeployDate", () => {
+  const dated = (date: string, address = VAULT_LOWER, contract = "MandateVault", network = "Base mainnet") => ({
+    ...row(contract, address, TX, network),
+    date,
+  });
+
+  it("reads the day the committed table records for the vault's deploy", () => {
+    expect(vaultDeployDate(docsData.deployments)).toBe("2026-11-24");
+  });
+
+  it("returns the MandateVault row's date", () => {
+    expect(vaultDeployDate([dated("2026-12-01", VAULT_LOWER, "MarketCalendar"), dated("2027-01-04")])).toBe("2027-01-04");
+  });
+
+  it("is null while the MandateVault row has no address or no date, or the table has no such row", () => {
+    expect(vaultDeployDate([dated("2026-11-24", "")])).toBeNull();
+    expect(vaultDeployDate([dated("")])).toBeNull();
+    expect(vaultDeployDate([])).toBeNull();
+  });
+
+  it("ignores other contracts and other networks", () => {
+    expect(vaultDeployDate([dated("2026-11-24", VAULT_LOWER, "MarketCalendar")])).toBeNull();
+    expect(vaultDeployDate([dated("2026-11-24", VAULT_LOWER, "MandateVault", "Base Sepolia")])).toBeNull();
   });
 });
 
