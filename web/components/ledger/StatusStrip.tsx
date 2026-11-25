@@ -2,6 +2,7 @@ import type { Address } from "viem";
 import { formatInt } from "@/content/format";
 import { basescanAddress } from "@/lib/chain/basescan";
 import type { LedgerSnapshot } from "@/lib/chain/load";
+import { SNAPSHOT_REORG_WINDOW, SNAPSHOT_URL } from "@/lib/chain/snapshot";
 import { shortAddress } from "@/lib/chain/tokens";
 import { repoFileUrl } from "@/lib/site";
 import { etClock, hostOf } from "./format";
@@ -92,6 +93,15 @@ export function MainnetStrip({
         Vault {shortAddress(vault)} · via {endpoints.map(hostOf).join(", then ")}
         {treasury?.paused ? <span className="ml-2 rounded bg-refuse-tint px-1.5 py-0.5 font-semibold text-refuse">paused by the owner</span> : null}
       </p>
+      {scan.fromSnapshot ? (
+        <p className="mt-1 text-xs text-ink-2">
+          Logs up to block {formatInt(Number(scan.fromSnapshot.block - SNAPSHOT_REORG_WINDOW - 1n))} are from the{" "}
+          <a href={SNAPSHOT_URL} className="underline underline-offset-2">
+            committed snapshot
+          </a>{" "}
+          of block {formatInt(Number(scan.fromSnapshot.block))}, whose hash Base confirmed.
+        </p>
+      ) : null}
       {!scan.done ? (
         loading ? (
           <p className="mt-2 text-xs text-ink-2">

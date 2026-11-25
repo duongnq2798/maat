@@ -1,5 +1,7 @@
 import { FACTS } from "@/content/facts";
+import { formatInt } from "@/content/format";
 import { rpcUrls } from "@/lib/chain/rpc";
+import { SNAPSHOT_REORG_WINDOW, SNAPSHOT_URL } from "@/lib/chain/snapshot";
 import { repoFileUrl } from "@/lib/site";
 import { hostOf } from "./format";
 
@@ -25,6 +27,12 @@ export function HowWeRead() {
           <li>
             Balances, prices, the mandate and the health factor come from a few multicalls, all at the latest block. A
             read that fails is shown as unavailable, never as zero.
+          </li>
+          <li>
+            A first visit starts from a snapshot the repository commits (<a href={SNAPSHOT_URL}>{SNAPSHOT_URL}</a>,
+            written from Base by npm run snapshot). Once Base gives the same hash for the snapshot&apos;s block, the page
+            takes from the file the logs more than {formatInt(Number(SNAPSHOT_REORG_WINDOW))} blocks below it and reads
+            every block after those from Base.
           </li>
           <li>
             What it has read stays in this browser&apos;s storage, so a return visit only reads new blocks. The newest

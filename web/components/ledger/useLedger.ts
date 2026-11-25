@@ -8,6 +8,7 @@ import type { TxInput } from "@/lib/chain/ledger";
 import { errorText, loadLedger, verifyVault, type LedgerClient, type LedgerSnapshot } from "@/lib/chain/load";
 import { staticRationaleSource, type RationaleSource } from "@/lib/chain/rationale";
 import { createLedgerClient, rpcUrls } from "@/lib/chain/rpc";
+import { fetchSnapshotJson } from "@/lib/chain/snapshot";
 
 /** How often the page rereads Base while the tab is visible. */
 export const REFRESH_MS = 60_000;
@@ -37,6 +38,8 @@ export interface LedgerDeps {
   client?: LedgerClient;
   endpoints?: readonly string[];
   rationaleSource?: RationaleSource;
+  /** The committed snapshot the first read starts from (default: /data/decisions-snapshot.json); null scans every block. */
+  fetchSnapshot?: () => Promise<unknown>;
   storage?: Storage | null;
   now?: () => number;
   refreshMs?: number;
@@ -97,6 +100,8 @@ export function useLedger(deps: LedgerDeps = {}): LedgerState & { retry: () => v
       const endpoints = d.endpoints ?? rpcUrls();
       const client = d.client ?? createLedgerClient(endpoints);
       const rationaleSource = d.rationaleSource ?? staticRationaleSource();
+      // Fetched while the vault is checked; only the first read needs it, since later ones have the cache.
+      const committed = (d.fetchSnapshot ?? fetchSnapshotJson)().catch(() => null);
       try {
         await verifyVault(client, vault);
       } catch (e) {
@@ -120,6 +125,7 @@ export function useLedger(deps: LedgerDeps = {}): LedgerState & { retry: () => v
             storage,
             floor,
             txs,
+            snapshot: first ? committed : undefined,
             now: d.now,
             signal,
             onProgress: first ? (p) => !signal.aborted && setState({ mode: "mainnet", snapshot: p, endpoints, loading: true, refreshError: null }) : undefined,

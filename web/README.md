@@ -25,9 +25,10 @@ A new edition file is also imported in `content/gap-index/index.ts`. After a win
 | `npm run verify` | `typecheck` + `test` + `build` + `check:out`, in that order. It does not run the e2e tests |
 | `npm run brand` | re-renders the logo, icons, OG image and X avatar/banner |
 | `npm run rationales` | `npm run rationales -- <journal.jsonl>` rewrites `content/generated/rationales.json`, the rationale text the mainnet ledger checks against each `rationaleHash` ([Mainnet ledger](#mainnet-ledger)) |
+| `npm run snapshot` | reads Base (`https://mainnet.base.org` unless `-- --rpc <https URL>`) and rewrites the decisions snapshot in `content/generated/`, which a first read of the mainnet ledger starts from; `-- --fresh` scans from the deploy block instead of building on the committed file ([Mainnet ledger](#mainnet-ledger)) |
 | `npm run docs:gen` | rewrites the reference data in `content/generated/` from the contracts, the agent and the deployments table ([Docs content](#docs-content)) |
 | `npm run gap-index` | measures the Weekend Gap Index from Base logs and writes one edition file under content/gap-index/ (`-- --edition N`; to reproduce one figure run `npm run -s gap-index -- --edition N --window ID --token SYM --stdout`: `-s` keeps npm's banner out of the JSON) |
-| `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/live.spec.ts` for the live strip and `/now` against the fake RPC of `e2e/fake-live-rpc.ts`, `e2e/gap-index.spec.ts` for `/gap-index`, `e2e/ledger.spec.ts` for `/ledger` against the fake Base RPC of `e2e/fake-rpc.ts`, `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
+| `npm run e2e` | Playwright on `out/`: `e2e/smoke.spec.ts` and `e2e/simulator.spec.ts` for the landing page, `e2e/live.spec.ts` for the live strip and `/now` against the fake RPC of `e2e/fake-live-rpc.ts`, `e2e/gap-index.spec.ts` for `/gap-index`, `e2e/ledger.spec.ts` for `/ledger` against the fake Base RPC of `e2e/fake-rpc.ts`, `e2e/ledger-snapshot.spec.ts` for a first read that starts from the decisions snapshot (its timing on the public RPC runs only with `MAAT_E2E_LIVE=1`), `e2e/docs.spec.ts` and `e2e/docs-a11y.spec.ts` for the docs. Run `npm run build` first: it serves the existing `out/` and does not build. Once per machine: `npx playwright install chromium` |
 
 Keep Next's anonymous telemetry off when you build:
 
@@ -176,6 +177,7 @@ It checks the `out/` the last build left and does not build, so run it after `np
 
 - RPCs: `DEFAULT_RPCS` in `lib/chain/rpc.ts`, keyless and open to any origin. `NEXT_PUBLIC_BASE_RPC_URL`, if set at build time to an `https:` URL, is tried first; it ships to every visitor, so never put a private key or a paid key there.
 - Rationale text: `/data/rationales.json`, from `content/generated/rationales.json`. To refresh it, run `npm run rationales -- <path to the agent's journal.jsonl>` and commit the file. The page shows a text only when its hash matches the one in the `Decision` event.
+- Decisions snapshot: `/data/decisions-snapshot.json`, the file `npm run snapshot` writes in `content/generated/` (`null` while there is none). It holds every log of the vault up to a finalized block N, N's hash, and each Decision's block time, gas and transaction. A first read uses it once Base gives the same hash for block N: it takes the logs below N minus `SNAPSHOT_REORG_WINDOW` (`lib/chain/snapshot.ts`) from the file and scans only from there to the head. Without a snapshot, or with one it cannot use, it scans from the deploy block. The build only copies the committed file and never asks Base for it, so a refresh is a data PR: run `npm run snapshot`, which reads Base and builds on the committed file, and commit what it writes.
 
 ### Site URL
 
