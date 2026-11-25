@@ -174,6 +174,17 @@ describe("blob validation (§2.6)", () => {
     }
   });
 
+  it("rejects an m or r that fits its pattern but matches URL_RE or KEY_RE (§2.1)", () => {
+    // The spec's own example: a Bedrock-style id fits the model pattern, and URL_RE reads it as a domain.
+    expect(problemOf(make({ ...v1(), m: "us.anthropic.claude-sonnet-5-5" }))).toBe("m matches the URL or key pattern");
+    expect(problemOf(make({ ...v1(), r: "run.example.com" }))).toBe("r matches the URL or key pattern");
+    expect(problemOf(make({ ...v1(), r: `rk-${"0".repeat(16)}` }))).toBe("r matches the URL or key pattern");
+    // One character short of KEY_RE's 16, and no dot: still a run id.
+    expect(problemOf(make({ ...v1(), r: `rk-${"0".repeat(15)}` }))).toBe("v1");
+    // The check keeps no state between blobs: the same denied value is rejected twice in a row.
+    expect(problemOf(make({ ...v1(), r: "run.example.com" }))).toBe("r matches the URL or key pattern");
+  });
+
   it("keeps a null source value, which means the read failed", () => {
     const b = blobOf(txInput(make({ ...v1(), s: [["0xb20000000000000000000078ee7ce2fe4908108c", null, null, null]] })));
     if (b.status !== "v1") throw new Error(b.status);

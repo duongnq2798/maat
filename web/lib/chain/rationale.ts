@@ -159,6 +159,11 @@ export const COMMIT_RE = /^(?:[0-9a-f]{40}(?:-dirty)?|unknown)$/;
 const HASH_RE = /^0x[0-9a-f]{64}$/;
 const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/;
 const RUN_RE = /^[A-Za-z0-9._:-]{1,64}$/;
+// The spec's URL_RE and KEY_RE (§2.3), without the g flag so that test() keeps no state between calls.
+const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*|\bwww\.\S*|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b(?:\/\S*)?/i;
+const KEY_RE = /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\bAKIA[0-9A-Z]{16}\b|-----BEGIN[A-Z ]*-----/;
+/** `m` and `r` match neither pattern (§2.1), or the encoder would not have built the blob. */
+const denied = (v: string) => URL_RE.test(v) || KEY_RE.test(v);
 const SYM_RE = /^(?:[A-Za-z0-9]{1,16}|0x[0-9a-f]{40})$/;
 const ROUND_RE = /^(?:0|[1-9][0-9]{0,24})$/;
 
@@ -183,6 +188,7 @@ function blobFields(o: Record<string, unknown>): BlobV1 | string {
   if (hasK && o.k !== "probe" && o.k !== "bill") return "k is neither probe nor bill";
   if (hasK && "m" in o) return "m is present although k is";
   if (!hasK && (typeof o.m !== "string" || !MODEL_RE.test(o.m))) return "m is not a model id";
+  if (!hasK && denied(o.m as string)) return "m matches the URL or key pattern";
   let q: number[] | undefined;
   if ("q" in o) {
     if (hasK) return "q is present although k is";
@@ -193,6 +199,7 @@ function blobFields(o: Record<string, unknown>): BlobV1 | string {
     q = v as number[];
   }
   if (typeof o.r !== "string" || !RUN_RE.test(o.r)) return "r is not a run id";
+  if (denied(o.r)) return "r matches the URL or key pattern";
   if (!Array.isArray(o.s) || o.s.length > 16) return "s is not a list of at most 16 sources";
   const s: BlobSource[] = [];
   for (const [i, e] of o.s.entries()) {
