@@ -18,6 +18,14 @@ function ageOf(view: VaultView, row: VaultRow, now: number | null): string | nul
   return `${formatAge(now - row.timestamp)} ago`;
 }
 
+/** "block 61,745,836". */
+const blockText = (row: VaultRow) => `block ${formatInt(Number(row.block))}`;
+
+/** "Tue 24 Nov 11:59 ET", or the row's block when its time was not read (the loader then labels it "block N"). */
+function whenText(row: VaultRow): string {
+  return row.timestamp === null ? blockText(row) : `${row.timeLabel} ET`;
+}
+
 /** "0x6162…23c8". */
 const shortHash = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
 
@@ -67,7 +75,7 @@ export function VaultPlate() {
   }
   const age = ageOf(view, latest, now);
   const label = view.status === "live" ? "Last Decision" : "Recorded Decision";
-  const when = age ?? `${latest.timeLabel} ET`;
+  const when = age ?? whenText(latest);
   return (
     <a
       data-vault-plate={view.status}
@@ -135,6 +143,7 @@ export function VaultCard() {
   const view = useVault();
   const now = useNowSec();
   const [latest] = view.decisions;
+  const age = latest === undefined ? null : ageOf(view, latest, now);
   return (
     <div
       data-vault-card={view.status}
@@ -158,9 +167,9 @@ export function VaultCard() {
           <div className="flex min-w-0 flex-col gap-1 px-5 pt-5">
             <span className="font-mono text-[11px] text-ink-2">{view.status === "live" ? "LATEST DECISION" : "LATEST RECORDED DECISION"}</span>
             <span className="text-[30px] font-semibold tracking-[-0.035em]">{intentText(latest)}</span>
-            <span className="font-mono text-xs text-ink-2">
-              {latest.timeLabel} ET · block {formatInt(Number(latest.block))}
-              {ageOf(view, latest, now) === null ? null : ` · ${ageOf(view, latest, now)}`}
+            <span data-latest-when="" className="font-mono text-xs text-ink-2">
+              {latest.timestamp === null ? blockText(latest) : `${whenText(latest)} · ${blockText(latest)}`}
+              {age === null ? null : ` · ${age}`}
             </span>
           </div>
           <div className="mx-3 mt-4">
@@ -175,7 +184,7 @@ export function VaultCard() {
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium">{intentText(r)}</span>
-                  <span className="font-mono text-xs text-ink-2">{r.timeLabel} ET</span>
+                  <span className="font-mono text-xs text-ink-2">{whenText(r)}</span>
                 </span>
                 <span className="flex flex-col items-end gap-1 text-right">
                   <ReasonTag code={r.reason} tone="neutral" layout="inline" className="justify-end text-[13px]" />
