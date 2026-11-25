@@ -36,7 +36,7 @@ The key in `agent/.env` wins over one your terminal already has. Node's `--env-f
 maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env
 ```
 
-When `agent/.env` has no `ANTHROPIC_API_KEY`, or leaves it blank, the terminal's is used. A round whose Claude call fails, or that the daily cap stops, can still end `done`, so the loop's line after it carries the `run` line's error, cut to one line with URLs and keys redacted: `round <RUN_ID>: done, sent <N>, skipped <M>; error: claude: <ERROR>`.
+When `agent/.env` has no `ANTHROPIC_API_KEY`, or leaves it blank, the terminal's is used. A round whose Claude call fails, or that the daily cap stops, can still end `done`, so the loop's line after it carries the `run` line's error, cut to one line with URLs and keys redacted: `round <RUN_ID>: done, sent <N>, skipped <M>; error: claude: <ERROR>`. The same error goes in `heartbeat.json`, and `npm run agent:heartbeat` prints it in parentheses on its `OK` line.
 
 ## Live run (owner only)
 

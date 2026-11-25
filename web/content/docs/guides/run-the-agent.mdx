@@ -422,7 +422,7 @@ The agent does not send the plain `eth_estimateGas` figure, because the vault ca
 | --- | --- |
 | `data/journal.jsonl` | The append-only journal described above. The `intent` lines hold the [rationale](/docs/help/glossary#rationale) text behind each `rationaleHash`. |
 | `data/state.json` | The compute bills and the amount paid so far, the refusals logged per NYSE date, the transaction count per UTC day, and the sends that are still `pending`. The agent needs it to survive a restart. |
-| `data/heartbeat.json` | When the last round ended, its run id and status, and its halt reason or error as one line. The agent writes it after every round, and `agent:loop` and `agent:heartbeat` read it. |
+| `data/heartbeat.json` | When the last round ended, its run id and status, and its halt reason or error as one line, the error of its journal `run` line included. The agent writes it after every round, and `agent:loop` and `agent:heartbeat` read it. |
 | `data/agent.lock` | The lock that keeps one agent per folder. The agent takes it before it opens the files or connects to CDP, and removes it when it exits. A lock file that is empty or garbled, and at most <Fact name="lockStaleSec" /> old, counts as held. |
 
 Git ignores `agent/data/`. Stop the agent before you edit either file: it holds the contents of `state.json` in memory and writes them back after each round.

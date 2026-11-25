@@ -107,7 +107,7 @@ npm run agent:heartbeat
 npm run agent:heartbeat -- --data-dir ./data-dryrun --max-age-min 90
 ```
 
-It exits with 0 when the last round is at most `--max-age-min` minutes old (90 by default), 1 when it is older, and 2 when there is no heartbeat yet, the file cannot be read, or an argument is not valid.
+It exits with 0 when the last round is at most `--max-age-min` minutes old (90 by default), 1 when it is older, and 2 when there is no heartbeat yet, the file cannot be read, or an argument is not valid. The code says only how old the round is: a round that threw, halted, or ended `done` with an error on its journal `run` line, such as a failed Claude call or the daily Claude cap, prints that error in parentheses on its `OK` or `STALE` line ([`heartbeat.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/heartbeat.test.ts)).
 
 ### test
 
