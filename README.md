@@ -39,7 +39,7 @@
   `MandateVault` runs nine checks on every buy and sell (concentration on a buy only), stops at the first
   failure and records each verdict as a `Decision` event, with 19 typed refusal codes.
 - **Track and entry.** Agentic Stock Finance, in Base's "Stocks Maxxing Season" Builder Quest (2026-11-05 to
-  2026-12-05). A new build: the first commit is `009577d`, 2026-11-06. [Track fit](#by-track-agentic-stock-finance).
+  2026-12-12). A new build: the first commit is `009577d`, 2026-11-06. [Track fit](#by-track-agentic-stock-finance).
 - **Built on Base.** The checks read each B20 stock's pause flag, transfer policy, `uiMultiplier` and
   `effectiveAt` through the B20 precompile, Chainlink's equity feeds on Base and Aerodrome Slipstream TWAPs.
   Credit runs on the Aave V4 MAG7 Spoke. Agent transactions carry an ERC-8021 Builder Code, and the executor
@@ -680,7 +680,7 @@ Planned, roughly in this order. None of this is on `main`, and no dates are prom
 
 ## Built during the Quest
 
-Maat is an entry in Base's "Stocks Maxxing Season" Builder Quest (5 November to 5 December 2026), track
+Maat is an entry in Base's "Stocks Maxxing Season" Builder Quest (5 November to 12 December 2026), track
 Agentic Stock Finance. All code in this repository was written during the Quest: the first commit is
 `009577d` on 2026-11-06. The only third-party code in the tree is the two Solidity submodules below; npm
 packages install from the lockfiles.
