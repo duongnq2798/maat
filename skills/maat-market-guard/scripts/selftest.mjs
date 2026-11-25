@@ -5,12 +5,16 @@
 // serve state at the two pinned blocks below) and rewrites fixtures/rpc.json. eth_call and eth_getBlockByNumber only.
 // Exit 0 when every check passes; otherwise 1, naming each failing check.
 
-import { readFileSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmdirSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { DEFAULT_RPC, RPC_ENV, ADDRESSES, REASONS, TOKENS, check, encodePreviewIntent, httpTransport } from "./check.mjs";
 
 const FIXTURES = fileURLToPath(new URL("./fixtures/rpc.json", import.meta.url));
+const SKILL_DIR = resolve(fileURLToPath(new URL("..", import.meta.url)));
 const RECORD = process.argv.includes("--record");
 
 // The two Base mainnet blocks the chain cases run at.
@@ -103,6 +107,7 @@ await run("market open: Tue 2026-11-24 10:00 ET", ["market", "--block", CLOSED_B
   reasonName: "OK",
   closedBecause: null,
   session: "REGULAR",
+  mandateSession: "REGULAR",
   calendar: lower(ADDRESSES.MarketCalendar),
   vault: lower(ADDRESSES.MandateVault),
 }, (r) => {
@@ -140,11 +145,44 @@ await run("market now (block time): Wed 06:59 ET is before the open", ["market",
   closedBecause: "before-open",
 }, (r) => expectFields("market now: local time is the block's", r.at, { unix: 1795607965, et: "2026-11-25 06:59", weekday: "Wed" }));
 
-await run("market now, Chainlink feed session: open on a weekday morning", ["market", "--block", CLOSED_BLOCK, "--session", "feed"], t, {
+// --session asks about another session; the verdict (allowed, reason, the exit code) stays the mandate's session's.
+await run("market now, --session feed: the feed window is open, but the vault's REGULAR session is not", ["market", "--block", CLOSED_BLOCK, "--session", "feed"], t, {
+  exitCode: 1,
+  allowed: false,
+  open: true,
+  reason: 6,
+  reasonName: "MARKET_CLOSED",
+  closedBecause: null,
+  session: "FEED_24_5",
+  mandateSession: "REGULAR",
+}, (r) => expectTrue("--session feed while REGULAR is closed: the meaning names both", /FEED_24_5 is open/.test(r.meaning) && /REGULAR.*before-open/.test(r.meaning), r.meaning));
+
+await run("market open, --session feed: both open, so the vault's calendar check passes", ["market", "--block", CLOSED_BLOCK, "--at", "2026-11-24T15:00:00Z", "--session", "feed"], t, {
   exitCode: 0,
+  allowed: true,
   open: true,
   reasonName: "OK",
   session: "FEED_24_5",
+  mandateSession: "REGULAR",
+});
+
+await run("market closed, --session feed on a Saturday: both closed", ["market", "--block", CLOSED_BLOCK, "--at", "2026-11-28T15:00:00Z", "--session", "feed"], t, {
+  exitCode: 1,
+  allowed: false,
+  open: false,
+  reasonName: "MARKET_CLOSED",
+  closedBecause: "weekend",
+  session: "FEED_24_5",
+  mandateSession: "REGULAR",
+});
+
+await run("market, --session regular: the mandate's own session, the same verdict as no flag", ["market", "--block", CLOSED_BLOCK, "--at", "2026-11-24T15:00:00Z", "--session", "regular"], t, {
+  exitCode: 0,
+  allowed: true,
+  open: true,
+  reasonName: "OK",
+  session: "REGULAR",
+  mandateSession: "REGULAR",
 });
 
 // ---------------------------------------------------------------- preview: the live vault's verdict
@@ -270,6 +308,50 @@ for (const [name, argv, pattern] of usage) {
 {
   const help = await check(["--help"], { transport: noCalls, env: {} });
   expectTrue("--help prints the usage and exits 0", help.exitCode === 0 && /check\.mjs market/.test(help.text ?? ""), help.text);
+}
+
+// ---------------------------------------------------------------- the CLI as a program, also through a linked folder
+// An installer may link the skill folder into an agent's skills directory instead of copying it. Run that way, the
+// script must still answer, and a bad input must still exit 2: a silent exit 0 would read as "allowed".
+{
+  /** Runs check.mjs as its own process. Bad input and `reasons` never reach the network. */
+  const cli = (skillDir, args) => {
+    const out = spawnSync(process.execPath, [join(skillDir, "scripts", "check.mjs"), ...args], { encoding: "utf8", timeout: 30_000 });
+    let json = null;
+    try {
+      json = JSON.parse(out.stdout);
+    } catch {
+      json = null;
+    }
+    return { code: out.status, json, stdout: out.stdout };
+  };
+  const expectCli = (name, out, code, fields) => {
+    expectFields(name, { exitCode: out.code, ...out.json }, { exitCode: code, ...fields });
+  };
+  expectCli("CLI, bad input: prints UNKNOWN and exits 2", cli(SKILL_DIR, ["preview"]), 2, { reasonName: "UNKNOWN", allowed: false });
+
+  const tmp = mkdtempSync(join(tmpdir(), "maat-market-guard-"));
+  const link = join(tmp, "maat-market-guard");
+  try {
+    // A junction on Windows (no admin rights needed), a directory symlink elsewhere.
+    symlinkSync(SKILL_DIR, link, "junction");
+    const bad = cli(link, ["preview"]);
+    expectCli("CLI through a linked skill folder, bad input: prints UNKNOWN and exits 2", bad, 2, { reasonName: "UNKNOWN", allowed: false });
+    expectTrue("CLI through a linked skill folder, bad input: says which", /--action/.test(bad.json?.error ?? ""), bad.stdout);
+    const reasons = cli(link, ["reasons"]);
+    expectCli("CLI through a linked skill folder: reasons prints the list and exits 0", reasons, 0, { check: "reasons" });
+    expectTrue("CLI through a linked skill folder: reasons lists every reason", reasons.json?.reasons?.length === REASONS.length, reasons.stdout);
+  } catch (e) {
+    results.push({ name: "CLI through a linked skill folder", pass: false, detail: `could not run: ${e?.message ?? e}` });
+  } finally {
+    // unlink removes the link itself, never the folder it points at.
+    try {
+      unlinkSync(link);
+    } catch {}
+    try {
+      rmdirSync(tmp);
+    } catch {}
+  }
 }
 
 // ---------------------------------------------------------------- offline: encoding and the reason list

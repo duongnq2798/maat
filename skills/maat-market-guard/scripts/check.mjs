@@ -5,14 +5,14 @@
 //   node scripts/check.mjs preview  would the live MandateVault accept this intent now? (its previewIntent)
 //   node scripts/check.mjs reasons  the typed reasons, offline
 //
-// Prints one JSON object: {allowed, reason, reasonName, ...}. Exit 0 = allowed (or open), 1 = refused with a typed
-// reason, 2 = no answer (bad input or an RPC failure): fail closed and do not trade on a 2.
+// Prints one JSON object: {allowed, reason, reasonName, ...}. Exit 0 = allowed, 1 = refused with a typed reason,
+// 2 = no answer (bad input or an RPC failure): fail closed and do not trade on a 2.
 // Plain JSON-RPC over fetch (eth_call and eth_getBlockByNumber only): no key, no signature, no transaction, no gas.
 // Zero dependencies: Node.js built-ins only.
 
+import { realpathSync } from "node:fs";
 import process from "node:process";
-import { resolve } from "node:path";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath } from "node:url";
 
 export const DEFAULT_RPC = "https://mainnet.base.org";
 /** Overrides DEFAULT_RPC; the --rpc flag overrides both. */
@@ -130,7 +130,8 @@ export const USAGE = `maat-market-guard: ask Maat's onchain guard on Base, read-
   node scripts/check.mjs --help
 
   market    asks the MarketCalendar the vault's mandate names whether its session is open at --at (default: the
-            block's time). --session overrides the mandate's session.
+            block's time). --session asks about another session as well: open answers it, while allowed, reason
+            and the exit code stay the verdict for the mandate's session.
   preview   eth_call MandateVault.previewIntent(intent) from the vault's executor (or --from).
             ACTION: ${ACTIONS.join(", ")}.
             --amount is USDC for BUY, BORROW, REPAY and PAY_EXPENSE, and stock units for SELL, SUPPLY and
@@ -140,7 +141,7 @@ export const USAGE = `maat-market-guard: ask Maat's onchain guard on Base, read-
   common flags: --block <number|latest>  --vault <address>  --rpc <url> (else $${RPC_ENV}, else ${DEFAULT_RPC})
   --at takes unix seconds or an ISO 8601 time with a zone, such as 2026-11-27T18:30:00Z.
 
-Exit 0 = allowed or open, 1 = refused with a typed reason, 2 = no answer (bad input or RPC failure): do not trade.
+Exit 0 = allowed, 1 = refused with a typed reason, 2 = no answer (bad input or RPC failure): do not trade.
 `;
 
 // ------------------------------------------------------------------ errors
@@ -414,11 +415,16 @@ async function market(rpc, c, input) {
   const calendar = wordAddress(m[MANDATE_WORDS.calendar], "MandateVault.mandate()");
   const session = input.session ?? mandateSession;
   const ts = input.at ?? block.timestamp;
-  const [openWords, local] = await Promise.all([
-    ethCall(rpc, { to: calendar, data: SELECTORS["isOpen(uint256,uint8)"] + uintWord(ts) + uintWord(session) }, block, "MarketCalendar.isOpen"),
+  // The verdict is always the vault's own: its mandate's session. Another --session is asked about as well.
+  const isOpen = (s) =>
+    ethCall(rpc, { to: calendar, data: SELECTORS["isOpen(uint256,uint8)"] + uintWord(ts) + uintWord(s) }, block, "MarketCalendar.isOpen");
+  const [local, vaultWords, askedWords] = await Promise.all([
     ethCall(rpc, { to: calendar, data: SELECTORS["localTime(uint256)"] + uintWord(ts) }, block, "MarketCalendar.localTime"),
+    isOpen(mandateSession),
+    session === mandateSession ? null : isOpen(session),
   ]);
-  const open = wordBool(openWords[0], "MarketCalendar.isOpen");
+  const vaultOpen = wordBool(vaultWords[0], "MarketCalendar.isOpen");
+  const open = askedWords === null ? vaultOpen : wordBool(askedWords[0], "MarketCalendar.isOpen");
   if (local.length < 3) throw new RpcError("MarketCalendar.localTime returned too few words");
   const etDay = wordUint(local[0]);
   const weekday = Number(wordUint(local[1]));
@@ -429,18 +435,29 @@ async function market(rpc, c, input) {
   ]);
   const holiday = wordBool(holidayWords[0], "MarketCalendar.isHoliday");
   const earlyCloseMin = Number(wordUint(earlyWords[0]));
-  const reason = open ? 0 : MARKET_CLOSED;
+  const day = { holiday, weekday, minute, earlyCloseMin };
+  const reason = vaultOpen ? 0 : MARKET_CLOSED;
+  const OTHER_CHECKS = "The vault's other checks still apply: run preview for a verdict on one intent.";
+  let meaning;
+  if (session === mandateSession) {
+    meaning = vaultOpen ? `The session the vault's mandate checks is open on its calendar. ${OTHER_CHECKS}` : REASONS[MARKET_CLOSED].meaning;
+  } else {
+    const asked = open ? `${SESSIONS[session]} is open.` : `${SESSIONS[session]} is closed (${closedBecause(session, day)}).`;
+    const vault = vaultOpen
+      ? `which is open: its calendar check passes. ${OTHER_CHECKS}`
+      : `which is closed (${closedBecause(mandateSession, day)}): the vault refuses with MARKET_CLOSED.`;
+    meaning = `${asked} The verdict is for ${SESSIONS[mandateSession]}, the session the vault's mandate checks, ${vault}`;
+  }
   return {
     check: "market",
-    allowed: open,
+    allowed: vaultOpen,
     open,
     reason,
     reasonName: REASONS[reason].name,
-    meaning: open
-      ? "The session is open on the vault's calendar. The vault's other checks still apply: run preview for a verdict on one intent."
-      : REASONS[MARKET_CLOSED].meaning,
-    closedBecause: open ? null : closedBecause(session, { holiday, weekday, minute, earlyCloseMin }),
+    meaning,
+    closedBecause: open ? null : closedBecause(session, day),
     session: SESSIONS[session],
+    mandateSession: SESSIONS[mandateSession],
     at: { unix: ts, utc: new Date(ts * 1000).toISOString(), et: `${etDate(Number(etDay))} ${hhmm(minute)}`, weekday: WEEKDAYS[weekday] ?? String(weekday) },
     holiday,
     earlyClose: earlyCloseMin === 0 ? null : hhmm(earlyCloseMin),
@@ -538,8 +555,21 @@ export async function check(argv, { transport, env = process.env } = {}) {
 
 // ------------------------------------------------------------------ CLI
 
-const invoked = process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href;
-if (invoked) {
+/**
+ * True when Node runs this file as its program, not when another module imports it. Node loads the program from its
+ * real path, so a run through a symlink or a junction (a skill folder linked into an agent's skills directory) has an
+ * import.meta.url that differs from argv[1]: compare the real paths of both, never the link path.
+ */
+function runAsProgram() {
+  if (process.argv[1] === undefined) return false;
+  try {
+    return realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+}
+
+if (runAsProgram()) {
   let out;
   try {
     out = await check(process.argv.slice(2));

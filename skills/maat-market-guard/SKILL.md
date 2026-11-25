@@ -22,10 +22,13 @@ instead of retrying for an OK.
   verdict before it acts.
 - **To screen a trade of your own**, preview a small BUY (for example `--amount 1`) of the stock. For a BUY or a SELL
   the vault checks in a fixed order: the token's pause and transfer policy, the calendar, the Chainlink feed, the
-  multiplier and the pool's TWAP premium come before Maat's own balance, caps and weights. So `TOKEN_PAUSED` and the
-  Market group describe the stock itself at that moment, for anyone, and a BUY refused with `INSUFFICIENT_BALANCE`,
-  `SIZE_LIMIT` or `CONCENTRATION` passed every market check before it. Those three describe Maat's own vault and
-  mandate.
+  multiplier and the pool's TWAP premium come before Maat's own balance, caps and weights. Only `TOKEN_PAUSED` is a
+  fact about the token itself, for anyone. `POLICY_BLOCKED` applies the token's transfer policy to Maat's own path (its
+  vault, pool, adapter and executor), and the Market group measures the stock against Maat's mandate: its session,
+  feed-staleness, multiplier-cooldown and premium limits, with the vault's own record of the last multiplier. So an
+  `OK` or a `FEED_STALE` says whether the stock meets Maat's limits at that block, not yours. A BUY refused with
+  `INSUFFICIENT_BALANCE`, `SIZE_LIMIT` or `CONCENTRATION` passed every market check before it; those three describe
+  Maat's own balance, caps and weights.
 
 ## Commands
 
@@ -38,7 +41,8 @@ node scripts/check.mjs market
 # At another time: unix seconds, or ISO 8601 with a zone
 node scripts/check.mjs market --at 2026-11-27T18:30:00Z
 
-# The Chainlink equity feed window (Sun 20:00 ET to Fri 20:00 ET) instead of the NYSE session
+# Is the Chainlink equity feed window (Sun 20:00 ET to Fri 20:00 ET) open? `open` answers it; `allowed`, the
+# reason and the exit code stay the verdict for the session the vault's mandate checks (REGULAR, the NYSE session)
 node scripts/check.mjs market --session feed
 
 # Would the vault accept a BUY of $5 of NVDAc now?
@@ -81,6 +85,7 @@ $ node scripts/check.mjs market --block 62087947 --at 2026-11-26T15:00:00Z
   "meaning": "The market is closed for the mandate's session (a weekend, a holiday or outside its hours), or the calendar can't be read.",
   "closedBecause": "holiday",
   "session": "REGULAR",
+  "mandateSession": "REGULAR",
   "at": {
     "unix": 1795705200,
     "utc": "2026-11-26T15:00:00.000Z",
@@ -101,20 +106,22 @@ $ node scripts/check.mjs market --block 62087947 --at 2026-11-26T15:00:00Z
 
 | Field | In | Meaning |
 | --- | --- | --- |
-| `allowed` | both | `true` only for OK (or an open session). Trade on nothing else |
+| `allowed` | both | `true` only for OK: for `market`, the session the vault's mandate checks is open. Trade on nothing else |
 | `reason`, `reasonName` | both | The onchain `Reason` value and its name; see the table below. `null` and `UNKNOWN` when there was no answer |
 | `meaning` | both | One plain sentence for the user |
 | `label`, `group` | `preview` | The short label and the group of the reason |
-| `open`, `closedBecause` | `market` | `closedBecause` is `holiday`, `weekend`, `before-open`, `after-close` or `early-close` when closed, else `null` |
-| `session`, `at`, `holiday`, `earlyClose` | `market` | The session checked (`REGULAR` is NYSE 09:30 to 16:00 ET), the time in UTC and New York, and that day's calendar entries |
+| `open`, `closedBecause` | `market` | Whether `session` is open. `closedBecause` is `holiday`, `weekend`, `before-open`, `after-close` or `early-close` when closed, else `null` |
+| `session`, `mandateSession` | `market` | The session asked about (`--session`, else the mandate's), and the one the vault's mandate checks, which `allowed` and `reason` are for. `REGULAR` is NYSE 09:30 to 16:00 ET |
+| `at`, `holiday`, `earlyClose` | `market` | The time in UTC and New York, and that day's calendar entries |
 | `intent`, `from` | `preview` | The intent as sent, amounts as onchain integers, and the caller |
 | `vault`, `calendar`, `block`, `rpc` | both | What was read, at which block, through which RPC host |
 | `error` | no answer | Why there is no verdict |
 
 Addresses in the output are lowercase hex.
 
-**Exit codes:** `0` allowed or open; `1` refused, with a typed reason; `2` no answer (bad input, an RPC failure or data
-that does not decode). Fail closed: treat `2` as a refusal.
+**Exit codes:** `0` allowed; `1` refused, with a typed reason; `2` no answer (bad input, an RPC failure or data that
+does not decode). Fail closed: treat `2` as a refusal. The codes are the same when the skill folder is linked into an
+agent's skills directory instead of copied.
 
 ## Typed reasons
 
@@ -180,7 +187,8 @@ node scripts/selftest.mjs --record  # live and read-only: runs the same cases an
 ```
 
 The selftest covers an open session, a holiday, an early close, a weekend, the feed window, previewIntent OKs for a BUY
-and a SUPPLY, five typed refusals, RPC failures and bad input.
+and a SUPPLY, five typed refusals, RPC failures, bad input, and the script run as a program, also through a linked
+skill folder.
 
 ## Source
 
