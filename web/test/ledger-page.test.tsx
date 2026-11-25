@@ -174,7 +174,9 @@ describe("/ledger while the deployments file has no vault", () => {
     expect(screen.getByRole("region", { name: "Decision ledger" })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "How it works" })).toHaveAttribute("href", "/#how");
-    expect(within(nav).getByRole("link", { name: "Ledger" })).toHaveAttribute("href", "/ledger");
+    // The bar's link and the phone menu's (components/sections/Nav.tsx); CSS shows one of the two at any width.
+    const ledger = within(nav).getAllByRole("link", { name: "Ledger" });
+    expect(ledger.map((a) => a.getAttribute("href"))).toEqual(["/ledger", "/ledger"]);
   });
 });
 
@@ -330,11 +332,22 @@ describe("how the page reads Base", () => {
     }
   });
 
-  it("says the operator exports the rationale text from the agent's journal, and that an owner-sent intent has none", () => {
-    // Both Decisions on the recorded vault were sent from the owner's address; no agent journal holds their text.
+  it("says a blob's text is read from the transaction, and a Decision with no blob gets its text from the export", () => {
+    // Both Decisions on the recorded vault were sent from the owner's address with no blob (spec §1).
     const { container } = render(<HowWeRead />);
     expect(container.textContent).not.toMatch(/agent's journal export/);
-    expect(container).toHaveTextContent("The text comes from /data/rationales.json, which the operator exports from the agent's journal;");
-    expect(container).toHaveTextContent("an intent the owner sends by hand has no journal text, so the page has only its rationaleHash onchain and shows no text for it.");
+    expect(container).toHaveTextContent("When a Decision's calldata carries a maat:v1 blob, the text is in the transaction itself");
+    expect(container).toHaveTextContent("A Decision with no blob gets its text from /data/rationales.json, which the operator exports, and the page hashes that text the same way.");
+    expect(screen.getByRole("link", { name: "blob spec" })).toHaveAttribute(
+      "href",
+      "https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md",
+    );
+  });
+
+  it("says where the sender label, the Builder Code and the rounds come from", () => {
+    const { container } = render(<HowWeRead />);
+    expect(container).toHaveTextContent("The sender label compares the transaction's sender with the vault's owner.");
+    expect(container).toHaveTextContent("compared with the code on the vault's first Decision, which the owner sent by hand.");
+    expect(container).toHaveTextContent("The Rounds tab reads the agent's journal from the repository's public agent-journal branch through raw.githubusercontent.com");
   });
 });
