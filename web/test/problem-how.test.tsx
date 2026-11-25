@@ -6,6 +6,7 @@ import { HowItWorks } from "@/components/sections/HowItWorks";
 import { Problem } from "@/components/sections/Problem";
 import { CodePanel } from "@/components/ui/CodePanel";
 import { FACTS } from "@/content/facts";
+import { PUBLISHED } from "@/content/gap-index";
 
 const width = (el: Element | null | undefined) => Number(el?.getAttribute("width"));
 
@@ -63,6 +64,13 @@ describe("Problem", () => {
     expect(screen.getByText("24h pause")).toBeInTheDocument();
     expect(screen.getByText(/compares a 30-minute Aerodrome TWAP/)).toBeInTheDocument();
     expect(screen.getByText(/pauses that token for 24 hours/)).toBeInTheDocument();
+  });
+
+  it("links the Weekend Gap Index by its latest edition's title", () => {
+    render(<Problem />);
+    const latest = [...PUBLISHED].sort((a, b) => b.edition - a.edition)[0]!;
+    const link = screen.getByRole("link", { name: `Weekend Gap Index · ${latest.title}` });
+    expect(link).toHaveAttribute("href", "/gap-index");
   });
 });
 
