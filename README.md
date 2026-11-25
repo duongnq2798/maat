@@ -559,10 +559,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  122 passed (122)
-         Tests  2704 passed (2704)
+    Test Files  128 passed (128)
+         Tests  2751 passed (2751)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 52 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and 52 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 
@@ -754,6 +754,7 @@ web/                       Next.js landing page, /now, /gap-index, /ledger, docs
                            tests, Playwright e2e
 deployments/               go-live.md, the owner's go-live runbook; README.md, the deploy reference and the
                            Base mainnet address table
+scripts/recount.mjs        rebuilds the numbers of /proof from Base logs alone, with no dependency
 ops/journal/               the journal publisher the owner starts beside the agent: it appends the public fields
                            of the agent's journal to the public agent-journal branch every 15 min, never by force
 docs/superpowers/          design specs and implementation plans
