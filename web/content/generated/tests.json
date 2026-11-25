@@ -97,13 +97,15 @@
   "agent/test/heartbeat.test.ts": {
     "heartbeat": 23,
     "records a round's end, its status and what it sent, or the one-line error of a failed round": 24,
-    "writes the file whole and reads it back; no file reads as null": 33,
-    "refuses a file without a valid ts": 42,
-    "says how old it is": 48,
-    "scripts/heartbeat.ts": 57,
-    "exits 0 with the age while the last round is at most 90 min old, and 1 past it": 65,
-    "exits 2 with no heartbeat yet, an unreadable one, or a bad limit": 77,
-    "finds the data dir as the agent does: --data-dir, then the environment, then agent/.env, then ./data": 88
+    "carries the error of the round's run line, so a failed Claude call or the LLM cap does not read as a clean round": 33,
+    "writes the file whole and reads it back; no file reads as null": 46,
+    "refuses a file without a valid ts": 55,
+    "says how old it is": 61,
+    "scripts/heartbeat.ts": 70,
+    "exits 0 with the age while the last round is at most 90 min old, and 1 past it": 78,
+    "prints the error of a fresh round's run line on its OK line, with exit code 0": 90,
+    "exits 2 with no heartbeat yet, an unreadable one, or a bad limit": 101,
+    "finds the data dir as the agent does: --data-dir, then the environment, then agent/.env, then ./data": 112
   },
   "agent/test/integration/agent.fork.test.ts": {
     "agent on a Base fork": 26,
