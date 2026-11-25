@@ -763,5 +763,14 @@
   },
   "contracts/test/fork/PriceLibFork.t.sol": {
     "test_liveBasketTradesNearNav": 20
+  },
+  "contracts/test/fork/QueueReserveCapsFork.t.sol": {
+    "test_scriptChangesOnlyTheCapAndAppliesAfterTheTimelock": 51,
+    "test_scriptPrintsAQueueLineOnlyForAChangeThatIsNotQueued": 103,
+    "test_onlyTheOwnerCanQueue": 152,
+    "test_buysToTheAgentTargetPassAndAbove25PctIsConcentration": 161,
+    "test_theCapBoundsEachBuyNotTheCashLeft": 219,
+    "test_staleHoldingIsValuedAtZeroSoATargetBuyIsRefused": 240,
+    "test_staleHoldingUnderTheOldCapStillPasses": 272
   }
 }
