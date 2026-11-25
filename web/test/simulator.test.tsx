@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { type Address, zeroAddress, zeroHash } from "viem";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { VAULT_UNREACHABLE, type RealVaultDeps } from "@/components/RealVault";
 import { Simulator } from "@/components/Simulator";
 import { FACTS } from "@/content/facts";
@@ -376,8 +376,13 @@ describe("Simulator: asking the real vault", () => {
   const state = () => panel().getAttribute("data-real-vault");
   const side = (which: "simulation" | "vault") => panel().querySelector<HTMLElement>(`[data-answer="${which}"]`);
   const ask = () => screen.getByRole("button", { name: "Ask the real vault" });
-  // The chain code loads on the first ask; its first import in a test run takes longer than waitFor's default second.
   const settles = (s: string) => vi.waitFor(() => expect(state()).toBe(s), { timeout: 5_000 });
+
+  // The chain code loads on the first ask. Its first import in a test run is a transform that can outlast a test's
+  // timeout on a busy machine, so it happens here, once, and the tests time the panel only.
+  beforeAll(async () => {
+    await Promise.all([import("@/lib/chain/preview"), import("@/lib/chain/rpc"), import("@/lib/chain/config"), import("@/lib/chain/load")]);
+  }, 60_000);
 
   it("offers it as free and walletless, below the simulated verdict and outside its live region", () => {
     setup();
