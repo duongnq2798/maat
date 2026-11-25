@@ -183,6 +183,18 @@ describe("probeCandidates", () => {
       expect(closed(await state(standardScene().set(VAULT, "tokenConfig", configs((sym) => sym === "AAPLc"))))).toEqual([["BUY", "AAPLc", 1]]);
     });
 
+    it("builds the BUY from the listed tokens it may buy, one whose feed fails included", async () => {
+      // NVDAc is the only token the vault lets it buy, and its feed read fails: the state has no price for it.
+      const nvda = BASKET.findIndex((t) => t.symbol === "NVDAc");
+      const f = standardScene().set(VAULT, "tokenConfig", configs((sym) => sym === "NVDAc")).fail(FEEDS[nvda]!, "latestRoundData");
+      const st = await state(f);
+      expect(st.tokens.find((t) => t.symbol === "NVDAc")).toMatchObject({ price8: null, config: { allowed: true } });
+      expect(st.usdcBalance).toBeGreaterThan(0n);
+      expect(closed(st)).toEqual([["BUY", "NVDAc", 1]]);
+      // A probe that expects OK needs the price for maxWeightBps, so it has no BUY here.
+      expect(ok(st)).toEqual([]);
+    });
+
     it("sells $1 of the largest priced holding after the BUY", async () => {
       const f = standardScene().set(USDC, "balanceOf", 0n).set(addressOf("GOOGLc"), "balanceOf", 1_000_000n);
       expect(closed(await state(f))).toEqual([["SELL", "GOOGLc", 1]]);

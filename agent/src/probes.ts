@@ -16,7 +16,10 @@ import { usdToUsdc6, valueUsd6 } from "./units.js";
 export const MAX_PROBES_PER_DAY = 3;
 /** A probe that expects OK sends at least this many seconds before the close of its instant's session, or not at all. */
 export const PROBE_DEADLINE_MARGIN_S = 30;
-/** A probe that gets the round lock more than this long after its instant is journaled as missed and not run. */
+/**
+ * A probe that gets the round lock, or wakes from a retry's pause, more than this long after its instant is journaled
+ * as missed and not run on; no probe sends later than this after its instant.
+ */
 export const PROBE_LATE_LIMIT_MS = 10 * 60_000;
 /**
  * A failed read of the vault state or of the calendar is tried this many times in all, PROBE_RETRY_MS apart, while

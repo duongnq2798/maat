@@ -26,6 +26,7 @@ import {
 import { ASK_OPEN } from "../content/ask-open";
 import rationales from "../content/generated/rationales.json";
 import skill from "../content/generated/skill.json";
+import { reasonsFile } from "../content/reasons";
 import { deploymentConfig, deploymentsFile } from "../lib/chain/config";
 import { inboxDeployment } from "../lib/chain/inbox";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
@@ -53,6 +54,7 @@ const REQUIRED = [
   "llms-full.txt",
   "md/docs.md",
   "skill.md",
+  "reasons.json",
 ];
 
 const problems = REQUIRED.filter((f) => !existsSync(join(OUT, f))).map((f) => `missing out/${f}`);
@@ -160,6 +162,9 @@ problems.push(
 
 // The market-guard skill's SKILL.md at /skill.md, as its route writes it from content/generated/skill.json.
 problems.push(...checkTextFiles({ "skill.md": skill }, (path) => (isFile(join(OUT, path)) ? read(path) : undefined)));
+
+// Every refusal reason at /reasons.json, as its route writes it from content/reasons.ts.
+problems.push(...checkDataFiles({ "reasons.json": reasonsFile(siteUrl()) }, (path) => (isFile(join(OUT, path)) ? read(path) : undefined)));
 
 // On CI and on Vercel the export is about to ship, so no file may still link the localhost fallback of siteUrl().
 if (shipsPublicly()) {

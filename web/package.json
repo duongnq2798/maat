@@ -16,6 +16,7 @@
     "docs:gen": "tsx scripts/docs-gen.ts",
     "gap-index": "tsx scripts/gap-index.ts",
     "rationales": "tsx scripts/rationales.ts",
+    "snapshot": "tsx scripts/decisions-snapshot.ts",
     "verify": "npm run typecheck && npm test && npm run build && npm run check:out",
     "e2e": "playwright test"
   },

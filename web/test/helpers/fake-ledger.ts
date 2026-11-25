@@ -1,4 +1,4 @@
-import { encodeAbiParameters, encodeEventTopics, type AbiEvent, type Address, type Hash, type Hex } from "viem";
+import { encodeAbiParameters, encodeEventTopics, toHex, type AbiEvent, type Address, type Hash, type Hex } from "viem";
 import { REASONS } from "@/content/reasons";
 import { vaultAbi } from "@/lib/chain/abi";
 import type { CachedLog } from "@/lib/chain/cache";
@@ -51,11 +51,25 @@ export interface FakeChain {
   maxLogRange?: bigint;
   failLogs?: boolean;
   failTreasury?: boolean;
+  /** eth_getBlockByNumber fails for these blocks, as an RPC that is down does. */
+  failBlocks?: readonly bigint[];
+  /** eth_getTransactionReceipt fails for these transactions, as an RPC that is down does. */
+  failReceipts?: readonly Hash[];
 }
 
-/** A LedgerClient over an in-memory chain with one vault holding only USDC; records each eth_getLogs range. */
-export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: { from: bigint; to: bigint }[] } {
+/** The hash the fake chains give block `n`: e2e/fake-rpc.ts gives the same one. */
+export const fakeBlockHash = (n: bigint) => toHex(n, { size: 32 }) as Hash;
+
+export type FakeLedgerClient = LedgerClient & { logCalls: { from: bigint; to: bigint }[]; blockCalls: bigint[]; receiptCalls: Hash[] };
+
+/**
+ * A LedgerClient over an in-memory chain with one vault (FAKE_VAULT) holding only USDC; records each eth_getLogs range,
+ * block read and receipt read. A receipt holds the chain's logs of its transaction, as the vault emitted them.
+ */
+export function fakeLedgerClient(chain: FakeChain): FakeLedgerClient {
   const logCalls: { from: bigint; to: bigint }[] = [];
+  const blockCalls: bigint[] = [];
+  const receiptCalls: Hash[] = [];
   const mandate = {
     sessionMode: 0,
     maxPremiumBps: 100,
@@ -84,6 +98,8 @@ export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: {
   };
   const client = {
     logCalls,
+    blockCalls,
+    receiptCalls,
     getBlockNumber: async () => chain.head,
     getBytecode: async () => chain.bytecode ?? "0x6080",
     readContract: async ({ functionName }: { functionName: string }) => {
@@ -91,10 +107,12 @@ export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: {
       throw new Error(`unexpected readContract ${functionName}`);
     },
     getBlock: async ({ blockNumber }: { blockNumber?: bigint } = {}) => {
-      if (blockNumber === undefined) return { number: chain.head, timestamp: BigInt(chain.times?.[chain.head.toString()] ?? 1_764_000_000) };
+      if (blockNumber === undefined) return { number: chain.head, hash: fakeBlockHash(chain.head), timestamp: BigInt(chain.times?.[chain.head.toString()] ?? 1_764_000_000) };
+      blockCalls.push(blockNumber);
+      if (chain.failBlocks?.includes(blockNumber)) throw new TypeError("Failed to fetch");
       const t = chain.times?.[blockNumber.toString()];
-      if (t === undefined) throw new Error(`no block ${blockNumber}`);
-      return { number: blockNumber, timestamp: BigInt(t) };
+      if (t === undefined || blockNumber > chain.head) throw new Error(`no block ${blockNumber}`);
+      return { number: blockNumber, hash: fakeBlockHash(blockNumber), timestamp: BigInt(t) };
     },
     multicall: async ({ contracts }: { contracts: readonly { functionName: string }[] }) => {
       if (chain.failTreasury) throw new Error("multicall failed");
@@ -109,10 +127,17 @@ export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: {
         .map((l) => ({ ...l, blockNumber: BigInt(l.blockNumber) }));
     },
     getTransactionReceipt: async ({ hash }: { hash: Hash }) => {
-      if (chain.deployTx && hash === chain.deployTx.hash) return { blockNumber: chain.deployTx.block, gasUsed: 4_000_000n };
+      receiptCalls.push(hash);
+      if (chain.failReceipts?.some((h) => h.toLowerCase() === hash.toLowerCase())) throw new TypeError("Failed to fetch");
+      const own = chain.logs.filter((l) => l.transactionHash.toLowerCase() === hash.toLowerCase());
+      const logs = own.map((l) => ({ ...l, address: FAKE_VAULT, blockNumber: BigInt(l.blockNumber), blockHash: fakeBlockHash(BigInt(l.blockNumber)) }));
+      if (chain.deployTx && hash === chain.deployTx.hash) {
+        return { blockNumber: chain.deployTx.block, blockHash: fakeBlockHash(chain.deployTx.block), gasUsed: 4_000_000n, logs };
+      }
       const g = chain.gas?.[hash];
       if (g === undefined) throw new Error(`no receipt ${hash}`);
-      return { blockNumber: 0n, gasUsed: g };
+      const block = own[0] ? BigInt(own[0].blockNumber) : 0n;
+      return { blockNumber: block, blockHash: fakeBlockHash(block), gasUsed: g, logs };
     },
     getTransaction: async ({ hash }: { hash: Hash }) => {
       const tx = Object.entries(chain.txs ?? {}).find(([h]) => h.toLowerCase() === hash.toLowerCase())?.[1];
@@ -120,7 +145,7 @@ export function fakeLedgerClient(chain: FakeChain): LedgerClient & { logCalls: {
       return { hash, ...tx };
     },
   };
-  return client as unknown as LedgerClient & { logCalls: { from: bigint; to: bigint }[] };
+  return client as unknown as FakeLedgerClient;
 }
 
 export { memoryStorage } from "@/lib/chain/cache";

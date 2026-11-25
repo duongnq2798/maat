@@ -1,5 +1,7 @@
 import { FACTS } from "@/content/facts";
+import { formatInt } from "@/content/format";
 import { rpcUrls } from "@/lib/chain/rpc";
+import { SNAPSHOT_REORG_WINDOW, SNAPSHOT_URL } from "@/lib/chain/snapshot";
 import { repoFileUrl } from "@/lib/site";
 import { hostOf } from "./format";
 
@@ -9,7 +11,7 @@ export function HowWeRead() {
     <section id="how-we-read" aria-labelledby="how-we-read-title" className="border-t border-line">
       <div className="wrap grid gap-8 py-16 md:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] md:py-24">
         <div className="flex flex-col gap-3">
-          <span className="eyebrow">No server in between</span>
+          <span className="eyebrow">Checked against Base</span>
           <h2 id="how-we-read-title" className="text-2xl font-semibold tracking-[-0.02em] text-ink">
             How this page reads Base
           </h2>
@@ -25,6 +27,15 @@ export function HowWeRead() {
           <li>
             Balances, prices, the mandate and the health factor come from a few multicalls, all at the latest block. A
             read that fails is shown as unavailable, never as zero.
+          </li>
+          <li>
+            A first visit starts from a snapshot the repository commits (<a href={SNAPSHOT_URL}>{SNAPSHOT_URL}</a>,
+            written from Base by npm run snapshot). Once Base gives the same hash for the snapshot&apos;s block, the page
+            takes from the file the logs more than {formatInt(Number(SNAPSHOT_REORG_WINDOW))} blocks below it and reads
+            every block after those from Base. It shows one of those logs only once its transaction&apos;s receipt on Base
+            holds the same log, and it reads each Decision&apos;s time, gas and transaction from Base, so the file can leave
+            a log out but cannot add or change one. When the site serves another file, or none, this browser forgets what
+            it took from the old one.
           </li>
           <li>
             What it has read stays in this browser&apos;s storage, so a return visit only reads new blocks. The newest

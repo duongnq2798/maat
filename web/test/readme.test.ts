@@ -6,6 +6,7 @@ import { Callout } from "@/components/docs/Callout";
 import { ALLOWED_SYMBOLS } from "@/lib/docs/content-checks";
 import { AUDIENCES, DOC_TYPES, docsFrontmatter, STATUSES } from "@/lib/docs/frontmatter";
 import { IA_SLUGS } from "@/lib/docs/ia";
+import { docsPages } from "./helpers/docs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // web/README.md tells a maintainer the rules the docs tests enforce, and the root README's Documentation table points
@@ -166,5 +167,16 @@ describe("the root README's Documentation section", () => {
 
   it("sends a maintainer to the docs rules in web/README.md", () => {
     expect(links).toContain("web/README.md#docs-content");
+  });
+});
+
+describe("the root README's 5-minute guide", () => {
+  it("prints the line check:out prints, with one docs page per page under web/content/docs", () => {
+    // check:out counts out/docs.html and every page under out/docs/, and the export writes one per .mdx file.
+    const prefix = /console\.log\(`(out\/ is ready to deploy \([^`$]*)\$\{docsFiles\.length\} docs /.exec(readRepo("web/scripts/check-out.ts"))?.[1];
+    expect(prefix).toBeDefined();
+    const pages = docsPages().length;
+    expect(pages).toBeGreaterThan(1);
+    expect(rootReadme).toContain(`   ${prefix}${pages} docs pages checked)\n`);
   });
 });
