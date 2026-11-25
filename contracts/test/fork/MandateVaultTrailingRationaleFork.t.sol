@@ -103,9 +103,10 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         assertTrue(VAULT.usedIntent(i.id));
     }
 
-    /// The bytes after the ABI-encoded call: the blob, then the suffix the agent's sender appends.
+    /// The bytes after the ABI-encoded call: the blob, then the suffix the agent's sender appends. The suffix comes
+    /// from `_suffix`, which test_suffixMatchesTheAgentTestVector pins to the agent's vector.
     function _trailer(bytes memory blob) internal pure returns (bytes memory t) {
-        t = bytes.concat(blob, SUFFIX_VECTOR);
+        t = bytes.concat(blob, _suffix(EXAMPLE_CODE));
         assertEq(t.length, blob.length + 29);
     }
 
@@ -143,7 +144,7 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         bytes memory plain = abi.encodeCall(MandateVault.execute, (i));
         assertEq(plain.length, EXECUTE_LEN);
         data = bytes.concat(plain, trailer);
-        assertEq(_codeFromTail(data), EXAMPLE_CODE);
+        assertEq(_codeFromTail(data, EXECUTE_LEN + trailer.length - 29), EXAMPLE_CODE);
     }
 
     function _onlyDecision(Vm.Log[] memory logs, Intent memory i) internal pure returns (Decided memory d) {
@@ -204,9 +205,12 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         return abi.encodePacked(c, uint8(c.length), uint8(0), ERC8021_MARKER);
     }
 
-    /// Reads a schema-0 code back from the end of the calldata, the way an ERC-8021 parser does.
-    function _codeFromTail(bytes memory data) internal pure returns (string memory) {
+    /// Reads a schema-0 code back from the end of the calldata, the way an ERC-8021 parser does. The suffix it finds
+    /// must start at `expectedStart`, right after the blob, and never before the end of execute(intent) at byte 228,
+    /// so a reader that splits the calldata from the tail gets back the same blob the test sent.
+    function _codeFromTail(bytes memory data, uint256 expectedStart) internal pure returns (string memory) {
         uint256 n = data.length;
+        assertGe(n, EXECUTE_LEN + 18);
         bytes32 word;
         assembly ("memory-safe") {
             word := mload(add(add(data, 32), sub(n, 16)))
@@ -214,9 +218,12 @@ contract MandateVaultTrailingRationaleForkTest is Test {
         assertEq(bytes16(word), ERC8021_MARKER);
         assertEq(uint8(data[n - 17]), 0); // schema id
         uint256 len = uint8(data[n - 18]);
+        uint256 start = n - 18 - len;
+        assertGe(start, EXECUTE_LEN, "suffix starts inside execute(intent)");
+        assertEq(start, expectedStart, "suffix does not start right after the blob");
         bytes memory code = new bytes(len);
         for (uint256 k; k < len; ++k) {
-            code[k] = data[n - 18 - len + k];
+            code[k] = data[start + k];
         }
         return string(code);
     }
