@@ -238,11 +238,11 @@ block 61745836, timestamp 1795539542, open: true
 
 The chain holds only the hash of a rationale. The owner sent both buys with the calldata that `agent/scripts/first-decision.ts` builds, and when no `--rationale` is given, the tool writes this text:
 
-```typescript title="agent/scripts/first-decision.ts#L133-L133"
+```typescript title="agent/scripts/first-decision.ts#L134-L134"
   const rationale = input.rationale ?? `Owner-sent first decision: BUY ${usd} USD of ${listed.symbol}`;
 ```
 
-With 5 USD of NVDAc, that is the text below. The agent hashes a rationale as `keccak256` of its UTF-8 bytes, which `cast keccak` computes for what it reads on standard input. `printf '%s'` hands it the text with no newline after it, and the single quotes keep the shell from changing it:
+With 5 USD of NVDAc, that is the text below. The tool hashes it as `keccak256` of its UTF-8 bytes, which `cast keccak` computes for what it reads on standard input. `printf '%s'` hands it the text with no newline after it, and the single quotes keep the shell from changing it:
 
 ```bash
 printf '%s' 'Owner-sent first decision: BUY 5 USD of NVDAc' | cast keccak
@@ -254,7 +254,7 @@ Output:
 0x0baa4c52…57f6
 ```
 
-In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6`, the `rationaleHash` of both Decisions in command 3. So both intents committed to this text when they were sent, and it cannot have changed since without changing its hash. It does not prove that the text is the reason for the trade: the vault stores the hash without checking it. To check a rationale the agent writes, hash the text from its [journal](/docs/help/glossary#journal) the same way, as [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) shows.
+In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6`, the `rationaleHash` of both Decisions in command 3. So both intents committed to this text when they were sent, and it cannot have changed since without changing its hash. It does not prove that the text is the reason for the trade: the vault stores the hash without checking it. An intent the agent sends hashes its [rationale blob](/docs/help/glossary#rationale-blob) instead, which it puts in the transaction's input between the call and the suffix: [`npm run verify`](/docs/reference/agent-scripts#verify) checks that hash from the input alone, and [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) hashes the blob from its [journal](/docs/help/glossary#journal) the same way.
 
 </Step>
 
