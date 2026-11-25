@@ -2,6 +2,7 @@ import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { keccak256, toBytes, type Address, type Hex } from "viem";
 import { MAX_REPLY_CHARS, type BriefCap } from "../briefs/caps.js";
+import { briefKey } from "../briefs/inbox.js";
 import type { PreviewResult } from "../chain/preview.js";
 import type { ProbeExpectation, ProbeOutcome } from "../probes.js";
 import { GENESIS, MAX_TEXT_CHARS } from "../rationale/blob.js";
@@ -255,7 +256,24 @@ export class Journal {
     return this.firstRow(isLiveRow);
   }
 
-  private async firstRow(match: (r: Record<string, unknown>) => boolean): Promise<{ ts?: unknown; runId?: unknown } | null> {
+  /**
+   * The outcome of the first brief row on disk for the brief under `key` (briefs/inbox.ts briefKey), or null when there
+   * is none; a line cut short is passed over, as in firstDryRunRow.
+   */
+  async briefOutcome(key: string): Promise<string | null> {
+    const row = await this.firstRow(
+      (r) =>
+        r.kind === "brief" &&
+        typeof r.briefId === "number" &&
+        typeof r.txHash === "string" &&
+        typeof r.logIndex === "number" &&
+        typeof r.outcome === "string" &&
+        briefKey({ id: r.briefId, txHash: r.txHash as Hex, logIndex: r.logIndex }) === key,
+    );
+    return row === null ? null : (row.outcome as string);
+  }
+
+  private async firstRow(match: (r: Record<string, unknown>) => boolean): Promise<Record<string, unknown> | null> {
     let text: string;
     try {
       text = await readFile(this.file, "utf8");
@@ -271,7 +289,7 @@ export class Journal {
       } catch {
         continue;
       }
-      if (row !== null && typeof row === "object" && match(row as Record<string, unknown>)) return row as { ts?: unknown; runId?: unknown };
+      if (row !== null && typeof row === "object" && match(row as Record<string, unknown>)) return row as Record<string, unknown>;
     }
     return null;
   }

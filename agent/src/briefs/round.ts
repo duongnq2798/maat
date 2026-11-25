@@ -4,7 +4,7 @@ import type { Store } from "../ledger/store.js";
 import type { BriefProposal, ProposerOutput } from "../llm/proposer.js";
 import { clean, sanitize } from "../rationale/sanitize.js";
 import { oneLine } from "../redact.js";
-import { MAX_REPLY_CHARS, planBriefs } from "./caps.js";
+import { MAX_BRIEFS_PER_INTENT, MAX_REPLY_CHARS, planBriefs } from "./caps.js";
 import { briefKey, readBriefLogs, safeBlock, type Brief, type BriefClient } from "./inbox.js";
 
 /** The MaatInbox deployments/README.md records, and the client its Brief logs are read with. */
@@ -19,11 +19,14 @@ export interface BriefSource {
 export interface BriefRound {
   /** Sent to Claude this round, in id order: at most 3, each within the day and sender caps and the brief budget. */
   readonly send: readonly Brief[];
-  /** Journals what became of each brief sent: replied, or unanswered with why, and adopted when an intent cites it. */
+  /**
+   * Journals what became of each brief sent: replied, or unanswered with why. `adopted` holds the ids an intent cited
+   * and took to the vault (a send, or a dry-run's preview); an id an intent cited but that stopped short is not in it.
+   */
   answer(out: ProposerOutput, adopted: ReadonlySet<number>): Promise<void>;
 }
 
-type Deps = { source: BriefSource; store: Store; journal: Pick<Journal, "append">; runId: string; day: bigint; llmCapped: boolean };
+type Deps = { source: BriefSource; store: Store; journal: Pick<Journal, "append" | "briefOutcome">; runId: string; day: bigint; llmCapped: boolean };
 
 /** A row of journal kind "brief": the brief's identity, never its text. */
 const rowOf = (runId: string, b: Omit<Brief, "text">) =>
@@ -31,17 +34,19 @@ const rowOf = (runId: string, b: Omit<Brief, "text">) =>
 
 /**
  * Reads this round's briefs and decides which reach Claude. First a brief Claude was answering when the agent last
- * stopped is journaled as unanswered. Then the Brief logs from where the last read stopped (the deploy block on the
- * first read) up to the safe block: a decided brief whose log the read no longer finds is forgotten, and each new one
- * meets planBriefs. A skipped brief is journaled with its cap; a sent one is stored as started before Claude is
- * called, so a restart never sends it twice. A failed read is journaled and the round goes on without briefs.
+ * stopped is journaled as unanswered, unless the journal already holds its row (the agent stopped after writing it,
+ * before state.json was saved). Then the Brief logs from where the last read stopped (the deploy block on the first
+ * read) up to the safe block: a decided brief whose log the read no longer finds is forgotten, and each new one meets
+ * planBriefs. A skipped brief is journaled with its cap; a sent one is stored as started before Claude is called, so
+ * a restart never sends it twice. A failed read is journaled and the round goes on without briefs.
  */
 export async function openBriefRound(d: Deps): Promise<BriefRound> {
   const { store, journal, runId, day } = d;
   for (const r of store.briefsDone().filter((x) => x.outcome === "started")) {
     const b = { id: r.id, from: r.from as Address, txHash: r.txHash as Hex, logIndex: r.logIndex, block: BigInt(r.block) };
-    await journal.append({ ...rowOf(runId, b), outcome: "unanswered", note: "the agent stopped before Claude's answer was journaled" });
-    store.recordBrief(b, "unanswered");
+    const journaled = await journal.briefOutcome(r.key);
+    if (journaled === null) await journal.append({ ...rowOf(runId, b), outcome: "unanswered", note: "the agent stopped before Claude's answer was journaled" });
+    store.recordBrief(b, journaled ?? "unanswered");
   }
 
   let from: bigint;
@@ -104,12 +109,14 @@ async function deployBlock(s: BriefSource): Promise<bigint> {
 }
 
 /**
- * The brief ids `p` adopts, ascending, or why the intent is dropped: an id this round did not send to Claude, or one
- * an earlier intent of the same answer adopted (`cited`, which this adds to). An intent of Claude's own adopts none.
+ * The brief ids `p` adopts, ascending and without repeats, or why the intent alone is dropped: more than
+ * MAX_BRIEFS_PER_INTENT ids, an id this round did not send to Claude, or one an earlier intent of the same answer
+ * adopted (`cited`, which this adds to). An intent of Claude's own adopts none.
  */
 export function adoption(p: BriefProposal, sent: ReadonlySet<number>, cited: Set<number>): { q?: number[]; error?: string } {
   if (!p.briefs || p.briefs.length === 0) return {};
   const q = [...new Set(p.briefs)].sort((a, b) => a - b);
+  if (q.length > MAX_BRIEFS_PER_INTENT) return { error: `adopts ${q.length} briefs, more than the ${MAX_BRIEFS_PER_INTENT} an intent may` };
   const unsent = q.find((id) => !sent.has(id));
   if (unsent !== undefined) return { error: `adopts brief ${unsent}, which this round did not send to Claude` };
   const again = q.find((id) => cited.has(id));

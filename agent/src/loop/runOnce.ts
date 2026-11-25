@@ -59,7 +59,7 @@ export interface RunDeps {
   /** Required in live mode. Only a GuardedSender: the vault-only, gas-bounded, Builder-Code path. */
   sender: GuardedSender | null;
   store: Store;
-  journal: Pick<Journal, "append" | "head">;
+  journal: Pick<Journal, "append" | "head" | "briefOutcome">;
   /** The blob's c: gitCommit(), the same value the journal stamps on each row. */
   commit: string;
   /** DEFAULT_POLICY when unset. Its creditActions also decides the prompt and whether a credit proposal is dropped. */
@@ -115,6 +115,13 @@ export interface Handled {
   why?: string;
 }
 
+/**
+ * Who wrote a proposal, for its blob: k for a line the agent's code wrote, m for the model that answered, with q for
+ * the briefs it adopts. `read`, on a Claude intent of a round that sent briefs, holds their ids: the blob text is then
+ * a template (intent.ts buildIntent).
+ */
+export type Author = Pick<BlobContext, "k" | "m" | "q"> & { read?: readonly number[] };
+
 /** The steps runOnce and a probe round (loop/probeRound.ts) share once the round has read the vault. */
 export interface RoundKit {
   /** The state the next step works from: the round's first read, read again after a transaction. */
@@ -129,7 +136,7 @@ export interface RoundKit {
    * A credit proposal is dropped before the preview while credit actions are off. `beforeSend` is asked once more just
    * before the pending entry is stored, after the gas estimate; a reason it returns stops the send.
    */
-  handle(index: number, p: Proposal, by: Pick<BlobContext, "k" | "m" | "q">, o?: { gating?: Gating; beforeSend?: () => string | null | Promise<string | null> }): Promise<Handled>;
+  handle(index: number, p: Proposal, by: Author, o?: { gating?: Gating; beforeSend?: () => string | null | Promise<string | null> }): Promise<Handled>;
 }
 
 /** The kit for a round that read the vault at `first`. A failed step throws; the caller journals a halted round. */
@@ -293,7 +300,8 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
       dirty = false;
     }
     // j is the journal head when this blob is built: the last row written before it, this round's or an earlier one's.
-    const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...by } });
+    const { read, ...author } = by;
+    const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...author }, ...(read ? { read } : {}) });
     if (!b.ok) {
       await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: b.error });
       report.skipped++;
@@ -453,29 +461,40 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     if (!out.ok) report.error = out.error;
 
     // Each proposal carries its author for the blob: k = bill for the line this code writes, m for the model that answered.
-    const queue: { p: Proposal; by: Pick<BlobContext, "k" | "m" | "q">; error?: string }[] = [];
+    const queue: { p: Proposal; by: Author; error?: string }[] = [];
     if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
       const rationale = `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}`;
       queue.push({ p: { action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale }, by: { k: "bill" } });
     }
-    // An intent that adopts briefs adds q: its blob text is then the fixed template (intent.ts briefText).
+    // In a round that sent briefs, no Claude text reaches a blob: an intent that adopts briefs adds q and its text is
+    // briefText; one of Claude's own carries the ids it read and its text is ownText (intent.ts).
     const sentIds = new Set(briefs.map((b) => b.id));
+    const read = briefs.length > 0 ? briefs.map((b) => b.id) : null;
     const cited = new Set<number>();
     if (out.ok) {
       for (const p of out.proposals) {
         const a = adoption(p, sentIds, cited);
-        queue.push({ p, by: { m: out.model, ...(a.q ? { q: a.q } : {}) }, ...(a.error ? { error: a.error } : {}) });
+        queue.push({ p, by: { m: out.model, ...(a.q ? { q: a.q } : read ? { read } : {}) }, ...(a.error ? { error: a.error } : {}) });
       }
     }
     report.proposals = queue.length;
-    await br?.answer(out, cited);
 
-    for (const [index, { p, by, error }] of queue.entries()) {
-      if (error) {
-        await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error });
-        report.skipped++;
-      } else await k.handle(index, p, by);
+    // A brief is journaled as adopted only once an intent that cites it reached the vault: sent, or previewed by a
+    // dry-run that would send it. Its row is written after the queue, and still when a step halts the round.
+    const reached = new Set<number>();
+    try {
+      for (const [index, { p, by, error }] of queue.entries()) {
+        if (error) {
+          await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error });
+          report.skipped++;
+          continue;
+        }
+        const h = await k.handle(index, p, by);
+        if (by.q && (h.outcome === "sent" || h.outcome === "dry-run")) for (const id of by.q) reached.add(id);
+      }
+    } finally {
+      await br?.answer(out, reached);
     }
   } catch (e) {
     report.status = "halted";

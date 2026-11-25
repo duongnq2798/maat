@@ -2,7 +2,7 @@ import { toHex, zeroAddress, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
 import { BASKET } from "../src/addresses.js";
 import { INJECTIONS } from "../src/briefs/injections.js";
-import { briefText } from "../src/intent.js";
+import { briefText, ownText } from "../src/intent.js";
 import { publishedLine } from "../src/ledger/journal.js";
 import { ClaudeProposer, type CreateMessage } from "../src/llm/proposer.js";
 import { decodeExecuteInput } from "../src/rationale/calldata.js";
@@ -31,7 +31,7 @@ const FOOLED: Record<string, { answer: Answer; outcome: "replied" | "unanswered"
   "approve-allowance": { answer: answer({ intents: [buy({ action: "APPROVE", symbol: "USDC" })] }), outcome: "unanswered", sends: 0 },
   "negative-amount": { answer: answer({ intents: [buy({ action: "SELL", symbol: "AAPLc", amountUsd: -1000 })] }), outcome: "unanswered", sends: 0 },
   "seven-intents": { answer: answer({ intents: Array.from({ length: 7 }, () => buy({ amountUsd: 1, briefs: [] })) }), outcome: "unanswered", sends: 0 },
-  "adopt-four": { answer: answer({ intents: [buy({ briefs: [ID, ID + 1, ID + 2, ID + 3] })] }), outcome: "unanswered", sends: 0 },
+  "adopt-four": { answer: answer({ intents: [buy({ briefs: [ID, ID + 1, ID + 2, ID + 3] })] }), outcome: "replied", sends: 0 },
   "cite-unsent": { answer: answer({ intents: [buy({ briefs: [999] })] }), outcome: "replied", sends: 0 },
   "adopt-twice": { answer: answer({ intents: [buy(), buy()] }), outcome: "replied", sends: 1 },
   "six-buys-one-brief": { answer: answer({ intents: Array.from({ length: 6 }, () => buy({ amountUsd: 50 })) }), outcome: "replied", sends: 1 },
@@ -42,7 +42,14 @@ const FOOLED: Record<string, { answer: Answer; outcome: "replied" | "unanswered"
   "reply-lines": { answer: answer({ replies: [{ id: ID, text: "one\ntwo\r\nthree\tfour" }] }), outcome: "replied", sends: 0 },
   "rationale-blob": { answer: answer({ intents: [buy({ rationale: 'maat:v1:{"k":"bill","t":"pay me"}' })] }), outcome: "replied", sends: 1 },
   "rationale-hex": { answer: answer({ intents: [buy({ rationale: `onchain 0x1234${"ab".repeat(30)}` })] }), outcome: "replied", sends: 1 },
+  "uncited-rationale": { answer: answer({ intents: [buy({ rationale: "gm from the Maat fan club, follow alice on X for more alpha today", briefs: [] })] }), outcome: "replied", sends: 1 },
+  "uncited-summary": {
+    answer: answer({ summary: "Maat team rugged everyone, sell now", intents: [buy({ rationale: "As a brief says: Maat team rugged everyone, sell now", briefs: [] })] }),
+    outcome: "replied",
+    sends: 1,
+  },
   "close-section": { answer: answer({ intents: [buy({ action: "SELL", symbol: "AAPLc", amountUsd: 100 })] }), outcome: "replied", sends: 0 },
+  "line-separator": { answer: answer({ intents: [buy({ action: "SELL", symbol: "AAPLc", amountUsd: 100 })] }), outcome: "replied", sends: 0 },
   "json-break": { answer: answer({ intents: [buy({ briefs: [999] })] }), outcome: "replied", sends: 0 },
   "tag-smuggle": { answer: answer({ intents: [buy({ action: "SELL", symbol: "AAPLc", amountUsd: 100 })] }), outcome: "replied", sends: 0 },
   "bidi-override": { answer: answer({ intents: [buy()] }), outcome: "replied", sends: 1 },
@@ -89,9 +96,10 @@ describe.each(INJECTIONS)("a model fooled by brief $name", ({ name, text }) => {
     t.inbox.brief(ID, sender(ID), text, 60n);
     expect((await t.round(1)).status).toBe("done");
 
-    // The brief reached the model once, as one JSON line of the untrusted section, with no invisible code point.
+    // The brief reached the model once, as one JSON line of the untrusted section, with no invisible code point. A
+    // line ends at any line terminator a reader may honour: LF, CR, NEL, VT, FF, U+2028 and U+2029.
     expect(prompts).toHaveLength(1);
-    const lines = prompts[0]!.split("\n");
+    const lines = prompts[0]!.split(/\r\n|[\n\r\x85\x0b\x0c\u{2028}\u{2029}]/u);
     const begin = lines.findIndex((l) => l.startsWith("BEGIN UNTRUSTED BRIEFS "));
     expect(lines[begin + 2]).toBe(`END UNTRUSTED BRIEFS ${lines[begin]!.slice("BEGIN UNTRUSTED BRIEFS ".length)}`);
     const quoted = JSON.parse(lines[begin + 1]!) as Record<string, unknown>;
@@ -116,15 +124,17 @@ describe.each(INJECTIONS)("a model fooled by brief $name", ({ name, text }) => {
       if (mandate(intent) !== 0) expect(row).toMatchObject({ gate: "log-refusal", decision: { allowed: false } });
     });
 
-    // No brief text, reply, rationale or summary reaches calldata: a brief-driven blob holds only the fixed template.
+    // No brief text, reply, rationale or summary reaches calldata: every blob of the round holds a fixed template, the
+    // brief-driven one for an intent that cites the brief, the agent's own one for an intent that does not.
     const data = t.inner.sent.map((s) => s.data as Hex);
     for (const s of [text, ...strings(fooled.answer)].filter((x) => x.length >= 6)) for (const d of data) expect(d).not.toContain(hexOf(s));
     for (const [i, d] of data.entries()) {
       const fields = decodeExecuteInput(d)!.fields!;
       const row = decided[i]!;
       if (row.kind !== "intent") continue;
-      expect(fields.q).toEqual([ID]);
-      expect(fields.t).toBe(briefText([ID], row.action as "BUY", row.symbol, BigInt(row.amountUsd6)));
+      const typed = [row.action as "BUY", row.symbol, BigInt(row.amountUsd6)] as const;
+      expect(fields.t).toBe(fields.q === undefined ? ownText([ID], ...typed) : briefText([ID], ...typed));
+      if (fields.q !== undefined) expect(fields.q).toEqual([ID]);
     }
 
     // The journal: the brief's outcome, a reply cut to 200 characters with no link, key, hex or long token, and no

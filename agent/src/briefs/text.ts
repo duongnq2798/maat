@@ -12,8 +12,9 @@ export const REPLACEMENT = "\u{FFFD}";
 
 /**
  * A brief's text as the prompt quotes it: the leniently decoded string with every UNSAFE code point replaced by
- * U+FFFD. With no line break or control left, its JSON string stays on one line, and nothing in it is invisible or
- * reorders the text around it.
+ * U+FFFD. No control is left, and nothing in it is invisible or reorders the text around it. U+2028 and U+2029 are
+ * neither Cc nor Cf and stay; the prompt escapes them in the brief's JSON line (llm/prompt.ts briefLine), so that line
+ * stays one line.
  */
 export function promptText(text: string): string {
   return text.replace(UNSAFE, REPLACEMENT);

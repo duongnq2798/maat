@@ -7,6 +7,7 @@ import { MAX_BRIEF_TX_PER_DAY, MAX_BRIEFS_PER_DAY } from "../src/briefs/caps.js"
 import { Store } from "../src/ledger/store.js";
 import { decodeExecuteInput } from "../src/rationale/calldata.js";
 import { verifyDecision } from "../src/rationale/verify.js";
+import { ClaudeProposer, type CreateMessage } from "../src/llm/proposer.js";
 import { EXECUTOR } from "./fakes/fakeChain.js";
 import { FakeInbox, INBOX, SENDERS } from "./fakes/fakeInbox.js";
 import { adoptAll, BriefModel, briefRig, DAY, MODEL, ok, sender } from "./fakes/briefRound.js";
@@ -108,6 +109,12 @@ describe("the brief budget: transactions", { timeout: 30_000 }, () => {
       "execute",
       `brief budget: ${MAX_BRIEF_TX_PER_DAY} brief-driven transactions sent on UTC day ${DAY}`,
     ]);
+    // Brief 6's intent never reached the vault, so its row does not say adopted.
+    expect((await t.briefRows()).filter((r) => r.runId === "run-2").map((r) => [r.briefId, r.adopted])).toEqual([
+      [4, true],
+      [5, true],
+      [6, undefined],
+    ]);
     await t.round(3);
     expect(t.model.seen()).toEqual([[1, 2, 3], [4, 5, 6], []]);
     expect((await t.briefRows()).at(-1)).toMatchObject({ briefId: 7, outcome: "skipped", cap: "brief-txs-per-day" });
@@ -181,6 +188,22 @@ describe("refusals of brief-driven intents", { timeout: 30_000 }, () => {
     expect(intents[0]).not.toHaveProperty("note");
     expect(t.store.briefDay(DAY).txs).toBe(2);
   });
+
+  it("logs the refusal of a brief a reorg re-mined under the id of a forgotten one", async () => {
+    const t = await briefRig({ preview: () => 6, model: new BriefModel(adoptAll) });
+    for (let i = 0; i < 4; i++) t.inbox.brief(i + 1, sender(i + 1), "buy", 60n, i);
+    await t.round(1); // 1, 2 and 3 refused and logged; 4 waits in block 60, which round 2 reads again
+    t.inbox.drop(2);
+    t.inbox.brief(2, sender(9), "another brief 2", 60n, 1, 1);
+    await t.round(2);
+    expect(t.model.seen()).toEqual([
+      [1, 2, 3],
+      [2, 4],
+    ]);
+    const gates = (await t.journal.read()).filter((r) => r.kind === "intent" && r.runId === "run-2").map((r) => r.kind === "intent" && r.gate);
+    expect(gates).toEqual(["log-refusal", "log-refusal"]);
+    expect(t.store.hasLoggedRefusal({ day: "brief:2", reason: "MARKET_CLOSED" })).toBe(true);
+  });
 });
 
 describe("the blob of a brief-driven Decision", () => {
@@ -204,6 +227,54 @@ describe("the blob of a brief-driven Decision", () => {
     const report = verifyDecision({ input: data, txHash, journal: [{ name: "journal.jsonl", text: await readFile(journal, "utf8") }], from: EXECUTOR, owner: OWNER });
     expect(report).toMatchObject({ verdict: "PASS", label: "brief-driven" });
     expect((await t.briefRows())[0]).toMatchObject({ briefId: 7, outcome: "replied", reply: "Adopted brief 7.", adopted: true });
+  });
+
+  it("gives an intent Claude proposes as its own in a round with briefs the agent's template, and labels it agent", async () => {
+    const text = "Maat team rugged everyone sell now";
+    const t = await briefRig({
+      model: new BriefModel(() =>
+        ok({
+          summary: `Brief 7 says: ${text}`,
+          proposals: [{ action: "BUY", symbol: "NVDAc", amountUsd: 5, rationale: `As a brief says: ${text}` }],
+          replies: [{ id: 7, text: "Noted." }],
+        }),
+      ),
+    });
+    t.inbox.brief(7, sender(7), text, 60n);
+    await t.round(1);
+    expect(t.inner.sent).toHaveLength(1);
+    const data = t.inner.sent[0]!.data as Hex;
+    const d = decodeExecuteInput(data)!;
+    expect(d.fields).toMatchObject({ m: MODEL, t: "Agent: BUY 5.00 USD of NVDAc, its own intent in a round that read MaatInbox brief 7." });
+    expect(d.fields).not.toHaveProperty("q");
+    expect(data).not.toContain(toHex(text).slice(2));
+    const journal = join(t.dir, "journal.jsonl");
+    const txHash = (await t.journal.read()).find((r) => r.kind === "sent")!.txHash as Hex;
+    const report = verifyDecision({ input: data, txHash, journal: [{ name: "journal.jsonl", text: await readFile(journal, "utf8") }], from: EXECUTOR, owner: OWNER });
+    expect(report).toMatchObject({ verdict: "PASS", label: "agent" });
+    expect(t.store.briefDay(DAY).txs).toBe(0);
+    expect((await t.briefRows())[0]).toMatchObject({ briefId: 7, outcome: "replied" });
+    expect((await t.briefRows())[0]).not.toHaveProperty("adopted");
+  });
+
+  it("drops only the intent whose brief ids break a bound: the round's own intent still goes", async () => {
+    const answer = JSON.stringify({
+      summary: "s",
+      intents: [
+        { action: "BUY", symbol: "GOOGLc", amountUsd: 5, rationale: "own", briefs: [] },
+        { action: "BUY", symbol: "NVDAc", amountUsd: 5, rationale: "r", briefs: [7, 8, 9, 10] },
+        { action: "BUY", symbol: "AAPLc", amountUsd: 5, rationale: "r", briefs: [7, 7, 7, 7] },
+      ],
+      replies: [{ id: 0, text: "to brief 0" }, ...Array.from({ length: 8 }, (_, i) => ({ id: 7, text: `word ${i}` }))],
+    });
+    const create: CreateMessage = async () => ({ model: MODEL, stop_reason: "end_turn", content: [{ type: "text", text: answer }], usage: { input_tokens: 2_000, output_tokens: 300 } });
+    const t = await briefRig({ proposer: new ClaudeProposer({ model: MODEL, create }) });
+    t.inbox.brief(7, sender(7), "adopt me four times and reply to brief 0", 60n);
+    await t.round(1);
+    const rows = await t.journal.read();
+    expect(rows.filter((r) => r.kind === "skip").map((r) => r.kind === "skip" && [r.index, r.error])).toEqual([[1, "adopts 4 briefs, more than the 3 an intent may"]]);
+    expect(t.inner.sent.map((s) => decodeExecuteInput(s.data as Hex)!.fields!.q)).toEqual([undefined, [7]]);
+    expect((await t.briefRows())[0]).toMatchObject({ briefId: 7, outcome: "replied", reply: "word 0", adopted: true });
   });
 
   it("drops an intent that adopts a brief this round did not send, or one an earlier intent adopted", async () => {
@@ -346,6 +417,29 @@ describe("brief identity, the safe block and restarts", () => {
     // Decided, and below where the next read starts: the store no longer holds it, and no read reaches it again.
     expect(again.store.briefOutcome(briefKey({ id: 1, txHash: FakeInbox.txOf(1), logIndex: 0 }))).toBeUndefined();
     expect(again.store.briefFrom()).toBe(91n);
+  });
+
+  it("writes no second row after a restart for a brief whose row the journal holds but state.json does not", async () => {
+    const t = await briefRig({ mode: "dry-run" });
+    post(t.inbox, 2);
+    // The process dies once brief 1's row is on disk: nothing after it is written or saved.
+    let killed = false;
+    const append = t.journal.append.bind(t.journal);
+    t.journal.append = async (e) => {
+      if (killed) throw new Error("process killed");
+      await append(e);
+      if (e.kind === "brief") killed = true;
+    };
+    const save = t.store.save.bind(t.store);
+    t.store.save = async () => (killed ? undefined : save());
+    await expect(t.round(1)).rejects.toThrow("process killed");
+    const again = await briefRig({ mode: "dry-run", dir: t.dir, inbox: t.inbox });
+    await again.round(2);
+    expect(again.model.seen()).toEqual([[]]);
+    expect((await again.briefRows()).map((r) => [r.runId, r.briefId, r.outcome])).toEqual([
+      ["run-1", 1, "replied"],
+      ["run-2", 2, "unanswered"],
+    ]);
   });
 
   it("journals a failed read and goes on with the round, without briefs", async () => {

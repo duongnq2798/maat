@@ -166,7 +166,10 @@ export class ClaudeProposer implements Proposer {
         const b = BriefBatchSchema.safeParse(parsed);
         if (!b.success) return { ok: false, error: `invalid proposal JSON: ${b.error.issues.map((i) => i.message).join("; ")}`, costUsd6: cost };
         const proposals = b.data.intents.map(({ briefs: q, ...p }) => (q.length > 0 ? { ...p, briefs: q } : p));
-        return { ok: true, summary: b.data.summary, proposals, costUsd6: cost, model: res.model, replies: b.data.replies };
+        // One reply per brief this round sent, the first Claude gave; a reply to any other id is dropped, not fatal.
+        const sent = new Set(input.briefs!.map((x) => x.id));
+        const replies = b.data.replies.filter((r) => sent.delete(r.id));
+        return { ok: true, summary: b.data.summary, proposals, costUsd6: cost, model: res.model, replies };
       }
       const r = BatchSchema.safeParse(parsed);
       if (!r.success) return { ok: false, error: `invalid proposal JSON: ${r.error.issues.map((i) => i.message).join("; ")}`, costUsd6: cost };

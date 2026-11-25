@@ -3,7 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { DEPLOYMENTS_FILE, inboxSetup } from "../src/briefs/inbox.js";
+import { briefsLine, DEPLOYMENTS_FILE, inboxSetup, readInboxRecord } from "../src/briefs/inbox.js";
 import { loadConfig } from "../src/config.js";
 import { buildRuntime, startLine } from "../src/runtime.js";
 import { INBOX, INBOX_DEPLOY_TX } from "./fakes/fakeInbox.js";
@@ -19,9 +19,19 @@ const noProposer = { propose: async () => ({ ok: false as const, error: "unused"
 const table = (row: string) => `| Network | Contract | Address | Tx | Date |\n| --- | --- | --- | --- | --- |\n${row}\n`;
 
 describe("inboxSetup: the MaatInbox the agent starts with", () => {
-  it("finds none in the repo's deployments/README.md today, so briefs are off", () => {
+  it("reads the repo's deployments/README.md, whether or not it records a MaatInbox yet", () => {
     expect(existsSync(DEPLOYMENTS_FILE)).toBe(true);
-    expect(inboxSetup()).toEqual({ record: null, line: "maat agent: briefs=off: deployments/README.md records no MaatInbox, so no inbox log is read" });
+    const record = readInboxRecord(DEPLOYMENTS_FILE);
+    expect(inboxSetup()).toEqual({ record, line: briefsLine({ record }) });
+  });
+
+  it("turns briefs off, saying so, for a table with no MaatInbox row or no file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "maat-deploy-"));
+    const file = join(dir, "README.md");
+    await writeFile(file, table("| Base mainnet | MandateVault | `0x1111111111111111111111111111111111111111` | | 2026-11-20 |"));
+    const off = { record: null, line: "maat agent: briefs=off: deployments/README.md records no MaatInbox, so no inbox log is read" };
+    expect(inboxSetup(file)).toEqual(off);
+    expect(inboxSetup(join(dir, "missing.md"))).toEqual(off);
   });
 
   it("reads a recorded inbox, and turns briefs off, naming the problem, for a row it cannot read", async () => {

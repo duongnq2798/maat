@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { MAX_BRIEFS_PER_INTENT } from "../briefs/caps.js";
 
 export const LLM_ACTIONS = ["BUY", "SELL", "SUPPLY", "WITHDRAW_COLLATERAL", "BORROW", "REPAY"] as const;
 export const LLM_SYMBOLS = ["USDC", "NVDAc", "GOOGLc", "AAPLc"] as const;
@@ -52,20 +51,27 @@ export const BATCH_JSON_SCHEMA = {
   },
 } as const;
 
+/*
+ * A brief can ask Claude for briefs or replies that break a bound, so the new fields are checked item by item, never
+ * for the whole answer: the agent's own intents of the round must not fall with a brief's. An intent's briefs are
+ * bounded by adoption() (briefs/round.ts), which drops that intent alone; a reply to an id the round did not send, or a
+ * second reply to one, is dropped by ClaudeProposer. Only the fields a round without briefs has reject the answer.
+ */
+
 /** A brief round's intent: an intent as above, with the ids of the MaatInbox briefs it adopts (none for its own). */
 export const BriefProposalSchema = z.strictObject({
   ...ProposalSchema.shape,
-  briefs: z.array(z.number().int().positive()).max(MAX_BRIEFS_PER_INTENT),
+  briefs: z.array(z.number().int()),
 });
 
 /** A reply to one brief. Its length is not bounded here: the journal cuts it to MAX_REPLY_CHARS, so one long reply never costs the round. */
-export const ReplySchema = z.strictObject({ id: z.number().int().positive(), text: z.string() });
+export const ReplySchema = z.strictObject({ id: z.number().int(), text: z.string() });
 
-/** The answer of a round that carries briefs. Up to MAX_INTENTS replies: a repeated one is ignored, not rejected. */
+/** The answer of a round that carries briefs: as many replies as Claude gives, of which the agent keeps one per brief sent. */
 export const BriefBatchSchema = z.strictObject({
   summary: BatchSchema.shape.summary,
   intents: z.array(BriefProposalSchema).max(MAX_INTENTS),
-  replies: z.array(ReplySchema).max(MAX_INTENTS),
+  replies: z.array(ReplySchema),
 });
 
 export type BriefBatch = z.infer<typeof BriefBatchSchema>;

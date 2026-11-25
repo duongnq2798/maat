@@ -176,9 +176,17 @@ export class Store {
     this.data.briefs.done[briefKey(b)] = { id: b.id, from: b.from, txHash: b.txHash, logIndex: b.logIndex, block: b.block.toString(), outcome };
   }
 
-  /** Forgets a brief whose log no longer exists, so a brief that later takes its id is answered as a new one. */
+  /**
+   * Forgets a brief whose log no longer exists, so a brief that later takes its id is answered as a new one. The
+   * refusals logged under its id (refusals.ts briefRefusalKey) go too, so that brief's own refusal is logged onchain.
+   */
   forgetBrief(key: string): void {
+    const r = this.data.briefs.done[key];
     delete this.data.briefs.done[key];
+    if (r === undefined) return;
+    for (const day of Object.keys(this.data.refusals)) {
+      if (day.startsWith("brief:") && day.slice("brief:".length).split(",").includes(String(r.id))) delete this.data.refusals[day];
+    }
   }
 
   /** Every decided brief the store still holds, with its key. */

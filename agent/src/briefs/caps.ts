@@ -13,7 +13,11 @@ export const MAX_BRIEFS_PER_DAY = 20;
 export const MAX_BRIEFS_PER_SENDER_PER_DAY = 2;
 /** Brief-driven transactions in one UTC day, counted inside MAAT_MAX_TX_PER_DAY too. */
 export const MAX_BRIEF_TX_PER_DAY = 5;
-/** The Claude spend of the rounds that carried briefs, per UTC day: $0.25 of the MAAT_MAX_LLM_USD_PER_DAY cap. */
+/**
+ * The Claude spend of the rounds that carried briefs, per UTC day: $0.25 of the MAAT_MAX_LLM_USD_PER_DAY cap. Like that
+ * cap it is checked before each call, so the round whose cost crosses it is the day's last with briefs, and the day's
+ * brief spend can end above $0.25 by at most that one round's cost.
+ */
 export const MAX_BRIEF_LLM_USD6_PER_DAY = 250_000n;
 /** The most characters of a reply the journal keeps; a longer one is cut on a space. */
 export const MAX_REPLY_CHARS = 200;

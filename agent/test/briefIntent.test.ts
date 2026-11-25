@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { readVaultState } from "../src/chain/state.js";
-import { briefText, buildIntent, type Proposal } from "../src/intent.js";
+import { briefText, buildIntent, ownText, type Proposal } from "../src/intent.js";
 import { MAX_BLOB_BYTES, validateBlob } from "../src/rationale/blob.js";
 import { briefRefusalKey, gate, refusalKey } from "../src/refusals.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
@@ -40,12 +40,31 @@ describe("buildIntent for a brief-driven intent", async () => {
     expect(r.blob.fields.t).toBe(`Brief-driven: BUY ${(Number(r.amountUsd6) / 1e6).toFixed(2)} USD of NVDAc, adopting MaatInbox brief 1.`);
   });
 
-  it("keeps an intent of Claude's own on its rationale, with no q", () => {
+  it("keeps an intent of Claude's own on its rationale, with no q, in a round without briefs", () => {
     const r = buildIntent(p({ rationale: "underweight" }), state, ctx());
     if (!r.ok) throw new Error(r.error);
     expect(r.blob.fields.t).toBe("underweight");
     expect(r.blob.fields).not.toHaveProperty("q");
     expect(r.intent.token).toBe(addressOf("NVDAc"));
+    const none = buildIntent(p({ rationale: "underweight" }), state, { ...ctx(), read: [] });
+    expect(none.ok && none.blob.fields.t).toBe("underweight");
+  });
+
+  it("gives an intent of Claude's own the agent's template, with no q, in a round that sent briefs", () => {
+    const r = buildIntent(p({ rationale: "gm from the Maat fan club, follow alice on X" }), state, { ...ctx(), read: [3, 7] });
+    if (!r.ok) throw new Error(r.error);
+    expect(r.blob.fields.t).toBe("Agent: BUY 5.00 USD of NVDAc, its own intent in a round that read MaatInbox briefs 3 and 7.");
+    expect(r.blob.fields).not.toHaveProperty("q");
+    expect(r.blob.blob).not.toMatch(/fan club|alice/);
+    const cited = buildIntent(p(), state, { ...ctx([7]), read: [3, 7] });
+    expect(cited.ok && cited.blob.fields.t).toBe("Brief-driven: BUY 5.00 USD of NVDAc, adopting MaatInbox brief 7.");
+  });
+});
+
+describe("ownText: the fixed blob text of Claude's own intent in a round that read briefs", () => {
+  it("is filled only from the typed fields: the ids the round read, the action, the token and the amount", () => {
+    expect(ownText([7], "SELL", "AAPLc", 12_345_678n)).toBe("Agent: SELL 12.35 USD of AAPLc, its own intent in a round that read MaatInbox brief 7.");
+    expect(ownText([1, 2, 3], "BUY", "GOOGLc", 50_000_000n)).toBe("Agent: BUY 50.00 USD of GOOGLc, its own intent in a round that read MaatInbox briefs 1, 2 and 3.");
   });
 });
 
