@@ -1,0 +1,86 @@
+name: live fork adversarial
+
+# Forks Base mainnet at one block per run and attacks the MandateVault deployed there (deployments/README.md): the six
+# vault invariants with random intents sent as the live executor, test_compromisedExecutorIsBounded, previewIntent
+# against execute, and the trailing rationale blob. contracts/test/fork/LiveVault*.t.sol hold the suites, and their
+# forge-config comments bound the fuzz and invariant runs. Keyless public RPCs only, and no secret: Foundry forks the
+# chain locally, so nothing is signed or broadcast. Never on pull requests: ci.yml runs the offline suites and leaves
+# test/fork/* to this workflow and to runs by hand.
+on:
+  schedule:
+    # Once a day at 15:23 UTC, inside the NYSE regular session on a trading day (10:23 ET in winter, 11:23 in summer),
+    # so a weekday run forks an open market with fresh feeds; a weekend or holiday run forks a closed one.
+    - cron: "23 15 * * *"
+  workflow_dispatch:
+    inputs:
+      block:
+        description: Base block to fork (empty for 300 blocks behind the head)
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-fork
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  live-fork:
+    name: live fork adversarial
+    runs-on: ubuntu-24.04
+    # Room for two forge attempts (the test step below), each of which a stalling RPC can slow to several times its
+    # usual length.
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+        working-directory: contracts
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          submodules: true
+          persist-credentials: false
+      # The forge ci.yml pins: hardfork = "base:Cobalt" in foundry.toml gives it the B20 precompiles.
+      - uses: foundry-rs/foundry-toolchain@dba66c27052e63476d886f22216e119ba7e615bf # v1.9.2
+        with:
+          version: v1.9.0
+          cache: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - id: version
+        run: |
+          version="$(forge --version)"
+          printf '%s\n' "$version"
+          if ! grep -q 6056c58 <<< "$version"; then
+            echo "::error::forge is not v1.9.0 (commit 6056c58)"
+            exit 1
+          fi
+      # One block for every suite: the first public RPC that serves it, mainnet.base.org and then publicnode.
+      - id: pick
+        env:
+          LIVE_FORK_BLOCK_INPUT: ${{ inputs.block }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/live-fork.mjs" pick
+      - id: build
+        run: forge build
+      # forge test --match-path "test/fork/LiveVault*" --fuzz-seed <block> -vv, through the picked RPC. The block is
+      # also the fuzz seed, so the summary's command reruns a failed run with the same inputs. A fork read that fails
+      # makes the call that needed it revert, which a suite reads as a broken property, so live-fork.mjs tells the two
+      # apart: when a failed attempt's log has RPC errors, it warns that the RPC failed and reruns the failed suites
+      # once, at the same block and seed, through the other RPC. The run fails on a failure with a clean log, or with no
+      # verdict and no report when the rerun hits RPC errors too. The summary says which attempt hit RPC errors.
+      - id: test
+        env:
+          BASE_RPC_URL: ${{ steps.pick.outputs.rpc }}
+          LIVE_FORK_BLOCK: ${{ steps.pick.outputs.block }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/live-fork.mjs" test "$RUNNER_TEMP/forge.json"
+      - id: counts
+        if: ${{ !cancelled() && steps.pick.outcome == 'success' }}
+        env:
+          STEP_OUTCOME: ${{ steps.test.outcome }}
+        run: node "$GITHUB_WORKSPACE/.github/scripts/ci-counts.mjs" extract forge "$RUNNER_TEMP/forge.json" forge
