@@ -161,25 +161,48 @@ export interface ReceiptWait {
   now?: () => number;
 }
 
+/** A log as a receipt carries it. */
+export interface ReceiptLog {
+  address: Address;
+  topics: readonly Hex[];
+  data: Hex;
+}
+
 /** Asks for the receipt of `hash` every `intervalMs` until Base has it, or null once `timeoutMs` has passed. */
 export async function waitForReceipt(
   client: Pick<LedgerClient, "getTransactionReceipt">,
   hash: Hash,
   opts: ReceiptWait = {},
-): Promise<{ blockNumber: bigint; status: "success" | "reverted" } | null> {
+): Promise<{ blockNumber: bigint; status: "success" | "reverted"; logs: ReceiptLog[] } | null> {
   const { timeoutMs = 120_000, intervalMs = 3000, now = Date.now } = opts;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
   const until = now() + timeoutMs;
   for (;;) {
     try {
       const r = await client.getTransactionReceipt({ hash });
-      return { blockNumber: r.blockNumber, status: r.status };
+      return { blockNumber: r.blockNumber, status: r.status, logs: (r.logs ?? []).map((l) => ({ address: l.address, topics: l.topics, data: l.data })) };
     } catch {
       // Not included yet, or the RPC failed: ask again until the time is up.
     }
     if (now() >= until) return null;
     await sleep(intervalMs);
   }
+}
+
+/**
+ * The ids of the Briefs `inbox` emitted, from a receipt's logs. A smart wallet's outer transaction can succeed while
+ * the brief's call inside it fails, so only a Brief log shows that a brief reached the inbox.
+ */
+export function briefIdsIn(logs: readonly ReceiptLog[], inbox: Address): number[] {
+  return logs.flatMap((l) => {
+    if (l.address.toLowerCase() !== inbox.toLowerCase()) return [];
+    try {
+      const { args } = decodeEventLog({ abi: [briefEvent], topics: l.topics as [Hex, ...Hex[]], data: l.data, strict: true });
+      return [Number(args.id)];
+    } catch {
+      return [];
+    }
+  });
 }
 
 /** One line of the /ask feed: plain text only, never a link or markup. */

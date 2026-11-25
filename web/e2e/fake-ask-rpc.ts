@@ -19,8 +19,8 @@ export interface AskChain {
   vaultLogs: readonly CachedLog[];
   inbox?: Address;
   inboxLogs?: CachedLog[];
-  /** Lowercased tx hash → its receipt block, and the status the page reads. */
-  receipts: Record<string, { block: bigint; status?: "0x1" | "0x0"; to?: Address }>;
+  /** Lowercased tx hash → its receipt block, the status the page reads, and the logs its `to` emitted. */
+  receipts: Record<string, { block: bigint; status?: "0x1" | "0x0"; to?: Address; logs?: readonly CachedLog[] }>;
   /** Lowercased tx hash → its sender, target and input. */
   txs: Record<string, { from: Address; to: Address; input: Hex }>;
   /** The number previewIntent answers with, or a function of the intent. */
@@ -146,7 +146,7 @@ function handle(s: AskChain, seen: AskRpcLog, method: string, params: readonly u
         effectiveGasPrice: "0x1",
         from: zeroAddress,
         gasUsed: "0x5208",
-        logs: [],
+        logs: (r.logs ?? []).map((l) => rpcLog(r.to ?? zeroAddress, l)),
         logsBloom: BLOOM,
         status: r.status ?? "0x1",
         to: r.to ?? null,

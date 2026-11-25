@@ -139,8 +139,17 @@ function briefLog(id: number, from: Address, text: string, block: bigint): Cache
   return { blockNumber: block.toString(), logIndex: 0, transactionHash: hash32(9000 + id), topics, data: encodeAbiParameters([{ type: "string" }], [text]) };
 }
 
-describe("/ask once the inbox is recorded", () => {
-  function setup() {
+describe("/ask once it is open", () => {
+  /** A Brief log as the receipt of its transaction carries it. */
+  const receiptLog = (l: CachedLog) => ({ address: INBOX, topics: l.topics, data: l.data });
+
+  /**
+   * The page with an open inbox, a fake Base and a fake EIP-6963 wallet. `emitBrief` false gives the sent transaction a
+   * receipt with no Brief; `holdSend` keeps eth_sendTransaction pending until `release()`; `baseAccount` answers the
+   * Base Account requests; `sentInput` is the input Base reports for the sent transaction (the wallet's data by default).
+   */
+  function setup(opts: { emitBrief?: boolean; holdSend?: boolean; baseAccount?: Record<string, unknown>; sentInput?: Hex } = {}) {
+    const { emitBrief = true } = opts;
     const ownerInput = `${executeCalldata({ rationaleHash: keccak256(toBytes("first")) })}${erc8021Suffix([AGENT_TEST_CODE]).slice(2)}` as Hex;
     const logs: CachedLog[] = [decisionLog(1, DEPLOY + 5n), briefLog(1, SENDER, "<b>buy</b> https://evil.example", DEPLOY + 9n)];
     const fake = fakeLedgerClient({
@@ -149,6 +158,10 @@ describe("/ask once the inbox is recorded", () => {
       logs,
       txs: { [hash32(1)]: { from: OWNER, to: VAULT, input: ownerInput } },
     });
+    const requests: { method: string; params?: unknown }[] = [];
+    const sentData = () => (requests.find((r) => r.method === "eth_sendTransaction")?.params as [{ data: Hex }] | undefined)?.[0].data;
+    const receipts: Hash[] = [];
+    let added = false;
     const client = {
       ...fake,
       readContract: async ({ functionName }: { functionName: string }) => {
@@ -157,13 +170,22 @@ describe("/ask once the inbox is recorded", () => {
       },
       getTransactionReceipt: async ({ hash }: { hash: Hash }) => {
         if (hash === SENT) {
-          logs.push(briefLog(2, SENDER, "the new brief", DEPLOY + 50n));
-          return { blockNumber: DEPLOY + 50n, status: "success" };
+          receipts.push(hash);
+          if (!emitBrief) return { blockNumber: DEPLOY + 50n, status: "success", logs: [] };
+          const log = briefLog(2, SENDER, "the new brief", DEPLOY + 50n);
+          if (!added) logs.push(log);
+          added = true;
+          return { blockNumber: DEPLOY + 50n, status: "success", logs: [receiptLog(log)] };
         }
         return fake.getTransactionReceipt({ hash });
       },
+      getTransaction: async ({ hash }: { hash: Hash }) => {
+        if (hash === SENT) return { hash, from: SENDER, to: INBOX, input: opts.sentInput ?? sentData() };
+        return fake.getTransaction({ hash });
+      },
     } as unknown as LedgerClient;
-    const requests: { method: string; params?: unknown }[] = [];
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
     const wallet: InjectedWallet = {
       info: { uuid: "fake-1", name: "Fake Wallet", icon: "", rdns: "test.fake" },
       provider: {
@@ -171,11 +193,19 @@ describe("/ask once the inbox is recorded", () => {
           requests.push({ method, params });
           if (method === "eth_requestAccounts" || method === "eth_accounts") return [SENDER];
           if (method === "eth_chainId") return "0x2105";
-          if (method === "eth_sendTransaction") return SENT;
+          if (method === "eth_sendTransaction") return opts.holdSend ? held.then(() => SENT) : SENT;
           throw Object.assign(new Error(`${method} unsupported`), { code: 4200 });
         },
       },
     };
+    const baseAccount = async () => ({
+      request: async ({ method, params }: { method: string; params?: unknown }) => {
+        requests.push({ method, params });
+        const answers = { eth_requestAccounts: [SENDER], ...opts.baseAccount };
+        if (method in answers) return answers[method as keyof typeof answers];
+        throw Object.assign(new Error(`${method} unsupported`), { code: 4200 });
+      },
+    });
     const config = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) } };
     render(
       <AskApp
@@ -187,16 +217,32 @@ describe("/ask once the inbox is recorded", () => {
             onChange([wallet]);
             return () => {};
           },
+          baseAccount,
         }}
       />,
     );
-    return { requests };
+    return { requests, receipts, release };
   }
+
+  const box = () => screen.getByLabelText("Your brief") as HTMLTextAreaElement;
+  const write = (text: string) => fireEvent.change(box(), { target: { value: text } });
+  const codeRead = () => waitFor(() => expect(document.querySelector(`[data-builder-code="${AGENT_TEST_CODE}"]`)).not.toBeNull());
+  const calls = (status: number, receiptStatus: "0x1" | "0x0") => ({
+    wallet_sendCalls: { id: "0xbundle" },
+    wallet_getCallsStatus: {
+      version: "2.0.0",
+      id: "0xbundle",
+      chainId: "0x2105",
+      atomic: true,
+      status,
+      receipts: [{ blockHash: hash32(77), blockNumber: "0x10", gasUsed: "0x5208", logs: [], status: receiptStatus, transactionHash: SENT }],
+    },
+  });
 
   it("reads the Builder Code, shows the feed as text, and sends a brief whose calldata ends with the suffix", async () => {
     const { requests } = setup();
     expect(screen.queryByText("The inbox is not open yet.")).toBeNull();
-    await waitFor(() => expect(document.querySelector(`[data-builder-code="${AGENT_TEST_CODE}"]`)).not.toBeNull());
+    await codeRead();
 
     const feed = await screen.findByRole("list", { name: "Briefs" });
     expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
@@ -205,21 +251,89 @@ describe("/ask once the inbox is recorded", () => {
 
     const send = screen.getByRole("button", { name: "Send with Fake Wallet" });
     expect(send).toBeDisabled();
-    fireEvent.change(screen.getByLabelText("Your brief"), { target: { value: "sell it all" } });
+    write("sell it all");
     expect(screen.getByText("11 / 280 bytes")).toBeInTheDocument();
     fireEvent.click(send);
 
-    await screen.findByText(/^Included in block/);
+    await screen.findByText(/^Included in block 2,000,050 as brief #2\. It is in the feed below\./);
     const tx = (requests.find((r) => r.method === "eth_sendTransaction")!.params as [{ data: Hex; to: Address }])[0];
     expect(tx.data).toBe(briefTxData("sell it all", AGENT_TEST_SUFFIX));
     expect(tx.to.toLowerCase()).toBe(INBOX.toLowerCase());
+    expect(await screen.findByText("Its calldata ends with the Builder Code suffix.")).toHaveAttribute("data-suffix-check", "end");
+    expect(box().value).toBe("");
     await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("2"));
     expect(within(screen.getByRole("list", { name: "Briefs" })).getByText("the new brief")).toBeInTheDocument();
   });
 
+  it("says how each path carries the Builder Code", async () => {
+    setup();
+    await codeRead();
+    const line = document.querySelector(`[data-builder-code="${AGENT_TEST_CODE}"]`)!;
+    expect(line).toHaveTextContent("A browser wallet puts it at the end of the brief's calldata (ERC-8021).");
+    expect(line).toHaveTextContent("Base Account is asked to add it through the dataSuffix capability, and may leave it out.");
+    expect(line).toHaveTextContent("Once the brief is included, the page checks the calldata.");
+  });
+
+  it("says the brief is not in the inbox when its transaction emitted no Brief, and keeps the text", async () => {
+    setup({ emitBrief: false });
+    await codeRead();
+    write("sell it all");
+    fireEvent.click(screen.getByRole("button", { name: "Send with Fake Wallet" }));
+    expect(
+      await screen.findByText(/^Included in block 2,000,050, but the transaction emitted no Brief from the inbox, so the brief is not in the feed\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/It is in the feed below/)).toBeNull();
+    expect(box().value).toBe("sell it all");
+    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+  });
+
+  it("keeps the box read-only while the wallet is asked, so the text on the page is the text it signs", async () => {
+    const { requests, release } = setup({ holdSend: true });
+    await codeRead();
+    write("buy 5 USDC of NVDAc");
+    fireEvent.click(screen.getByRole("button", { name: "Send with Fake Wallet" }));
+    await waitFor(() => expect(requests.some((r) => r.method === "eth_sendTransaction")).toBe(true));
+    expect(box()).toHaveAttribute("readonly");
+    release();
+    await screen.findByText(/^Included in block/);
+    expect(box()).not.toHaveAttribute("readonly");
+    expect(box().value).toBe("");
+  });
+
+  it("sends with Base Account and reports the suffix the wallet put inside its call", async () => {
+    const wrapped = `0x1234${briefTxData("sell it all", AGENT_TEST_SUFFIX).slice(2)}${"00".repeat(20)}` as Hex;
+    const { requests } = setup({ baseAccount: calls(200, "0x1"), sentInput: wrapped });
+    await codeRead();
+    write("sell it all");
+    fireEvent.click(screen.getByRole("button", { name: "Send with Base Account" }));
+    await screen.findByText(/^Included in block 2,000,050 as brief #2\./);
+    const [params] = requests.find((r) => r.method === "wallet_sendCalls")!.params as [{ capabilities: unknown }];
+    expect(JSON.parse(JSON.stringify(params.capabilities))).toEqual({ dataSuffix: { value: AGENT_TEST_SUFFIX, optional: true } });
+    expect(await screen.findByText("Its calldata carries the Builder Code suffix inside the wallet's call.")).toHaveAttribute("data-suffix-check", "inside");
+  });
+
+  it("says when Base Account's transaction does not carry the suffix", async () => {
+    setup({ baseAccount: calls(200, "0x1"), sentInput: briefTxData("sell it all", null) });
+    await codeRead();
+    write("sell it all");
+    fireEvent.click(screen.getByRole("button", { name: "Send with Base Account" }));
+    expect(await screen.findByText("Its calldata does not carry the Builder Code suffix.")).toHaveAttribute("data-suffix-check", "none");
+  });
+
+  it("shows Base Account's failure, and never says the brief is in the feed, when the wallet reports the call failed", async () => {
+    const { receipts } = setup({ baseAccount: calls(500, "0x0") });
+    await codeRead();
+    write("sell it all");
+    fireEvent.click(screen.getByRole("button", { name: "Send with Base Account" }));
+    expect(await screen.findByText("Base Account reported the brief's call as failed (status 500), so the brief is not in the inbox.")).toBeInTheDocument();
+    expect(screen.queryByText(/^Included in block/)).toBeNull();
+    expect(receipts).toEqual([]);
+    expect(box().value).toBe("sell it all");
+  });
+
   it("keeps the send buttons off for a text over 280 bytes and says why", () => {
     setup();
-    fireEvent.change(screen.getByLabelText("Your brief"), { target: { value: "é".repeat(141) } });
+    write("é".repeat(141));
     expect(screen.getByText("282 / 280 bytes: 282 bytes is over the 280-byte limit.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Send with Fake Wallet" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Send with Base Account" })).toBeDisabled();

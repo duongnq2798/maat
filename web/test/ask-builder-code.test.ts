@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { briefCalldata } from "@/lib/chain/inbox";
 import type { LedgerClient } from "@/lib/chain/load";
 import { readBuilderCode } from "@/lib/wallet/builder-code";
-import { briefTxData, BUILDER_CODE_RE, erc8021Suffix } from "@/lib/wallet/suffix";
+import { briefTxData, BUILDER_CODE_RE, erc8021Suffix, suffixIn } from "@/lib/wallet/suffix";
 import { decisionLog, fakeLedgerClient, hash32, type FakeChain } from "./helpers/fake-ledger";
 import { AGENT_TEST_CODE, AGENT_TEST_SUFFIX, erc8021Suffix as specSuffix, executeCalldata, SPEC_CODE } from "./helpers/maat-v1";
 
@@ -28,6 +28,23 @@ describe("erc8021Suffix", () => {
   it("refuses a code the Builder Codes registry would refuse", () => {
     expect(BUILDER_CODE_RE.test("bc_ok_123")).toBe(true);
     for (const bad of ["", "Has-Caps", "a".repeat(33), "with space", "bc,two"]) expect(() => erc8021Suffix(bad), bad).toThrow(/Builder Code/);
+  });
+});
+
+describe("suffixIn: where a transaction's input carries the suffix", () => {
+  const s = AGENT_TEST_SUFFIX.slice(2);
+
+  it("is end when the input ends with it, as a browser wallet's brief does", () => {
+    expect(suffixIn(briefTxData("hi", AGENT_TEST_SUFFIX), AGENT_TEST_SUFFIX)).toBe("end");
+  });
+
+  it("is inside when a wallet's call carries it before more bytes, and none when it is absent", () => {
+    expect(suffixIn(`0xabcd${s}${"00".repeat(4)}`, AGENT_TEST_SUFFIX)).toBe("inside");
+    expect(suffixIn(briefCalldata("hi"), AGENT_TEST_SUFFIX)).toBe("none");
+  });
+
+  it("counts only whole bytes: the suffix's hex half a byte off is not the suffix", () => {
+    expect(suffixIn(`0xa${s}0${"00".repeat(4)}`, AGENT_TEST_SUFFIX)).toBe("none");
   });
 });
 

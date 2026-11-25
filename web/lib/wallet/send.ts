@@ -111,9 +111,17 @@ export async function sendBriefBaseAccount({ provider, account, inbox, text, suf
   return { id };
 }
 
-/** The transaction hash of a wallet_sendCalls bundle once the wallet reports it included, or null when it does not. */
+/**
+ * The transaction hash of a wallet_sendCalls bundle once the wallet reports it included and successful, or null when
+ * it reports success with no transaction. Throws a WalletError when the wallet reports the call as failed or its
+ * transaction as reverted: a smart wallet's outer transaction can succeed while the brief's call inside it fails.
+ */
 export async function bundleTxHash(provider: Eip1193Provider, id: string, timeoutMs = 120_000): Promise<Hash | null> {
   const wallet = createWalletClient({ chain: base, transport: custom(provider) });
   const status = await wallet.waitForCallsStatus({ id, timeout: timeoutMs });
-  return status.receipts?.[0]?.transactionHash ?? null;
+  if (status.status !== "success") throw new WalletError(`Base Account reported the brief's call as failed (status ${status.statusCode}), so the brief is not in the inbox.`);
+  const receipt = status.receipts?.[0];
+  if (!receipt) return null;
+  if (receipt.status !== "success") throw new WalletError("Base Account reported that the brief's transaction reverted, so the brief is not in the inbox.");
+  return receipt.transactionHash;
 }

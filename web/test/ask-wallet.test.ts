@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { briefCalldata, inboxAbi } from "@/lib/chain/inbox";
 import { baseAccountProvider, resetBaseAccountProvider } from "@/lib/wallet/base-account";
 import { watchWallets, type Eip1193Provider, type InjectedWallet } from "@/lib/wallet/eip6963";
-import { ensureBase, requestAccount, sendBriefBaseAccount, sendBriefInjected, walletErrorText } from "@/lib/wallet/send";
+import { bundleTxHash, ensureBase, requestAccount, sendBriefBaseAccount, sendBriefInjected, walletErrorText } from "@/lib/wallet/send";
 import { briefTxData } from "@/lib/wallet/suffix";
 import { AGENT_TEST_SUFFIX } from "./helpers/maat-v1";
 
@@ -145,6 +145,31 @@ describe("sendBriefBaseAccount: wallet_sendCalls with the dataSuffix capability"
     const { provider, requests } = fakeProvider({ wallet_sendCalls: "0xbundle" });
     await expect(sendBriefBaseAccount({ provider, account: ACCOUNT, inbox: INBOX, text: "a".repeat(281), suffix: null })).rejects.toThrow(/281 bytes/);
     expect(requests).toEqual([]);
+  });
+});
+
+describe("bundleTxHash: the transaction of a wallet_sendCalls bundle, only when the wallet reports it succeeded", () => {
+  const receipt = (status: "0x1" | "0x0") => ({ blockHash: `0x${"11".repeat(32)}`, blockNumber: "0x10", gasUsed: "0x5208", logs: [], status, transactionHash: TX });
+  const calls = (status: number, receipts: unknown[]) => fakeProvider({ wallet_getCallsStatus: { version: "2.0.0", id: "0xbundle", chainId: "0x2105", atomic: true, status, receipts } });
+
+  it("gives the transaction hash once the wallet reports the call included and successful", async () => {
+    expect(await bundleTxHash(calls(200, [receipt("0x1")]).provider, "0xbundle")).toBe(TX);
+  });
+
+  it("fails with a sentence when the wallet reports the call as failed, even with a transaction hash", async () => {
+    await expect(bundleTxHash(calls(500, [receipt("0x0")]).provider, "0xbundle")).rejects.toThrow(
+      "Base Account reported the brief's call as failed (status 500), so the brief is not in the inbox.",
+    );
+  });
+
+  it("fails when the wallet reports success but the transaction reverted", async () => {
+    await expect(bundleTxHash(calls(200, [receipt("0x0")]).provider, "0xbundle")).rejects.toThrow(
+      "Base Account reported that the brief's transaction reverted, so the brief is not in the inbox.",
+    );
+  });
+
+  it("gives null when the wallet reports success with no transaction", async () => {
+    expect(await bundleTxHash(calls(200, []).provider, "0xbundle")).toBeNull();
   });
 });
 

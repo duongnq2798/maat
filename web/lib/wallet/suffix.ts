@@ -17,6 +17,18 @@ export function erc8021Suffix(code: string): Hex {
   return `0x${bytes}${(bytes.length / 2).toString(16).padStart(2, "0")}00${MARKER}`;
 }
 
+/**
+ * Where a transaction's input carries `suffix`, at whole bytes: at its end, as a browser wallet's brief does; inside
+ * it, as a smart wallet's call can; or nowhere.
+ */
+export function suffixIn(input: Hex, suffix: Hex): "end" | "inside" | "none" {
+  const data = input.slice(2).toLowerCase();
+  const s = suffix.slice(2).toLowerCase();
+  if (data.endsWith(s) && (data.length - s.length) % 2 === 0) return "end";
+  for (let i = data.indexOf(s); i !== -1; i = data.indexOf(s, i + 1)) if (i % 2 === 0) return "inside";
+  return "none";
+}
+
 /** The input of a brief transaction: brief(text) calldata, then `suffix` when there is one. MaatInbox ignores the suffix. */
 export function briefTxData(text: string, suffix: Hex | null): Hex {
   const data = briefCalldata(text);

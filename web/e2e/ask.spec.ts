@@ -84,11 +84,14 @@ function chain(withInbox: boolean): AskChain {
     ...c,
     inbox: INBOX,
     inboxLogs,
-    // The page waits for the receipt of the brief it sent; once Base "has" it, the brief is in the inbox's logs.
+    // The page waits for the receipt of the brief it sent; once Base "has" it, the brief is in the inbox's logs and in
+    // the receipt, and the transaction carries the input the wallet sent.
     onReceipt: (hash) => {
       if (hash !== SENT || c.receipts[SENT]) return;
-      c.receipts[SENT] = { block: HEAD - 5n, to: INBOX };
-      inboxLogs.push(briefLog(2, SENDER, "sell it all", HEAD - 5n));
+      const log = briefLog(2, SENDER, "sell it all", HEAD - 5n);
+      c.receipts[SENT] = { block: HEAD - 5n, to: INBOX, logs: [log] };
+      c.txs[SENT] = { from: SENDER, to: INBOX, input: briefInput("sell it all", AGENT_TEST_SUFFIX) as Hex };
+      inboxLogs.push(log);
     },
   };
 }
@@ -208,7 +211,9 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     await expect(page.getByText("11 / 280 bytes")).toBeVisible();
     await send.click();
 
-    await expect(page.getByText(/^Included in block/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/^Included in block 61,818,512 as brief #2\. It is in the feed below\./)).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("[data-suffix-check]")).toHaveText("Its calldata ends with the Builder Code suffix.");
+    await expect(page.locator("[data-suffix-check]")).toHaveAttribute("data-suffix-check", "end");
     const requests = await page.evaluate(() => (window as unknown as { __walletRequests: { method: string; params?: unknown }[] }).__walletRequests);
     const sends = requests.filter((r) => r.method === "eth_sendTransaction");
     expect(sends).toHaveLength(1);

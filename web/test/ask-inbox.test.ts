@@ -5,6 +5,7 @@ import type { CachedLog } from "@/lib/chain/cache";
 import {
   briefBytes,
   briefCalldata,
+  briefIdsIn,
   briefCounts,
   briefFeed,
   checkBrief,
@@ -196,10 +197,14 @@ describe("waitForReceipt", () => {
       getTransactionReceipt: async () => {
         asked += 1;
         if (asked < 3) throw new Error("Transaction receipt could not be found");
-        return { blockNumber: 77n, status: "success" as const };
+        return { blockNumber: 77n, status: "success" as const, logs: [{ address: INBOX, topics: [hash32(5)], data: "0x" }] };
       },
     };
-    expect(await waitForReceipt(client as never, hash32(1), { sleep: noSleep })).toEqual({ blockNumber: 77n, status: "success" });
+    expect(await waitForReceipt(client as never, hash32(1), { sleep: noSleep })).toEqual({
+      blockNumber: 77n,
+      status: "success",
+      logs: [{ address: INBOX, topics: [hash32(5)], data: "0x" }],
+    });
     expect(asked).toBe(3);
   });
 
@@ -209,6 +214,25 @@ describe("waitForReceipt", () => {
     const read = await waitForReceipt(client as never, hash32(1), { timeoutMs: 10_000, intervalMs: 3000, sleep: async (ms) => void (t += ms), now: () => t });
     expect(read).toBeNull();
     expect(t).toBeGreaterThanOrEqual(10_000);
+  });
+});
+
+describe("briefIdsIn: the briefs a receipt shows the inbox emitted", () => {
+  const asReceiptLog = (address: Address, l: CachedLog) => ({ address, topics: l.topics, data: l.data });
+
+  it("gives the id of each Brief the inbox emitted, and skips other contracts' logs and other events", () => {
+    const other: Address = "0x00000000000000000000000000000000000B0002";
+    const logs = [
+      asReceiptLog(INBOX, briefLog(5, ALICE, "hi", 10n)),
+      asReceiptLog(other, briefLog(6, ALICE, "a copy from another contract", 10n)),
+      { address: INBOX, topics: [hash32(1)], data: "0x" as Hex },
+      asReceiptLog(INBOX.toLowerCase() as Address, briefLog(7, BOB, "second", 10n)),
+    ];
+    expect(briefIdsIn(logs, INBOX)).toEqual([5, 7]);
+  });
+
+  it("gives none for a receipt with no Brief, as a smart wallet's outer transaction can have when the call inside failed", () => {
+    expect(briefIdsIn([], INBOX)).toEqual([]);
   });
 });
 
