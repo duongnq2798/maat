@@ -70,9 +70,9 @@ npm run agent -- --once --dry-run
 
 It needs a [vault](/docs/help/glossary#vault) to read and makes a paid call to Claude, so this page shows the command and no output.
 
-When `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, the agent first prints a warning that names it and says that Claude is called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. It does not stop for it. At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
+When `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, the agent first prints a warning that names it and says that Claude is called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. The key in `agent/.env` wins over one the environment already has, although `--env-file` keeps the environment's value of every other setting. When the two keys differ, the agent prints `maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env`, with neither key, and calls Claude with the key in `agent/.env`. When `agent/.env` has no key, or leaves it blank, it uses the environment's. It stops for neither warning. At startup the agent takes a lock on its data directory, before it opens its files or connects to CDP, so a second agent on the same directory stops. How it ends depends on the flags:
 
-- With `--once` it prints one line with the mode, the vault, the executor, the data directory, whether credit actions are on, the daily Claude spend cap and the bill minimum, runs one round, prints the round's report as JSON, releases the lock and exits. The report includes the run id, the `status`, the block it read, `marketOpen`, the hashes in `sent`, the counts `skipped` and `proposals`, and a `haltReason` when the round halted.
+- With `--once` it prints one line with the mode, the vault, the executor, the data directory, whether credit actions are on, the daily Claude spend cap and the bill minimum, runs one round, prints the round's report as JSON, releases the lock and exits. The report includes the run id, the `status`, the block it read, `marketOpen`, the hashes in `sent`, the counts `skipped` and `proposals`, a `haltReason` when the round halted, and an `error` when the round's journal `run` line has one.
 - Without `--once` it runs a round, then waits. The wait is <Fact name="loopMinutes" /> after a round that saw the market open, and <Fact name="offSessionMinutes" /> after any other round, including a round that threw an error. The agent logs a round that throws and tries again after the longer wait.
 - A stop signal (Ctrl+C, or SIGTERM) ends the wait. It does not interrupt a round in progress: the agent finishes that round, releases the lock and exits.
 
@@ -254,18 +254,11 @@ This script calls the paid Claude API. Each run is billed to the Anthropic accou
 
 It asks Claude for one proposal and prints the result as JSON. It builds a fixed test vault from the fakes in `agent/test`, evaluates the policy on it and passes the result to the same `ClaudeProposer` the agent uses, with the model `claude-sonnet-5-5` written into the script. So it reads no chain, uses no RPC URL, no wallet and no CDP, and it ignores `MAAT_LOOP_MODEL`. It is not an npm script, and neither `npm test` nor `npm run typecheck` runs it.
 
-The script does not load `.env` itself. The Anthropic SDK reads `ANTHROPIC_API_KEY` from the environment, so with the key set in your shell, run:
+The script does not load `.env` itself, but the Claude client it shares with the agent reads `ANTHROPIC_API_KEY` from `agent/.env`, and takes the environment's only when `agent/.env` has none or leaves it blank. With the key in `agent/.env`, which keeps it out of your shell history, or set in your shell, run:
 
 ```bash
 cd agent
 npx tsx scripts/smoke-claude.ts
-```
-
-To have Node read the key from `agent/.env` instead, the way `cdp-setup.ts` reads its credentials, run the command below. It keeps the key out of your shell history.
-
-```bash
-cd agent
-node --env-file=.env --import tsx scripts/smoke-claude.ts
 ```
 
 This page shows no output for it, because the script calls the paid API.
@@ -318,7 +311,8 @@ Without `--once`, the loop prints one of these lines after each round. With `--o
 
 | Message | What it means | Read | Unit test |
 | --- | --- | --- | --- |
-| `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | The round returned its report. Any `<STATUS>` other than `done` needs a look. | [What to watch while it runs](/docs/guides/run-the-agent#what-to-watch-while-it-runs) | None |
+| `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | The round returned its report. Any `<STATUS>` other than `done` needs a look. A halted round adds its reason in parentheses. | [What to watch while it runs](/docs/guides/run-the-agent#what-to-watch-while-it-runs) | [`scheduler.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/scheduler.test.ts) |
+| `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>; error: <ERROR>` | The round's journal `run` line has an error, and the loop adds it to the line, cut to one line with URLs and keys redacted: the Claude call failed, for example on a key that Anthropic rejects, or the daily Claude cap stopped it. The round can still read `done`, and it has no proposals from Claude. When `agent/.env` sets `ANTHROPIC_API_KEY`, that is the key the agent sends, whatever the terminal holds. | [What to watch while it runs](/docs/guides/run-the-agent#what-to-watch-while-it-runs) | [`scheduler.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/scheduler.test.ts), [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts) |
 | `round failed: <ERROR>` | The round threw an error instead of returning a report. The loop prints the error's stack and runs the next round after <Fact name="offSessionMinutes" />. | [Run it continuously](/docs/guides/run-the-agent#run-it-continuously) | None |
 
 ## Related

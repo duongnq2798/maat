@@ -12,6 +12,7 @@ sources:
   - agent/src/main.ts
   - agent/src/config.ts
   - agent/src/runtime.ts
+  - agent/src/llm/proposer.ts
   - agent/src/loop/scheduler.ts
   - agent/src/loop/heartbeat.ts
   - agent/src/loop/lock.ts
@@ -188,8 +189,9 @@ These are the lines the loop and the agent print in the tab, with placeholders f
 | `restart-loop: watching <DIR> for the heartbeat; Ctrl-C stops the agent and this loop` | Once, when the loop starts. `<DIR>` is the full path of the data folder. |
 | `restart-loop: agent started (pid <PID>), start <N>` | Each time the loop starts the agent. `<PID>` is the process the loop started, `npm run agent`, not the agent's own pid that the heartbeat and the lock file give. |
 | `maat agent: ignoring <NAMES>: Claude is called only at https://api.anthropic.com, with ANTHROPIC_API_KEY` | Before the agent's first line, only when `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, in the terminal or in `agent/.env`. `<NAMES>` names the one that is set, or both. The agent does not stop for it. |
+| `maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env` | Before the agent's first line, only when the terminal has an `ANTHROPIC_API_KEY` that differs from the one in `agent/.env`. The agent calls Claude with the key in `agent/.env` and prints neither key. It does not stop for it. |
 | `maat agent: mode=<MODE> vault=<VAULT> executor=<EXECUTOR> data=<DIR> credit=off llm-cap=$0.75/day bill-min=$1.00` | The agent's first line once its settings load, here with the live defaults. |
-| `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | After each round. A halted round adds its reason in parentheses. |
+| `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | After each round. A halted round adds its reason in parentheses. A round whose journal `run` line has an error adds `; error: <ERROR>`, in the one-line form of `round failed:` below: Claude's call failed, for example on a key that Anthropic rejects, or the daily Claude cap stopped it. Such a round can still read `done`. |
 | `round failed: <ERROR>` | A round threw. The error is one line, with URLs, keys and other secret values replaced. The next round runs after <Fact name="offSessionMinutes" />. |
 | `maat agent stopped: <ERROR>` | The agent could not start. The same one-line form. |
 | `restart-loop: agent exited (<HOW>) after <TIME>; restarting in <WAIT>` | The agent exited, and the loop will start it again. `<HOW>` is `code <CODE>`, `signal <SIGNAL>`, or `error` and the error when `npm run agent` could not be started. |
@@ -344,6 +346,7 @@ A pause does not stop the agent: its rounds go on reading the vault and asking C
 - **A bad setting under the loop.** The agent stops at its start with `maat agent stopped:` and the error, and the loop starts it again with longer and longer waits, and prints a `FAILING` line and shows a notification once the third start has stopped. Fix `agent/.env`: the next start reads it.
 - **Expecting a heartbeat from `--once`.** Only the agent's loop writes `heartbeat.json`, so after `npm run agent -- --once` the check still finds none, or the last round of an earlier loop.
 - **Setting `MAAT_DATA_DIR` in the terminal.** The terminal's value wins over `agent/.env` for the agent, the restart loop and the heartbeat check alike.
+- **Expecting the terminal's `ANTHROPIC_API_KEY` to win.** It is the one setting where `agent/.env` wins. A PC can have an `ANTHROPIC_API_KEY` set for every terminal, for another tool. The agent calls Claude with the key in `agent/.env` all the same, and at each start it prints `maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env`. It uses the terminal's key only when `agent/.env` has none or leaves it blank. If Anthropic rejects the key it uses, the round can still end `done`, and its line ends with `; error: claude:` and Anthropic's error. Fix the key in `agent/.env` and restart the loop: the agent reads the key once per start, when it first calls Claude.
 - **Leaving `agent/data-dryrun/` in a commit.** Git does not ignore it. Check `git status` before you commit.
 
 ## Next steps
