@@ -40,6 +40,7 @@ const SHIPPED: readonly string[] = [
   "guides/deploy-your-own-vault",
   "guides/configure-a-mandate",
   "guides/run-the-agent",
+  "guides/run-the-agent-on-windows",
   "guides/change-a-rule",
   "guides/pause-withdraw-recover",
   "guides/watch-decisions-onchain",
