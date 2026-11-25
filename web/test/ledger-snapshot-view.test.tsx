@@ -25,7 +25,7 @@ describe("the ledger says when a read started from the committed snapshot", () =
   it("names the snapshot's block and the blocks taken from it, and links the file", async () => {
     const { container } = strip(await load(fixture));
     // N = 59,845,280; the logs up to N − 151 come from the file.
-    expect(container).toHaveTextContent("Logs up to block 59,845,129 are from the committed snapshot of block 59,845,280, whose hash Base confirmed.");
+    expect(container).toHaveTextContent("Logs up to block 59,845,129 are from the committed snapshot of block 59,845,280. Base gave the same hash for that block and the same logs in their transaction receipts.");
     expect(screen.getByRole("link", { name: "committed snapshot" })).toHaveAttribute("href", "/data/decisions-snapshot.json");
   });
 
@@ -34,10 +34,11 @@ describe("the ledger says when a read started from the committed snapshot", () =
     expect(container.textContent).not.toMatch(/snapshot/);
   });
 
-  it("explains in How this page reads Base what the snapshot is and what is read again", () => {
+  it("explains in How this page reads Base what the snapshot is, what is read again and what is checked", () => {
     const { container } = render(<HowWeRead />);
+    expect(screen.getByText("Checked against Base")).toBeInTheDocument();
     expect(container).toHaveTextContent(
-      "A first visit starts from a snapshot the repository commits (/data/decisions-snapshot.json, written from Base by npm run snapshot). Once Base gives the same hash for the snapshot's block, the page takes from the file the logs more than 150 blocks below it and reads every block after those from Base.",
+      "A first visit starts from a snapshot the repository commits (/data/decisions-snapshot.json, written from Base by npm run snapshot). Once Base gives the same hash for the snapshot's block, the page takes from the file the logs more than 150 blocks below it and reads every block after those from Base. It shows one of those logs only once its transaction's receipt on Base holds the same log, and it reads each Decision's time, gas and transaction from Base, so the file can leave a log out but cannot add or change one. When the site serves another file, or none, this browser forgets what it took from the old one.",
     );
     expect(screen.getByRole("link", { name: "/data/decisions-snapshot.json" })).toHaveAttribute("href", "/data/decisions-snapshot.json");
   });

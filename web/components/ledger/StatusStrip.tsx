@@ -99,7 +99,8 @@ export function MainnetStrip({
           <a href={SNAPSHOT_URL} className="underline underline-offset-2">
             committed snapshot
           </a>{" "}
-          of block {formatInt(Number(scan.fromSnapshot.block))}, whose hash Base confirmed.
+          of block {formatInt(Number(scan.fromSnapshot.block))}. Base gave the same hash for that block and the same logs in
+          their transaction receipts.
         </p>
       ) : null}
       {!scan.done ? (

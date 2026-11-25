@@ -1,11 +1,14 @@
 // Writes content/generated/decisions-snapshot.json: every log of the Base mainnet MandateVault in deployments/README.md
-// from its deploy block to the RPC's finalized block N, with N's hash and each Decision's block time, gas and
-// transaction. /ledger and the landing start a first read from it and scan only from N minus the reorg window. The
-// script only reads Base, through one keyless RPC, and the build never runs it: a data PR commits the file it writes.
+// from its deploy block to the RPC's finalized block N, with N's hash. /ledger and the landing start a first read from
+// it and scan only from N minus the reorg window; each browser checks the logs it takes against their receipts on Base.
+// The script only reads Base, through keyless RPCs, and the build never runs it: a data PR commits the file it writes.
 //
-// Usage (in web/): npm run snapshot [-- --rpc <https URL>] [--fresh]
-// The default RPC is https://mainnet.base.org. When the file already holds a snapshot of the vault whose block hash the
-// RPC still gives, the run keeps its logs and scans only from its block minus the window; --fresh scans from the deploy.
+// Usage (in web/): npm run snapshot [-- --rpc <https URL>] [--check <https URL>] [--fresh]
+// --rpc is where the logs are read, https://base-rpc.publicnode.com by default (mainnet.base.org refuses eth_getLogs).
+// --check is a second RPC, https://mainnet.base.org by default, that must give the same hash for N and the same logs in
+// every receipt, as a browser checks them, before the file is written. When the file already holds a snapshot of the
+// vault that --rpc still confirms, the run keeps its logs and scans only from its block minus the window; --fresh scans
+// from the deploy block.
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
@@ -14,40 +17,57 @@ import { base } from "viem/chains";
 import deployments from "../content/generated/deployments.json";
 import { BASE_CHAIN_ID, deploymentConfig } from "../lib/chain/config";
 import { decodeVaultLogs } from "../lib/chain/events";
-import { errorText, takeSnapshot, type LedgerClient } from "../lib/chain/load";
+import { checkSnapshot, errorText, takeSnapshot, type LedgerClient } from "../lib/chain/load";
 import { LOG_CHUNK, MIN_LOG_CHUNK } from "../lib/chain/scan";
+import { SNAPSHOT_CHECK_RPC, SNAPSHOT_RPC } from "../lib/chain/snapshot";
 
 const OUT = fileURLToPath(new URL("../content/generated/decisions-snapshot.json", import.meta.url));
-const DEFAULT_RPC = "https://mainnet.base.org";
 /** RPCs whose eth_getLogs range is capped far below LOG_CHUNK, by origin (lib/chain/scan.ts gives each limit). */
 const LOG_SPAN: Readonly<Record<string, bigint>> = { "https://mainnet.base.org": MIN_LOG_CHUNK };
 
 function usage(message: string): never {
   console.error(`snapshot: ${message}`);
-  console.error("usage: npm run snapshot [-- --rpc <https URL>] [--fresh]");
+  console.error("usage: npm run snapshot [-- --rpc <https URL>] [--check <https URL>] [--fresh]");
   process.exit(1);
+}
+
+function httpsUrl(flag: string, value: string): URL {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    usage(`--${flag} ${value} is not a URL`);
+  }
+  if (url.protocol !== "https:") usage(`--${flag} must be an https URL`);
+  return url;
+}
+
+/** A read-only Base client; viem retries a rate-limited call with exponential backoff: 1 s, 2 s, ... 32 s. */
+const client = (url: URL) => createPublicClient({ chain: base, transport: http(url.href, { retryCount: 6, retryDelay: 1_000, timeout: 30_000 }) });
+
+async function onBase(url: URL): Promise<ReturnType<typeof client>> {
+  const c = client(url);
+  const chainId = await c.getChainId();
+  if (chainId !== BASE_CHAIN_ID) usage(`${url.origin} is chain ${chainId}, not Base mainnet (${BASE_CHAIN_ID})`);
+  return c;
 }
 
 async function main(): Promise<void> {
   const { values } = parseArgs({
-    options: { rpc: { type: "string", default: DEFAULT_RPC }, fresh: { type: "boolean", default: false } },
+    options: {
+      rpc: { type: "string", default: SNAPSHOT_RPC },
+      check: { type: "string", default: SNAPSHOT_CHECK_RPC },
+      fresh: { type: "boolean", default: false },
+    },
     strict: true,
   });
-  let rpc: URL;
-  try {
-    rpc = new URL(values.rpc);
-  } catch {
-    usage(`--rpc ${values.rpc} is not a URL`);
-  }
-  if (rpc.protocol !== "https:") usage("--rpc must be an https URL");
+  const rpc = httpsUrl("rpc", values.rpc);
+  const checkRpc = httpsUrl("check", values.check);
   const recorded = deploymentConfig(deployments);
   if (!recorded) usage("deployments/README.md records no Base mainnet MandateVault (run npm run docs:gen after the deploy)");
 
-  // viem retries a rate-limited call with exponential backoff: 1 s, 2 s, ... 32 s.
-  const client = createPublicClient({ chain: base, transport: http(rpc.href, { retryCount: 6, retryDelay: 1_000, timeout: 30_000 }) });
-  const chainId = await client.getChainId();
-  if (chainId !== BASE_CHAIN_ID) usage(`${rpc.origin} is chain ${chainId}, not Base mainnet (${BASE_CHAIN_ID})`);
-  const finalized = await client.getBlock({ blockTag: "finalized" });
+  const reader = await onBase(rpc);
+  const finalized = await reader.getBlock({ blockTag: "finalized" });
   if (finalized.number === null || finalized.hash === null) throw new Error(`${rpc.origin} gave a finalized block with no number or hash`);
 
   const previous = !values.fresh && existsSync(OUT) ? (JSON.parse(readFileSync(OUT, "utf8")) as unknown) : undefined;
@@ -58,7 +78,7 @@ async function main(): Promise<void> {
   let reported = -1;
   const started = Date.now();
   const snapshot = await takeSnapshot({
-    client: client as unknown as LedgerClient,
+    client: reader as unknown as LedgerClient,
     vault: recorded.vault,
     deployTx: recorded.deployTx,
     block: { number: finalized.number, hash: finalized.hash },
@@ -74,6 +94,11 @@ async function main(): Promise<void> {
       }
     },
   });
+
+  const checked = await checkSnapshot((await onBase(checkRpc)) as unknown as LedgerClient, recorded.vault, snapshot);
+  if (!checked.ok) throw new Error(`${checkRpc.origin} does not confirm the snapshot: ${checked.reason}; no snapshot written`);
+  const txs = new Set(snapshot.logs.map((l) => l.transactionHash.toLowerCase())).size;
+  console.error(`snapshot: ${checkRpc.origin} gives the same hash for block ${snapshot.block} and the same logs in all ${txs} receipts`);
 
   const tmp = `${OUT}.tmp`;
   try {
