@@ -17,12 +17,16 @@ const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v)
 /**
  * The chained rows of the agent's journal, in order, each with its projection and published line. Rows before the
  * first one with a `hash` were written before the chain existed and are left out; from that row on every row must
- * carry a hash that matches its projection and a `prev` equal to the hash before it (GENESIS for the first). A last
- * line with no line feed is one the agent may still be writing, so it waits for the next round.
+ * carry a hash that matches its projection and a `prev` equal to the hash before it (GENESIS for the first). A line
+ * that is not a JSON object carries no row and is passed over, as the agent's verifyJournal does: it is a write a crash
+ * cut short, after which the agent starts a fresh line, and the next row's prev still names the last whole row, so a
+ * row removed behind it still breaks the chain. `onSkip` hears the number of each such line after the chain started.
+ * A last line with no line feed is one the agent may still be writing, so it waits for the next round.
  * @param {string} text
+ * @param {(lineNo: number) => void} [onSkip]
  * @returns {LocalRow[]}
  */
-export function readLocalChain(text) {
+export function readLocalChain(text, onSkip = () => {}) {
   const complete = text.split("\n").slice(0, -1);
   /** @type {LocalRow[]} */
   const out = [];
@@ -39,8 +43,8 @@ export function readLocalChain(text) {
     }
     const started = out.length > 0;
     if (!isObject(row)) {
-      if (!started) return;
-      throw new PublishStop(`journal.jsonl line ${lineNo} is not a JSON object, after the chain started at line ${out[0].lineNo}`);
+      if (started) onSkip(lineNo);
+      return;
     }
     if (!Object.hasOwn(row, "hash")) {
       if (!started) return;

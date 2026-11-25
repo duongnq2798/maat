@@ -133,6 +133,29 @@ describe("publishOnce against a local bare repository", () => {
   });
 });
 
+describe("publishOnce after a crash cut a journal line short", () => {
+  let w;
+  before(() => {
+    w = world();
+  });
+  after(() => w.cleanup());
+
+  it("waits while the cut line has no line feed, then passes over it and pushes the rows after it", async () => {
+    writeFileSync(w.journalFile, jsonl(rows1.slice(0, 1)));
+    assert.equal((await publishOnce(w.o)).appended, 1);
+    // The crash: half a row and no line feed. The agent's next start writes a line feed first, then the next row.
+    appendFileSync(w.journalFile, JSON.stringify(rows1[1]).slice(0, 50));
+    assert.equal((await publishOnce(w.o)).status, "up-to-date");
+    appendFileSync(w.journalFile, `\n${jsonl(rows1.slice(1))}`);
+    const r = await publishOnce(w.o);
+    assert.equal(r.status, "pushed");
+    assert.equal(r.appended, 1);
+    assert.match(r.message, /passed over journal\.jsonl line 2, cut short by a crash/);
+    assert.deepEqual(JSON.parse(w.remoteGit("show", "agent-journal:journal/index.json")), { days: ["2026-11-26.jsonl"], head: rows1[1].hash, rows: 2, v: 1 });
+    assert.match((await publishOnce(w.o)).message, /nothing new.*passed over journal\.jsonl line 2/);
+  });
+});
+
 describe("publishOnce when the push itself is refused or fails", () => {
   let w;
   before(() => {

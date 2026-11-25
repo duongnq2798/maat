@@ -33,7 +33,13 @@ export async function publishOnce(o) {
     if (/** @type {NodeJS.ErrnoException} */ (e).code !== "ENOENT") throw e;
     return { status: "waiting", appended: 0, rows: 0, head: null, message: `no journal at ${o.journalFile} yet` };
   }
-  const local = readLocalChain(text);
+  /** @type {number[]} */
+  const cut = [];
+  const local = readLocalChain(text, (lineNo) => cut.push(lineNo));
+  const cutNote =
+    cut.length === 0
+      ? ""
+      : `; passed over journal.jsonl line${cut.length === 1 ? "" : "s"} ${cut.slice(0, 5).join(", ")}${cut.length > 5 ? ` and ${cut.length - 5} more` : ""}, cut short by a crash`;
   if (local.length === 0) {
     return { status: "waiting", appended: 0, rows: 0, head: null, message: `${o.journalFile} has no chained row yet (rows with prev and hash)` };
   }
@@ -106,7 +112,7 @@ export async function publishOnce(o) {
   }
 
   if (head === null || head === tracking) {
-    return { status: "up-to-date", appended: 0, rows: plan.rows, head: plan.head, message: `nothing new: the branch has all ${plan.rows} chained rows, head ${plan.head}` };
+    return { status: "up-to-date", appended: 0, rows: plan.rows, head: plan.head, message: `nothing new: the branch has all ${plan.rows} chained rows, head ${plan.head}${cutNote}` };
   }
   const p = run([...PUSH_ARGS]);
   if (p.code !== 0) {
@@ -119,7 +125,7 @@ export async function publishOnce(o) {
     throw new PublishRetry(`git push failed: ${redact(p.stderr || p.stdout)}`);
   }
   const what = plan.appended > 0 ? `appended ${plan.appended} row${plan.appended === 1 ? "" : "s"} to ${plan.changed.map((n) => `journal/${n}`).join(", ")}` : "pushed the commit an earlier round could not push";
-  return { status: "pushed", appended: plan.appended, rows: plan.rows, head: plan.head, message: `${what}; the ${BRANCH} branch has ${plan.rows} rows, head ${plan.head}` };
+  return { status: "pushed", appended: plan.appended, rows: plan.rows, head: plan.head, message: `${what}; the ${BRANCH} branch has ${plan.rows} rows, head ${plan.head}${cutNote}` };
 }
 
 /**

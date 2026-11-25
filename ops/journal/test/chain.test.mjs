@@ -43,10 +43,33 @@ describe("readLocalChain", () => {
     assert.match(removed.message, /line 1\b.*prev/);
     const unhashed = stopOf(() => readLocalChain(jsonl([a, { ...b, hash: undefined }])));
     assert.match(unhashed.message, /line 2\b.*no hash/);
-    const torn = stopOf(() => readLocalChain(`${jsonl([a])}{"kind":\n`));
-    assert.match(torn.message, /line 2\b.*not a JSON object/);
     const badHash = stopOf(() => readLocalChain(jsonl([{ ...a, hash: "0xABC" }])));
     assert.match(badHash.message, /line 1\b.*hash/);
+  });
+
+  it("passes over a line a crash cut short, as the agent does, and names it", () => {
+    const [a, b] = LOCAL_ROWS;
+    // The agent's journal after a crash cut an append short and the agent started again: the cut line, then a line
+    // feed and the next row, whose prev names the last whole row (agent/src/ledger/journal.ts, Journal.write).
+    const cut = JSON.stringify(b).slice(0, 60);
+    const skipped = [];
+    const local = readLocalChain(`${jsonl([a])}${cut}\n${jsonl([b])}`, (lineNo) => skipped.push(lineNo));
+    assert.deepEqual(local.map((r) => r.lineNo), [1, 3]);
+    assert.deepEqual(local.map((r) => r.line), JOURNAL_LINES);
+    assert.deepEqual(skipped, [2]);
+    // The NUL bytes a power loss can leave at the end of the file, and a line that is JSON but not an object.
+    const nul = [];
+    assert.equal(readLocalChain(`${jsonl([a])}\0\0\0\0\n[1]\n${jsonl([b])}`, (n) => nul.push(n)).length, 2);
+    assert.deepEqual(nul, [2, 3]);
+    // Without a callback it passes over the line all the same.
+    assert.equal(readLocalChain(`${jsonl([a])}${cut}\n${jsonl([b])}`).length, 2);
+  });
+
+  it("still refuses a removed row behind a line it passes over: the next row's prev names the row that is gone", () => {
+    const [a, b] = LOCAL_ROWS;
+    const c = chainRows([liveRun("2026-11-24T17:14:00.000Z", "r2")], b.hash);
+    const e = stopOf(() => readLocalChain(`${jsonl([a])}{"kind":\n${jsonl(c)}`));
+    assert.match(e.message, /line 3\b.*prev/);
   });
 
   it("names the line, never the text, of a row it refuses", () => {

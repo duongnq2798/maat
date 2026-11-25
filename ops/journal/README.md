@@ -88,6 +88,7 @@ When no git command is running, delete `maat-agent-journal\.git\index.lock` and 
 | `appended <N> rows to journal/<YYYY-MM-DD>.jsonl; the agent-journal branch has <ROWS> rows, head <HASH>` | One commit pushed |
 | `nothing new: the branch has all <ROWS> chained rows, head <HASH>` | The agent wrote no new row since the last round |
 | `... has no chained row yet (rows with prev and hash)` | The agent does not chain its rows yet: it runs an older release |
+| `...; passed over journal.jsonl line <N>, cut short by a crash` | A crash or power loss cut one of the agent's writes short. The agent started a fresh line after it, and its chain goes on from the last whole row, so nothing is missing. Nothing to do; leave the line in the file |
 | `will try again in 15 min: git push failed: ...` | The network or the login failed. It keeps running; a commit it could not push goes up with the next round |
 | `STOPPED: ...` | It exited (code 1) and pushes nothing until you start it again. See below |
 
@@ -100,7 +101,7 @@ someone else changed it is for you to decide.
 | --- | --- | --- |
 | `not a fast-forward of what this checkout last fetched`, `have diverged`, or `rejected the push as a non-fast-forward` | The branch on GitHub was force-pushed, rewritten or moved by someone else | Compare the branch's history on GitHub with `git -C ..\maat-agent-journal log --oneline -10`, which is what the publisher last pushed, and find out who changed it. Start the publisher again only once the branch on GitHub contains that history |
 | `the remote has no agent-journal branch any more` | The branch was deleted on GitHub | Push it back from the checkout with `git -C ..\maat-agent-journal push origin agent-journal`, a plain push (the branch does not exist, so it overwrites nothing), then start again |
-| `journal.jsonl line N: ...` with `hash`, `prev` or `no hash` | The local journal's chain is broken: a line was edited or removed, or written by code that does not chain | Do not edit `journal.jsonl`. Keep a copy of the file and report it |
+| `journal.jsonl line N: ...` with `hash`, `prev` or `no hash` | The local journal's chain is broken: a line was edited or removed, or written by code that does not chain. A line a crash cut short is not one of these: it is passed over | Do not edit `journal.jsonl`. Keep a copy of the file and report it |
 | `journal.jsonl line N: its published line would match URL_RE in field ...` (or `KEY_RE`, `HEX_RE`, `LONG_RE`) | A public field would carry a URL, key or token. The agent sanitizes these fields, so this is a bug | Nothing was pushed. The publisher cannot skip the line without breaking the chain; report it |
 | `journal.jsonl line N is a dry-run row` | The data folder is a dry run's, such as the soak's `data-dryrun` | Point it at the live agent's folder with `--data-dir` |
 | `the branch's head ... is not in the local journal` | The branch was published from another journal: the wrong data folder, or the journal was replaced | Check `--data-dir` and `MAAT_DATA_DIR` |
@@ -145,7 +146,7 @@ npm test
 ```
 
 They need Node.js and git, and no network: the end-to-end tests push to a temporary bare repository. They cover the
-spec's vectors, the allowlist, the deny check, a broken chain, a row that is never appended twice, `index.json`, two
+spec's vectors, the allowlist, the deny check, a broken chain, a line a crash cut short, a row that is never appended twice, `index.json`, two
 pushes, a forced remote change that stops the next round, and the guard that lets it push nothing but `agent-journal`.
 CI does not run them; the web unit test `web/test/journal-publisher.test.ts`, which CI runs, checks the fixture chain
 with viem's keccak256 and that the publisher writes exactly the fixture's files.
