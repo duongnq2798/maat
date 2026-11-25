@@ -2,14 +2,31 @@
 
 import { useEffect, useState } from "react";
 import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
-import { briefCounts, briefFeed, readBriefs, type Brief, type InboxDeployment } from "@/lib/chain/inbox";
+import { useJournal } from "@/components/ledger/useJournal";
+import { briefAnswers, briefCounts, briefFeed, readBriefs, type Brief, type InboxDeployment } from "@/lib/chain/inbox";
+import { readJournal, type JournalRead } from "@/lib/chain/ledger";
 import { errorText, type LedgerClient } from "@/lib/chain/load";
 import { BriefCounters, BriefFeed } from "./BriefFeed";
 
 type Read = { state: "reading" } | { state: "read"; briefs: Brief[]; complete: boolean } | { state: "error"; message: string };
 
-/** The counters and the feed, read from the inbox's Brief logs; read again whenever `reloadKey` changes. */
-export function BriefsPanel({ inbox, client, reloadKey, hidden = HIDDEN_BRIEFS }: { inbox: InboxDeployment; client: LedgerClient; reloadKey: number; hidden?: readonly number[] }) {
+/**
+ * The counters and the feed, read from the inbox's Brief logs; read again whenever `reloadKey` changes. Once the briefs
+ * are read, the published agent journal is read too, for the agent's answer to each brief (briefAnswers).
+ */
+export function BriefsPanel({
+  inbox,
+  client,
+  reloadKey,
+  hidden = HIDDEN_BRIEFS,
+  journal: readAnswers = readJournal,
+}: {
+  inbox: InboxDeployment;
+  client: LedgerClient;
+  reloadKey: number;
+  hidden?: readonly number[];
+  journal?: () => Promise<JournalRead>;
+}) {
   const [read, setRead] = useState<Read>({ state: "reading" });
   const [attempt, setAttempt] = useState(0);
 
@@ -24,6 +41,8 @@ export function BriefsPanel({ inbox, client, reloadKey, hidden = HIDDEN_BRIEFS }
   }, [client, inbox, reloadKey, attempt]);
 
   const briefs = read.state === "read" ? read.briefs : null;
+  const journal = useJournal(briefs !== null, reloadKey, readAnswers);
+  const answers = briefs && journal.state === "read" ? briefAnswers(journal.rows, briefs) : undefined;
   return (
     <div className="flex flex-col gap-8">
       <BriefCounters counts={briefs ? briefCounts(briefs, hidden) : null} />
@@ -36,7 +55,8 @@ export function BriefsPanel({ inbox, client, reloadKey, hidden = HIDDEN_BRIEFS }
           </button>
         </p>
       ) : null}
-      {briefs ? <BriefFeed items={briefFeed(briefs, hidden)} /> : null}
+      {briefs && journal.state === "error" ? <p className="m-0 text-[13px] text-ink-2">The agent&apos;s answers could not be read from its journal: {journal.message}</p> : null}
+      {briefs ? <BriefFeed items={briefFeed(briefs, hidden, answers)} /> : null}
     </div>
   );
 }
