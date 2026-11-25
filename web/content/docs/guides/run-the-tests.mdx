@@ -37,9 +37,9 @@ This guide is for developers and evaluators who have cloned the repository. It a
 
 The fork tests ask Foundry for the `base` endpoint, which `contracts/foundry.toml` maps to the `BASE_RPC_URL` environment variable.
 
-Time: the Quickstart's five steps run every offline suite except the website's end-to-end tests, and build the site. Timed by hand on 2026-11-07 at commit `4492eed`, before the docs center, they took about 4 minutes on a fresh clone, most of it compiling and installing packages, and they have not been re-timed. The contract fork suite took about 50 seconds at the same commit. The agent's fork test takes 3 to 5 minutes on a public RPC (agent/README.md).
+Time: the Quickstart's five steps run every offline suite except the website's end-to-end tests, and build the site. Timed by hand on 2026-11-07 at commit `4492eed`, before the docs center, they took about 4 minutes on a fresh clone, most of it compiling and installing packages, and they have not been re-timed. The contract fork suite took about 50 seconds at the same commit, before the live fork suites were added; on their own, those took between 5 and 8 minutes on a public RPC on 2026-11-25. The agent's fork test takes 3 to 5 minutes on a public RPC (agent/README.md).
 
-On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs the offline contract, agent and website suites, the website's end-to-end tests among them (README.md, Development). The two fork suites need an archive RPC, so CI does not run them: you run them yourself, and a fork claim in these docs is only as fresh as the last time someone did.
+On every pull request and every push to `main`, CI ([`.github/workflows/ci.yml`](https://github.com/duongnq2798/maat/blob/main/.github/workflows/ci.yml)) runs the offline contract, agent and website suites, the website's end-to-end tests among them (README.md, Development). The fork suites need an RPC, so CI does not run them. A second workflow runs the live fork suites against the deployed vault once a day ([Live fork run](/docs/security/testing#live-fork-run-against-the-deployed-vault)); you run the other fork tests yourself, and a claim based on them is only as fresh as the last time someone did.
 
 ## The suites at a glance
 
@@ -105,7 +105,7 @@ Trimmed output from the run at commit `1c1dc4d`. An ellipsis marks removed rows.
 
 ### Contract fork tests
 
-These tests run the real B20 tokens, feeds, pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned Base mainnet blocks. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your archive RPC URL, or the one in `contracts/.env.example`, in place of the placeholder.
+These tests run the real B20 tokens, feeds, pools and [Aave V4](/docs/help/glossary#aave-v4) at two pinned Base mainnet blocks. The live fork suites among them, `test/fork/LiveVault*.t.sol`, fork the deployed vault at the latest block instead, or at the block in `LIVE_FORK_BLOCK`. Foundry forks the chain locally and nothing is broadcast. Run this from `contracts/`, with your archive RPC URL, or the one in `contracts/.env.example`, in place of the placeholder.
 
 ```bash title="contracts/"
 export BASE_RPC_URL=<BASE_RPC_URL>   # your Base mainnet archive RPC URL
