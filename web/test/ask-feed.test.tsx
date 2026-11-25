@@ -88,9 +88,21 @@ describe("BriefCounters", () => {
   it("shows Claude persuaded, vault allowed and vault refused as not available yet, and no value-moved line", () => {
     render(<BriefCounters counts={briefCounts(briefs, [])} />);
     for (const id of ["count-persuaded", "count-allowed", "count-refused"]) expect(screen.getByTestId(id)).toHaveTextContent("not available yet");
-    expect(screen.getByText(/The agent does not read briefs until its agent-r3 release/)).toBeInTheDocument();
+    expect(screen.getByText(/Claude persuaded, vault allowed and vault refused are not counted yet\./)).toBeInTheDocument();
     expect(document.body.textContent).not.toMatch(/value moved outside the mandate/i);
     expect(screen.queryByText(/hidden from the feed/)).toBeNull();
+  });
+
+  it("states nothing about the agent's release, which no data on the page shows", () => {
+    render(<BriefCounters counts={briefCounts(briefs, [])} />);
+    expect(document.body.textContent).not.toMatch(/agent-r3|release|does not read briefs/i);
+  });
+
+  it("says the brief and wallet counts take in every sender, the team's own wallets included", () => {
+    render(<BriefCounters counts={briefCounts(briefs, [])} />);
+    expect(screen.getByText("Briefs, team included")).toBeInTheDocument();
+    expect(screen.getByText("Wallets, team included")).toBeInTheDocument();
+    expect(screen.getByText(/Briefs and wallets count every sender, the team's own wallets included\./)).toBeInTheDocument();
   });
 
   it("shows an ellipsis for each count while the briefs are being read", () => {

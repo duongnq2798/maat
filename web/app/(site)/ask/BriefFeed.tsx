@@ -37,23 +37,25 @@ function Counter({ id, label, value }: { id: string; label: string; value: strin
 const NOT_YET = "not available yet";
 
 /**
- * Briefs and distinct wallets, from the inbox's logs; `null` while they are being read. Claude persuaded, vault
- * allowed and vault refused have no source yet, so they say so instead of showing a number.
+ * Briefs and distinct wallets, from the inbox's logs; `null` while they are being read. Both count every sender, the
+ * team's own wallets included, because the page has no team set to leave out (inbox spec §5 keeps team briefs apart on
+ * /proof). Claude persuaded, vault allowed and vault refused have no source on the page yet, so they say so instead of
+ * showing a number.
  */
 export function BriefCounters({ counts }: { counts: BriefCounts | null }) {
   const n = (v: number | undefined) => (v === undefined ? "…" : v.toLocaleString("en-US"));
   return (
     <div className="flex flex-col gap-3">
       <dl className="m-0 grid grid-cols-1 gap-x-6 sm:grid-cols-[repeat(auto-fit,minmax(130px,1fr))]">
-        <Counter id="count-briefs" label="Briefs" value={n(counts?.briefs)} />
-        <Counter id="count-wallets" label="Wallets" value={n(counts?.wallets)} />
+        <Counter id="count-briefs" label="Briefs, team included" value={n(counts?.briefs)} />
+        <Counter id="count-wallets" label="Wallets, team included" value={n(counts?.wallets)} />
         <Counter id="count-persuaded" label="Claude persuaded" value={NOT_YET} />
         <Counter id="count-allowed" label="Vault allowed" value={NOT_YET} />
         <Counter id="count-refused" label="Vault refused" value={NOT_YET} />
       </dl>
       <p className="m-0 text-[13px] leading-normal text-ink-2">
-        Claude persuaded, vault allowed and vault refused are not counted yet. The agent does not read briefs until its
-        agent-r3 release.
+        Briefs and wallets count every sender, the team&apos;s own wallets included. Claude persuaded, vault allowed and vault
+        refused are not counted yet.
       </p>
       {counts && counts.hidden > 0 ? (
         <p className="m-0 text-[13px] leading-normal text-ink-2">
