@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { acquireLock } from "../src/loop/lock.js";
+import { acquireLock, RoundLock } from "../src/loop/lock.js";
 
 describe("acquireLock", () => {
   it("holds and releases", async () => {
@@ -35,5 +35,29 @@ describe("acquireLock", () => {
     await utimes(f, old, old);
     const release = await acquireLock(d);
     await release();
+  });
+});
+
+describe("RoundLock", () => {
+  it("runs one holder at a time, first come first served, and counts who waits", async () => {
+    const lock = new RoundLock();
+    const order: string[] = [];
+    let release!: () => void;
+    const first = lock.run(() => new Promise<string>((r) => (release = () => r("first"))));
+    const second = lock.run(async () => (order.push("second"), "second"));
+    const third = lock.run(async () => (order.push("third"), "third"));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(order).toEqual([]);
+    expect(lock.waiting).toBe(2);
+    release();
+    expect(await Promise.all([first, second, third])).toEqual(["first", "second", "third"]);
+    expect(order).toEqual(["second", "third"]);
+    expect(lock.waiting).toBe(0);
+  });
+
+  it("is released when its holder throws", async () => {
+    const lock = new RoundLock();
+    await expect(lock.run(async () => Promise.reject(new Error("boom")))).rejects.toThrow("boom");
+    expect(await lock.run(async () => 1)).toBe(1);
   });
 });
