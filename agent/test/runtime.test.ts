@@ -164,6 +164,15 @@ describe("buildRuntime", () => {
       expect(rows.map((r) => r.kind)).toEqual(["run", "intent"]);
       const head = execFileSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).trim();
       for (const r of rows) expect(r.commit).toMatch(new RegExp(`^${head}(-dirty)?$`));
+      // The blob's c is the same value, read once.
+      expect(deps.commit).toBe(rows[0]!.commit);
+      const intent = rows[1] as { blob?: string };
+      expect(JSON.parse(intent.blob!.slice("maat:v1:".length)).c).toBe(deps.commit);
+    });
+
+    it("takes the commit it is given for the journal and the blob alike", async () => {
+      const deps = await buildRuntime(loadConfig(await env()), { proposer: noProposer, commit: "unknown" });
+      expect(deps.commit).toBe("unknown");
     });
 
     describe("live mode refuses a dry-run's data dir", () => {
