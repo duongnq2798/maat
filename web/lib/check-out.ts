@@ -481,3 +481,57 @@ export function checkLedgerPage(opts: { html: string; vaultRecorded: boolean; si
   need(sitemap.includes(`<loc>${url}</loc>`), `out/sitemap.xml does not list ${url}`);
   return problems;
 }
+
+/** The /proof page's h1; its title is this, then the site's name. */
+const PROOF_HEADING = "Proof";
+/** A sentence of the counting rule, which the page must carry in its markup for readers without JavaScript. */
+const PROOF_RULE_MARK = "No line is ever added to another.";
+/** The brief lines, by the data-testid of their value; the bounty line comes from a committed list, not the chain. */
+const PROOF_BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+
+/**
+ * Problems with out/proof.html. It is a public page, so it may not ask not to be indexed and the sitemap lists it. Its
+ * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then and
+ * every brief line is 0, with no wallet or brief row; after, it shows the reading state and no count, since the browser
+ * reads the logs. Its markup holds the counting rule.
+ */
+export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sitemap: string; url: string }): string[] {
+  const { html, inboxRecorded, sitemap, url } = opts;
+  const problems: string[] = [];
+  const need = (ok: boolean, problem: string) => {
+    if (!ok) problems.push(`out/proof.html${problem.startsWith(" ") ? "" : ": "}${problem}`);
+  };
+  need(html.includes('<html lang="en"'), 'missing <html lang="en">');
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1];
+  need(title === `${PROOF_HEADING} · ${SITE.name}`, `title "${title ?? ""}" is not "${PROOF_HEADING} · ${SITE.name}"`);
+  needDescriptionAndOgImage(html, need);
+  need(/<link rel="canonical" href="https?:\/\/[^"/]+\/proof"/.test(html), "the canonical link is missing, not absolute or not /proof");
+  need(new RegExp(`<h1[^>]*>${PROOF_HEADING}</h1>`).test(html), `the h1 is not "${PROOF_HEADING}"`);
+  need(!/<meta name="robots" content="[^"]*noindex/.test(html), " asks not to be indexed, but /proof is a public page");
+
+  const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
+  need(markup.includes(PROOF_RULE_MARK), " does not hold the counting rule in its markup");
+  const values = PROOF_BRIEF_LINES.map((key) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1]);
+  if (inboxRecorded) {
+    const reading = markup.includes('data-proof-state="reading"');
+    need(reading, " does not show the reading state, but a MaatInbox is recorded");
+    if (reading) need(values.every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
+  } else {
+    const waiting = markup.includes('data-proof-state="not-recorded"') && markup.includes("Counting starts when the inbox is recorded.");
+    need(waiting, " does not say counting starts when the inbox is recorded, but no MaatInbox is recorded");
+    if (waiting) {
+      need(values.every((v) => v === undefined || v === "0"), " shows a count other than 0, but no MaatInbox is recorded");
+      need(!/data-proof-row="(?:outside|team|hidden)"/.test(markup), " lists a wallet or a brief, but no MaatInbox is recorded");
+    }
+  }
+
+  for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
+    need(html.includes(` id="${id}"`), `link #${id} has no target`);
+  }
+  for (const [, src] of html.matchAll(/<script[^>]*\ssrc="([^"]+)"/g)) {
+    need((src ?? "").startsWith("/_next/"), `third-party script ${src}`);
+  }
+  need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+  if (!sitemap.includes(`<loc>${url}</loc>`)) problems.push(`out/sitemap.xml does not list ${url}`);
+  return problems;
+}

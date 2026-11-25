@@ -16,6 +16,7 @@ import {
   checkMarkdownCopy,
   checkNowPage,
   checkOgImage,
+  checkProofPage,
   checkSearchIndex,
   docsLocalhostUrls,
   SEARCH_INDEX_GZIP_BUDGET,
@@ -24,6 +25,7 @@ import {
 import { ASK_OPEN } from "../content/ask-open";
 import rationales from "../content/generated/rationales.json";
 import { deploymentConfig, deploymentsFile } from "../lib/chain/config";
+import { inboxDeployment } from "../lib/chain/inbox";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
 import { docsData } from "../lib/docs/generated";
 import { siteUrl } from "../lib/site";
@@ -43,6 +45,7 @@ const REQUIRED = [
   "gap-index.html",
   "docs.html",
   "ledger.html",
+  "proof.html",
   "api/search.json",
   "llms.txt",
   "llms-full.txt",
@@ -89,6 +92,18 @@ if (existsSync(join(OUT, "gap-index.html"))) problems.push(...checkGapIndexPage(
 const gapUrl = new URL("/gap-index", siteUrl()).href;
 if (existsSync(join(OUT, "sitemap.xml")) && !read("sitemap.xml").includes(`<loc>${gapUrl}</loc>`)) {
   problems.push(`sitemap.xml does not list ${gapUrl}`);
+}
+
+// /proof is public: its static state follows the deployments table the build read, and the sitemap lists it.
+if (existsSync(join(OUT, "proof.html")) && existsSync(join(OUT, "sitemap.xml"))) {
+  problems.push(
+    ...checkProofPage({
+      html: read("proof.html"),
+      inboxRecorded: inboxDeployment(docsData.deployments) !== null,
+      sitemap: read("sitemap.xml"),
+      url: new URL("/proof", siteUrl()).href,
+    }),
+  );
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
@@ -168,5 +183,5 @@ if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);
