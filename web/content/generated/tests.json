@@ -761,6 +761,12 @@
     "test_weekendBuyIsRefusedInBothModes": 75,
     "test_compromisedExecutorIsBounded": 83
   },
+  "contracts/test/fork/MandateVaultTrailingRationaleFork.t.sol": {
+    "test_refusedBuyCarriesTheBlobHash": 49,
+    "test_allowedExpenseCarriesTheBlobHash": 57,
+    "test_blobAtExactly1024Bytes": 69,
+    "test_suffixMatchesTheAgentTestVector": 84
+  },
   "contracts/test/fork/PriceLibFork.t.sol": {
     "test_liveBasketTradesNearNav": 20
   },
