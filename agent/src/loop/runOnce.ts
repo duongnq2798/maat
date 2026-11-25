@@ -83,11 +83,14 @@ class Halt extends Error {}
 const DECISION_EVENT = getAbiItem({ abi: mandateVaultAbi, name: "Decision" });
 const dollars = (usd6: bigint) => `$${usdc6ToUsd(usd6).toFixed(2)}`;
 
-function decisionIn(logs: readonly Log[], vault: Address, id: Hex): Decision | undefined {
+/** The vault's Decision for `id` among `logs`, and the hash of the transaction that emitted it. */
+function decisionLogIn(logs: readonly Log[], vault: Address, id: Hex): { decision: Decision; txHash: Hex | null } | undefined {
   const parsed = parseEventLogs({ abi: mandateVaultAbi, eventName: "Decision", logs: logs as Log[] });
   const l = parsed.find((x) => getAddress(x.address) === getAddress(vault) && x.args.intentId.toLowerCase() === id.toLowerCase());
-  return l && { allowed: l.args.allowed, reason: REASONS[Number(l.args.reason)] ?? `REASON_${l.args.reason}` };
+  return l && { decision: { allowed: l.args.allowed, reason: REASONS[Number(l.args.reason)] ?? `REASON_${l.args.reason}` }, txHash: l.transactionHash };
 }
+
+const decisionIn = (logs: readonly Log[], vault: Address, id: Hex): Decision | undefined => decisionLogIn(logs, vault, id)?.decision;
 
 /** syncMultiplier is only sent when uiMultiplier != lastMultiplier, so a missing event means the vault's read failed. */
 function multiplierSynced(receipt: TransactionReceipt, vault: Address, token: Address): boolean {
@@ -149,13 +152,13 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
   };
 
   /**
-   * The vault's Decision for `id` in blocks [from, to], one bounded eth_getLogs window at a time, oldest first. A range
-   * error (the fallback RPC may allow only 200 blocks) halves the window.
+   * The vault's Decision for `id` in blocks [from, to] and the transaction that emitted it, one bounded eth_getLogs
+   * window at a time, oldest first. A range error (the fallback RPC may allow only 200 blocks) halves the window.
    */
-  const decisionInLogs = (id: Hex, from: bigint, to: bigint): Promise<Decision | undefined> =>
-    firstInLogWindows(from, to, async ({ fromBlock, toBlock }): Promise<Decision | undefined> => {
+  const decisionInLogs = (id: Hex, from: bigint, to: bigint) =>
+    firstInLogWindows(from, to, async ({ fromBlock, toBlock }) => {
       const logs = await d.txClient.getLogs({ address: d.vault, event: DECISION_EVENT, args: { intentId: id }, fromBlock, toBlock });
-      return decisionIn(logs, d.vault, id);
+      return decisionLogIn(logs, d.vault, id);
     });
 
   /** Applies a mined execute()'s Decision to the store, clears the pending entry, and checks it against the preview. */
@@ -185,8 +188,10 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
       await j.append({ ...base, outcome: "pending", note });
       return "pending" as const;
     };
-    const apply = async (decision: Decision, note: string) => {
-      await j.append({ ...base, outcome: "applied", decision, note });
+    // A Decision found in the logs names its transaction: the row then carries the hash a send that threw lost, and is
+    // the anchor npm run verify finds for that Decision (spec §3.6).
+    const apply = async (decision: Decision, note: string, txHash?: Hex | null) => {
+      await j.append({ ...base, ...(!p.txHash && txHash ? { txHash } : {}), outcome: "applied", decision, note });
       await settle(p, decision);
       return "settled" as const;
     };
@@ -208,9 +213,9 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     const head = await d.txClient.getBlockNumber({ cacheTime: 0 });
     const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId], blockNumber: head });
     if (used) {
-      const decision = await decisionInLogs(p.intentId, BigInt(p.block), head);
-      if (!decision) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block} to ${head}`);
-      return apply(decision, "Decision found in the vault's logs");
+      const found = await decisionInLogs(p.intentId, BigInt(p.block), head);
+      if (!found) throw new Halt(`intent ${p.intentId} is used but no Decision was found from block ${p.block} to ${head}`);
+      return apply(found.decision, "Decision found in the vault's logs", found.txHash);
     }
     if (receipt) {
       if (receipt.status === "reverted") return drop("tx reverted; the intent was not used");

@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { HttpRequestError, keccak256, size, toBytes } from "viem";
+import { HttpRequestError, keccak256, pad, size, toBytes, toHex } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { addressOf } from "../src/addresses.js";
 import { builderSuffix, codesIn } from "../src/exec/builderCode.js";
@@ -10,6 +10,7 @@ import { GAS_FLOOR } from "../src/exec/calls.js";
 import { GuardedSender } from "../src/exec/sender.js";
 import { validateBlob } from "../src/rationale/blob.js";
 import { decodeExecuteInput } from "../src/rationale/calldata.js";
+import { verifyDecision } from "../src/rationale/verify.js";
 import { Journal, type JournalRow } from "../src/ledger/journal.js";
 import { Store } from "../src/ledger/store.js";
 import { FixedProposer, type Proposer, type ProposerInput } from "../src/llm/proposer.js";
@@ -448,7 +449,23 @@ describe("runOnce", () => {
       expect(t.store.unpaidUsd6()).toBe(0n);
     });
 
-    const windows = (t: { receipts: FakeReceipts }) => t.receipts.logQueries.map((q) => [q.fromBlock, q.toBlock]);
+    it("puts the tx hash of a Decision found in the logs on the applied reconcile row, so npm run verify anchors it", async () => {
+      const t = await setup({ store: await billed() });
+      t.inner.failAfterBroadcast = new Error("socket hang up");
+      expect((await runOnce(t.deps)).status).toBe("halted");
+      t.inner.failAfterBroadcast = undefined;
+      expect((await runOnce({ ...t.deps, runId: "run-2" })).status).toBe("done");
+      const txHash = pad(toHex(1), { size: 32 });
+      const rows = await t.journal.read();
+      expect(rows.map((r) => r.kind)).not.toContain("sent");
+      expect(rows.find((r) => r.kind === "reconcile")).toMatchObject({ outcome: "applied", txHash, note: "Decision found in the vault's logs" });
+      const journal = [{ name: "journal.jsonl", text: await readFile(join(t.dir, "journal.jsonl"), "utf8") }];
+      const report = verifyDecision({ input: t.inner.sent[0]!.data, txHash, journal });
+      expect(report.checks.find((c) => c.name === "anchor")).toMatchObject({ status: "pass" });
+      expect(report.verdict).toBe("PASS");
+    });
+
+    const windows =(t: { receipts: FakeReceipts }) => t.receipts.logQueries.map((q) => [q.fromBlock, q.toBlock]);
 
     it("searches the logs in bounded windows from the send's block and stops at the Decision", async () => {
       const t = await setup({ store: await billed() });
