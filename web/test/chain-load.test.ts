@@ -49,7 +49,7 @@ describe("loadLedger", () => {
     const s = await load();
     expect(s.decisions.map((d) => d.intentId)).toEqual([hash32(1003), hash32(1002), hash32(1001)]);
     expect(s.decisions[2]).toMatchObject({ timeLabel: "Thu 26 Nov 10:30", gasUsed: 758_192n, amountLabel: "$20.00" });
-    expect(s.scan).toEqual({ floor: DEPLOY, head: HEAD, scannedFrom: DEPLOY, gaps: [], done: true });
+    expect(s.scan).toEqual({ floor: DEPLOY, head: HEAD, scannedFrom: DEPLOY, gaps: [], done: true, fromSnapshot: null });
     expect(s.summary).toMatchObject({ allowed: 2, refused: 1 });
     expect(s.treasury?.usdc).toEqual({ ok: true, value: 30_000_000n });
   });

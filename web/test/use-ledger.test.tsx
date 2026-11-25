@@ -5,7 +5,10 @@ import { cacheKey, memoryStorage } from "@/lib/chain/cache";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
 import type { LedgerClient } from "@/lib/chain/load";
 import type { RationaleSource } from "@/lib/chain/rationale";
+import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
+import snapshotFixture from "./fixtures/decisions-snapshot.json";
 import { decisionLog, FAKE_VAULT, fakeLedgerClient, hash32, type FakeChain } from "./helpers/fake-ledger";
+import { SNAP_BLOCK, SNAP_DEPLOY, SNAP_DEPLOY_TX, SNAP_HEAD, snapshotChain } from "./helpers/snapshot-chain";
 
 const DEPLOY = SCAN_FLOOR_BLOCK + 10_000n;
 const HEAD = DEPLOY + 60_000n;
@@ -104,6 +107,37 @@ describe("useLedger", () => {
     vi.spyOn(client, "getBlockNumber").mockRejectedValue(new Error("rpc down"));
     await waitFor(() => expect(result.current.mode === "mainnet" && result.current.refreshError).toMatch(/rpc down/));
     expect(result.current.mode === "mainnet" && result.current.snapshot.decisions).toHaveLength(2);
+  });
+
+  it("starts the first read from the committed snapshot, fetched once the deployments file names a vault", async () => {
+    const fetchSnapshot = vi.fn(async () => snapshotFixture as unknown);
+    const client = fakeLedgerClient(snapshotChain());
+    const { result } = hook({ client, fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX }), fetchSnapshot, refreshMs: 60_000 });
+    await waitFor(() => expect(result.current.mode === "mainnet" && !result.current.loading).toBe(true));
+    const s = result.current;
+    if (s.mode !== "mainnet") throw new Error("not mainnet");
+    expect(fetchSnapshot).toHaveBeenCalledTimes(1);
+    expect(s.snapshot.scan.fromSnapshot?.block).toBe(SNAP_BLOCK);
+    expect(client.logCalls.reduce((m, c) => (c.from < m ? c.from : m), SNAP_BLOCK)).toBe(SNAP_BLOCK - SNAPSHOT_REORG_WINDOW);
+    expect(s.snapshot.decisions).toHaveLength(4);
+  });
+
+  it("asks for no snapshot while the deployments file has no vault", async () => {
+    const fetchSnapshot = vi.fn(async () => snapshotFixture as unknown);
+    const { result } = hook({ client: untouchableClient().client, fetchDeployments: async () => ({ vault: null, deployTx: null }), fetchSnapshot });
+    await waitFor(() => expect(result.current.mode).toBe("waiting"));
+    expect(fetchSnapshot).not.toHaveBeenCalled();
+  });
+
+  it("reads /data/decisions-snapshot.json by default, and scans from the deploy block when it holds no snapshot", async () => {
+    const fetchMock = vi.fn(async (url: string) => (url === "/data/decisions-snapshot.json" ? new Response("null\n") : Promise.reject(new TypeError("offline"))));
+    vi.stubGlobal("fetch", fetchMock);
+    const client = fakeLedgerClient(snapshotChain());
+    const { result } = hook({ client, fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX }), refreshMs: 60_000 });
+    await waitFor(() => expect(result.current.mode === "mainnet" && !result.current.loading).toBe(true));
+    expect(fetchMock.mock.calls.map((c) => c[0])).toContain("/data/decisions-snapshot.json");
+    expect(client.logCalls.reduce((m, c) => (c.from < m ? c.from : m), SNAP_HEAD)).toBe(SNAP_DEPLOY);
+    expect(result.current.mode === "mainnet" && result.current.snapshot.scan.fromSnapshot).toBeNull();
   });
 
   it("does not reread while the tab is hidden", async () => {
