@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { costUsd6 } from "../src/llm/pricing.js";
+import { costUsd6, PRICED_MODELS } from "../src/llm/pricing.js";
 
-const KNOWN = ["claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8"];
+const KNOWN = PRICED_MODELS;
 const MTOK_EACH = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_input_tokens: 1_000_000, cache_creation_input_tokens: 1_000_000 };
 
 describe("costUsd6", () => {
@@ -30,6 +30,9 @@ describe("costUsd6", () => {
     const read = { input_tokens: 0, output_tokens: 0, cache_read_input_tokens: 1_000_000 };
     expect(costUsd6("claude-sonnet-5-5", read)).toBe(100_000n);
     expect(costUsd6("claude-sonnet-5", read)).toBe(200_000n);
+  });
+  it("prices exactly the two loop models and the three the server-side fallback can answer with", () => {
+    expect([...PRICED_MODELS]).toEqual(["claude-sonnet-5-5", "claude-sonnet-5", "claude-opus-5-5", "claude-opus-5", "claude-opus-4-8"]);
   });
   it("bills an unknown model at opus 4.8 prices", () => {
     expect(costUsd6("claude-x", { input_tokens: 1_000_000, output_tokens: 0 })).toBe(5_000_000n);
@@ -63,6 +66,17 @@ describe("costUsd6 with usage.iterations", () => {
     // Sonnet 5.5, not the unknown-model rate ($5)
     const u = { ...tokens(0, 0), iterations: [{ type: "message", model: null, ...tokens(1_000_000, 0) }] };
     expect(costUsd6("claude-sonnet-5-5", u)).toBe(2_000_000n);
+  });
+  it("prices a message attempt that names no model at the requested model, not at the fallback that answered", () => {
+    // Opus 5.5 was asked and declined ($4 per MTok in), Opus 4.8 served the message ($5): the response model is Opus 4.8.
+    const u = {
+      ...tokens(1_000_000, 0),
+      iterations: [
+        { type: "message", model: null, ...tokens(1_000_000, 0) },
+        { type: "fallback_message", model: "claude-opus-4-8", ...tokens(1_000_000, 0) },
+      ],
+    };
+    expect(costUsd6("claude-opus-4-8", u, "claude-opus-5-5")).toBe(9_000_000n);
   });
   it("prices the top-level usage when iterations is empty or null", () => {
     expect(costUsd6("claude-sonnet-5-5", { ...tokens(10_000, 1_000), iterations: [] })).toBe(30_000n);

@@ -22,9 +22,12 @@ const CENTS: Record<string, { input: number; output: number; cacheRead: number; 
   "claude-opus-5": { input: 500, output: 2500, cacheRead: 50, cacheWrite: 625 },
   "claude-opus-4-8": { input: 500, output: 2500, cacheRead: 50, cacheWrite: 625 },
 };
-// The bill is what the vault pays back for Claude usage, so an unknown model takes the dearest row (claude-opus-4-8,
-// tied with claude-opus-5, today): pricing it too low would leave the expense wallet covering the difference.
+// The bill is what the vault pays back for Claude usage, so an unknown model takes the dearest row in this table
+// (claude-opus-4-8, tied with claude-opus-5). A model priced above it (Fable 5.x) is under-billed.
 const FALLBACK = CENTS["claude-opus-4-8"]!;
+
+/** The models CENTS prices; any other name is billed at the FALLBACK row. */
+export const PRICED_MODELS: readonly string[] = Object.keys(CENTS);
 
 function cents(model: string, u: Tokens): bigint {
   const p = CENTS[model] ?? FALLBACK;
@@ -38,10 +41,13 @@ function cents(model: string, u: Tokens): bigint {
 
 /**
  * $X per million tokens = X micro-dollars per token, so usd6 = tokens x cents / 100, rounded up. `model` is the
- * response's. With iterations, the top-level usage covers only the attempt that produced the message, so the cost
- * is the sum of the attempts, each at the model that ran it (the response's when the entry names none).
+ * response's, `requested` the one the request named. With iterations, the top-level usage covers only the attempt
+ * that produced the message, so the cost is the sum of the attempts, each at the model that ran it. A `message`
+ * entry that names none ran on the requested model, any other such entry on the response's. Every attempt is billed
+ * as reported; Anthropic may not bill a decline that came before any output, so this can over-bill that attempt.
  */
-export function costUsd6(model: string, u: Usage): bigint {
-  const total = u.iterations?.length ? u.iterations.reduce((s, it) => s + cents(it.model ?? model, it), 0n) : cents(model, u);
+export function costUsd6(model: string, u: Usage, requested: string = model): bigint {
+  const ranOn = (it: { type: string; model?: string | null }) => it.model ?? (it.type === "message" ? requested : model);
+  const total = u.iterations?.length ? u.iterations.reduce((s, it) => s + cents(ranOn(it), it), 0n) : cents(model, u);
   return (total + 99n) / 100n;
 }
