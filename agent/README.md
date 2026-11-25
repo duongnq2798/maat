@@ -66,6 +66,18 @@ When `agent/.env` has no `ANTHROPIC_API_KEY`, or leaves it blank, the terminal's
 - If the preview reports OK but the vault refuses, or the receipt has no `Decision`, the agent records `mismatch` and stops the cycle.
 - Each `data/` directory allows only one agent process at a time (the `agent.lock` file). The agent takes the lock before it opens the Store or connects to CDP. A lock file that is empty or corrupt but newer than 60 seconds is treated as held.
 
+## Probes (`MAAT_PROBES`)
+
+`MAAT_PROBES` lists UTC instants, comma-separated, as `YYYY-MM-DDTHH:MM:SSZ` or `YYYY-MM-DDTHH:MMZ`, for example `MAAT_PROBES=2026-11-27T17:58:00Z,2026-11-27T18:01:00Z`. At each instant the running loop (`npm run agent`, not `--once`) runs one probe under the same lock as its rounds. A probe makes no Claude call.
+
+- It reads the calendar at its instant: open there, it expects `OK`; closed, `MARKET_CLOSED`. A failed read of the vault state or the calendar is tried again 5 s later, up to 3 tries, while the next try is at most 10 minutes after the instant.
+- It builds its intents from the vault state alone: a $1 `BUY` of the least held token it may buy, then a $1 `SELL` of the largest holding. For `OK`, the `BUY` must keep the token within its `maxWeightBps`, and there is none when $1 does not fit the per-trade cap or what is left of the daily cap. For `MARKET_CLOSED`, which the vault answers before its balance, cap and weight checks, any USDC will do. It previews each and sends the first whose preview is what it expects. A `MARKET_CLOSED` goes out only when that refusal is not yet logged for the NYSE date and closed phase.
+- Its blob has `k: "probe"` and a `t` that starts `PROBE v1, not a Claude proposal`. `npm run verify` labels its tx `probe`, or `owner, by hand` when the owner sent it.
+- An `OK` probe that cannot send 30 s before the close the calendar reports for its NYSE date (17:59:30 UTC on 27 November, the 13:00 ET early close) is skipped, never sent late. A `MARKET_CLOSED` probe is skipped when the calendar is open 30 s on, so it is never mined after an open. Both are checked again after the gas estimate.
+- It takes a round's path: credit actions dropped, `MAAT_MAX_TX_PER_DAY`, the preview, the `pending` entry stored before the send, and nothing sent while an earlier send may still land.
+
+At most 3 instants run on one UTC day, the earliest 3, counted in `data/state.json` across restarts. An entry that is not such an instant, a repeat, or a fourth on a UTC day is left out with a `MAAT_PROBES:` warning at start, and the agent still starts. An instant that passed while the agent was down is journaled as `missed` at start and never run, and so is a probe that gets the lock more than 10 minutes after its instant. A probe or a round that gets the lock after Ctrl-C does not start, and the next start journals such a probe as `missed`. Each probe writes a `probe` row: `at`, `expected` and `outcome` (`sent`, `dry-run`, `skipped`, `halted`, `missed` or `capped`), and a `note` with the reason, which the publisher never exports. `scripts/probe-fork.ts` rehearses the probes on a local Anvil fork of Base, with the command lines in its header.
+
 ## After a `halted` or `pending-tx` cycle
 
 1. Read `data/journal.jsonl` (the `error`, `mismatch`, `sent` and `reconcile` lines), then look up the tx hash on Basescan.
@@ -81,7 +93,7 @@ When `agent/.env` has no `ANTHROPIC_API_KEY`, or leaves it blank, the terminal's
 
 ## Data
 
-- `data/state.json`: compute bills, refusal records per NYSE date (per UTC day in files from older agents, or while the calendar cannot be read), tx count per UTC day, and `pending` txs not yet reconciled.
+- `data/state.json`: compute bills, refusal records per NYSE date (per UTC day in files from older agents, or while the calendar cannot be read), tx count per UTC day, `pending` txs not yet reconciled, and what became of each `MAAT_PROBES` instant.
 - `data/heartbeat.json`: when the last round ended and how, written after every round; `agent:loop` and `agent:heartbeat` read it.
 - `data/journal.jsonl`: for each cycle, the intent, the rationale (the text as written), the `blob` behind `rationaleHash`, the preview, the tx (`sent`, gas, `gasUsed`) and the Decision. Every row has `commit`, `prev` and `hash`: `hash` is keccak256 of the canonical JSON of the row's public fields with `prev`, and `prev` is the previous row's `hash` (32 zero bytes for the first). Rows older code wrote have no `prev` or `hash`. Plan 3 (diary/dashboard) reads this file.
 
@@ -95,7 +107,7 @@ An agent `execute` is `encodeExecute(intent) ‖ blob ‖ suffix` (docs/superpow
 | 228 to 228 + n | the blob: `maat:v1:` and canonical JSON, at most 1,024 bytes |
 | the rest | the ERC-8021 schema-0 suffix: codes, their length, `0x00`, then `8021` eight times |
 
-The blob's fields: `b` the state block, `c` the git commit, `j` the journal's last row hash when the blob was built, `m` the model that answered (or `k: "bill"` for the compute bill), `r` the run id, `s` per vault token `[symbol, feed roundId, updatedAt, signed pool premium in bps]`, and `t` the rationale, sanitized (links, hex strings and key-like words replaced) and cut to 600 characters. `rationaleHash = keccak256(blob)`. The vault ignores the bytes after the call; a reader finds the suffix from the end of the input, so `Attribution.fromData` still reads the Builder Code. A proposal whose blob would break a rule is journaled as a `skip` with an error that starts `blob:`. `syncMultiplier` carries no blob. An owner `execute` built by `scripts/first-decision.ts` has no blob, and its `rationaleHash` is keccak256 of its text.
+The blob's fields: `b` the state block, `c` the git commit, `j` the journal's last row hash when the blob was built, `m` the model that answered (or `k: "bill"` for the compute bill, `k: "probe"` for a probe), `r` the run id, `s` per vault token `[symbol, feed roundId, updatedAt, signed pool premium in bps]`, and `t` the rationale, sanitized (links, hex strings and key-like words replaced) and cut to 600 characters. `rationaleHash = keccak256(blob)`. The vault ignores the bytes after the call; a reader finds the suffix from the end of the input, so `Attribution.fromData` still reads the Builder Code. A proposal whose blob would break a rule is journaled as a `skip` with an error that starts `blob:`. `syncMultiplier` carries no blob. An owner `execute` built by `scripts/first-decision.ts` has no blob, and its `rationaleHash` is keccak256 of its text.
 
 ## Verify a Decision
 

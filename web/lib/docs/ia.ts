@@ -205,6 +205,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "Verify Maat by hand",
         "Five read-only cast commands to check the mainnet vault yourself: its source, owner, executor and mandate, both Decisions, the calendar and a rationale hash.",
       ),
+      page(
+        "guides/brief-the-agent",
+        "Brief the agent",
+        "Once /ask opens, send Maat's agent a public brief through MaatInbox from a browser wallet or a Base Account. Until then, ask the live vault for free.",
+      ),
     ],
   },
   {

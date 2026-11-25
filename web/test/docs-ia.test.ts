@@ -46,6 +46,7 @@ const SHIPPED: readonly string[] = [
   "guides/pause-withdraw-recover",
   "guides/watch-decisions-onchain",
   "guides/verify-by-hand",
+  "guides/brief-the-agent",
   "reference/repository-map",
   "reference/mandate-vault",
   "reference/events",

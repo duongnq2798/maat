@@ -95,6 +95,47 @@ function calendarDay(r: Result[], etDays: bigint[]): CalendarDay | null {
   return { etDay: local[0], weekday: Number(local[1]), minuteOfDay: Number(local[2]), holiday, earlyCloseMin: Number(earlyCloseMin) };
 }
 
+/** The calls calendarDay reads for `ts`: localTime, then isHoliday and earlyCloseMin for each NYSE date `ts` can fall on. */
+function dayCallsAt(calendar: Address, ts: bigint) {
+  // etOffsetSeconds is 4 or 5 hours, so the NYSE date is the date of ts - 4 h or of ts - 5 h: read both, keep localTime's.
+  const etDays = [(ts - 4n * 3600n) / 86_400n, (ts - 5n * 3600n) / 86_400n];
+  const calls = [
+    { address: calendar, abi: marketCalendarAbi, functionName: "localTime", args: [ts] },
+    ...etDays.flatMap((d) => [
+      { address: calendar, abi: marketCalendarAbi, functionName: "isHoliday", args: [d] },
+      { address: calendar, abi: marketCalendarAbi, functionName: "earlyCloseMin", args: [d] },
+    ]),
+  ];
+  return { etDays, calls };
+}
+
+/**
+ * The mandate's calendar at any instant `ts`, read at `blockNumber`: whether it is open under `sessionMode` and the
+ * NYSE date with its entries. A probe reads it at its own instant (loop/probeRound.ts). Null when a view fails.
+ */
+export async function readCalendarAt(
+  client: StateClient,
+  calendar: Address,
+  sessionMode: number,
+  ts: bigint,
+  blockNumber: bigint,
+): Promise<{ open: boolean; day: CalendarDay } | null> {
+  const { etDays, calls } = dayCallsAt(calendar, ts);
+  let r: Result[];
+  try {
+    r = (await client.multicall({
+      contracts: [{ address: calendar, abi: marketCalendarAbi, functionName: "isOpen", args: [ts, sessionMode] }, ...calls] as never,
+      allowFailure: true,
+      blockNumber,
+    })) as Result[];
+  } catch {
+    return null;
+  }
+  const open = opt<boolean>(r[0]);
+  const day = calendarDay(r.slice(1), etDays);
+  return open === null || day === null ? null : { open, day };
+}
+
 export async function readVaultState(client: StateClient, vault: Address): Promise<VaultState> {
   let block: { number: bigint | null; timestamp: bigint };
   try {
@@ -140,15 +181,7 @@ export async function readVaultState(client: StateClient, vault: Address): Promi
     { address: t, abi: b20AssetAbi, functionName: "decimals" },
     { address: t, abi: b20AssetAbi, functionName: "uiMultiplier" },
   ]);
-  // etOffsetSeconds is 4 or 5 hours, so the NYSE date is the date of ts - 4 h or of ts - 5 h: read both, keep localTime's.
-  const etDays = [(timestamp - 4n * 3600n) / 86_400n, (timestamp - 5n * 3600n) / 86_400n];
-  const dayCalls = [
-    { address: mandate.calendar, abi: marketCalendarAbi, functionName: "localTime", args: [timestamp] },
-    ...etDays.flatMap((d) => [
-      { address: mandate.calendar, abi: marketCalendarAbi, functionName: "isHoliday", args: [d] },
-      { address: mandate.calendar, abi: marketCalendarAbi, functionName: "earlyCloseMin", args: [d] },
-    ]),
-  ];
+  const { etDays, calls: dayCalls } = dayCallsAt(mandate.calendar, timestamp);
   const tail = [
     { address: usdc, abi: erc20Abi, functionName: "balanceOf", args: [vault] },
     { address: mandate.calendar, abi: marketCalendarAbi, functionName: "isOpen", args: [timestamp, mandate.sessionMode] },

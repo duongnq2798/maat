@@ -183,7 +183,7 @@ describe("the public projection (spec §3.2)", () => {
     only("housekeeping", ["call", "token", "txHash", "gas", "gasUsed"], { call: "syncMultiplier", token: "0x4", txHash: "0x3", gas: "1", gasUsed: "1" });
     only("skip", ["index", "symbol", "action"], { index: 1, symbol: "NVDAc", action: "SUPPLY" });
     only("error", [], {});
-    only("probe", [], { index: 1 });
+    only("probe", ["at", "expected", "outcome"], { at: "2026-11-27T17:58:00Z", expected: "OK", outcome: "skipped", index: 1 });
   });
 
   it("leaves a field the row lacks out, and keeps the types on disk", () => {

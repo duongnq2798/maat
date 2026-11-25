@@ -159,7 +159,7 @@ const decisionIn = (logs: readonly Log[], vault: Address, id: Hex): Decision | u
 
 A reason id that the agent's list does not know, for example one that a newer vault added, comes out as `REASON_` followed by the number. The same file shows how the agent finds a `Decision` by intent id for a send an earlier round left pending. When the transaction is mined, it reads the `Decision` from the transaction's receipt first. Without one there, it reads the latest block number, asks the vault at that block whether the id is used, and then fetches the vault's `Decision` logs filtered by `intentId`, from the block it sent at up to that block.
 
-```typescript title="agent/src/loop/runOnce.ts#L214-L218"
+```typescript title="agent/src/loop/runOnce.ts#L227-L231"
     // usedIntent is read at a fresh head, so a used intent's Decision lies between the send's block and that head.
     const head = await d.txClient.getBlockNumber({ cacheTime: 0 });
     const used = await d.txClient.readContract({ address: d.vault, abi: mandateVaultAbi, functionName: "usedIntent", args: [p.intentId], blockNumber: head });

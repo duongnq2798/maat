@@ -4,10 +4,12 @@ description: "Configure and start the agent loop: dry-run and live modes, its se
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-25
 sources:
   - agent/README.md
   - agent/src/main.ts
+  - agent/src/probes.ts
+  - agent/src/loop/probeRound.ts
   - agent/src/config.ts
   - agent/src/runtime.ts
   - agent/src/intent.ts
@@ -416,6 +418,20 @@ gas limit = min(cap, max(floor, estimate * 1.3))
 
 The agent does not send the plain `eth_estimateGas` figure, because the vault catches inner failures from a swap, a transfer or a credit call, so an estimate can come out too low and the vault would then record `SWAP_FAILED`. If the estimate itself fails, the round halts.
 
+## Schedule probes
+
+`MAAT_PROBES` in `agent/.env` lists UTC instants at which the running loop sends a one-dollar intent of its own, with no Claude call, so the vault's verdict at a chosen moment, such as just before and just after an early close, is on chain. Its blob carries `k` set to `probe`. [`MAAT_PROBES`](/docs/reference/agent-configuration#maat_probes) gives the format, the limit of 3 a UTC day, the deadline and how a probe picks its intent. The agent reads it once at each start, and prints:
+
+| Line | When |
+| --- | --- |
+| `MAAT_PROBES: <PROBLEM>` | At start, for an entry left out, or for an instant that passed before this start and is journaled as missed. The agent still starts. |
+| `probe <AT>: scheduled` | At start, for an instant still to come. |
+| `probe <AT>: <OUTCOME> before this start; not run again` | At start, for an instant that `state.json` already holds. |
+| `probe <AT>: <OUTCOME> (expected <EXPECTED>), sent <N>` | After a probe, with `; ` and the reason when it sent nothing. |
+| `probe <AT>: not run, the agent is stopping` | After Ctrl-C, for a probe that was waiting for a round to end. The next start journals it as missed. |
+
+To rehearse the probes before their instants, run [probe-fork.ts](/docs/reference/agent-scripts#probe-forkts) on a local fork.
+
 ## What the agent keeps in its data folder
 
 | File | What it holds |
@@ -433,7 +449,7 @@ The folder belongs to one vault. `state.json` does not record which, so when `MA
 
 Every line is one JSON object. Its first field is `ts`, the ISO time at which the agent wrote the line, and the rest are the fields of one of these kinds:
 
-```typescript title="agent/src/ledger/journal.ts#L11-L22"
+```typescript title="agent/src/ledger/journal.ts#L12-L25"
 export type JournalEntry =
   | { kind: "run"; runId: string; block: bigint; day: bigint; mode: "dry-run" | "live"; ok: boolean; summary: string; costUsd6: bigint; suggestions: number; proposals: number; error?: string }
   /** `rationale` is the text as written; `blob` the maat:v1 blob whose keccak256 is `rationaleHash`. */
@@ -445,19 +461,22 @@ export type JournalEntry =
   | { kind: "mismatch"; runId: string; intentId: Hex; preview: string; decision: Decision; message: string }
   | { kind: "housekeeping"; runId: string; call: "syncMultiplier"; token: Address; txHash?: Hex; gas?: bigint; gasUsed?: bigint; note?: string }
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
-  | { kind: "error"; runId: string; message: string };
+  | { kind: "error"; runId: string; message: string }
+  /** One MAAT_PROBES instant: what the calendar there led it to expect and what became of it; `note` says why. */
+  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string };
 ```
 
 - Every `bigint` field is written as a decimal string.
 - Amounts that end in `Usd6` are USDC units, with <Fact name="usdcDecimals" />.
 - `day` is the UTC day number: the whole days from 1970-01-01 to the timestamp of the block the round read. It is the same number the vault's `today()` returns.
 - `blob` is the [rationale blob](/docs/help/glossary#rationale-blob) that `rationaleHash` hashes (older lines have none), `commit` the agent's git commit, and `hash` the `keccak256` of the line's public fields with `prev`, the line before's `hash`.
+- A `probe` line is one [`MAAT_PROBES`](/docs/reference/agent-configuration#maat_probes) instant, and its `note` says why it sent nothing. The probe's own `intent` and `sent` lines share its `runId`, `probe-` and the instant.
 
 ### State file format
 
 `state.json` holds one object of the `Data` shape below, and `pending` holds the sends that are not settled yet:
 
-```typescript title="agent/src/ledger/store.ts#L6-L31"
+```typescript title="agent/src/ledger/store.ts#L6-L32"
 /** An execute() the agent is about to send or has sent but not yet settled. Bigints are decimal strings. */
 export interface PendingTx {
   intentId: Hex;
@@ -483,6 +502,7 @@ interface Data {
   refusals: Record<string, string[]>; // RefusalKey day (NYSE date, or UTC day number) -> reasons logged onchain
   txByDay: Record<string, number>;
   pending: PendingTx[];
+  probes: Record<string, string>; // MAAT_PROBES instant -> outcome, "started" while it runs
 }
 ```
 
@@ -491,6 +511,7 @@ interface Data {
 - The keys of `refusals` are NYSE dates such as `2026-11-26`, and each holds the reasons logged on that date, a `MARKET_CLOSED` with its closed phase after a colon, such as `MARKET_CLOSED:holiday`. A refusal logged while the calendar could not be read, or by an older agent, is keyed by its UTC day number instead.
 - The daily compute cost behind the runway is the average of the recorded days among the 7 UTC days before today. With none recorded, it is `MAAT_DEFAULT_DAILY_COMPUTE_USD`, <Fact name="dailyComputeUsd" /> by default ([Runway and borrowing](/docs/concepts/treasury-loop#runway-and-borrowing)).
 - The unpaid bill is the total of `compute` minus `paidUsd6`, and never less than zero.
+- The keys of `probes` are `MAAT_PROBES` instants such as `2026-11-27T17:58:00Z`, and each holds what became of its probe, or `started` while it runs. A restart never runs a listed instant again.
 
 ## Recover from a halted round
 

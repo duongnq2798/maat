@@ -31,6 +31,7 @@ const schema = z
     MAAT_CREDIT_ACTIONS: field(z.enum(["off", "on"]).default("off")),
     MAAT_MAX_LLM_USD_PER_DAY: field(z.coerce.number().nonnegative().default(0.75)),
     MAAT_BILL_MIN_USD: field(z.coerce.number().positive().optional()),
+    MAAT_PROBES: field(z.string().optional()),
     CDP_ACCOUNT_NAME: field(z.string().default("maat-executor")),
   })
   .superRefine((v, ctx) => {
@@ -58,6 +59,11 @@ export interface AgentConfig {
   maxLlmUsdPerDay: number;
   /** The smallest compute bill a round pays back. Unset, it is 1.00 in live mode and 0.10 in dry-run (runtime.ts). */
   billMinUsd: number | undefined;
+  /**
+   * MAAT_PROBES as written: comma-separated UTC instants. Parsed at start by probes.ts parseProbes, which reports a bad
+   * entry and leaves it out, so no value stops the agent from starting.
+   */
+  probes: string | undefined;
   cdpAccountName: string;
 }
 
@@ -83,6 +89,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AgentConfig {
     creditActions: v.MAAT_CREDIT_ACTIONS === "on",
     maxLlmUsdPerDay: v.MAAT_MAX_LLM_USD_PER_DAY,
     billMinUsd: v.MAAT_BILL_MIN_USD,
+    probes: v.MAAT_PROBES,
     cdpAccountName: v.CDP_ACCOUNT_NAME,
   };
 }
