@@ -575,9 +575,9 @@ it has not been re-timed.
    http://localhost:3000.
 
 <details>
-<summary><b>Optional: the 14 contract fork tests</b> (needs a Base archive RPC)</summary>
+<summary><b>Optional: the 30 contract fork tests</b> (needs a Base archive RPC)</summary>
 
-They run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. Nothing is broadcast;
+They run the real B20 tokens, feeds, pools and Aave V4 at pinned mainnet blocks. Nothing is broadcast;
 Foundry forks the chain locally.
 
 ```bash
@@ -587,7 +587,7 @@ forge test --match-path "test/fork/*"
 ```
 
 ```text
-Ran 7 test suites in …: 14 tests passed, 0 failed, 0 skipped (14 total tests)
+Ran 11 test suites in …: 30 tests passed, 0 failed, 0 skipped (30 total tests)
 ```
 
 </details>
