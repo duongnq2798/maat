@@ -45,7 +45,7 @@
   Credit runs on the Aave V4 MAG7 Spoke. Agent transactions carry an ERC-8021 Builder Code, and the executor
   is built for a Coinbase CDP Server Wallet.
 - **What is built and tested.** The vault, guard library, onchain NYSE calendar, Aerodrome and Aave V4
-  adapters, deploy script, agent runtime, and the website with a 49-page docs center. CI on `main`
+  adapters, deploy script, agent runtime, and the website with a 51-page docs center. CI on `main`
   ([run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467), 2026-11-19): 220 contract,
   167 agent, 1,494 website unit and 259 end-to-end tests passed.
 - **On Base mainnet.** The owner deployed the four Maat contracts on 2026-11-24. They are unaudited.
@@ -539,8 +539,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  25 passed (25)
-         Tests  217 passed (217)
+    Test Files  30 passed (30)
+         Tests  382 passed (382)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -559,10 +559,10 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  108 passed (108)
-         Tests  2435 passed (2435)
+    Test Files  115 passed (115)
+         Tests  2587 passed (2587)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 49 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger and 51 docs pages checked)
    search index: … bytes gzipped, budget 850000
    ```
 
