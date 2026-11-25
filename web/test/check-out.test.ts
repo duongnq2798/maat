@@ -14,6 +14,7 @@ import {
   checkNowPage,
   checkOgImage,
   checkSearchIndex,
+  checkTextFiles,
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
 } from "@/lib/check-out";
@@ -500,6 +501,21 @@ describe("checkDataFiles", () => {
     ["other data", () => good.replace("null", '"0x1"'), "out/data/deployments.json is not its generated source (run npm run docs:gen and build again)"],
   ])("flags %s", (_name, read, problem) => {
     expect(checkDataFiles(expected, read)).toEqual([problem]);
+  });
+});
+
+describe("checkTextFiles", () => {
+  const expected = { "skill.md": { source: "skills/maat-market-guard/SKILL.md", text: "---\nname: maat-market-guard\n---\n\n# Guard\n" } };
+
+  it("accepts each text file as its route writes it from the generated copy", () => {
+    expect(checkTextFiles(expected, (path) => (path === "skill.md" ? expected["skill.md"].text : undefined))).toEqual([]);
+  });
+
+  it.each([
+    ["a missing file", () => undefined, "missing out/skill.md"],
+    ["other text", () => "# Guard\n", "out/skill.md is not skills/maat-market-guard/SKILL.md (run npm run docs:gen and build again)"],
+  ])("flags %s", (_name, read, problem) => {
+    expect(checkTextFiles(expected, read)).toEqual([problem]);
   });
 });
 

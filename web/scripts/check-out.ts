@@ -17,12 +17,14 @@ import {
   checkNowPage,
   checkOgImage,
   checkSearchIndex,
+  checkTextFiles,
   docsLocalhostUrls,
   SEARCH_INDEX_GZIP_BUDGET,
   shipsPublicly,
 } from "../lib/check-out";
 import { ASK_OPEN } from "../content/ask-open";
 import rationales from "../content/generated/rationales.json";
+import skill from "../content/generated/skill.json";
 import { deploymentConfig, deploymentsFile } from "../lib/chain/config";
 import { ABI_NAMES, abiFile } from "../lib/docs/abi";
 import { docsData } from "../lib/docs/generated";
@@ -47,6 +49,7 @@ const REQUIRED = [
   "llms.txt",
   "llms-full.txt",
   "md/docs.md",
+  "skill.md",
 ];
 
 const problems = REQUIRED.filter((f) => !existsSync(join(OUT, f))).map((f) => `missing out/${f}`);
@@ -139,6 +142,9 @@ problems.push(
     isFile(join(OUT, path)) ? read(path) : undefined,
   ),
 );
+
+// The market-guard skill's SKILL.md at /skill.md, as its route writes it from content/generated/skill.json.
+problems.push(...checkTextFiles({ "skill.md": skill }, (path) => (isFile(join(OUT, path)) ? read(path) : undefined)));
 
 // On CI and on Vercel the export is about to ship, so no file may still link the localhost fallback of siteUrl().
 if (shipsPublicly()) {

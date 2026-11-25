@@ -114,7 +114,7 @@ The rows below are in the agent, which is TypeScript. They are not the security 
 | --- | --- | --- | --- |
 | **Proposal schema** | A Claude answer must match a schema: at most <Fact name="maxIntents" /> intents, every action except `PAY_EXPENSE`, a fixed list of symbols, a [rationale](/docs/help/glossary#rationale) of at most <Fact name="maxRationaleChars" /> characters. `PAY_EXPENSE` cannot be expressed, so the bill payment is added by code. An answer that breaks the schema is dropped | [`schema.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/schema.ts), [`proposer.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/proposer.ts) | [`schema.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/schema.test.ts): "rejects PAY_EXPENSE, unknown symbols, extra keys and bad amounts" |
 | **Intent building** | The agent clamps a `BUY` or a `PAY_EXPENSE` to the vault's USDC, a `SELL` or a `SUPPLY` to the vault's stock balance, a `WITHDRAW_COLLATERAL` to what is supplied, and a `REPAY` to the smaller of the vault's USDC and the debt (to the USDC alone when the debt is zero or cannot be read). A `BORROW` is not clamped: it is sent at the proposed amount, and the vault's projected health factor check bounds it. The agent always sends a `minOut` of zero (the vault sets the floor) and sets a payee only for `PAY_EXPENSE` | [`intent.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/intent.ts) | [`intent.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/intent.test.ts): "clamps a BUY to the USDC balance", "clamps WITHDRAW_COLLATERAL to the supplied amount", "clamps REPAY to the debt", "sets the payee only for PAY_EXPENSE" |
-| **Guarded sender** | Sends only to the vault, only `execute`, `syncMultiplier` or `notifyRevenue`, with an explicit gas limit that is positive and at most <Fact name="maxGas" />, and the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix | [`sender.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/sender.ts) | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses a missing, zero or over-cap gas limit" |
+| **Guarded sender** | Sends only to the vault, only `execute`, `syncMultiplier` or `notifyRevenue`, with an explicit gas limit that is positive and at most <Fact name="maxGas" />, and the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix, after the [rationale blob](/docs/help/glossary#rationale-blob) an `execute` must carry | [`sender.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/sender.ts) | [`sender.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/sender.test.ts): "refuses another target", "refuses owner functions", "refuses a missing, zero or over-cap gas limit" |
 | **CDP account policy** | Sending: only zero-value transactions to the vault, and only on Base. Signing: zero-value transactions to the vault, on any network, because the sign rule names no network. Signing a hash, a message or typed data (`signEvmHash`, `signEvmMessage`, `signEvmTypedData`) is rejected | [`cdpPolicy.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/exec/cdpPolicy.ts) | [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts): "only accepts zero-value vault calls on base" checks the send and sign rules, "closes raw signing paths", "rejects message signing" and "rejects typed-data signing" check the reject rules, and "is a body the SDK's createPolicy accepts" parses the whole policy with the CDP SDK's own schema |
 | **Pending sends are reconciled** | Every `execute` is stored as pending before it is sent, and the next [round](/docs/help/glossary#round) reconciles it before doing anything else: from the transaction's receipt once it is mined, or else against `usedIntent`. A pending send whose intent is still unused, and whose transaction the agent cannot find, is dropped after at least <Fact name="pendingWindowMinutes" /> of chain time. A bill that is still unpaid is then sent again under a new intent id, so if the first send lands later, the bill is paid twice. Both payments go to the allowlisted payee and count against the caps. The README calls this row "Exactly-once sends" | [`runOnce.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/loop/runOnce.ts) | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "reconciles a send that threw after broadcast instead of sending again", "drops a pending entry older than the window that never reached the chain" |
 | **Halt on surprise** | If the preview said `OK` but the vault refused, or a receipt has no `Decision`, the round stops | [`runOnce.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/loop/runOnce.ts) | [`runOnce.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/runOnce.test.ts): "halts when the preview said OK but the vault refused" |
@@ -123,20 +123,44 @@ The rows below are in the agent, which is TypeScript. They are not the security 
 
 The guarded sender and the CDP policy are the two layers that sit closest to the key, so here they are:
 
-```typescript title="agent/src/exec/sender.ts#L39-L52"
-  async send(tx: TxRequest): Promise<Hex> {
+```typescript title="agent/src/exec/sender.ts#L47-L84"
+  /** The exact bytes send() would broadcast for `tx`, after every check but the gas limit: what gas is estimated on. */
+  calldata(tx: Pick<TxRequest, "to" | "data" | "blob">): Hex {
     if (getAddress(tx.to) !== getAddress(this.opts.vault)) throw new SendRefused(`target ${tx.to} is not the vault`);
-    let fn: string;
+    let call: ReturnType<typeof decodeFunctionData<typeof mandateVaultAbi>>;
     try {
-      fn = decodeFunctionData({ abi: mandateVaultAbi, data: tx.data }).functionName;
+      call = decodeFunctionData({ abi: mandateVaultAbi, data: tx.data });
     } catch {
       throw new SendRefused("calldata does not decode against the MandateVault ABI");
     }
+    const fn = call.functionName;
     if (!(ALLOWED_FUNCTIONS as readonly string[]).includes(fn)) throw new SendRefused(`function ${fn} is not allowed`);
+    // decodeFunctionData ignores trailing bytes; anything after the call goes through the blob checks below or not at all.
+    const exact = encodeFunctionData({ abi: mandateVaultAbi, functionName: fn, args: call.args } as never);
+    if (exact.toLowerCase() !== tx.data.toLowerCase()) throw new SendRefused(`calldata for ${fn} carries bytes after the call`);
+    if (fn !== "execute") {
+      if (tx.blob !== undefined) throw new SendRefused(`only execute carries a blob, not ${fn}`);
+      return concat([tx.data, this.opts.suffix]);
+    }
+    const blob = tx.blob;
+    if (blob === undefined) throw new SendRefused("execute needs a maat:v1 blob");
+    if (!blob.startsWith(BLOB_PREFIX)) throw new SendRefused(`the blob does not start with ${BLOB_PREFIX}`);
+    const bytes = toBytes(blob);
+    if (bytes.length > MAX_BLOB_BYTES) throw new SendRefused(`the blob is ${bytes.length} bytes, more than ${MAX_BLOB_BYTES} bytes`);
+    if (!/^[\x20-\x7e]*$/.test(blob)) throw new SendRefused("the blob is not printable ASCII");
+    const intent = call.args[0] as OnchainIntent;
+    if (keccak256(bytes) !== intent.rationaleHash.toLowerCase()) throw new SendRefused("keccak256 of the blob is not the intent's rationaleHash");
+    const check = validateBlob(bytes);
+    if (check.status !== "v1") throw new SendRefused(`the blob is not a valid maat:v1 blob: ${check.problem}`);
+    return concat([tx.data, toHex(bytes), this.opts.suffix]);
+  }
+
+  async send(tx: TxRequest): Promise<Hex> {
+    const data = this.calldata(tx);
     if (typeof tx.gas !== "bigint") throw new SendRefused("gas limit is missing");
     if (tx.gas <= 0n) throw new SendRefused(`gas limit ${tx.gas} is not positive`);
     if (tx.gas > MAX_GAS) throw new SendRefused(`gas limit ${tx.gas} is above the cap ${MAX_GAS}`);
-    return this.inner.send({ ...tx, data: withSuffix(tx.data, this.opts.suffix) });
+    return this.inner.send({ to: tx.to, data, idempotencyKey: tx.idempotencyKey, gas: tx.gas });
   }
 ```
 

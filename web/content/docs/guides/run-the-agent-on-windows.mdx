@@ -16,6 +16,7 @@ sources:
   - agent/src/loop/scheduler.ts
   - agent/src/loop/heartbeat.ts
   - agent/src/loop/lock.ts
+  - agent/src/loop/probeRound.ts
   - agent/src/loop/runOnce.ts
   - agent/src/ledger/journal.ts
   - agent/src/refusals.ts
@@ -157,6 +158,10 @@ Three settings guard the agent's first live runs. Their defaults apply when `age
 
 With the defaults, the agent's first line ends with `credit=off llm-cap=$0.75/day bill-min=$1.00` in live mode, and with `bill-min=$0.10` in dry-run mode. Check them in that line each time you start the loop.
 
+## Schedule probes
+
+To have the agent probe the vault at set times, put the instants in `agent/.env` before you start or restart the loop, for example `MAAT_PROBES=2026-11-27T17:58:00Z,2026-11-27T18:01:00Z`. [`MAAT_PROBES`](/docs/reference/agent-configuration#maat_probes) gives the format and the limits. The agent reads the line once at each start and prints `probe <AT>: scheduled` for each instant still to come, and a `MAAT_PROBES:` warning for each entry it leaves out. A probe never runs late: an instant that passes while the agent is stopped, or while the PC sleeps for more than 10 minutes past it, is journaled as `missed`. So keep the PC awake through the instants ([Keep it awake on mains power](#keep-it-awake-on-mains-power)). A restart does not run an instant again, because `state.json` keeps what became of each.
+
 ## Start the restart loop
 
 The restart loop runs `npm run agent` in `agent/` and starts it again each time it exits. Give it a terminal tab of its own, named so that you know it, such as MAAT AGENT LIVE: Ctrl-C in that tab is the first way to stop the agent.
@@ -250,12 +255,14 @@ Select-String -Path .\data\journal.jsonl -SimpleMatch -Pattern '"message":"halte
 Select-String -Path .\data\journal.jsonl -SimpleMatch -Pattern '"kind":"mismatch"'
 Select-String -Path .\data\journal.jsonl -SimpleMatch -Pattern 'llm cap:'
 Select-String -Path .\data\journal.jsonl -SimpleMatch -Pattern 'credit actions are off'
+Select-String -Path .\data\journal.jsonl -SimpleMatch -Pattern '"kind":"probe"'
 ```
 
 | What you see | What it means |
 | --- | --- |
 | A `run` line with `"ok":false` and an `error` that begins `llm cap:` | The day's recorded Claude cost had reached `MAAT_MAX_LLM_USD_PER_DAY`, so the round did not call Claude. The error names the cost, the cap and the UTC day. A compute bill the round owes is still queued for payment. |
 | A `skip` line whose `error` reads `credit actions are off: <ACTION> dropped before the preview` | Claude proposed a credit action while `MAAT_CREDIT_ACTIONS` is `off`, and the round dropped it. |
+| A `probe` line | One `MAAT_PROBES` instant. `outcome` says whether it sent, and `note` why it did not. |
 | An `error` line whose `message` begins `halted:` | The round halted. [Recover from a halted round](/docs/guides/run-the-agent#recover-from-a-halted-round) says what to do. |
 | A `mismatch` line | The preview and the vault's [Decision](/docs/help/glossary#decision) disagreed, and the round halted. |
 | A `commit` that ends in `-dirty` or reads `unknown` | The code that wrote the line had changes to tracked files, or git could not tell which code it was. |
