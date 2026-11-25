@@ -25,12 +25,20 @@ export async function buildRuntime(
   const mode = o.forceDryRun ? "dry-run" : cfg.mode;
   const journal = new Journal(cfg.dataDir, { commit: o.commit ?? gitCommit() });
   // A live agent in a dry-run's data dir would pay the dry-run's Claude bill back from the vault, and its journal would
-  // mix rehearsal rows with live ones. Checked before any CDP call.
+  // mix rehearsal rows with live ones. Checked before any CDP call. The other way round, a dry-run's rows in live's
+  // data dir would make the next live start refuse it.
   if (mode === "live") {
     const row = await journal.firstDryRunRow();
     if (row) {
       throw new Error(
         `live mode refuses data dir ${cfg.dataDir}: its journal holds dry-run rows (first: run ${String(row.runId)} at ${String(row.ts)}); give live its own MAAT_DATA_DIR`,
+      );
+    }
+  } else {
+    const row = await journal.firstLiveRow();
+    if (row) {
+      throw new Error(
+        `dry-run refuses data dir ${cfg.dataDir}: its journal holds live rows (first: run ${String(row.runId)} at ${String(row.ts)}); give the dry-run its own MAAT_DATA_DIR`,
       );
     }
   }

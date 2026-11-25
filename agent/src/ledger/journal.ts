@@ -41,6 +41,11 @@ export function isDryRunRow(r: Record<string, unknown>): boolean {
   );
 }
 
+/** Whether a row was written in live mode: a round's `run` row names its mode, and only live sends a tx. */
+export function isLiveRow(r: Record<string, unknown>): boolean {
+  return (r.kind === "run" && r.mode === "live") || r.kind === "sent";
+}
+
 /** Append-only JSONL. Rows are written from `JournalEntry` and read back as `JournalRow` (bigints as strings). */
 export class Journal {
   private readonly file: string;
@@ -63,7 +68,16 @@ export class Journal {
    * The first dry-run row on disk, or null. A line that does not parse (a write cut short by a crash) is passed over:
    * it cannot be told apart, and every dry-run round that reaches Claude also writes a `run` row naming its mode.
    */
-  async firstDryRunRow(): Promise<{ ts?: unknown; runId?: unknown } | null> {
+  firstDryRunRow(): Promise<{ ts?: unknown; runId?: unknown } | null> {
+    return this.firstRow(isDryRunRow);
+  }
+
+  /** The first live row on disk, or null; a line cut short is passed over, as in firstDryRunRow. */
+  firstLiveRow(): Promise<{ ts?: unknown; runId?: unknown } | null> {
+    return this.firstRow(isLiveRow);
+  }
+
+  private async firstRow(match: (r: Record<string, unknown>) => boolean): Promise<{ ts?: unknown; runId?: unknown } | null> {
     let text: string;
     try {
       text = await readFile(this.file, "utf8");
@@ -79,7 +93,7 @@ export class Journal {
       } catch {
         continue;
       }
-      if (row !== null && typeof row === "object" && isDryRunRow(row as Record<string, unknown>)) return row as { ts?: unknown; runId?: unknown };
+      if (row !== null && typeof row === "object" && match(row as Record<string, unknown>)) return row as { ts?: unknown; runId?: unknown };
     }
     return null;
   }

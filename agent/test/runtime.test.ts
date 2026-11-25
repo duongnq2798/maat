@@ -203,6 +203,18 @@ describe("buildRuntime", () => {
         expect((await buildRuntime(loadConfig(vars), { proposer: noProposer, connectCdp: cdp })).mode).toBe("live");
       });
 
+      it.each([
+        ["a live round", liveRound],
+        ["a live send", { ts: "t", kind: "sent", runId: "live-2", index: 0, txHash: `0x${"ab".repeat(32)}` }],
+      ])("and dry-run refuses live's data dir when the journal holds %s, so live can start there again", async (_what, row) => {
+        for (const [vars, forceDryRun] of [[await env(), false], [await env(LIVE), true]] as const) {
+          await journalIn(vars.MAAT_DATA_DIR, [row]);
+          await expect(buildRuntime(loadConfig(vars), { proposer: noProposer, forceDryRun })).rejects.toThrow(
+            `dry-run refuses data dir ${vars.MAAT_DATA_DIR}: its journal holds live rows (first: run ${row.runId} at ${row.ts}); give the dry-run its own MAAT_DATA_DIR`,
+          );
+        }
+      });
+
       it("and dry-run keeps using its own data dir", async () => {
         const vars = await env();
         await journalIn(vars.MAAT_DATA_DIR, [dryRound]);

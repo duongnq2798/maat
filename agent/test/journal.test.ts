@@ -2,7 +2,7 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { isDryRunRow, Journal } from "../src/ledger/journal.js";
+import { isDryRunRow, isLiveRow, Journal } from "../src/ledger/journal.js";
 
 describe("Journal", () => {
   it("appends one JSON line per entry with bigints as strings", async () => {
@@ -39,6 +39,18 @@ describe("Journal", () => {
     expect(await j.firstDryRunRow()).toBeNull();
     await j.append({ kind: "housekeeping", runId: "dry-1", call: "syncMultiplier", token: "0x0000000000000000000000000000000000000001", note: "dry-run" });
     expect(await j.firstDryRunRow()).toMatchObject({ kind: "housekeeping", runId: "dry-1" });
+  });
+  it("finds the first live row: a live round or a send", async () => {
+    const d = await mkdtemp(join(tmpdir(), "maat-journal-"));
+    const j = new Journal(d);
+    expect(await j.firstLiveRow()).toBeNull();
+    await j.append({ kind: "run", runId: "dry-1", block: 1n, day: 2n, mode: "dry-run", ok: true, summary: "s", costUsd6: 0n, suggestions: 0, proposals: 0 });
+    expect(await j.firstLiveRow()).toBeNull();
+    await j.append({ kind: "sent", runId: "live-1", index: 0, intentId: "0x01", action: "BUY", symbol: "NVDAc", amountUsd6: 1n, rationale: "r", rationaleHash: "0x02", preview: "OK", gate: "execute", txHash: "0x03", gas: 1n });
+    expect(await j.firstLiveRow()).toMatchObject({ kind: "sent", runId: "live-1" });
+    expect(isLiveRow({ kind: "run", mode: "live" })).toBe(true);
+    expect(isLiveRow({ kind: "run", mode: "dry-run" })).toBe(false);
+    expect(isLiveRow({ kind: "intent", gate: "execute" })).toBe(false);
   });
   it("tells dry-run rows from live ones", () => {
     expect(isDryRunRow({ kind: "run", mode: "dry-run" })).toBe(true);
