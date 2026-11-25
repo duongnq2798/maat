@@ -29,6 +29,7 @@ const SHIPPED: readonly string[] = [
   "concepts/mandate",
   "concepts/nine-checks",
   "concepts/refusal-codes",
+  "concepts/agent-checklist",
   "concepts/market-hours",
   "concepts/prices-and-premium",
   "concepts/splits-and-multiplier",
