@@ -1,0 +1,13 @@
+{
+  "name": "@maat/journal-publisher",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.9"
+  },
+  "scripts": {
+    "start": "node publish.mjs",
+    "test": "node --test test/*.test.mjs"
+  }
+}
