@@ -86,6 +86,7 @@ export function BriefForm({
   const [status, setStatus] = useState<Status>({ step: "idle" });
   const codeRead = useRef<Promise<BuilderCodeRead> | null>(null);
   const depsRef = useRef(deps);
+  const runs = useRef(0);
   const check = checkBrief(text);
   const busy = status.step === "working" || status.step === "sent";
 
@@ -107,6 +108,7 @@ export function BriefForm({
   const send = async (via: Via) => {
     // The box is read-only from here until the brief is included or fails, so `sent` stays the text the page shows.
     const sent = text;
+    const run = ++runs.current;
     if (!check.ok) {
       setStatus({ step: "error", text: check.problem });
       return;
@@ -146,18 +148,19 @@ export function BriefForm({
         return;
       }
       // A smart wallet's transaction can succeed while the brief's call inside it fails: only a Brief log shows it landed.
-      const [id] = briefIdsIn(receipt.logs, inbox.inbox);
-      if (id === undefined) {
+      const [briefId] = briefIdsIn(receipt.logs, inbox.inbox);
+      if (briefId === undefined) {
         setStatus({ step: "error", hash, text: `Included in block ${block}, but the transaction emitted no Brief from the inbox, so the brief is not in the feed.` });
         return;
       }
-      const line = `Included in block ${block} as brief #${id}. It is in the feed below.`;
+      const line = `Included in block ${block} as brief #${briefId}. It is in the feed below.`;
       setStatus({ step: "done", hash, text: line });
       setText((t) => (t === sent ? "" : t));
       onIncluded();
       if (suffix) {
         const input = await client.getTransaction({ hash }).then((t) => t.input, () => null);
-        setStatus({ step: "done", hash, text: line, suffix: input === null ? "unread" : suffixIn(input, suffix) });
+        // Skipped when another brief was sent meanwhile: the status line is that brief's.
+        if (runs.current === run) setStatus({ step: "done", hash, text: line, suffix: input === null ? "unread" : suffixIn(input, suffix) });
       }
     } catch (e) {
       setStatus({ step: "error", text: walletErrorText(e) });
