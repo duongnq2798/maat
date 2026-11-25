@@ -12,7 +12,7 @@ const REPO_ROOT = join(process.cwd(), "..");
 export const SPEC_PATH = "docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md";
 const spec = readFileSync(join(REPO_ROOT, SPEC_PATH), "utf8").replace(/\r\n/g, "\n");
 
-export type VectorName = "V1" | "V2" | "V3" | "V4" | "V5";
+export type VectorName = "V1" | "V2" | "V3" | "V4" | "V5" | "V6" | "V7";
 
 export interface Vector {
   /** The blob, as ASCII text. */
@@ -36,6 +36,8 @@ export const VECTORS: Readonly<Record<VectorName, Vector>> = {
   V3: vector("V3"),
   V4: vector("V4"),
   V5: vector("V5"),
+  V6: vector("V6"),
+  V7: vector("V7"),
 };
 
 /** The two published journal lines of §5.7, and the hash the spec gives for each. */

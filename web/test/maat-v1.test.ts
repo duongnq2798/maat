@@ -18,7 +18,7 @@ const problemOf = (blob: string) => {
 };
 
 describe("the spec's vectors (§5)", () => {
-  it.each(["V1", "V2", "V3", "V4", "V5"] as const)("%s has the byte count and keccak256 the spec gives, and decodes as v1", (name) => {
+  it.each(["V1", "V2", "V3", "V4", "V5", "V6", "V7"] as const)("%s has the byte count and keccak256 the spec gives, and decodes as v1", (name) => {
     const v = VECTORS[name];
     expect(v.blob.length).toBe(v.bytes);
     expect(keccak256(toBytes(v.blob))).toBe(v.hash);
@@ -35,7 +35,7 @@ describe("the spec's vectors (§5)", () => {
   });
 
   it("serializes each vector's JSON back to itself with canon (§2.2)", () => {
-    for (const name of ["V1", "V2", "V3", "V4", "V5"] as const) expect(prefix + canon(body(name))).toBe(VECTORS[name].blob);
+    for (const name of ["V1", "V2", "V3", "V4", "V5", "V6", "V7"] as const) expect(prefix + canon(body(name))).toBe(VECTORS[name].blob);
   });
 
   it("decodes V1's fields, sources in the vault's token order with the round id as a decimal string", () => {
@@ -56,6 +56,16 @@ describe("the spec's vectors (§5)", () => {
     expect(v4.fields).toMatchObject({ k: "probe", r: "probe-2026-11-27T17:58:00Z" });
     expect(v4.fields.m).toBeUndefined();
     expect(v5.fields.q).toEqual([7]);
+  });
+
+  it("decodes V6 and V7 with the closed-market note at the end of t, V7's model text cut before it (§2.5)", () => {
+    const note = " (market closed, NYSE holiday: Thanksgiving)";
+    const v6 = blobOf(txInput(VECTORS.V6.blob));
+    const v7 = blobOf(txInput(VECTORS.V7.blob));
+    if (v6.status !== "v1" || v7.status !== "v1") throw new Error("not v1");
+    expect(v6.fields.t).toBe(`Fixture rationale: NVDAc is under its target weight and the feed is fresh, so buy 5 USD.${note}`);
+    expect(v7.fields.t).toHaveLength(593);
+    expect(v7.fields.t.endsWith(` ...${note}`)).toBe(true);
   });
 });
 
