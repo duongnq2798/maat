@@ -2,7 +2,9 @@ import {
   decodeFunctionData,
   encodeAbiParameters,
   encodeEventTopics,
+  InvalidInputRpcError,
   parseAbiParameters,
+  RpcRequestError,
   size,
   slice,
   type Address,
@@ -30,11 +32,23 @@ export class FakeReceipts {
   timeout = false;
   /** Broadcast but not mined: no receipt, getTransaction has blockNumber null. */
   mempool = new Set<Hex>();
-  logQueries: { fromBlock: unknown; intentId: unknown }[] = [];
+  logQueries: { fromBlock: bigint; toBlock: bigint; intentId: unknown }[] = [];
+  /** The widest getLogs range the RPC accepts; a wider one is refused with mainnet.base.org's message. */
+  logRangeCap: bigint | null = null;
+  /** The block every mined transaction lands in; getLogs returns its logs only to a range that holds it. */
+  minedAt = 101n;
+  /** What getBlockNumber returns. */
+  head = 101n;
+  /** The arguments of each getBlockNumber read. */
+  headReads: unknown[] = [];
+  /** The blockNumber of each usedIntent read. */
+  usedAt: unknown[] = [];
   estimate: (data: Hex) => bigint | Promise<bigint> = () => 200_000n;
   estimates: { account: unknown; to: unknown; data: Hex }[] = [];
   /** syncMultiplier emits MultiplierChangeDetected (false: the vault's try uiMultiplier() failed silently). */
   syncEvent = true;
+  /** An execute's receipt carries its Decision log (false: only getLogs finds it). */
+  decisionInReceipt = true;
 
   constructor(
     private readonly sender: FakeSender,
@@ -48,23 +62,27 @@ export class FakeReceipts {
   }
 
   private log(hash: Hex, topics: readonly Hex[], data: Hex) {
-    return { address: this.vault, topics, data, blockNumber: 1n, blockHash: ZERO32, transactionHash: hash, transactionIndex: 0, logIndex: 0, removed: false };
+    return { address: this.vault, topics, data, blockNumber: this.minedAt, blockHash: ZERO32, transactionHash: hash, transactionIndex: 0, logIndex: 0, removed: false };
+  }
+
+  /** The vault's Decision log for an execute that succeeded with a verdict; null for anything else. */
+  private decisionLog(hash: Hex) {
+    const call = this.calls()[Number(hash) - 1]!;
+    const v = call.functionName === "execute" ? this.verdict(call.args[0] as OnchainIntent) : null;
+    if (!v || this.status !== "success") return null;
+    const i = call.args[0] as OnchainIntent;
+    return this.log(
+      hash,
+      encodeEventTopics({ abi: mandateVaultAbi, eventName: "Decision", args: { intentId: i.id, token: i.token } }) as Hex[],
+      encodeAbiParameters(parseAbiParameters("uint8, uint256, bool, uint8, bytes32"), [i.action, i.amount, v.allowed, v.reason, i.rationaleHash]),
+    );
   }
 
   receipt(hash: Hex): TransactionReceipt {
     const call = this.calls()[Number(hash) - 1]!;
     const logs = [];
-    const v = call.functionName === "execute" ? this.verdict(call.args[0] as OnchainIntent) : null;
-    if (call.functionName === "execute" && v && this.status === "success") {
-      const i = call.args[0] as OnchainIntent;
-      logs.push(
-        this.log(
-          hash,
-          encodeEventTopics({ abi: mandateVaultAbi, eventName: "Decision", args: { intentId: i.id, token: i.token } }) as Hex[],
-          encodeAbiParameters(parseAbiParameters("uint8, uint256, bool, uint8, bytes32"), [i.action, i.amount, v.allowed, v.reason, i.rationaleHash]),
-        ),
-      );
-    }
+    const decision = this.decisionLog(hash);
+    if (decision && this.decisionInReceipt) logs.push(decision);
     if (call.functionName === "syncMultiplier" && this.syncEvent) {
       const token = call.args[0] as Address;
       logs.push(
@@ -75,7 +93,7 @@ export class FakeReceipts {
         ),
       );
     }
-    return { status: this.status, transactionHash: hash, blockNumber: 1n, gasUsed: 150_000n, logs } as unknown as TransactionReceipt;
+    return { status: this.status, transactionHash: hash, blockNumber: this.minedAt, gasUsed: 150_000n, logs } as unknown as TransactionReceipt;
   }
 
   private hashOf(i: number): Hex {
@@ -90,20 +108,28 @@ export class FakeReceipts {
 
   client(): TxClient {
     return {
-      readContract: (async ({ functionName, args }: { functionName: string; args: readonly [Hex] }) => {
+      readContract: (async ({ functionName, args, blockNumber }: { functionName: string; args: readonly [Hex]; blockNumber?: bigint }) => {
         if (functionName !== "usedIntent") throw new Error(`fake: no ${functionName}`);
+        this.usedAt.push(blockNumber);
         return this.status === "success" && this.mined().some((x) => x.id === args[0]);
       }) as never,
-      getLogs: (async ({ args, fromBlock }: { args: { intentId: Hex }; fromBlock: unknown }) => {
-        this.logQueries.push({ fromBlock, intentId: args.intentId });
+      getLogs: (async ({ args, fromBlock, toBlock }: { args: { intentId: Hex }; fromBlock: bigint; toBlock: bigint }) => {
+        this.logQueries.push({ fromBlock, toBlock, intentId: args.intentId });
+        if (this.logRangeCap !== null && toBlock - fromBlock + 1n > this.logRangeCap) {
+          throw new InvalidInputRpcError(
+            new RpcRequestError({ body: { method: "eth_getLogs" }, error: { code: -32000, message: `eth_getLogs is limited to a ${this.logRangeCap} range` }, url: "http://127.0.0.1:1" }),
+          );
+        }
+        if (this.minedAt < fromBlock || this.minedAt > toBlock) return [];
         return this.mined()
           .filter((x) => x.id === args.intentId)
-          .flatMap((x) => this.receipt(x.hash).logs);
+          .flatMap((x) => this.decisionLog(x.hash) ?? []);
       }) as never,
       getTransaction: (async ({ hash }: { hash: Hex }) => {
         if (Number(hash) < 1 || Number(hash) > this.sender.sent.length) throw new TransactionNotFoundError({ hash });
-        return { hash, blockNumber: this.mempool.has(hash) ? null : 1n };
+        return { hash, blockNumber: this.mempool.has(hash) ? null : this.minedAt };
       }) as never,
+      getBlockNumber: (async (args?: unknown) => (this.headReads.push(args), this.head)) as never,
       estimateGas: (async (a: { account: unknown; to: unknown; data: Hex }) => (this.estimates.push(a), this.estimate(a.data))) as never,
       waitForTransactionReceipt: (async ({ hash }: { hash: Hex }) => {
         if (this.timeout || this.mempool.has(hash)) throw new WaitForTransactionReceiptTimeoutError({ hash });

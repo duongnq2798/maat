@@ -8,9 +8,10 @@ export interface PolicyParams {
   driftBps: number;
   runwayDays: number;
   minTradeUsd6: bigint;
+  creditActions: boolean; // CREDIT_ACTIONS (types.ts) are suggested only when true; MAAT_CREDIT_ACTIONS=on sets it
 }
 
-export const DEFAULT_POLICY: PolicyParams = { cashReserveBps: 3000, driftBps: 500, runwayDays: 7, minTradeUsd6: 1_000_000n };
+export const DEFAULT_POLICY: PolicyParams = { cashReserveBps: 3000, driftBps: 500, runwayDays: 7, minTradeUsd6: 1_000_000n, creditActions: false };
 
 export interface Suggestion {
   action: ActionName;
@@ -49,7 +50,7 @@ export function evaluatePolicy(
   const equity = s.equityUsd6;
   const priced = s.tokens.filter((t): t is typeof t & { symbol: TokenSymbol } => t.symbol !== undefined);
   const targetBps = priced.length === 0 ? 0 : Math.floor((10_000 - params.cashReserveBps) / priced.length);
-  const credit = s.credit !== null && s.credit.readable;
+  const credit = params.creditActions && s.credit !== null && s.credit.readable;
 
   const weights: WeightRow[] = priced.map((t) => {
     // Split the token's value between wallet and supplied collateral by raw units.
