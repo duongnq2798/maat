@@ -180,10 +180,10 @@ export function headlineSize(text: string, mono: boolean, spec: Pick<Spec, "head
   return Math.min(spec.headline, Math.floor(spec.plateInner / (text.length * (mono ? MONO_EM : SANS_EM))));
 }
 
-const MONO = "Geist Mono";
-const caps = { fontFamily: MONO, fontWeight: 500, letterSpacing: "0.08em", color: PALETTE.ink2 } as const;
+export const MONO = "Geist Mono";
+export const caps = { fontFamily: MONO, fontWeight: 500, letterSpacing: "0.08em", color: PALETTE.ink2 } as const;
 
-function Chip({ children, tone, size }: { children: string; tone: "accent" | "neutral" | "quiet"; size: number }) {
+export function Chip({ children, tone, size }: { children: string; tone: "accent" | "neutral" | "quiet"; size: number }) {
   const colors = tone === "accent" ? { color: PALETTE.accent, backgroundColor: PALETTE.accentTint } : { color: tone === "neutral" ? PALETTE.ink : PALETTE.ink2, backgroundColor: PALETTE.lineSoft };
   return (
     <span style={{ fontFamily: MONO, fontWeight: 600, fontSize: size, padding: "4px 12px", borderRadius: 8, ...colors }}>{children}</span>
@@ -264,7 +264,8 @@ function Intent({ m, spec }: { m: CardModel; spec: Spec }) {
   return <span style={{ fontWeight: 600, fontSize: spec.intent, letterSpacing: "-0.02em", color: PALETTE.ink, flexShrink: 0 }}>{m.intent}</span>;
 }
 
-const SENDER_TONE: Readonly<Record<string, "accent" | "neutral" | "quiet">> = {
+/** The sender chip's tone, by the /ledger label it prints: the owner's is neutral, never the accent. */
+export const SENDER_TONE: Readonly<Record<string, "accent" | "neutral" | "quiet">> = {
   "owner, by hand": "neutral",
   agent: "accent",
   probe: "accent",
@@ -335,8 +336,8 @@ function SignOff({ m, spec }: { m: CardModel; spec: Spec }) {
 }
 
 /** The least room between the card's content and the footer's rule, however full the card is. */
-const FOOTER_CLEARANCE = 24;
-const footerRule = { marginTop: "auto", paddingTop: 20, borderTop: `1px solid ${PALETTE.line}`, flexShrink: 0 } as const;
+export const FOOTER_CLEARANCE = 24;
+export const footerRule = { marginTop: "auto", paddingTop: 20, borderTop: `1px solid ${PALETTE.line}`, flexShrink: 0 } as const;
 
 /** The wide card's footer: the tx line and the footer on the left, the sign-off on the right. */
 function WideFooter({ m, spec }: { m: CardModel; spec: Spec }) {
@@ -372,13 +373,14 @@ function BalanceImage({ m, size }: { m: CardModel; size: number }) {
   return <img src={dataUri(balanceSvg(m.balance))} width={size} height={size} />;
 }
 
-function Frame({ layout, m, children }: { layout: CardLayout; m: CardModel; children: ReactNode }) {
+/** The card's frame: the paper, the grid, the band when there is one, and the padded column the content fills. */
+export function Frame({ layout, band, children }: { layout: CardLayout; band: string | null; children: ReactNode }) {
   const { width, height } = CARD_LAYOUTS[layout];
   const spec = SPECS[layout];
   return (
     <div style={{ width, height, display: "flex", position: "relative", backgroundColor: PALETTE.paper, fontFamily: "Geist", color: PALETTE.ink }}>
       <Grid />
-      {m.band ? <Band text={m.band} height={spec.band} /> : null}
+      {band ? <Band text={band} height={spec.band} /> : null}
       {/* position: relative keeps the column above the absolutely positioned Grid. */}
       <div
         style={{
@@ -398,7 +400,7 @@ function Frame({ layout, m, children }: { layout: CardLayout; m: CardModel; chil
 function Wide({ m, fit }: { m: CardModel; fit: CardFit }) {
   const spec = SPECS.wide;
   return (
-    <Frame layout="wide" m={m}>
+    <Frame layout="wide" band={m.band}>
       <Header m={m} spec={spec} />
       <div style={{ display: "flex", gap: spec.gap, marginTop: 36, marginBottom: FOOTER_CLEARANCE }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 20, width: spec.balance, flexShrink: 0 }}>
@@ -426,7 +428,7 @@ function Wide({ m, fit }: { m: CardModel; fit: CardFit }) {
 function Tall({ m, fit }: { m: CardModel; fit: CardFit }) {
   const spec = SPECS.tall;
   return (
-    <Frame layout="tall" m={m}>
+    <Frame layout="tall" band={m.band}>
       <Header m={m} spec={spec} />
       <div style={{ display: "flex", gap: spec.gap, marginTop: 44, alignItems: "flex-start" }}>
         <BalanceImage m={m} size={spec.balance} />
@@ -448,12 +450,14 @@ function Tall({ m, fit }: { m: CardModel; fit: CardFit }) {
 
 // Read once per process: both sizes, and a test's many cards, share the same font buffers.
 let cardFonts: SatoriOptions["fonts"] | undefined;
+/** The repo's Geist files, read on the first card a process draws. */
+export const cardFontSet = (): SatoriOptions["fonts"] => (cardFonts ??= fonts());
 
 /** Satori's options a caller may set: `onNodeDetected` gets the box of every element of the card drawn. */
 export type CardSvgOptions = Pick<SatoriOptions, "onNodeDetected" | "embedFont">;
 
 /** True when no text but the band comes closer than CARD_MARGIN to an edge. */
-function insideMargins(nodes: readonly SatoriNode[], band: string | null, width: number, height: number): boolean {
+export function insideMargins(nodes: readonly SatoriNode[], band: string | null, width: number, height: number): boolean {
   const e = 0.5;
   return nodes.every(
     (n) =>
@@ -469,14 +473,13 @@ function insideMargins(nodes: readonly SatoriNode[], band: string | null, width:
  * card is never drawn without them.
  */
 export async function cardSvg(m: CardModel, layout: CardLayout, options: CardSvgOptions = {}): Promise<string> {
-  cardFonts ??= fonts();
   const { width, height } = CARD_LAYOUTS[layout];
   for (const fit of CARD_FITS) {
     const nodes: SatoriNode[] = [];
     const svg = await satori(layout === "wide" ? <Wide m={m} fit={fit} /> : <Tall m={m} fit={fit} />, {
       width,
       height,
-      fonts: cardFonts,
+      fonts: cardFontSet(),
       embedFont: options.embedFont ?? true,
       onNodeDetected: (n) => nodes.push(n),
     });
