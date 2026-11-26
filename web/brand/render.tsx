@@ -2,6 +2,7 @@ import { Resvg } from "@resvg/resvg-js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import satori, { type SatoriOptions } from "satori";
+import { ASK_INVITATION } from "../content/ask-card";
 import { REASON_LABEL, type RefusalCode, reasonText } from "../content/reasons";
 import { OG_IMAGE_SIZE, type OgCard } from "../lib/docs/og";
 import { SITE } from "../lib/site";
@@ -322,6 +323,50 @@ function DocsOg({ card }: { card: OgCard }) {
   );
 }
 
+/**
+ * /ask's link preview (content/ask-card.ts): the lockup, the invitation line with its second sentence in the accent, the
+ * mechanism line, and the mark at rest beside them, inside the landing image's 64 x 72 px margins. It shows no verdict
+ * and no figure, so it claims no weighing.
+ */
+function AskOg() {
+  const [lure, lastWord] = ASK_INVITATION.split(/(?<=\.) /);
+  return (
+    <div
+      style={{
+        width: OG_IMAGE_SIZE.width,
+        height: OG_IMAGE_SIZE.height,
+        display: "flex",
+        position: "relative",
+        backgroundColor: PALETTE.paper,
+        fontFamily: "Geist",
+        color: PALETTE.ink,
+      }}
+    >
+      <Grid />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "64px 72px",
+          width: 840,
+        }}
+      >
+        <Lockup mark={44} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 62, fontWeight: 600, letterSpacing: "-0.045em", lineHeight: 1.04 }}>
+          <span>{lure}</span>
+          <span style={{ color: PALETTE.accent }}>{lastWord}</span>
+        </div>
+        <span style={{ fontFamily: "Geist Mono", fontSize: 22, fontWeight: 500, color: PALETTE.ink2 }}>Claude proposes. The vault decides.</span>
+      </div>
+      <div style={{ position: "absolute", right: 72, top: 205, display: "flex" }}>
+        <img src={dataUri(markSvg("dark"))} width={220} height={220} />
+      </div>
+    </div>
+  );
+}
+
 /** Content sits right of x = 560 so the avatar never covers it. */
 function Banner() {
   return (
@@ -367,6 +412,16 @@ function Banner() {
 /** The landing's link preview (brand/out/og.png, app/opengraph-image.png) as SVG. `onNodeDetected` gets the box of every element, so a test can see what it shows. */
 export function ogSvg(onNodeDetected?: SatoriOptions["onNodeDetected"], f: SatoriOptions["fonts"] = fonts()): Promise<string> {
   return satori(<Og />, { width: 1200, height: 630, fonts: f, onNodeDetected });
+}
+
+/** /ask's link preview as SVG, with the same `onNodeDetected` as ogSvg. */
+export function askOgSvg(onNodeDetected?: SatoriOptions["onNodeDetected"], f: SatoriOptions["fonts"] = fonts()): Promise<string> {
+  return satori(<AskOg />, { ...OG_IMAGE_SIZE, fonts: f, onNodeDetected });
+}
+
+/** /ask's link preview as a PNG, drawn when the site is built (app/og/ask.png/route.ts). Never written to brand/out. */
+export async function renderAskOg(): Promise<Buffer> {
+  return png(await askOgSvg(), OG_IMAGE_SIZE.width);
 }
 
 /** The X header (brand/out/x-banner.png) as SVG, with the same `onNodeDetected` as ogSvg. */

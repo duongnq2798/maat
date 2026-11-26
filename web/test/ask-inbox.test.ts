@@ -6,8 +6,6 @@ import {
   briefBytes,
   briefCalldata,
   briefIdsIn,
-  briefCounts,
-  briefFeed,
   checkBrief,
   inboxAbi,
   inboxDeployment,
@@ -15,7 +13,11 @@ import {
   plainBriefText,
   readBriefs,
   waitForReceipt,
+  weighingCounts,
+  weighings,
   type Brief,
+  type Weighing,
+  type WeighingSources,
 } from "@/lib/chain/inbox";
 import { constantValue, readRepo } from "./helpers/solidity";
 import { fakeLedgerClient, hash32 } from "./helpers/fake-ledger";
@@ -262,9 +264,18 @@ describe("briefIdsIn: the briefs a receipt shows the inbox emitted", () => {
 
 describe("the feed and the counters", () => {
   const briefs = [brief(1, ALICE), brief(2, BOB), brief(3, ALICE, `rude${RLO}text`)];
+  // Only the Brief logs: no journal published, no Decision citing a brief, nobody in the team set.
+  const sources = (list: readonly Brief[], hidden: readonly number[]): WeighingSources => ({
+    briefs: list,
+    hidden,
+    journal: { state: "absent" },
+    verdicts: { state: "read", byBrief: new Map(), complete: true },
+    team: { state: "read", members: new Set<string>(), complete: true },
+  });
+  const head = (w: Weighing) => ({ id: w.id, from: w.from, sender: w.sender, text: w.text, txHash: w.txHash });
 
   it("lists briefs newest first with the sender shortened and the text made plain", () => {
-    expect(briefFeed(briefs, [])).toEqual([
+    expect(weighings(sources(briefs, [])).map(head)).toEqual([
       { id: 3, from: ALICE, sender: "0x0000…11cE", text: `rude${FFFD}text`, txHash: hash32(9003) },
       { id: 2, from: BOB, sender: "0x0000…0B0b", text: "brief 2", txHash: hash32(9002) },
       { id: 1, from: ALICE, sender: "0x0000…11cE", text: "brief 1", txHash: hash32(9001) },
@@ -272,17 +283,18 @@ describe("the feed and the counters", () => {
   });
 
   it("leaves a hidden brief out of the feed but not out of the brief count", () => {
-    expect(briefFeed(briefs, [2]).map((f) => f.id)).toEqual([3, 1]);
-    expect(briefCounts(briefs, [2])).toEqual({ briefs: 3, wallets: 2, hidden: 1 });
-    expect(briefCounts(briefs, [])).toEqual({ briefs: 3, wallets: 2, hidden: 0 });
+    expect(weighings(sources(briefs, [2])).map((f) => f.id)).toEqual([3, 1]);
+    expect(weighingCounts(sources(briefs, [2]))).toMatchObject({ all: { briefs: 3, wallets: 2 }, hidden: 1, outside: { briefs: { value: 3 } } });
+    expect(weighingCounts(sources(briefs, []))).toMatchObject({ all: { briefs: 3, wallets: 2 }, hidden: 0 });
   });
 
   it("counts an id on the hide-list that no brief has as nothing hidden", () => {
-    expect(briefCounts(briefs, [99])).toEqual({ briefs: 3, wallets: 2, hidden: 0 });
+    expect(weighingCounts(sources(briefs, [99]))).toMatchObject({ all: { briefs: 3, wallets: 2 }, hidden: 0 });
   });
 
   it("counts wallets case-insensitively", () => {
     const lower = { ...brief(4, ALICE), from: ALICE.toLowerCase() as Address };
-    expect(briefCounts([...briefs, lower], []).wallets).toBe(2);
+    expect(weighingCounts(sources([...briefs, lower], [])).all.wallets).toBe(2);
+    expect(weighingCounts(sources([...briefs, lower], [])).outside.wallets).toEqual({ value: 2 });
   });
 });

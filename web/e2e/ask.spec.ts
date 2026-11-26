@@ -220,12 +220,15 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     const first = feed.locator('[data-brief-id="1"]');
     await expect(first.locator("[data-brief-text]")).toHaveText(HOSTILE_SHOWN);
     await expect(first).toContainText("0x0000");
-    await expect(first.locator("[data-brief-answer]")).toHaveText(`Maat replied: ${REPLY}`);
+    await expect(first.locator("[data-reply]")).toHaveText(`Maat's agent replied: ${REPLY}journal 2026-11-28.jsonl line 1 · no agent commit`);
+    // The row is final and not adopted, so no intent took the brief to the vault.
+    await expect(first.locator("[data-verdict]")).toHaveText("Vault's verdict: none, no intent took it to the vault");
     await expect(feed.locator("a, img")).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
-    await expect(page.getByTestId("count-briefs")).toHaveText("1");
-    await expect(page.getByTestId("count-wallets")).toHaveText("1");
-    for (const id of ["count-persuaded", "count-allowed", "count-refused"]) await expect(page.getByTestId(id)).toHaveText("not available yet");
+    // This chain answers /ask's own reads but not /proof's team trace (executor(), each wallet's code and nonce), so
+    // the counters that split outside from team say so; e2e/ask-weighing.spec.ts counts on a chain that answers it.
+    await expect(page.getByText("1 brief from 1 wallet read from the inbox's logs, team included.")).toBeVisible();
+    for (const id of ["count-briefs", "count-wallets", "count-persuaded", "count-allowed", "count-refused"]) await expect(page.getByTestId(id)).toHaveText("team set not read");
 
     const send = page.getByRole("button", { name: "Send with Fake Wallet" });
     await expect(send).toBeDisabled();
@@ -247,8 +250,8 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     expect(seen.methods).toContain("eth_getTransactionReceipt");
 
     await expect(feed.locator('[data-brief-id="2"] [data-brief-text]')).toHaveText("sell it all");
-    await expect(feed.locator('[data-brief-id="2"] [data-brief-answer]')).toHaveCount(0);
-    await expect(page.getByTestId("count-briefs")).toHaveText("2");
+    await expect(feed.locator('[data-brief-id="2"] [data-reply]')).toHaveText("Maat's agent: no reply yet.");
+    await expect(page.getByText("2 briefs from 1 wallet read from the inbox's logs, team included.")).toBeVisible();
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);
   });

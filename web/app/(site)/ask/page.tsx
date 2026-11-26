@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/sections/Footer";
 import { Nav } from "@/components/sections/Nav";
+import { ASK_OG_IMAGE } from "@/content/ask-card";
 import { docsData } from "@/lib/docs/generated";
-import { OG_IMAGE } from "@/lib/og-image";
 import { SITE } from "@/lib/site";
 import { AskApp } from "./AskApp";
 import { askConfig, askIsOpen } from "./config";
 
 const TITLE = `Brief the agent · ${SITE.name}`;
-const DESCRIPTION = "Send Maat's AI agent a public brief from your wallet on Base, and ask the live vault, for free, what it would answer to any intent.";
+const DESCRIPTION = "Send Maat's agent a public brief from your wallet on Base, and ask the live vault, for free, what it would answer to any intent.";
 
 /** The build's deployments table and the owner's switch: /ask asks not to be indexed until it is open. */
 const initial = askConfig(docsData.deployments);
@@ -18,8 +18,9 @@ export const metadata: Metadata = {
   description: DESCRIPTION,
   alternates: { canonical: "/ask" },
   ...(askIsOpen(initial) ? {} : { robots: { index: false, follow: true } }),
-  openGraph: { type: "website", url: "/ask", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [OG_IMAGE] },
-  twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [OG_IMAGE] },
+  // Its own card (content/ask-card.ts), drawn at build time by app/og/ask.png/route.ts; the landing's image stays the landing's.
+  openGraph: { type: "website", url: "/ask", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [ASK_OG_IMAGE] },
+  twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [ASK_OG_IMAGE] },
 };
 
 export default function AskPage() {

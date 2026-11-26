@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { ASK_INVITATION } from "@/content/ask-card";
 import type { JournalRead } from "@/lib/chain/ledger";
 import type { LedgerClient } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
@@ -8,6 +9,7 @@ import { BriefForm, type BriefFormDeps } from "./BriefForm";
 import { BriefsPanel } from "./BriefsPanel";
 import { askIsOpen, fetchAskConfig, type AskConfig } from "./config";
 import { PreviewForm } from "./PreviewForm";
+import type { TeamReader } from "./team-set";
 
 /** The notice the inbox spec (§4) gives /ask, word for word. */
 export const ASK_NOTICE =
@@ -18,6 +20,8 @@ export interface AskDeps extends BriefFormDeps {
   fetchConfig?: () => Promise<AskConfig>;
   /** Reads the published agent journal, for the agent's answers in the feed; readJournal when unset. */
   journal?: () => Promise<JournalRead>;
+  /** Reads /proof's team set, for the "team" mark and the team's own line; /proof's own trace when unset. */
+  team?: TeamReader;
 }
 
 function Section({ id, title, lead, children }: { id: string; title: string; lead: string; children: ReactNode }) {
@@ -77,9 +81,9 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
         <span className="eyebrow">Base mainnet</span>
         <h1 className="h2">Brief the agent</h1>
         <p className="lead">
-          Try to talk Maat&apos;s agent into a trade. A brief is a short public message to the agent, sent from your wallet as
-          one zero-value transaction on Base: you pay only its gas. Claude may be persuaded; the vault checks every intent
-          against its mandate and has the last word.
+          {ASK_INVITATION} A brief is a short public message to Maat&apos;s agent, sent from your wallet as one zero-value
+          transaction on Base: you pay only its gas. Claude may be persuaded; the vault checks every intent against its
+          mandate.
         </p>
         <p data-ask-notice="" role="note" className="m-0 border-l-2 border-ink pl-4 text-[15px] font-medium leading-relaxed text-ink">
           {ASK_NOTICE}
@@ -107,8 +111,20 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
       </Section>
 
       {open ? (
-        <Section id="feed-title" title="Briefs" lead="Every brief sent to the inbox, newest first, read from its logs on Base. Shown as plain text, with no links.">
-          <BriefsPanel inbox={config.inbox} client={client} reloadKey={reloadKey} {...(deps.journal ? { journal: deps.journal } : {})} />
+        <Section
+          id="feed-title"
+          title="Briefs"
+          lead="Every brief sent to the inbox, newest first, as a weighing: the brief, what Maat's agent replied, whether Claude was persuaded, and the vault's verdict, read from its Decision on Base. Shown as plain text, with no links."
+        >
+          <BriefsPanel
+            inbox={config.inbox}
+            vault={config.vault}
+            deployments={config.deployments}
+            client={client}
+            reloadKey={reloadKey}
+            {...(deps.journal ? { journal: deps.journal } : {})}
+            {...(deps.team ? { team: deps.team } : {})}
+          />
         </Section>
       ) : null}
     </div>
