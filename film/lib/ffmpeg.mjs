@@ -4,7 +4,7 @@
 import { FPS } from "./beats.mjs";
 import { FORMATS } from "./formats.mjs";
 
-/** The fade to and from black at each beat's edges, in seconds. */
+/** The fade to and from black at each beat's edges (not the film's first and last frames), in seconds. */
 export const FADE_SECONDS = 0.25;
 const BG = "0x0B0D12";
 const even = (n) => 2 * Math.round(n / 2);
@@ -145,7 +145,8 @@ export function finalArgs({ list, out }) {
 
 /**
  * One segment job per shot of the timeline, in order. `asset(shot)` gives the shot's input, layout plan and caption
- * cues (with their PNGs) for this format; the job's file is `dir/NN.mp4`.
+ * cues (with their PNGs) for this format; the job's file is `dir/NN.mp4`. Each beat fades in and out at its edges,
+ * except the film's first and last frames: they are the title and end cards, which show the mark, never black.
  */
 export function planSegments({ shots, format, asset, dir }) {
   return shots.map((s, i) => {
@@ -157,8 +158,8 @@ export function planSegments({ shots, format, asset, dir }) {
       plan: a.plan,
       duration: s.duration,
       cues: a.cues,
-      fadeIn: shots[i - 1]?.beat !== s.beat,
-      fadeOut: shots[i + 1]?.beat !== s.beat,
+      fadeIn: i > 0 && shots[i - 1]?.beat !== s.beat,
+      fadeOut: i < shots.length - 1 && shots[i + 1]?.beat !== s.beat,
       out,
     });
     return { out, args, duration: s.duration, beat: s.beat, slot: s.slot };
