@@ -332,6 +332,10 @@ describe("npm run gap-index -- --warm", () => {
 
   it("fills the cache and writes nothing under the content folder, where the same run without --warm writes the edition", async () => {
     const base = thanksgivingWeek();
+    // The other feeds update just before each close and just after Thanksgiving's open, so their rows read few spans.
+    for (const nav of NAV_TOKENS.filter((t) => !TOKENS.includes(t.symbol))) {
+      for (const b of [at(TG!.closeTs) - 100, at(TG!.openTs) + 100, at(WK!.closeTs) - 100]) base.answer(nav, b);
+    }
     base.finalizedBlock = SUNDAY;
     const { deps, printed, lines } = cli(base);
     await runGapIndex(["--edition", "1", "--warm"], deps);
