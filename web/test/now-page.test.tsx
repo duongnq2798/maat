@@ -226,6 +226,16 @@ describe("the /now page", () => {
     expect(method()).toHaveTextContent("nothing is signed");
   });
 
+  it("names every read the page makes in the method's lead, never only eth_call, and the snapshot the week starts from", () => {
+    setup();
+    const lead = within(method()).getByRole("heading", { name: "How this page reads Base" }).parentElement!;
+    expect(lead).not.toHaveTextContent(/only eth_call/i);
+    for (const read of ["eth_call", "eth_getCode", "eth_getLogs", "raw.githubusercontent.com", "nothing is signed or sent"]) expect(lead).toHaveTextContent(read);
+    const week = within(method()).getByRole("heading", { name: "The week and the agent's note" }).parentElement!;
+    expect(week).not.toHaveTextContent("eth_getLogs from the deploy block");
+    expect(week).toHaveTextContent("/data/decisions-snapshot.json");
+  });
+
   it("says a deployed MarketCalendar gives the session, with its Basescan link, once the deployments table names it", () => {
     deployCalendar(CAL);
     setup();

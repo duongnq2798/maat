@@ -28,8 +28,18 @@ export type WeekDecisionsView =
   /** deployments/README.md records no vault, so there is nothing to read. */
   | { state: "none" }
   | { state: "error"; message: string; retry: () => void }
-  /** Every Decision since the deploy, newest first. */
-  | { state: "read"; decisions: readonly WeekDecision[] };
+  /** Every Decision since the deploy, newest first, and the committed snapshot the read took its oldest logs from. */
+  | { state: "read"; decisions: readonly WeekDecision[]; snapshot: WeekSnapshot | null };
+
+/**
+ * The committed snapshot a read started from: served at `url` (/data/decisions-snapshot.json), taken at `block`, its
+ * logs used up to `logsTo`. The reader passes the URL, so this chunk does not load the snapshot module.
+ */
+export interface WeekSnapshot {
+  url: string;
+  block: bigint;
+  logsTo: bigint;
+}
 
 /** The line under the heading, from the live reading: closed (large, hatched) or open (plain). */
 export interface SessionLineView {
@@ -151,9 +161,22 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
           })}
         </ol>
       ) : null}
-      <p className="m-0 text-[13px] leading-normal text-ink-2">
+      <p data-week-source="" className="m-0 text-[13px] leading-normal text-ink-2">
         Read from Base mainnet by your browser with the ledger&apos;s own loader: every Decision since the deploy, each with
-        its sender. All of them, with their reasons, are on{" "}
+        its sender.{" "}
+        {view.snapshot === null ? (
+          <>Every block from the deploy to the head was scanned with eth_getLogs.</>
+        ) : (
+          <>
+            Logs up to block {formatInt(Number(view.snapshot.logsTo))} are from the{" "}
+            <a href={view.snapshot.url} className="underline underline-offset-2">
+              committed snapshot
+            </a>{" "}
+            of block {formatInt(Number(view.snapshot.block))}: Base gave the same hash for that block and the same logs in
+            their transaction receipts. The blocks after it were scanned with eth_getLogs.
+          </>
+        )}{" "}
+        All of them, with their reasons, are on{" "}
         <a href="/ledger" className="font-medium underline underline-offset-2">
           the ledger
         </a>

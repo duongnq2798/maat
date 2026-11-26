@@ -3,8 +3,9 @@ import { renderToString } from "react-dom/server";
 import { keccak256, toBytes, type Address, type Hash } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { AgentNote } from "@/components/live/AgentNote";
-import { MarketWeek, type WeekDecision } from "@/components/live/MarketWeek";
+import { MarketWeek, type WeekDecision, type WeekDecisionsView } from "@/components/live/MarketWeek";
 import { NowBoard } from "@/components/live/NowBoard";
+import NowDecisions from "@/components/live/NowDecisions";
 import type { LedgerDeps } from "@/components/ledger/useLedger";
 import { type Hex, MULTICALL3 } from "@/content/b20-nav";
 import { regularSession } from "@/content/calendar";
@@ -12,11 +13,14 @@ import { FACTS } from "@/content/facts";
 import { memoryStorage } from "@/lib/chain/cache";
 import { verifyJournal, type JournalRead } from "@/lib/chain/ledger";
 import { canon, type RationaleSource } from "@/lib/chain/rationale";
+import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
 import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from "@/lib/live/abi";
 import { LIVE_RPCS, type LiveReader } from "@/lib/live/rpc";
+import snapshotFixture from "./fixtures/decisions-snapshot.json";
 import fixture from "./fixtures/live-aggregate3.json";
-import { decisionLog, FAKE_VAULT, fakeLedgerClient, hash32 } from "./helpers/fake-ledger";
+import { decisionLog, FAKE_VAULT, type FakeChain, fakeLedgerClient, hash32 } from "./helpers/fake-ledger";
 import { executeCalldata, JOURNAL_HASHES, JOURNAL_LINES } from "./helpers/maat-v1";
+import { SNAP_BLOCK, SNAP_DEPLOY_TX, snapshotChain } from "./helpers/snapshot-chain";
 
 // /now's market week (culture plan Move 8a) and the agent's latest note (Move 8b). Every clock is injected: the week
 // is drawn from the clock the test gives, never from the machine's.
@@ -51,7 +55,7 @@ const spans = (day: HTMLElement) =>
 
 describe("MarketWeek", () => {
   it("draws Thanksgiving week from the calendar: hatched closed windows, plain sessions, Thanksgiving and the early close", () => {
-    const { container } = render(<MarketWeek nowSec={SATURDAY} line={closedLine} decisions={{ state: "read", decisions: [] }} />);
+    const { container } = render(<MarketWeek nowSec={SATURDAY} line={closedLine} decisions={{ state: "read", decisions: [], snapshot: null }} />);
     const rows = days(container);
     expect(rows.map((r) => r.dataset.day)).toEqual(["2026-11-23", "2026-11-24", "2026-11-25", "2026-11-26", "2026-11-27", "2026-11-28", "2026-11-29"]);
     expect(rows[0]).toHaveTextContent("Mon 23 Nov");
@@ -86,7 +90,7 @@ describe("MarketWeek", () => {
   });
 
   it("marks today and the now line, which the visitor's clock sets", () => {
-    const { container } = render(<MarketWeek nowSec={SATURDAY} line={closedLine} decisions={{ state: "read", decisions: [] }} />);
+    const { container } = render(<MarketWeek nowSec={SATURDAY} line={closedLine} decisions={{ state: "read", decisions: [], snapshot: null }} />);
     const today = container.querySelector<HTMLElement>('[aria-current="date"]')!;
     expect(today.dataset.day).toBe("2026-11-28");
     expect(container.querySelectorAll("[aria-current]")).toHaveLength(1);
@@ -98,7 +102,7 @@ describe("MarketWeek", () => {
   });
 
   it("puts each Decision of the week on its day at its minute, in its verdict's color, and lists it in words", () => {
-    const { container } = render(<MarketWeek nowSec={SATURDAY} line={closedLine} decisions={{ state: "read", decisions: RECORDED }} />);
+    const { container } = render(<MarketWeek nowSec={SATURDAY} line={closedLine} decisions={{ state: "read", decisions: RECORDED, snapshot: null }} />);
     const tuesday = days(container)[1]!;
     const ticks = [...tuesday.querySelectorAll<HTMLElement>("[data-tick]")];
     expect(ticks.map((t) => [t.dataset.verdict, Math.floor(Number(t.dataset.minute))])).toEqual([
@@ -123,7 +127,7 @@ describe("MarketWeek", () => {
   });
 
   it("shows zero as 0 for a week with no Decision, and leaves out Decisions of another week", () => {
-    const { container } = render(<MarketWeek nowSec={MONDAY_SESSION} line={null} decisions={{ state: "read", decisions: RECORDED }} />);
+    const { container } = render(<MarketWeek nowSec={MONDAY_SESSION} line={null} decisions={{ state: "read", decisions: RECORDED, snapshot: null }} />);
     expect(container.querySelector("[data-week-count]")).toHaveTextContent("0 Decisions this week");
     expect(container.querySelectorAll("[data-tick]")).toHaveLength(0);
     expect(container.querySelectorAll("[data-week-decisions] > li")).toHaveLength(0);
@@ -131,7 +135,7 @@ describe("MarketWeek", () => {
 
   it("says 1 Decision, and drops the ordinal when the read is not whole enough to number it", () => {
     const one = [decision({ key: "x", timestamp: utc(2026, 11, 30, 15, 15), timeLabel: "Mon 30 Nov 10:15", allowed: true, reason: "OK", sender: "agent" })];
-    const { container } = render(<MarketWeek nowSec={MONDAY_SESSION} line={null} decisions={{ state: "read", decisions: one }} />);
+    const { container } = render(<MarketWeek nowSec={MONDAY_SESSION} line={null} decisions={{ state: "read", decisions: one, snapshot: null }} />);
     expect(container.querySelector("[data-week-count]")).toHaveTextContent("1 Decision this week");
     expect(container.querySelector("[data-week-decisions] > li")!.textContent).toBe(
       "Mon 30 Nov 10:15 ET · Allowed · All checks passed (OK) · BUY NVDAc · $5.00 · agent · Basescan ↗",
@@ -257,20 +261,25 @@ const OWNER: Address = "0x00000000000000000000000000000000000000a1";
 const DEPLOY = 61_698_517n;
 const noRationales: RationaleSource = { name: "none", lookup: async () => new Map() };
 
-/** /ledger's loader on a fake chain holding one owner-sent refusal on Thanksgiving, Thu 26 Nov 10:00 ET. */
-function ledgerDeps(): LedgerDeps {
+/** A fake chain holding one owner-sent refusal on Thanksgiving, Thu 26 Nov 10:00 ET. */
+function ledgerChain(): FakeChain {
   const block = DEPLOY + 100n;
   const rationaleHash = keccak256(toBytes("x"));
   return {
-    client: fakeLedgerClient({
-      head: DEPLOY + 200n,
-      logs: [decisionLog(1, block, { reason: "MARKET_CLOSED", rationaleHash })],
-      times: { [String(block)]: utc(2026, 11, 26, 15, 0), [String(DEPLOY + 200n)]: utc(2026, 11, 28, 15, 0) },
-      gas: { [hash32(1)]: 110_000n },
-      txs: { [hash32(1)]: { from: OWNER, to: FAKE_VAULT, input: executeCalldata({ rationaleHash }) } },
-      owner: OWNER,
-      deployTx: { hash: hash32(42), block: DEPLOY },
-    }),
+    head: DEPLOY + 200n,
+    logs: [decisionLog(1, block, { reason: "MARKET_CLOSED", rationaleHash })],
+    times: { [String(block)]: utc(2026, 11, 26, 15, 0), [String(DEPLOY + 200n)]: utc(2026, 11, 28, 15, 0) },
+    gas: { [hash32(1)]: 110_000n },
+    txs: { [hash32(1)]: { from: OWNER, to: FAKE_VAULT, input: executeCalldata({ rationaleHash }) } },
+    owner: OWNER,
+    deployTx: { hash: hash32(42), block: DEPLOY },
+  };
+}
+
+/** /ledger's loader on that chain. */
+function ledgerDeps(): LedgerDeps {
+  return {
+    client: fakeLedgerClient(ledgerChain()),
     fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: hash32(42) as Hash }),
     fetchSnapshot: async () => null,
     rationaleSource: noRationales,
@@ -310,5 +319,65 @@ describe("NowBoard's market week", () => {
       <NowBoard reader={readerAt(SATURDAY)} clock={() => SATURDAY + 5} ledger={ledgerDeps()} journal={async () => journalOf(JOURNAL_LINES)} />,
     );
     await waitFor(() => expect(container.querySelector("[data-agent-note] blockquote")).toHaveTextContent("One buy proposed."));
+  });
+});
+
+// The read itself (NowDecisions): what it reports to the week as /ledger's loader reads, and keeps.
+
+describe("NowDecisions", () => {
+  /** Mounts the reader on `client` and records every view it reports. */
+  function mount(client: ReturnType<typeof fakeLedgerClient>, over: Partial<LedgerDeps> = {}) {
+    const views: WeekDecisionsView[] = [];
+    render(<NowDecisions deps={{ ...ledgerDeps(), client, ...over }} onView={(v) => views.push(v)} />);
+    return views;
+  }
+
+  it("keeps the last whole read when a refresh misses a chunk of new blocks", async () => {
+    const chain = ledgerChain();
+    const client = fakeLedgerClient(chain);
+    const views = mount(client, { refreshMs: 200 });
+    await waitFor(() => expect(views.at(-1)?.state).toBe("read"));
+    const whole = views.at(-1);
+    // Base moves on, and the next refresh cannot read the new blocks.
+    chain.head += 200n;
+    chain.times = { ...chain.times, [String(chain.head)]: utc(2026, 11, 28, 15, 10) };
+    chain.failLogs = true;
+    const asked = client.logCalls.length;
+    await waitFor(() => expect(client.logCalls.length).toBeGreaterThan(asked), { timeout: 3_000 });
+    await new Promise((r) => setTimeout(r, 300));
+    expect(views.filter((v) => v.state === "error")).toEqual([]);
+    expect(views.at(-1)).toBe(whole);
+  });
+
+  it("says when the first read takes the oldest logs from the committed snapshot, and the block it was taken at", async () => {
+    const views = mount(fakeLedgerClient(snapshotChain()), { fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX }), fetchSnapshot: async () => snapshotFixture as unknown });
+    await waitFor(() => expect(views.at(-1)?.state).toBe("read"));
+    const read = views.at(-1);
+    if (read?.state !== "read") throw new Error("not read");
+    expect(read.decisions).toHaveLength(4);
+    expect(read.snapshot).toEqual({ url: "/data/decisions-snapshot.json", block: SNAP_BLOCK, logsTo: SNAP_BLOCK - SNAPSHOT_REORG_WINDOW - 1n });
+  });
+
+  it("says no snapshot when every block from the deploy was scanned", async () => {
+    const views = mount(fakeLedgerClient(ledgerChain()));
+    await waitFor(() => expect(views.at(-1)?.state).toBe("read"));
+    const read = views.at(-1);
+    expect(read?.state === "read" && read.snapshot).toBeNull();
+  });
+});
+
+describe("MarketWeek's source line", () => {
+  it("names the committed snapshot and its block when the read started from it, and the scan from the deploy when not", () => {
+    const { container, rerender } = render(
+      <MarketWeek nowSec={SATURDAY} line={null} decisions={{ state: "read", decisions: RECORDED, snapshot: { url: "/data/decisions-snapshot.json", block: 62_220_629n, logsTo: 62_220_478n } }} />,
+    );
+    const source = container.querySelector<HTMLElement>("[data-week-source]")!;
+    expect(source).toHaveTextContent(
+      "Logs up to block 62,220,478 are from the committed snapshot of block 62,220,629: Base gave the same hash for that block and the same logs in their transaction receipts. The blocks after it were scanned with eth_getLogs.",
+    );
+    expect(within(source).getByRole("link", { name: "committed snapshot" })).toHaveAttribute("href", "/data/decisions-snapshot.json");
+    rerender(<MarketWeek nowSec={SATURDAY} line={null} decisions={{ state: "read", decisions: RECORDED, snapshot: null }} />);
+    expect(container.querySelector("[data-week-source]")).toHaveTextContent("Every block from the deploy to the head was scanned with eth_getLogs.");
+    expect(container.querySelector("[data-week-source]")).not.toHaveTextContent("snapshot");
   });
 });
