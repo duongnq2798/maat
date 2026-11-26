@@ -1,5 +1,6 @@
 import { createPublicClient, fallback, http, type Address, type PublicClient } from "viem";
 import { base } from "viem/chains";
+import type { InboxRecord } from "./briefs/inbox.js";
 import type { AgentConfig } from "./config.js";
 import { builderSuffix } from "./exec/builderCode.js";
 import { CdpSender } from "./exec/cdpSender.js";
@@ -10,7 +11,7 @@ import { Store } from "./ledger/store.js";
 import { ClaudeProposer, type Proposer } from "./llm/proposer.js";
 import { BILL_MIN_USD6, LIVE_BILL_MIN_USD6, type RunDeps } from "./loop/runOnce.js";
 import { DEFAULT_POLICY } from "./policy.js";
-import { usdToUsdc6 } from "./units.js";
+import { usdc6ToUsd, usdToUsdc6 } from "./units.js";
 
 export async function buildRuntime(
   cfg: AgentConfig,
@@ -20,6 +21,8 @@ export async function buildRuntime(
     proposer?: Proposer;
     /** The commit stamped into every journal row and every blob's c; gitCommit() of the running code when unset. */
     commit?: string;
+    /** The MaatInbox deployments/README.md records (briefs/inbox.ts inboxSetup). Briefs are read only when it has a deploy tx. */
+    inbox?: InboxRecord | null;
   } = {},
 ): Promise<RunDeps> {
   const mode = o.forceDryRun ? "dry-run" : cfg.mode;
@@ -72,5 +75,17 @@ export async function buildRuntime(
     journal,
     commit,
     policy: { ...DEFAULT_POLICY, creditActions: cfg.creditActions },
+    ...(o.inbox?.deployTx ? { briefs: { inbox: o.inbox.inbox, deployTx: o.inbox.deployTx, client } } : {}),
   };
+}
+
+const usd = (usd6: bigint) => `$${usdc6ToUsd(usd6).toFixed(2)}`;
+
+/** The line main.ts prints once the runtime is built: mode, addresses, data dir, credit, the caps and briefs on or off. */
+export function startLine(cfg: Pick<AgentConfig, "vault" | "executor" | "dataDir">, deps: RunDeps): string {
+  const credit = deps.policy?.creditActions ? "on" : "off";
+  return (
+    `maat agent: mode=${deps.mode} vault=${cfg.vault} executor=${cfg.executor} data=${cfg.dataDir} credit=${credit} ` +
+    `llm-cap=${usd(deps.maxLlmUsd6PerDay)}/day bill-min=${usd(deps.billMinUsd6)} briefs=${deps.briefs ? "on" : "off"}`
+  );
 }

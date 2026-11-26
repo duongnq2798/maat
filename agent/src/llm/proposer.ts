@@ -6,10 +6,18 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { PolicyView } from "../policy.js";
 import type { VaultState } from "../chain/state.js";
 import type { Proposal } from "../intent.js";
+import type { Address } from "viem";
 import { oneLine } from "../redact.js";
 import { costUsd6, type Usage } from "./pricing.js";
-import { renderUserMessage, systemPrompt } from "./prompt.js";
-import { BATCH_JSON_SCHEMA, BatchSchema, type Batch } from "./schema.js";
+import { briefSystemPrompt, renderBriefMessage, renderUserMessage, systemPrompt } from "./prompt.js";
+import { BATCH_JSON_SCHEMA, BRIEF_BATCH_JSON_SCHEMA, BatchSchema, BriefBatchSchema, type Batch } from "./schema.js";
+
+/** A MaatInbox brief as the prompt quotes it: never more than its id, its sender and its text. */
+export interface PromptBrief {
+  id: number;
+  from: Address;
+  text: string;
+}
 
 export interface ProposerInput {
   state: VaultState;
@@ -17,10 +25,21 @@ export interface ProposerInput {
   billUsd6: bigint;
   /** MAAT_CREDIT_ACTIONS. Off, the prompt tells Claude never to propose a credit action. */
   creditActions: boolean;
+  /** The briefs this round sends to Claude. Absent or empty, the request is the one a round without briefs sends. */
+  briefs?: readonly PromptBrief[];
+}
+
+/** A proposal with the ids of the briefs it adopts; `briefs` is absent for an intent of Claude's own. */
+export type BriefProposal = Proposal & { briefs?: number[] };
+
+/** Claude's reply to one brief, as it answered: the journal cuts and sanitizes it. */
+export interface BriefReply {
+  id: number;
+  text: string;
 }
 
 export type ProposerOutput =
-  | { ok: true; summary: string; proposals: Proposal[]; costUsd6: bigint; model: string }
+  | { ok: true; summary: string; proposals: BriefProposal[]; costUsd6: bigint; model: string; replies?: BriefReply[] }
   | { ok: false; error: string; costUsd6: bigint };
 
 export interface Proposer {
@@ -108,15 +127,16 @@ export class ClaudeProposer implements Proposer {
 
   async propose(input: ProposerInput): Promise<ProposerOutput> {
     let res: Awaited<ReturnType<CreateMessage>>;
+    const briefs = (input.briefs?.length ?? 0) > 0;
     try {
       res = await this.create({
         model: this.opts.model,
         max_tokens: 16000,
         // No cache_control: rounds start 15 to 60 minutes apart, past the 5-minute TTL, so a marker would only add the
         // 1.25x write with no read. The prompt (about 1,750 to 1,800 characters) is also near the 512-token minimum.
-        system: [{ type: "text", text: systemPrompt({ creditActions: input.creditActions }) }],
-        messages: [{ role: "user", content: renderUserMessage(input) }],
-        output_config: { effort: "medium", format: { type: "json_schema", schema: BATCH_JSON_SCHEMA } },
+        system: [{ type: "text", text: (briefs ? briefSystemPrompt : systemPrompt)({ creditActions: input.creditActions }) }],
+        messages: [{ role: "user", content: briefs ? renderBriefMessage(input) : renderUserMessage(input) }],
+        output_config: { effort: "medium", format: { type: "json_schema", schema: briefs ? BRIEF_BATCH_JSON_SCHEMA : BATCH_JSON_SCHEMA } },
         betas: ["server-side-fallback-2026-07-01"],
         fallbacks: "default",
       });
@@ -141,6 +161,15 @@ export class ClaudeProposer implements Proposer {
         parsed = JSON.parse(text);
       } catch (e) {
         return { ok: false, error: `invalid proposal JSON: ${(e as Error).message}`, costUsd6: cost };
+      }
+      if (briefs) {
+        const b = BriefBatchSchema.safeParse(parsed);
+        if (!b.success) return { ok: false, error: `invalid proposal JSON: ${b.error.issues.map((i) => i.message).join("; ")}`, costUsd6: cost };
+        const proposals = b.data.intents.map(({ briefs: q, ...p }) => (q.length > 0 ? { ...p, briefs: q } : p));
+        // One reply per brief this round sent, the first Claude gave; a reply to any other id is dropped, not fatal.
+        const sent = new Set(input.briefs!.map((x) => x.id));
+        const replies = b.data.replies.filter((r) => sent.delete(r.id));
+        return { ok: true, summary: b.data.summary, proposals, costUsd6: cost, model: res.model, replies };
       }
       const r = BatchSchema.safeParse(parsed);
       if (!r.success) return { ok: false, error: `invalid proposal JSON: ${r.error.issues.map((i) => i.message).join("; ")}`, costUsd6: cost };

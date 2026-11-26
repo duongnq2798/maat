@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
 import { getAddress } from "viem";
+import { ASK_OPEN } from "../content/ask-open";
 import { FACTS } from "../content/facts";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
@@ -219,7 +220,17 @@ test("when Base does not answer, the landing shows the two recorded Decisions an
   expect(errors.filter((e) => !(LIVE_RPCS.includes(originOf(e.url)) && /status of 503\b/.test(e.text)))).toEqual([]);
 });
 
-test("at 390 px the Menu lists Ledger, Now, Gap Index and Docs, and opens the Gap Index", async ({ page }) => {
+// The owner's switch, content/ask-open.ts, adds Ask and Proof before Docs (e2e/nav.spec.ts checks the nav at each width).
+const MENU = [
+  ["Ledger", "/ledger"],
+  ["Now", "/now"],
+  ["Gap Index", "/gap-index"],
+  ...(ASK_OPEN ? [["Ask", "/ask"], ["Proof", "/proof"]] : []),
+  ["Docs", SITE.docsUrl],
+] as const;
+const MENU_NAMES = MENU.map(([name]) => name);
+
+test(`at 390 px the Menu lists ${MENU_NAMES.slice(0, -1).join(", ")} and Docs, and opens the Gap Index`, async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await routeLiveRpc(page, "weekend");
   await page.goto("/");
@@ -230,8 +241,8 @@ test("at 390 px the Menu lists Ledger, Now, Gap Index and Docs, and opens the Ga
   await nav.locator("[data-phone-menu] > summary").click();
   await expect(pages).toBeVisible();
   const links = pages.getByRole("link");
-  await expect(links).toHaveText(["Ledger", "Now", "Gap Index", "Docs"]);
-  expect(await links.evaluateAll((els) => els.map((el) => el.getAttribute("href")))).toEqual(["/ledger", "/now", "/gap-index", SITE.docsUrl]);
+  await expect(links).toHaveText(MENU_NAMES);
+  expect(await links.evaluateAll((els) => els.map((el) => el.getAttribute("href")))).toEqual(MENU.map(([, href]) => href));
   await pages.getByRole("link", { name: "Gap Index" }).click();
   await expect(page).toHaveURL(/\/gap-index$/);
 });

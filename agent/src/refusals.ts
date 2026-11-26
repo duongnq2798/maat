@@ -99,6 +99,8 @@ export function refusalKey(reason: ReasonName, s: KeyState): RefusalKey | null {
 }
 
 function keyText(k: RefusalKey): string {
+  const ids = k.day.startsWith("brief:") ? k.day.slice("brief:".length).split(",") : null;
+  if (ids) return `${ids.length === 1 ? "brief" : "briefs"} ${ids.join(", ")}`;
   const day = /^\d+$/.test(k.day) ? `UTC day ${k.day}` : `NYSE date ${k.day}`;
   const phase = k.reason.split(":")[1];
   return phase ? `${day} (${phase})` : day;
@@ -123,4 +125,12 @@ export function closedNote(s: Pick<KeyState, "calendar" | "mandate">): string | 
     case null:
       return null;
   }
+}
+
+/**
+ * The key a brief-driven intent's refusal is logged under: the ids of the briefs it adopts ("brief:3,5"), not the
+ * NYSE date, so each adopted brief's refusal is logged as its own attempt and "vault refused" counts real ones.
+ */
+export function briefRefusalKey(q: readonly number[], reason: string): RefusalKey {
+  return { day: `brief:${q.join(",")}`, reason };
 }
