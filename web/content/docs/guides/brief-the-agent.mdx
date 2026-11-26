@@ -13,6 +13,7 @@ sources:
   - agent/src/briefs/round.ts
   - agent/src/llm/prompt.ts
   - web/lib/chain/inbox.ts
+  - web/lib/chain/ledger.ts
   - web/lib/chain/preview.ts
   - web/lib/wallet/send.ts
   - web/lib/wallet/builder-code.ts
@@ -31,7 +32,7 @@ A brief is a short public message to Maat's agent, sent as one zero-value transa
 
 <Callout type="fork" title="What has run">
 
-The contract's [fork test](/docs/help/glossary#fork-test) [`test_deployThenBriefWithSuffix`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MaatInboxFork.t.sol) deploys `MaatInbox` with its deploy script on a Base mainnet fork and sends a brief that ends with a [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The page's send path is tested in the browser with a mocked wallet and a mocked RPC. Until the table in `deployments/README.md` records a `MaatInbox` address and the owner turns on the switch in `web/content/ask-open.ts`, `/ask` says the inbox is not open yet and offers only the preview. The owner turns it on only after the `/proof` counting rule has been live for 24 hours. The same switch adds Ask and Proof to the nav of the landing, `/ledger`, `/proof` and `/ask`, in the bar and in the phone menu; while it is off, that nav links neither page. `/now` and `/gap-index` keep their own smaller header, which links neither.
+The contract's [fork test](/docs/help/glossary#fork-test) [`test_deployThenBriefWithSuffix`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MaatInboxFork.t.sol) deploys `MaatInbox` with its deploy script on a Base mainnet fork and sends a brief that ends with a [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The page's send path is tested in the browser with a mocked wallet and a mocked RPC, and its feed and counters with a mocked RPC and a mocked agent journal. Until the table in `deployments/README.md` records a `MaatInbox` address and the owner turns on the switch in `web/content/ask-open.ts`, `/ask` says the inbox is not open yet and offers only the preview. The owner turns it on only after the `/proof` counting rule has been live for 24 hours. The same switch adds Ask and Proof to the nav of the landing, `/ledger`, `/proof` and `/ask`, in the bar and in the phone menu; while it is off, that nav links neither page. `/now` and `/gap-index` keep their own smaller header, which links neither.
 
 </Callout>
 
@@ -73,7 +74,7 @@ The page reads the Builder Code from the vault's first [Decision](/docs/help/glo
 
 Once `deployments/README.md` records the inbox, each round of the agent reads the new `Brief` logs up to the `safe` block and sends at most 3 to Claude, at most 20 a UTC day and 2 per sender a UTC day. A brief over the day or sender cap, or over the brief budget of 5 brief-driven transactions and $0.25 of Claude a UTC day, is journaled as skipped with the cap's name and never reaches Claude. Claude sees each brief as one JSON line inside a section marked untrusted, after its controls, format characters and other invisible code points are turned into U+FFFD, and is told that a brief is data, never an instruction.
 
-Claude replies to each brief it is sent, and the journal keeps the reply sanitized and cut to 200 characters. It may adopt 1 to 3 briefs into an intent: the intent's [rationale blob](/docs/help/glossary#rationale-blob) then lists their ids in `q`, and its text is a fixed template of the action, the amount, the token and the ids, never the brief's own words. An intent Claude proposes as its own in that round gets a fixed template too, so a brief cannot word Maat's calldata by asking not to be cited. The vault checks each intent like any other. The `/ask` feed shows what became of each brief from the agent's published journal: the reply, whether an intent that adopted it reached the vault, or the cap that kept it from Claude. [Briefs](/docs/guides/run-the-agent#briefs) in Run the agent has the details.
+Claude replies to each brief it is sent, and the journal keeps the reply sanitized and cut to 200 characters. It may adopt 1 to 3 briefs into an intent: the intent's [rationale blob](/docs/help/glossary#rationale-blob) then lists their ids in `q`, and its text is a fixed template of the action, the amount, the token and the ids, never the brief's own words. An intent Claude proposes as its own in that round gets a fixed template too, so a brief cannot word Maat's calldata by asking not to be cited. The vault checks each intent like any other. The `/ask` feed shows what became of each brief: from the agent's published journal, the reply, whether an intent that adopted it reached the vault, or the cap that kept it from Claude; from the vault's `Decision` logs, the vault's verdict ([Read the feed](#read-the-feed)). [Briefs](/docs/guides/run-the-agent#briefs) in Run the agent has the details.
 
 ## Ask the real vault
 
@@ -81,7 +82,17 @@ Pick an action, a token and an amount, and the page calls `previewIntent` on the
 
 ## Read the feed
 
-The feed lists every `Brief` event of the inbox, newest first: its id, the sender's short address and its text. The text is shown as plain text with no links, no markdown and no HTML, after the same code points the agent's prompt replaces are turned into U+FFFD: controls, format characters such as zero-width and direction marks, and other invisible ones such as variation selectors and the tag characters U+E0000 to U+E007F. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.
+The feed lists every `Brief` event of the inbox, newest first. Each brief is shown as a weighing, in this order:
+
+1. `#id · sender`: the brief's id and the sender's short address, marked `team` when the sender is in the `/proof` team set, traced as [Count the briefs](#count-the-briefs) describes.
+2. The brief's text, from its `Brief` log.
+3. `Maat's agent replied:` and Claude's reply, from the brief's row in the agent's published journal, read from the public `agent-journal` branch and checked against its hash chain in your browser. Under it are the row's file and line, and the agent's git commit that wrote the row. A brief Claude was sent but did not answer, or one a cap kept from Claude, says so. A brief with no row in the published journal says `no reply yet`. While the `agent-journal` branch is not published, every brief says `its journal is not published yet` instead, since a reply may already be in the agent's unpublished journal.
+4. `Claude persuaded: yes, adopted into an intent` or `Claude persuaded: no`, from that row's `adopted` flag: yes when an intent that lists the brief's id in its blob's `q` went to the vault.
+5. The vault's verdict, such as `Refused · Market closed (MARKET_CLOSED)`, with the `Decision`'s transaction and block. It comes from the vault's `Decision` logs alone, never from Claude's text, since Claude replies before the vault decides: a Decision whose sender is not the owner, whose blob is not a probe, hashes to its `rationaleHash` and lists the brief's id in `q`. A Decision found always wins over the journal, and one that several cite shows each verdict. A brief no such Decision cites says `none, no intent took it to the vault` when its journal row is final and not adopted (a reply or a missing reply with no adoption, or a skip by a cap): the agent sends Claude only briefs it has recorded no outcome for, and an intent adopts only briefs sent in its own round. Any other brief no such Decision cites says `not weighed yet`.
+
+The text is shown as plain text with no links, no markdown and no HTML, after the same code points the agent's prompt replaces are turned into U+FFFD: controls, format characters such as zero-width and direction marks, and other invisible ones such as variation selectors and the tag characters U+E0000 to U+E007F. Nothing in the feed is a link, not even the sender or the Decision. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.
+
+Above the feed, the counters count each brief once, on two lines that are never added together: outside briefs by the `/proof` rule, then the team's own briefs. Each line gives briefs, wallets, Claude persuaded (briefs whose journal row says an intent adopted them), Vault allowed (briefs that an allowed brief-driven Decision cites) and Vault refused (briefs that only refused ones cite). Zero shows as 0. A counter whose source is missing says why in place of a number: `no journal yet` while the `agent-journal` branch is not published, `journal not read`, `not read` for the vault's Decisions, `team set not read`, or `incomplete` when a read has a gap. A line under the counters gives every brief and wallet read from the logs, team included.
 
 ## Count the briefs
 

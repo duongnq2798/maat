@@ -1,11 +1,12 @@
 import type { Address, Hash } from "viem";
 import { z } from "zod";
+import type { TeamInputs } from "@/app/(site)/proof/team";
 import { ASK_OPEN } from "@/content/ask-open";
 import { deploymentConfig } from "@/lib/chain/config";
 import { inboxDeployment, type InboxDeployment } from "@/lib/chain/inbox";
 import type { Deployment } from "@/lib/docs/docs-data";
 
-/** What /ask reads: the vault it previews against, the inbox it sends to, and the owner's switch. */
+/** What /ask reads: the vault it previews against, the inbox it sends to, the owner's switch, and the deploy rows. */
 export interface AskConfig {
   vault: Address | null;
   deployTx: Hash | null;
@@ -13,11 +14,19 @@ export interface AskConfig {
   inbox: InboxDeployment | null;
   /** The owner's switch, content/ask-open.ts. */
   open: boolean;
+  /** Every Base mainnet row of deployments/README.md, whose deployers and vault /proof's team trace reads. */
+  deployments: TeamInputs["deployments"];
 }
 
 export function askConfig(rows: readonly Deployment[], open: boolean = ASK_OPEN): AskConfig {
   const v = deploymentConfig(rows);
-  return { vault: v?.vault ?? null, deployTx: v?.deployTx ?? null, inbox: inboxDeployment(rows), open };
+  return {
+    vault: v?.vault ?? null,
+    deployTx: v?.deployTx ?? null,
+    inbox: inboxDeployment(rows),
+    open,
+    deployments: rows.filter((r) => r.network === "Base mainnet").map(({ contract, address, tx }) => ({ contract, address, tx })),
+  };
 }
 
 /** Whether /ask sends briefs and shows the feed: the owner's switch is on, and the inbox and the vault are recorded. */

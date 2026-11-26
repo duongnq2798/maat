@@ -49,6 +49,8 @@ const REQUIRED = [
   "docs.html",
   "ledger.html",
   "proof.html",
+  "ask.html",
+  "og/ask.png",
   "api/search.json",
   "llms.txt",
   "llms-full.txt",
@@ -109,6 +111,12 @@ if (existsSync(join(OUT, "proof.html")) && existsSync(join(OUT, "sitemap.xml")))
       url: new URL("/proof", siteUrl()).href,
     }),
   );
+}
+
+// /ask's own link preview, out/og/ask.png (content/ask-card.ts): its og:image and twitter:image name that card, a
+// 1200x630 PNG, and not the landing's image.
+if (existsSync(join(OUT, "ask.html"))) {
+  problems.push(...checkOgImage(read("ask.html"), "/ask", "out/ask.html", (path) => (isFile(join(OUT, path)) ? readFileSync(join(OUT, path)) : undefined)));
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
@@ -194,5 +202,5 @@ if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, /ask's link preview and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);
