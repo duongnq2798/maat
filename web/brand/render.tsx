@@ -22,7 +22,7 @@ const OG_ALT = `Maat: the AI agent that knows when not to trade. The market sess
 /** Wide enough for mark + gap + "maat". Tune by eye in Step 5 so the wordmark ends 4-8 px from the right edge. */
 const LOCKUP_WIDTH = 184;
 
-function fonts(): SatoriOptions["fonts"] {
+export function fonts(): SatoriOptions["fonts"] {
   const sans = (file: string) => readFileSync(join(FONT_DIR, "geist-sans", file));
   const mono = (file: string) => readFileSync(join(FONT_DIR, "geist-mono", file));
   return [
@@ -64,8 +64,8 @@ export function avatarSvg(): string {
   );
 }
 
-const dataUri = (svg: string) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
-const png = (svg: string, width: number): Buffer =>
+export const dataUri = (svg: string) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+export const png = (svg: string, width: number): Buffer =>
   new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
 
 export function pngSize(buf: Buffer): { width: number; height: number } {
@@ -91,7 +91,7 @@ export function pngToIco(pngData: Buffer, size: number): Buffer {
 
 // ---- satori layouts (every element with more than one child needs display: flex)
 
-function Grid() {
+export function Grid() {
   return (
     <div
       style={{
@@ -108,7 +108,7 @@ function Grid() {
   );
 }
 
-function Lockup({ mark }: { mark: number }) {
+export function Lockup({ mark }: { mark: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: Math.round(mark * 0.33) }}>
       <img src={dataUri(markSvg("dark"))} width={mark} height={mark} />
