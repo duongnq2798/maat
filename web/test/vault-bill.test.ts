@@ -196,7 +196,7 @@ describe("the verdict plates (contrast, spec 2026-11-23 section 9.2)", () => {
   it.each(["allowed", "bill"] as const)("gives every text on the %s plate its minimum contrast", (kind) => {
     const p = VERDICT_PLATE[kind];
     const bg = token(p.box, "bg");
-    // The verdict word, 30 px semibold: 4.5:1 or more.
+    // The verdict word, 26 px semibold: 4.5:1 or more.
     expect(contrast(token(p.word, "text"), bg)).toBeGreaterThanOrEqual(4.5);
     // The small mono labels (VAULT DECISION, the gas), at 11 px: 7:1 or more.
     expect(contrast(token(p.label, "text"), bg)).toBeGreaterThanOrEqual(7);
