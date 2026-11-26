@@ -1,9 +1,27 @@
-import type { BriefCounts, FeedItem } from "@/lib/chain/inbox";
+import type { BriefAnswer, BriefCounts, FeedItem } from "@/lib/chain/inbox";
+
+/** What each cap the agent journals a skipped brief with means (agent/src/briefs/caps.ts BRIEF_CAPS). */
+const CAP_TEXT: Readonly<Record<string, string>> = {
+  "llm-per-day": "the agent's daily Claude cap was reached",
+  "brief-llm-per-day": "the daily Claude budget for briefs was spent",
+  "brief-txs-per-day": "the daily budget of brief-driven transactions was spent",
+  "briefs-per-day": "the daily cap on briefs was reached",
+  "briefs-per-sender": "its sender's daily cap was reached",
+};
+
+/** The agent's answer as one line of text. The reply is the agent's sanitized text, shown as a string child like a brief. */
+function answerText(a: BriefAnswer): string {
+  const adopted = a.outcome !== "skipped" && a.adopted ? " It adopted this brief into an intent; the vault decides." : "";
+  if (a.outcome === "replied") return `Maat replied: ${a.reply}${adopted}`;
+  if (a.outcome === "unanswered") return `Sent to Claude, which gave no reply.${adopted}`;
+  return `Not sent to Claude: ${CAP_TEXT[a.cap] ?? "a daily cap was reached"}.`;
+}
 
 /**
- * The briefs, newest first. Each text reaches React as a string child, which React writes as a text node: no markup,
- * no autolinking, no markdown. Nothing in the feed is a link, not even the sender. The text has already been through
- * plainBriefText, and dir="auto" keeps a right-to-left brief from reordering the text around it.
+ * The briefs, newest first, each with the agent's answer once the journal has one. Each text reaches React as a string
+ * child, which React writes as a text node: no markup, no autolinking, no markdown. Nothing in the feed is a link, not
+ * even the sender. The text has already been through plainBriefText, and dir="auto" keeps a right-to-left brief from
+ * reordering the text around it.
  */
 export function BriefFeed({ items }: { items: readonly FeedItem[] }) {
   if (items.length === 0) return <p className="m-0 text-[15px] text-ink-2">No brief yet.</p>;
@@ -17,6 +35,11 @@ export function BriefFeed({ items }: { items: readonly FeedItem[] }) {
           <p data-brief-text="" dir="auto" className="m-0 whitespace-pre-wrap text-[15px] leading-relaxed text-ink [overflow-wrap:anywhere]">
             {b.text}
           </p>
+          {b.answer ? (
+            <p data-brief-answer={b.answer.outcome} className="m-0 text-[14px] leading-relaxed text-ink-2 [overflow-wrap:anywhere]">
+              {answerText(b.answer)}
+            </p>
+          ) : null}
         </li>
       ))}
     </ol>

@@ -19,6 +19,7 @@ import { ASK_OPEN } from "../content/ask-open";
 import { REASONS } from "../content/reasons";
 import type { CachedLog } from "../lib/chain/cache";
 import { deploymentConfig } from "../lib/chain/config";
+import { canon, GENESIS } from "../lib/chain/rationale";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
 import { AGENT_TEST_CODE, AGENT_TEST_SUFFIX, erc8021Suffix, executeCalldata } from "../test/helpers/maat-v1";
 import { installAskChain, type AskChain } from "./fake-ask-rpc";
@@ -157,6 +158,25 @@ test.describe("/ask with the committed deployments table, which records no MaatI
   });
 });
 
+const JOURNAL = "https://raw.githubusercontent.com/duongnq2798/maat/agent-journal/journal/";
+const REPLY = "Not adopted: the 30% cash target already holds.";
+
+/**
+ * Serves a published agent journal with one brief row, chained from GENESIS as the agent writes it: the agent's reply
+ * to the fixture brief #1, under that brief's identity (id, txHash, logIndex).
+ */
+async function serveJournal(page: Page) {
+  const row = { ts: "2026-11-28T03:00:00.000Z", kind: "brief", runId: "run-1", briefId: 1, from: SENDER, txHash: hash32(9001), logIndex: 0, block: (HEAD - 1500n).toString(), outcome: "replied", reply: REPLY, prev: GENESIS };
+  const hash = keccak256(toBytes(canon(row)));
+  const files: Record<string, string> = { "index.json": canon({ days: ["2026-11-28"], head: hash, rows: 1, v: 1 }), "2026-11-28.jsonl": `${canon({ ...row, hash })}
+` };
+  await page.route(`${JOURNAL}**`, (route) => {
+    const name = route.request().url().slice(JOURNAL.length);
+    const cors = { "access-control-allow-origin": "*" };
+    return name in files ? route.fulfill({ status: 200, headers: cors, body: files[name]! }) : route.fulfill({ status: 404, headers: cors, body: "404: Not Found" });
+  });
+}
+
 /** Serves the test inbox in /data/deployments.json, and the owner's switch in /data/ask.json as `open`. */
 async function serveInbox(page: Page, open: boolean) {
   await page.route("**/data/deployments.json", async (route) => {
@@ -184,6 +204,7 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
 test.describe("/ask with a test MaatInbox served in deployments.json and the switch on in ask.json", () => {
   test.beforeEach(async ({ page }) => {
     await serveInbox(page, true);
+    await serveJournal(page);
   });
 
   test("shows a fixture brief as plain text, then sends a brief whose request ends with the Builder Code suffix", async ({ page }) => {
@@ -199,6 +220,7 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     const first = feed.locator('[data-brief-id="1"]');
     await expect(first.locator("[data-brief-text]")).toHaveText(HOSTILE_SHOWN);
     await expect(first).toContainText("0x0000");
+    await expect(first.locator("[data-brief-answer]")).toHaveText(`Maat replied: ${REPLY}`);
     await expect(feed.locator("a, img")).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
     await expect(page.getByTestId("count-briefs")).toHaveText("1");
@@ -225,6 +247,7 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     expect(seen.methods).toContain("eth_getTransactionReceipt");
 
     await expect(feed.locator('[data-brief-id="2"] [data-brief-text]')).toHaveText("sell it all");
+    await expect(feed.locator('[data-brief-id="2"] [data-brief-answer]')).toHaveCount(0);
     await expect(page.getByTestId("count-briefs")).toHaveText("2");
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);

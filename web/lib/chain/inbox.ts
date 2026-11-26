@@ -211,15 +211,20 @@ export interface FeedItem {
   /** The brief through plainBriefText. */
   text: string;
   txHash: Hash;
+  /** What the agent journaled for the brief, once the published journal has a row for it. */
+  answer?: BriefAnswer;
 }
 
-/** The feed, newest first, without the briefs whose ids are on `hidden` (the owner's hide-list). */
-export function briefFeed(briefs: readonly Brief[], hidden: readonly number[]): FeedItem[] {
+/** The feed, newest first, without the briefs whose ids are on `hidden` (the owner's hide-list), each with its answer. */
+export function briefFeed(briefs: readonly Brief[], hidden: readonly number[], answers: ReadonlyMap<number, BriefAnswer> = new Map()): FeedItem[] {
   const skip = new Set(hidden);
   return briefs
     .filter((b) => !skip.has(b.id))
     .sort((a, b) => b.id - a.id)
-    .map((b) => ({ id: b.id, from: b.from, sender: shortAddress(b.from), text: plainBriefText(b.text), txHash: b.txHash }));
+    .map((b) => {
+      const answer = answers.get(b.id);
+      return { id: b.id, from: b.from, sender: shortAddress(b.from), text: plainBriefText(b.text), txHash: b.txHash, ...(answer ? { answer } : {}) };
+    });
 }
 
 export interface BriefCounts {
@@ -238,4 +243,34 @@ export function briefCounts(briefs: readonly Brief[], hidden: readonly number[])
     wallets: new Set(briefs.map((b) => b.from.toLowerCase())).size,
     hidden: briefs.filter((b) => skip.has(b.id)).length,
   };
+}
+
+/**
+ * What the agent journaled for one brief (journal kind "brief", agent/src/briefs/round.ts): Claude's reply, sanitized
+ * by the agent to 200 characters; a brief Claude was sent but gave no usable reply; or a brief a cap kept from Claude,
+ * with the cap's name. `adopted` is true when an intent of that answer cites the brief in its blob's q.
+ */
+export type BriefAnswer =
+  | { outcome: "replied"; reply: string; adopted: boolean }
+  | { outcome: "unanswered"; adopted: boolean }
+  | { outcome: "skipped"; cap: string };
+
+/**
+ * The agent's answer to each brief, by id, from the brief rows of the published journal. A row names its brief by
+ * (id, txHash, logIndex): a row whose log is not among `briefs`, because a reorg dropped it or another brief took its
+ * id, is dropped, so an answer never attaches to another brief. The first well-formed row for a brief wins.
+ */
+export function briefAnswers(rows: readonly { fields: Readonly<Record<string, unknown>> }[], briefs: readonly Brief[]): Map<number, BriefAnswer> {
+  const live = new Map(briefs.map((b) => [`${b.id}:${b.txHash.toLowerCase()}:${b.logIndex}`, b.id]));
+  const out = new Map<number, BriefAnswer>();
+  for (const { fields: f } of rows) {
+    if (f.kind !== "brief" || typeof f.briefId !== "number" || typeof f.txHash !== "string" || typeof f.logIndex !== "number") continue;
+    const id = live.get(`${f.briefId}:${f.txHash.toLowerCase()}:${f.logIndex}`);
+    if (id === undefined || out.has(id)) continue;
+    const adopted = f.adopted === true;
+    if (f.outcome === "replied" && typeof f.reply === "string") out.set(id, { outcome: "replied", reply: plainBriefText(f.reply), adopted });
+    else if (f.outcome === "unanswered") out.set(id, { outcome: "unanswered", adopted });
+    else if (f.outcome === "skipped" && typeof f.cap === "string") out.set(id, { outcome: "skipped", cap: f.cap });
+  }
+  return out;
 }

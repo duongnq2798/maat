@@ -99,7 +99,7 @@ novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-19:
 | Idea (quest page) | What Maat does | Status | Where |
 | --- | --- | --- | --- |
 | Agents that earn a stock treasury | Holds its own USDC and stocks. USDC that arrives is recorded as `RevenueReceived`, and new revenue repays debt. The planned income, x402 fees for safety checks, is not on `main` | **Partly**: x402 is in PR #2, unmerged | [`notifyRevenue`](contracts/src/MandateVault.sol#L124-L131), [`policy.ts`](agent/src/policy.ts#L72-L79) |
-| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L28-L32) |
+| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L31-L35) |
 | Stock-backed credit for agents | Supplies stocks to the Aave V4 MAG7 Spoke, borrows USDC against them, repays and withdraws. A borrow needs an open market and a health factor of 1.5, or 2.0 in the de-risk window | **Built and fork-tested** | [`AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol), [`MandateVaultCreditFork.t.sol`](contracts/test/fork/MandateVaultCreditFork.t.sol) |
 | Agent-managed rebalancing | Equal weights after a 30% USDC reserve (23.3% per stock), rebalanced past a 5-point drift. The vault refuses a buy that takes one stock above 40% | **Built**, unit-tested; the fork run's trades came from a scripted proposer | [`policy.ts`](agent/src/policy.ts#L14), [`test_concentration`](contracts/test/MandateVault.t.sol#L106) |
 
@@ -271,13 +271,13 @@ measurement script and its data are not in the repository, so these figures cann
 | --- | --- | --- | --- |
 | Suggest | Code: a rule-based policy | Equal weights after a 30% USDC reserve, a 5-point drift trigger. Advisory only | [`policy.ts#L13`](agent/src/policy.ts#L13) |
 | Propose | The model, `claude-sonnet-5-5` by default | At most 6 intents (`MAX_INTENTS`), each a listed action and symbol, a positive dollar amount and a rationale of 1 to 600 characters (`MAX_RATIONALE_CHARS`). No `PAY_EXPENSE` | [`schema.ts#L3-L22`](agent/src/llm/schema.ts#L3-L22), [`config.ts#L27`](agent/src/config.ts#L27) |
-| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L145-L146`](agent/src/llm/proposer.ts#L145-L146) |
-| Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L72-L95`](agent/src/intent.ts#L72-L95) |
+| Re-validate | Code: zod `BatchSchema` | An answer that breaks one bound is rejected whole | [`proposer.ts#L145-L146`](agent/src/llm/proposer.ts#L174-L175) |
+| Size | Code: `buildIntent` | Each amount except a borrow is clamped to the balance, the debt or the supplied collateral; a borrow is bounded by the vault's health-factor check | [`intent.ts#L72-L95`](agent/src/intent.ts#L95-L118) |
 | Preview | The vault, through `previewIntent` (an `eth_call` as the executor) | The verdict `execute` reaches before acting. It cannot predict `SWAP_FAILED`, `TRANSFER_FAILED`, a `CREDIT_FAILED` from the credit call itself, or the credit adapter's own health check | [`MandateVault.sol#L115-L120`](contracts/src/MandateVault.sol#L115-L120), [`preview.ts#L14`](agent/src/chain/preview.ts#L14) |
-| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L280-L286`](agent/src/loop/runOnce.ts#L280-L286) |
+| Send or skip | Code: the send gate | Send if `OK`; never if the preview is unknown; log a safety refusal at most once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date. With `MAAT_CREDIT_ACTIONS` off (the default), a credit proposal is dropped before the preview | [`refusals.ts#L5-L29`](agent/src/refusals.ts#L5-L29), [`runOnce.ts#L280-L286`](agent/src/loop/runOnce.ts#L291-L297) |
 | Send | Code: `GuardedSender` | Vault address only; `execute`, `syncMultiplier` or `notifyRevenue` only; gas limit at most 3,000,000; every `execute` carries the maat:v1 blob its `rationaleHash` commits to; Builder Code appended | [`sender.ts#L30-L85`](agent/src/exec/sender.ts#L30-L85) |
 | Decide | The vault | The nine checks; the first failure is the reason; a refusal does not revert | [`MandateVault.sol#L257-L282`](contracts/src/MandateVault.sol#L257-L282) |
-| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale blob that follows the call in the same transaction; the agent's journal keeps the text and the blob | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L48-L50`](agent/src/intent.ts#L48-L50), [`runOnce.ts#L316-L318`](agent/src/loop/runOnce.ts#L316-L318) |
+| Record | The vault | `Decision` carries `rationaleHash`, the `keccak256` of the rationale blob that follows the call in the same transaction; the agent's journal keeps the text and the blob | [`MandateVault.sol#L112`](contracts/src/MandateVault.sol#L112), [`intent.ts#L48-L50`](agent/src/intent.ts#L48-L50), [`runOnce.ts#L316-L318`](agent/src/loop/runOnce.ts#L330-L332) |
 
 The model chooses what to try and says why; code bounds its answer; only the vault decides.
 
@@ -544,8 +544,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  41 passed (41)
-         Tests  596 passed (596)
+    Test Files  52 passed (52)
+         Tests  734 passed (734)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
@@ -564,8 +564,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  136 passed (136)
-         Tests  2955 passed (2955)
+    Test Files  137 passed (137)
+         Tests  2964 passed (2964)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
