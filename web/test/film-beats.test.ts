@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { BEATS, CLIPS, FPS, TARGET_SECONDS, TOLERANCE_SECONDS, effectiveShot, shotCues, timeline, txKeys, validateBeats } from "../../film/lib/beats.mjs";
+import { BEATS, CLIPS, FPS, TARGET_SECONDS, TOLERANCE_SECONDS, effectiveShot, shotCues, timeline, txKeys, txState, validateBeats } from "../../film/lib/beats.mjs";
 
 // film/ renders the demo film from the live site with ffmpeg, on the owner's PC only. CI has no ffmpeg and no network,
 // so these tests check the plan itself: the beats, their order and the arithmetic of the timeline.
@@ -69,8 +69,31 @@ describe("the film's beat plan", () => {
     const tx = BEATS.find((b) => b.id === "thanksgiving")?.shots.find((s) => s.kind === "tx");
     expect(tx).toBeDefined();
     if (!tx) return;
-    expect(shotCues(tx, true)).toEqual([{ id: "thanksgiving-tx", at: 0 }]);
-    expect(shotCues(tx, false)).toEqual([{ id: "thanksgiving-placeholder", at: 0 }]);
+    expect(shotCues(tx, "all")).toEqual([{ id: "thanksgiving-tx", at: 0 }]);
+    expect(shotCues(tx, "none")).toEqual([{ id: "thanksgiving-placeholder", at: 0 }]);
+  });
+
+  it("says so when only one transaction of a pair is on Base", () => {
+    const pair = BEATS.find((b) => b.id === "early-close")?.shots.find((s) => s.kind === "tx");
+    expect(pair).toBeDefined();
+    if (!pair) return;
+    expect(txState([{ kind: "tx" }, { kind: "tx" }])).toBe("all");
+    expect(txState([{ kind: "tx" }, { kind: "placeholder" }])).toBe("some");
+    expect(txState([{ kind: "placeholder" }, { kind: "placeholder" }])).toBe("none");
+    expect(shotCues(pair, "all")).toEqual([{ id: "early-tx", at: 0 }]);
+    expect(shotCues(pair, "some")).toEqual([{ id: "pair-partial", at: 0 }]);
+    expect(shotCues(pair, "none")).toEqual([{ id: "early-placeholder", at: 0 }]);
+    for (const shot of BEATS.flatMap((b) => b.shots).filter((s) => s.kind === "tx" && s.txs.length > 1)) {
+      expect(shot.partialCaption, shot.id).toBe("pair-partial");
+    }
+  });
+
+  it("reads the mandate only once /ledger shows the onchain mandate, not the configured defaults", () => {
+    const steps = BEATS.find((b) => b.id === "mandate")?.shots[0]?.steps ?? [];
+    const firstCapture = steps.findIndex((s: { capture?: string }) => s.capture);
+    const onchain = steps.findIndex((s: { wait?: string }) => s.wait?.includes('caption:has-text("The mandate onchain")'));
+    expect(onchain).toBeGreaterThanOrEqual(0);
+    expect(onchain).toBeLessThan(firstCapture);
   });
 
   it("catches steps that outrun a shot, a cue past its end, a fallback of another length and a length off the frame grid", () => {
@@ -90,10 +113,12 @@ describe("the film's beat plan", () => {
             fallback: { id: "fb", kind: "card", card: "end", duration: 3, captions: [] },
           },
           { id: "odd", kind: "card", card: "end", duration: 1.01, captions: [] },
+          { id: "pair", kind: "tx", txs: ["a", "b"], duration: 1, caption: "c", placeholderCaption: "p" },
         ],
       },
     ];
     const problems = validateBeats(broken).join("\n");
+    expect(problems).toMatch(/b\/pair: a tx shot of two or more txs needs a partial caption/);
     expect(problems).toMatch(/b\/page: its steps take 3 s, longer than the shot's 2 s/);
     expect(problems).toMatch(/b\/late: cue c at 1.5 s is outside the shot/);
     expect(problems).toMatch(/b\/clip: its fallback lasts 3 s, not 4 s/);

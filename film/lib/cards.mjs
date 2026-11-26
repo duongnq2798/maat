@@ -47,6 +47,12 @@ const SIZE = {
   tall: { pad: 28, h1: 40, h2: 28, body: 17, small: 13, row: 13, gap: 16 },
 };
 
+/** The frame of a card a caption is burned in over: its content centred above CAPTION_BAND. */
+function captionedFrame(format) {
+  const s = SIZE[format];
+  return `.frame{padding:${s.gap}px ${s.pad}px ${CAPTION_BAND[format]}px;justify-content:safe center;gap:${s.gap}px}`;
+}
+
 /** A full document at the format's viewport. `transparent` leaves the page clear, for a caption overlay. */
 export function documentHtml({ format, body, css = "", transparent = false, fontsDir }) {
   const f = FORMATS[format];
@@ -59,13 +65,40 @@ ${css}
 </style></head><body>${body}</body></html>`;
 }
 
+/** How far above the bottom of the frame the caption box sits, in CSS px of the format's viewport. */
+export const CAPTION_BOTTOM = Object.freeze({ wide: 56, tall: 150 });
+/**
+ * The band at the bottom of a captioned card that its content stays out of, in CSS px: the caption's offset plus room
+ * for a caption box of several lines. The capture still measures each card against each of its captions and stops the
+ * render when one would cover a row (overlapProblem); web/e2e/film-cards.spec.ts does the same with the longest txs.
+ */
+export const CAPTION_BAND = Object.freeze({ wide: 240, tall: 290 });
+/** CSS px kept clear between a card's content and the top of a caption box. */
+export const CAPTION_CLEARANCE = 16;
+
+/** In a card's page: the lowest edge of its content, in CSS px. Runs in the browser (page.evaluate). */
+export function contentBottomInPage() {
+  return Math.max(0, ...[...document.querySelectorAll(".frame > *")].map((e) => e.getBoundingClientRect().bottom));
+}
+
+/** In a caption's page: the top edge of the caption box, in CSS px. Runs in the browser (page.evaluate). */
+export function captionTopInPage() {
+  return document.querySelector(".cap")?.getBoundingClientRect().top ?? Number.POSITIVE_INFINITY;
+}
+
+/** Why a caption box would cover a card's content, in one line; null when the two stay CAPTION_CLEARANCE apart. */
+export function overlapProblem(where, contentBottom, captionTop) {
+  if (contentBottom + CAPTION_CLEARANCE <= captionTop) return null;
+  return `${where}: the card's content ends at ${Math.round(contentBottom)} px and the caption box starts at ${Math.round(captionTop)} px; they need ${CAPTION_CLEARANCE} px between them`;
+}
+
 /** The caption overlay: a clear frame with the caption in a dark box near the bottom. */
 export function captionHtml({ format, text, fontsDir }) {
   const wide = format === "wide";
   const placeholder = /^Placeholder:/.test(text);
   const body = placeholder ? text.replace(/^Placeholder:\s*/, "") : text;
   const css = `
-.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${wide ? 56 : 150}px;max-width:${wide ? 1560 : 500}px;width:max-content;
+.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${CAPTION_BOTTOM[format]}px;max-width:${wide ? 1560 : 500}px;width:max-content;
 background:rgba(11,13,18,.9);color:#fff;border-radius:${wide ? 18 : 12}px;padding:${wide ? "22px 34px" : "13px 18px"};
 font-size:${wide ? 40 : 21}px;line-height:1.3;font-weight:500;text-align:center;letter-spacing:-.005em}
 .cap .tag{font-size:${wide ? 22 : 12}px;padding:${wide ? "4px 10px" : "2px 6px"};margin-right:${wide ? 14 : 8}px;vertical-align:${wide ? "6px" : "3px"}}`;
@@ -97,7 +130,7 @@ p{font-size:${s.body}px;color:var(--ink2)}`;
 export function deploymentsCardHtml({ format, rows, verifiedNote, fontsDir }) {
   const s = SIZE[format];
   const wide = format === "wide";
-  const css = `.frame{padding:0 ${s.pad}px;gap:${s.gap}px}
+  const css = `${captionedFrame(format)}
 h2{font-size:${s.h2}px;letter-spacing:-.02em;font-weight:600}
 .eyebrow{font-size:${s.small}px}
 table{border-collapse:collapse;width:100%;font-size:${s.row}px}
@@ -117,7 +150,7 @@ p{font-size:${s.small}px;color:var(--ink2);line-height:1.4}`;
 export function ciCardHtml({ format, figures, fontsDir }) {
   const s = SIZE[format];
   const wide = format === "wide";
-  const css = `.frame{padding:0 ${s.pad}px;gap:${s.gap}px}
+  const css = `${captionedFrame(format)}
 h2{font-size:${s.h2}px;letter-spacing:-.02em;font-weight:600}
 .eyebrow{font-size:${s.small}px}
 .grid{display:grid;grid-template-columns:${wide ? "repeat(4,1fr)" : "repeat(2,1fr)"};gap:${s.gap}px}

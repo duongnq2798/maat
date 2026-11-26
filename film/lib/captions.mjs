@@ -6,17 +6,26 @@ const PLACEHOLDER = /\{([a-zA-Z][\w.]*)\}/g;
 /** A number as a reader sees it: an ISO date, or digits with separators, a sign, a $ or a %. */
 const NUMBER = /\d{4}-\d{2}-\d{2}|[−+-]?\$?\d[\d,]*(?:\.\d+)?%?/g;
 
-/** A caption entry is either its text, or { text, when: { equal: [a, b] }, else: otherId }. */
+/** A caption entry is either its text, or { text, when: { equal: [a, b] } or { present: key }, else: otherId }. */
 function textOf(entry) {
   return typeof entry === "string" ? entry : entry?.text;
+}
+
+/** Whether a `when` holds: `equal` names two values that match, `present` a value some source gave. */
+function holds(when, values) {
+  if (when.equal) {
+    const [a, b] = when.equal;
+    return values[a] !== undefined && values[a] === values[b];
+  }
+  if (when.present) return values[when.present] !== undefined;
+  return false;
 }
 
 /** The caption to show for `id` given the values: an entry with `when` falls back to its `else` caption when unmet. */
 export function pickCaption(captions, id, values) {
   const entry = captions[id];
   if (entry === undefined) throw new Error(`no caption ${id} in film/captions.json`);
-  const [a, b] = entry?.when?.equal ?? [];
-  if (a !== undefined && (values[a] === undefined || values[a] !== values[b])) return pickCaption(captions, entry.else, values);
+  if (typeof entry === "object" && entry.when && !holds(entry.when, values)) return pickCaption(captions, entry.else, values);
   return { id, text: textOf(entry) };
 }
 
@@ -48,8 +57,12 @@ export function captionProblems(id, entry, known) {
   if (/[{}]/.test(literal)) problems.push(`caption ${id}: an unclosed "{"`);
   else for (const n of literal.match(NUMBER) ?? []) problems.push(`caption ${id}: "${n.replace(/%$/, "")}" is typed into the text; read it from a source with a {placeholder}`);
   if (typeof entry === "object" && entry.when) {
-    const pair = entry.when.equal;
-    if (!Array.isArray(pair) || pair.length !== 2 || pair.some((k) => !known.has(k))) problems.push(`caption ${id}: when.equal must name two known sources`);
+    const { equal, present } = entry.when;
+    if (equal !== undefined) {
+      if (!Array.isArray(equal) || equal.length !== 2 || equal.some((k) => !known.has(k))) problems.push(`caption ${id}: when.equal must name two known sources`);
+    } else if (present !== undefined) {
+      if (!known.has(present)) problems.push(`caption ${id}: when.present must name a known source`);
+    } else problems.push(`caption ${id}: when needs equal or present`);
     if (typeof entry.else !== "string") problems.push(`caption ${id}: a caption with when needs an else`);
   }
   return problems;

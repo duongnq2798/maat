@@ -4,7 +4,7 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { documentHtml, esc, shortHex } from "./cards.mjs";
+import { CAPTION_BAND, documentHtml, esc, shortHex } from "./cards.mjs";
 
 /** keccak256 of each event's signature; web/test/film-txcards.test.ts checks both against the contracts. */
 export const DECISION_TOPIC = "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322";
@@ -65,6 +65,10 @@ export function readTxConfig(root) {
   const config = JSON.parse(readFileSync(join(root, "film/txs.json"), "utf8"));
   for (const [key, entry] of Object.entries(config.txs ?? {})) {
     if (entry.hash !== null && !/^0x[0-9a-fA-F]{64}$/.test(entry.hash)) throw new Error(`film/txs.json ${key}: hash must be null or a 0x tx hash`);
+    for (const field of ["etBefore", "etFrom"]) {
+      const v = entry.expect?.[field];
+      if (v !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) throw new Error(`film/txs.json ${key}: expect.${field} must be a New York time like 13:00`);
+    }
   }
   return config;
 }
@@ -79,13 +83,15 @@ export function tokenSymbols(baseAddresses) {
 const word = (data, i) => data.slice(2 + i * 64, 2 + (i + 1) * 64);
 const addressOf = (topic) => `0x${topic.slice(-40)}`;
 
-/** A Decision or Brief log, decoded; null for any other log. */
+/** A Decision or Brief log, decoded, with the address that emitted it (lowercased); null for any other log. */
 export function decodeLog(log) {
   const topic = log.topics?.[0];
+  const address = log.address?.toLowerCase();
   if (topic === DECISION_TOPIC) {
     const d = log.data;
     return {
       event: "Decision",
+      address,
       intentId: log.topics[1],
       token: addressOf(log.topics[2]),
       action: ACTIONS[Number(BigInt(`0x${word(d, 0)}`))] ?? `action ${BigInt(`0x${word(d, 0)}`)}`,
@@ -100,7 +106,7 @@ export function decodeLog(log) {
     const offset = Number(BigInt(`0x${word(d, 0)}`)) / 32;
     const length = Number(BigInt(`0x${word(d, offset)}`));
     const hex = d.slice(2 + (offset + 1) * 64, 2 + (offset + 1) * 64 + length * 2);
-    return { event: "Brief", id: BigInt(log.topics[1]), from: addressOf(log.topics[2]), text: Buffer.from(hex, "hex").toString("utf8") };
+    return { event: "Brief", address, id: BigInt(log.topics[1]), from: addressOf(log.topics[2]), text: Buffer.from(hex, "hex").toString("utf8") };
   }
   return null;
 }
@@ -108,7 +114,7 @@ export function decodeLog(log) {
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** A block time in New York: its date ("2026-11-24") and the site's label ("Tue 24 Nov 09:28 ET"). */
+/** A block time in New York: its date ("2026-11-24"), its time ("09:28") and the site's label ("Tue 24 Nov 09:28 ET"). */
 export function etTime(ts) {
   const parts = Object.fromEntries(
     new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
@@ -116,8 +122,9 @@ export function etTime(ts) {
       .map((p) => [p.type, p.value]),
   );
   const date = `${parts.year}-${parts.month}-${parts.day}`;
+  const time = `${parts.hour}:${parts.minute}`;
   const day = new Date(`${date}T12:00:00Z`);
-  return { date, label: `${DAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} ${parts.hour}:${parts.minute} ET` };
+  return { date, time, label: `${DAYS[day.getUTCDay()]} ${day.getUTCDate()} ${MONTHS[day.getUTCMonth()]} ${time} ET` };
 }
 
 const usd6 = (n) => `$${(Number(n) / 1e6).toFixed(2)}`;
@@ -135,10 +142,8 @@ export function txCardModel(key, entry, data, ctx = { tokens: {}, contracts: {} 
   const events = receipt.logs.map(decodeLog).filter(Boolean);
   const rows = [
     { k: "Transaction", v: receipt.transactionHash },
-    { k: "Block", v: Number(receipt.blockNumber).toLocaleString("en-US") },
-    { k: "Time", v: when.label },
-    { k: "From", v: shortHex(receipt.from) },
-    { k: "To", v: name(receipt.to) },
+    { k: "Block", v: `${Number(receipt.blockNumber).toLocaleString("en-US")} · ${when.label}` },
+    { k: "From", v: `${shortHex(receipt.from)} to ${name(receipt.to)}` },
   ];
   if (receipt.status !== "0x1") rows.push({ k: "Status", v: "reverted" });
   for (const e of events) {
@@ -151,29 +156,51 @@ export function txCardModel(key, entry, data, ctx = { tokens: {}, contracts: {} 
       rows.push({ k: "Brief", v: `#${e.id} from ${shortHex(e.from)}: “${e.text}”` });
     }
   }
-  return { kind: "tx", key, label: entry.label, hash: receipt.transactionHash, url: `https://basescan.org/tx/${receipt.transactionHash}`, date: when.date, status: receipt.status, events, rows };
+  return {
+    kind: "tx",
+    key,
+    label: entry.label,
+    hash: receipt.transactionHash,
+    url: `https://basescan.org/tx/${receipt.transactionHash}`,
+    date: when.date,
+    time: when.time,
+    status: receipt.status,
+    events,
+    rows,
+  };
 }
 
-/** Why a tx model does not show what its entry expects, one line each; [] when it does. */
-export function txProblems(model, expect) {
+/**
+ * Why a tx model does not show what its entry expects, one line each; [] when it does. `expect` may name the event,
+ * the contract that must emit it (by its name in `contracts`, lowercased address → name from deployments/README.md),
+ * the vault's reason, the New York date, and a New York time the tx must come before (etBefore) or at or after (etFrom).
+ */
+export function txProblems(model, expect, contracts = {}) {
   if (model.kind !== "tx") return [];
   const out = [];
   if (model.status !== "0x1") out.push(`${model.key}: the tx reverted`);
-  const event = model.events.find((e) => e.event === expect.event);
-  if (!event) out.push(`${model.key}: the receipt has no ${expect.event} event`);
-  else if (expect.reason && event.reason !== expect.reason) out.push(`${model.key}: the vault answered ${event.reason}, not ${expect.reason}`);
+  const named = model.events.filter((e) => e.event === expect.event);
+  const event = expect.contract ? named.find((e) => contracts[e.address ?? ""] === expect.contract) : named[0];
+  if (named.length === 0) out.push(`${model.key}: the receipt has no ${expect.event} event`);
+  else if (!event) {
+    const from = named[0].address ? (contracts[named[0].address] ?? shortHex(named[0].address)) : "an unnamed address";
+    out.push(`${model.key}: its ${expect.event} event comes from ${from}, not the ${expect.contract} of deployments/README.md`);
+  } else if (expect.reason && event.reason !== expect.reason) out.push(`${model.key}: the vault answered ${event.reason}, not ${expect.reason}`);
   if (expect.etDate && model.date !== expect.etDate) out.push(`${model.key}: the tx is on ${model.date} ET, not ${expect.etDate}`);
+  if (expect.etBefore && !(model.time < expect.etBefore)) out.push(`${model.key}: the tx is at ${model.time} ET, not before ${expect.etBefore}`);
+  if (expect.etFrom && model.time < expect.etFrom) out.push(`${model.key}: the tx is at ${model.time} ET, before ${expect.etFrom}`);
   return out;
 }
 
 /**
- * One card holding the beat's txs: each a placeholder block, or its rows as text with a link card.
+ * One card holding the beat's txs: each a placeholder block, or its rows as text with a link card. The stack is centred
+ * in the frame above the caption band, so the caption burned in over the card never covers a row.
  * @param {any[]} models
  * @param {{ format: string, title: string, fontsDir?: string }} options
  */
 export function txCardHtml(models, { format, title, fontsDir }) {
   const wide = format === "wide";
-  const css = `.frame{padding:0 ${wide ? 140 : 22}px;gap:${wide ? 28 : 14}px}
+  const css = `.frame{padding:${wide ? 48 : 32}px ${wide ? 140 : 22}px ${CAPTION_BAND[format]}px;justify-content:safe center;gap:${wide ? 28 : 14}px}
 .eyebrow{font-size:${wide ? 22 : 12}px}
 h2{font-size:${wide ? 52 : 26}px;font-weight:600;letter-spacing:-.02em}
 .txs{display:flex;flex-direction:column;gap:${wide ? 24 : 12}px}

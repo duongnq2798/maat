@@ -8,13 +8,22 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BEATS, CLIPS, FPS, shotCues, timeline } from "./lib/beats.mjs";
-import { captionHtml, ciCardHtml, deploymentsCardHtml, endCardHtml, titleCardHtml } from "./lib/cards.mjs";
+import { BEATS, CLIPS, FPS, shotCues, timeline, txState } from "./lib/beats.mjs";
+import {
+  captionHtml,
+  captionTopInPage,
+  ciCardHtml,
+  contentBottomInPage,
+  deploymentsCardHtml,
+  endCardHtml,
+  overlapProblem,
+  titleCardHtml,
+} from "./lib/cards.mjs";
 import { captionProblems, pickCaption, renderCaption } from "./lib/captions.mjs";
 import { frameListText } from "./lib/ffmpeg.mjs";
 import { FORMATS } from "./lib/formats.mjs";
 import { fetchTx } from "./lib/rpc.mjs";
-import { CAPTURED, capturedValue, ciFigures, deploymentRows, fileSources } from "./lib/sources.mjs";
+import { CAPTURED, OPTIONAL_KEYS, capturedValue, ciAgeWarning, ciFigures, deploymentRows, fileSources } from "./lib/sources.mjs";
 import { readTxConfig, tokenSymbols, txCardHtml, txCardModel, txProblems } from "./lib/tx.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -44,14 +53,16 @@ function playwright() {
   }
 }
 
-async function renderStill(page, dir, name, html, { transparent = false } = {}) {
+/** Renders a still and screenshots it; `measure`, a function run in the page, returns what it measures there. */
+async function renderStill(page, dir, name, html, { transparent = false, measure } = {}) {
   const file = join(dir, `${name}.html`);
   writeFileSync(file, html);
   await page.goto(pathToFileURL(file).href);
   await page.evaluate(() => document.fonts.ready);
+  const measured = measure ? await page.evaluate(measure) : undefined;
   const png = join(dir, `${name}.png`);
   await page.screenshot({ path: png, type: "png", omitBackground: transparent });
-  return png;
+  return { png, measured };
 }
 
 /** Runs a page shot's steps and screenshots each frame; returns the frame list file and what it read. */
@@ -106,10 +117,17 @@ export async function capture({ work, input, formats, site }) {
   const files = fileSources(ROOT);
   const deployMd = read("deployments/README.md");
   const deployments = deploymentRows(deployMd).filter((r) => r.network === "Base mainnet" && r.address);
-  const verifiedNote = /On \d{4}-\d{2}-\d{2}, Basescan showed the source of all [^.]*\./.exec(deployMd)?.[0] ?? "";
-  const ci = ciFigures(read("README.md"));
-  const fontsDir = join(ROOT, "web/node_modules/geist/dist/fonts");
   const warnings = [];
+  // The note shows on the contracts card only while it counts every row; lib/sources.mjs reads it the same way.
+  const verifiedNote =
+    files.values["deployments.verifiedOn"] !== undefined ? (/On \d{4}-\d{2}-\d{2}, Basescan showed the source of all [^.]*\./.exec(deployMd)?.[0] ?? "") : "";
+  if (verifiedNote === "") {
+    warnings.push(`beat 8 does not say the contracts are verified: the note under deployments/README.md's table does not count its ${deployments.length} Base mainnet rows`);
+  }
+  const ci = ciFigures(read("README.md"));
+  const ciAge = ciAgeWarning(files.values, new Date().toISOString().slice(0, 10));
+  if (ciAge) warnings.push(ciAge);
+  const fontsDir = join(ROOT, "web/node_modules/geist/dist/fonts");
 
   // The txs of beats 5 to 7: read each set hash's receipt, and stop on one that does not show what txs.json expects.
   const config = readTxConfig(ROOT);
@@ -121,7 +139,7 @@ export async function capture({ work, input, formats, site }) {
   for (const [key, entry] of Object.entries(config.txs)) {
     const data = entry.hash ? await fetchTx(entry.hash) : undefined;
     const model = txCardModel(key, entry, data, ctx);
-    const problems = txProblems(model, entry.expect);
+    const problems = txProblems(model, entry.expect, ctx.contracts);
     if (problems.length > 0) throw new Error(`film/txs.json: ${problems.join("; ")}`);
     txModels[key] = model;
   }
@@ -156,18 +174,24 @@ export async function capture({ work, input, formats, site }) {
                 : shot.card === "ci"
                   ? ciCardHtml({ format, figures: ci, fontsDir })
                   : endCardHtml({ format, fontsDir });
-          entry.input = { kind: "image", file: await renderStill(page, join(dir, "stills"), name, html) };
+          const still = await renderStill(page, join(dir, "stills"), name, html, { measure: contentBottomInPage });
+          entry.input = { kind: "image", file: still.png };
+          entry.contentBottom = still.measured;
         } else if (shot.kind === "tx") {
           const models = shot.txs.map((k) => txModels[k]);
           const beat = BEATS.find((b) => b.id === s.beat);
-          entry.input = { kind: "image", file: await renderStill(page, join(dir, "stills"), name, txCardHtml(models, { format, title: beat.title, fontsDir })) };
-          entry.txsComplete = models.every((m) => m.kind === "tx");
-          if (format === formats[0] && !entry.txsComplete) {
-            manifest.placeholders.push({ beat: s.beatIndex, id: s.beat, missing: models.filter((m) => m.kind === "placeholder").map((m) => m.key) });
+          const still = await renderStill(page, join(dir, "stills"), name, txCardHtml(models, { format, title: beat.title, fontsDir }), { measure: contentBottomInPage });
+          entry.input = { kind: "image", file: still.png };
+          entry.contentBottom = still.measured;
+          entry.txState = txState(models);
+          if (format === formats[0] && entry.txState !== "all") {
+            const missing = models.filter((m) => m.kind === "placeholder").map((m) => m.key);
+            manifest.placeholders.push({ beat: s.beatIndex, id: s.beat, missing });
+            if (entry.txState === "some") warnings.push(`beat ${s.beatIndex} shows a placeholder for ${missing.join(", ")} beside a real tx`);
           }
         } else if (shot.kind === "clip") entry.input = { kind: "video", file: clips[shot.clip], trim: 0 };
         if (format === formats[0] && s.slot !== shot.id && shot.kind !== "clip") manifest.fallbacks.push({ beat: s.beatIndex, slot: s.slot, used: shot.id });
-        entry.cueIds = shotCues(shot, entry.txsComplete);
+        entry.cueIds = shotCues(shot, entry.txState);
         entries.push(entry);
       }
       manifest.formats[format] = { shots: entries };
@@ -177,9 +201,10 @@ export async function capture({ work, input, formats, site }) {
     // Captions: every number comes from a file or from what the capture just read; an unsourced one stops the render.
     const captionsFile = JSON.parse(read("film/captions.json")).captions;
     const values = { ...files.values, ...captured };
-    const known = new Set([...Object.keys(files.values), ...Object.keys(CAPTURED)]);
+    const known = new Set([...Object.keys(files.values), ...Object.keys(CAPTURED), ...Object.keys(OPTIONAL_KEYS)]);
     const problems = Object.entries(captionsFile).flatMap(([id, entry]) => captionProblems(id, entry, known));
     if (problems.length > 0) throw new Error(`film/captions.json:\n${problems.join("\n")}`);
+    const overlaps = [];
     if (captured["ledger.weightCapPct"] !== undefined && captured["ledger.weightCapPct"] !== files.values["reserve.capPct"]) {
       warnings.push(
         `beat 3 shows the timelock line, not the reserve line: the vault's cap reads ${captured["ledger.weightCapPct"]}%, QueueReserveCaps.s.sol's is ${files.values["reserve.capPct"]}%. Render again once the caps are applied.`,
@@ -191,7 +216,7 @@ export async function capture({ work, input, formats, site }) {
       mkdirSync(dir, { recursive: true });
       const context = await browser.newContext({ viewport: f.viewport, deviceScaleFactor: f.dpr });
       const page = await context.newPage();
-      const pngs = {};
+      const stills = {};
       for (const entry of manifest.formats[format].shots) {
         const cues = [];
         entry.cueIds.forEach((cue, i) => {
@@ -203,12 +228,18 @@ export async function capture({ work, input, formats, site }) {
           const picked = pickCaption(captionsFile, cue.id, values);
           const out = renderCaption(picked.text, values);
           if (out.missing.length > 0) throw new Error(`caption ${picked.id} needs ${out.missing.join(", ")}, which nothing read`);
-          pngs[picked.id] ??= await renderStill(page, dir, picked.id, captionHtml({ format, text: out.text, fontsDir }), { transparent: true });
-          entry.cues.push({ id: picked.id, text: out.text, png: pngs[picked.id], from: cue.at, to: cue.to });
+          stills[picked.id] ??= await renderStill(page, dir, picked.id, captionHtml({ format, text: out.text, fontsDir }), { transparent: true, measure: captionTopInPage });
+          // A card's rows must stay clear of every caption burned in over it.
+          if (entry.contentBottom !== undefined) {
+            const overlap = overlapProblem(`[${format}] shot ${entry.index} (${entry.beat}/${entry.slot}) under caption ${picked.id}`, entry.contentBottom, stills[picked.id].measured);
+            if (overlap) overlaps.push(overlap);
+          }
+          entry.cues.push({ id: picked.id, text: out.text, png: stills[picked.id].png, from: cue.at, to: cue.to });
         }
       }
       await context.close();
     }
+    if (overlaps.length > 0) throw new Error(`a caption would cover a card's rows:\n${overlaps.join("\n")}`);
   } finally {
     await browser.close();
   }

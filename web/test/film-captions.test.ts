@@ -2,7 +2,20 @@
 import { describe, expect, it } from "vitest";
 import { captionIds } from "../../film/lib/beats.mjs";
 import { captionProblems, pickCaption, renderCaption } from "../../film/lib/captions.mjs";
-import { CAPTURED, capturedValue, ciFigures, deploymentRows, fileSources, gapFigures, reserveFigures } from "../../film/lib/sources.mjs";
+import {
+  CAPTURED,
+  CI_MAX_AGE_DAYS,
+  COUNT_WORDS,
+  OPTIONAL_KEYS,
+  capturedValue,
+  ciAgeWarning,
+  ciFigures,
+  deploymentFigures,
+  deploymentRows,
+  fileSources,
+  gapFigures,
+  reserveFigures,
+} from "../../film/lib/sources.mjs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // Every number in a film caption is read from a source at render time: a committed file (the frozen Gap Index edition,
@@ -15,6 +28,14 @@ const files = fileSources(REPO_ROOT);
 /** What the capture read from /ledger on a day the default mandate was onchain, as the render feeds it in. */
 const CAPTURED_DEFAULTS = { "ledger.perTrade": "$50", "ledger.perDay": "$100", "ledger.weightCapPct": "40" };
 const CAPTURED_RESERVE = { ...CAPTURED_DEFAULTS, "ledger.weightCapPct": "25" };
+/** Every key a caption may name: what the files give today, what the capture reads, and what a file gives only in some states. */
+const KNOWN = new Set([...Object.keys(files.values), ...Object.keys(CAPTURED), ...Object.keys(OPTIONAL_KEYS)]);
+/** The deployments table with a Base mainnet MaatInbox row added under the MandateVault's. */
+function withInboxRow(md: string): string {
+  const vault = md.split("\n").find((l) => /^\| Base mainnet \| MandateVault \|/.test(l)) ?? "";
+  const inbox = vault.replace("MandateVault", "MaatInbox").replace(/0x[0-9a-fA-F]{40}/g, `0x${"cd".repeat(20)}`);
+  return md.replace(vault, `${vault}\n${inbox}`);
+}
 
 /** The body rows of the first Markdown table under `heading`, as trimmed cells. */
 function tableUnder(md: string, heading: string): string[][] {
@@ -40,8 +61,7 @@ describe("film/captions.json", () => {
   });
 
   it("types no number into a caption: every digit comes from a {source} placeholder", () => {
-    const known = new Set([...Object.keys(files.values), ...Object.keys(CAPTURED)]);
-    expect(ids.flatMap((id) => captionProblems(id, captionsFile.captions[id], known))).toEqual([]);
+    expect(ids.flatMap((id) => captionProblems(id, captionsFile.captions[id], KNOWN))).toEqual([]);
   });
 
   it("renders every caption from the repository files and a capture, with nothing left unresolved", () => {
@@ -75,6 +95,32 @@ describe("film/captions.json", () => {
     expect(withReserve.id).toBe("mandate-reserve");
     expect(renderCaption(withReserve.text, { ...files.values, ...CAPTURED_RESERVE }).text).toContain("25%");
   });
+
+  it("says the inbox takes briefs only once deployments/README.md records it on Base, and that it will until then", () => {
+    const noInbox = Object.fromEntries(Object.entries(files.values).filter(([k]) => k !== "deployments.inbox"));
+    const before = pickCaption(captionsFile.captions, "brief-ask", noInbox);
+    const after = pickCaption(captionsFile.captions, "brief-ask", { ...noInbox, "deployments.inbox": `0x${"cd".repeat(20)}` });
+    expect(before.id).toBe("brief-ask-soon");
+    expect(before.text).toMatch(/^Once the inbox contract is on Base/);
+    expect(after.id).toBe("brief-ask");
+    expect(files.values["deployments.inbox"] !== undefined).toBe(
+      deploymentRows(lf("deployments/README.md")).some((r) => r.network === "Base mainnet" && r.contract === "MaatInbox" && r.address !== ""),
+    );
+  });
+
+  it("says one transaction of a pair is missing while the other is already on Base", () => {
+    const partial = pickCaption(captionsFile.captions, "pair-partial", files.values);
+    expect(partial.text).toMatch(/^Placeholder: /);
+    expect(partial.text).toMatch(/one of the two/);
+  });
+
+  it("fails a when that names no known source, or tests nothing", () => {
+    expect(captionProblems("p", { text: "Open.", when: { present: "deployments.nope" }, else: "q" }, KNOWN)).toEqual([
+      "caption p: when.present must name a known source",
+    ]);
+    expect(captionProblems("p", { text: "Open.", when: {}, else: "q" }, KNOWN)).toEqual(["caption p: when needs equal or present"]);
+    expect(captionProblems("p", { text: "Open.", when: { present: "deployments.inbox" }, else: "q" }, KNOWN)).toEqual([]);
+  });
 });
 
 describe("the caption sources read the committed files", () => {
@@ -100,13 +146,31 @@ describe("the caption sources read the committed files", () => {
 
   it("counts the Base mainnet rows of the deployments table and reads the date Basescan showed them verified", () => {
     const md = lf("deployments/README.md");
-    const rows = deploymentRows(md);
-    expect(rows.map((r) => r.contract)).toEqual(["MarketCalendar", "AerodromeSwapAdapter", "AaveV4CreditAdapter", "MandateVault"]);
+    const rows = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address);
+    expect(rows.map((r) => r.contract)).toContain("MandateVault");
     expect(files.values["deployments.count"]).toBe(String(rows.length));
-    const iso = files.values["deployments.verifiedOnIso"] ?? "";
-    expect(md).toContain(`On ${iso}, Basescan showed the source of all`);
+    // The verification note must count the same contracts as the table: the caption claims it for every row.
+    const [, iso = "", noted = ""] = /On (\d{4}-\d{2}-\d{2}), Basescan showed the source of all (\w+) contracts as verified/.exec(md) ?? [];
+    expect(noted, "the note's count").toBe(COUNT_WORDS[rows.length]);
+    expect(files.values["deployments.verifiedOnIso"]).toBe(iso);
     const [y, m, d] = iso.split("-").map(Number);
     expect(files.values["deployments.verifiedOn"]).toBe(`${d} ${new Date(Date.UTC(y ?? 0, (m ?? 1) - 1, d)).toLocaleString("en-US", { month: "short", timeZone: "UTC" })} ${y}`);
+  });
+
+  it("drops the verification date once the table has a row the note does not count, and the caption claims less", () => {
+    const md = withInboxRow(lf("deployments/README.md"));
+    const n = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address).length;
+    const stale = deploymentFigures(md);
+    expect(stale["deployments.count"]).toBe(String(n));
+    expect(stale["deployments.verifiedOn"]).toBeUndefined();
+    expect(stale["deployments.inbox"]).toBe(`0x${"cd".repeat(20)}`);
+    const values = Object.fromEntries(Object.entries({ ...files.values, ...stale }).filter(([k]) => !k.startsWith("deployments.verifiedOn")));
+    const picked = pickCaption(captionsFile.captions, "receipts-contracts", values);
+    expect(picked.id).toBe("receipts-contracts-listed");
+    expect(renderCaption(picked.text, values).text).not.toMatch(/verified/);
+    // Once the note counts the new row too, the date is back.
+    const recounted = deploymentFigures(md.replace(/(source of all )\w+( contracts)/, `$1${COUNT_WORDS[n]}$2`));
+    expect(recounted["deployments.verifiedOn"]).toBe(files.values["deployments.verifiedOn"]);
   });
 
   it("reads each CI figure from its row of the README's Tested, in numbers table", () => {
@@ -152,5 +216,23 @@ describe("the values the capture reads from the live site", () => {
   it("refuses a cell it cannot read rather than guessing", () => {
     expect(() => capturedValue("ledger.perTrade", "loading…")).toThrow(/ledger\.perTrade/);
     expect(() => capturedValue("ledger.nope", "$50")).toThrow(/not a captured value/);
+  });
+
+  it("refuses the configured defaults the panel shows when it could not read the vault", () => {
+    expect(() => capturedValue("ledger.weightCapPct", "4000 bps · 40%configured")).toThrow(/configured default, not the onchain mandate/);
+    expect(() => capturedValue("ledger.perDay", "$100configured")).toThrow(/configured default, not the onchain mandate/);
+  });
+});
+
+describe("the age of the README's CI figures", () => {
+  it(`warns when they are more than ${CI_MAX_AGE_DAYS} days older than the render`, () => {
+    const values = { "readme.ciDateIso": "2026-11-19" };
+    const late = new Date(Date.UTC(2026, 10, 19 + CI_MAX_AGE_DAYS + 1)).toISOString().slice(0, 10);
+    const inTime = new Date(Date.UTC(2026, 10, 19 + CI_MAX_AGE_DAYS)).toISOString().slice(0, 10);
+    expect(ciAgeWarning(values, inTime)).toBeNull();
+    expect(ciAgeWarning(values, late)).toBe(
+      `beat 8 shows CI figures from 2026-11-19, ${CI_MAX_AGE_DAYS + 1} days before this render: refresh the README's "Tested, in numbers" table from a current CI run on main, then render again`,
+    );
+    expect(ciAgeWarning({}, late)).toBeNull();
   });
 });

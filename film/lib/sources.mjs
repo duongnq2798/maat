@@ -43,17 +43,33 @@ export function deploymentRows(md) {
   return rows;
 }
 
-/** The deployment figures: how many contracts are on Base mainnet, and the day Basescan showed their source verified. */
+/** How the verification note under the deployments table spells a count. */
+export const COUNT_WORDS = Object.freeze(["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]);
+
+/**
+ * The deployment figures: how many contracts are on Base mainnet; the day Basescan showed their source verified, only
+ * while the note counts as many contracts as the table holds; and the inbox's address once the table records it.
+ */
 export function deploymentFigures(md) {
   const rows = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address);
-  const verifiedOn = /On (\d{4}-\d{2}-\d{2}), Basescan showed the source of all \w+ contracts as verified/.exec(md)?.[1];
+  const [, verifiedOn, noted = ""] = /On (\d{4}-\d{2}-\d{2}), Basescan showed the source of all (\w+) contracts as verified/.exec(md) ?? [];
+  /** @type {Record<string, string>} */
   const out = { "deployments.count": String(rows.length) };
-  if (verifiedOn) {
+  if (verifiedOn && COUNT_WORDS.indexOf(noted.toLowerCase()) === rows.length) {
     out["deployments.verifiedOnIso"] = verifiedOn;
     out["deployments.verifiedOn"] = dayLabel(verifiedOn);
   }
+  const inbox = rows.find((r) => r.contract === "MaatInbox");
+  if (inbox) out["deployments.inbox"] = inbox.address;
   return out;
 }
+
+/** Keys a source gives only in some states of its file; a caption tests them with when.present. */
+export const OPTIONAL_KEYS = Object.freeze({
+  "deployments.inbox": "deployments/README.md has a Base mainnet MaatInbox row",
+  "deployments.verifiedOn": "the verification note under the deployments table counts every Base mainnet row",
+  "deployments.verifiedOnIso": "the same, as an ISO date",
+});
 
 const CI_ROWS = {
   "readme.contractTests": "Contract unit tests",
@@ -87,6 +103,18 @@ export function ciFigures(readme) {
   }
   if (run) out["readme.ciRun"] = run;
   return out;
+}
+
+/** Days the README's CI figures may trail the render before the capture warns. */
+export const CI_MAX_AGE_DAYS = 3;
+
+/** A warning when the README's CI figures are more than CI_MAX_AGE_DAYS older than `today` (an ISO date); else null. */
+export function ciAgeWarning(values, today) {
+  const iso = values["readme.ciDateIso"];
+  if (!iso) return null;
+  const days = Math.round((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${iso}T00:00:00Z`)) / 86_400_000);
+  if (!(days > CI_MAX_AGE_DAYS)) return null;
+  return `beat 8 shows CI figures from ${iso}, ${days} days before this render: refresh the README's "Tested, in numbers" table from a current CI run on main, then render again`;
 }
 
 /** The per-stock cap the owner's reserve script queues, in percent, and the USDC floor it leaves across the basket. */
@@ -130,10 +158,16 @@ export const CAPTURED = Object.freeze({
   "ledger.weightCapPct": { path: "/ledger", selector: 'section[aria-label="Mandate"] tr:has-text("maxWeightBps") td', pattern: /\d+ bps · (\d+(?:\.\d+)?)%/ },
 });
 
-/** The value of captured `key` in the text of its cell; throws when the cell does not hold one. */
+/**
+ * The value of captured `key` in the text of its cell; throws when the cell does not hold one, or holds the configured
+ * default that /ledger shows when it could not read the vault (its cells are then tagged "configured").
+ */
 export function capturedValue(key, text) {
   const spec = CAPTURED[key];
   if (!spec) throw new Error(`${key} is not a captured value`);
+  if (/configured/.test(text ?? "")) {
+    throw new Error(`${key}: the cell ${spec.selector} on ${spec.path} shows the configured default, not the onchain mandate; the page could not read the vault`);
+  }
   const value = spec.pattern.exec(text ?? "")?.[1];
   if (value === undefined) throw new Error(`${key}: the cell ${spec.selector} on ${spec.path} reads "${String(text).slice(0, 80)}", not ${spec.pattern}`);
   return value;

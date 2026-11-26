@@ -1,5 +1,5 @@
 {
-  "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts.",
+  "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise.",
   "captions": {
     "gap-held": "{gap.close} → {gap.open}. NYSE is closed, and the NVDAc price feed held one answer for {gap.hours} h.",
     "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the frozen answer.",
@@ -23,10 +23,21 @@
     "early-sim": "Simulated: on Friday, after the early close, the same check fails.",
     "early-tx": "On Base: the agent's two Decisions that Friday. Allowed before the early close, refused after it.",
     "early-placeholder": "Placeholder: the early-close pair is not on Base yet.",
-    "brief-ask": "Briefs from any wallet reach the agent through an onchain inbox. Claude reads them; the vault keeps the last word.",
+    "pair-partial": "Placeholder: one of the two transactions is not on Base yet.",
+    "brief-ask": {
+      "text": "Briefs from any wallet reach the agent through an onchain inbox. Claude reads them; the vault keeps the last word.",
+      "when": { "present": "deployments.inbox" },
+      "else": "brief-ask-soon"
+    },
+    "brief-ask-soon": "Once the inbox contract is on Base, any wallet can send the agent a brief. Claude reads it; the vault keeps the last word.",
     "brief-tx": "On Base: an outside wallet's brief, and the vault's Decision on the agent's answer.",
     "brief-placeholder": "Placeholder: no outside brief and answer on Base yet.",
-    "receipts-contracts": "{deployments.count} contracts on Base mainnet. On {deployments.verifiedOn}, Basescan showed each one's source as verified.",
+    "receipts-contracts": {
+      "text": "{deployments.count} contracts on Base mainnet. On {deployments.verifiedOn}, Basescan showed each one's source as verified.",
+      "when": { "present": "deployments.verifiedOn" },
+      "else": "receipts-contracts-listed"
+    },
+    "receipts-contracts-listed": "{deployments.count} contracts on Base mainnet, each at the address deployments/README.md records.",
     "receipts-ci": "CI on main, {readme.ciDate}: {readme.contractTests} contract, {readme.agentTests} agent, {readme.webUnitTests} website unit and {readme.e2eTests} browser tests passed.",
     "receipts-proof": "Every count on /proof has a written rule, and anyone can recount it from Base."
   }

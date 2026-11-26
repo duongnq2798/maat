@@ -18,7 +18,8 @@ const TOP = { wide: 112, tall: 88 };
  * - page: the live site at `path`, driven by `steps` (wait, scroll, hold, click, capture); its last frame is held to
  *   the end of `duration`;
  * - card: a still the capture renders from repository files (`card` names it), held for `duration`;
- * - tx: one card per key of film/txs.json in `txs`; `caption` when every hash is set, `placeholderCaption` otherwise;
+ * - tx: one card per key of film/txs.json in `txs`; `caption` when every hash is set, `placeholderCaption` when none
+ *   is, and `partialCaption` (needed for two or more txs) when only some are;
  * - clip: an owner clip from film/input/, used when present; otherwise `fallback`, a shot of the same `duration`.
  * `captions` are cues: each caption id from film/captions.json shows from `at` seconds until the next cue or the end.
  * @typedef {{ id: string, kind: string, duration: number, [field: string]: any }} Shot
@@ -89,7 +90,8 @@ export const BEATS = Object.freeze([
         path: "/ledger",
         duration: 12,
         steps: [
-          { wait: 'section[aria-label="Mandate"] table' },
+          // The panel shows the configured defaults until it has read the vault; the captions take only the onchain mandate.
+          { wait: 'section[aria-label="Mandate"] caption:has-text("The mandate onchain")' },
           { wait: '[aria-label="Mainnet decisions"]' },
           { capture: "ledger.perTrade" },
           { capture: "ledger.perDay" },
@@ -181,6 +183,7 @@ export const BEATS = Object.freeze([
         duration: 8,
         caption: "early-tx",
         placeholderCaption: "early-placeholder",
+        partialCaption: "pair-partial",
       },
     ],
   },
@@ -203,6 +206,7 @@ export const BEATS = Object.freeze([
         duration: 7,
         caption: "brief-tx",
         placeholderCaption: "brief-placeholder",
+        partialCaption: "pair-partial",
       },
     ],
   },
@@ -225,10 +229,17 @@ export const BEATS = Object.freeze([
   },
 ]);
 
-/** The caption cues a shot shows, given whether every tx it names has a hash (tx shots only). */
-export function shotCues(shot, txsComplete = false) {
-  if (shot.kind === "tx") return [{ id: txsComplete ? shot.caption : shot.placeholderCaption, at: 0 }];
-  return shot.captions ?? [];
+/** How many of a tx shot's cards show a real tx: "all", "some" or "none". `models` are lib/tx.mjs card models. */
+export function txState(models) {
+  const real = models.filter((m) => m.kind === "tx").length;
+  return real === models.length ? "all" : real === 0 ? "none" : "some";
+}
+
+/** The caption cues a shot shows; for a tx shot, given its txState. */
+export function shotCues(shot, state = "none") {
+  if (shot.kind !== "tx") return shot.captions ?? [];
+  const id = state === "all" ? shot.caption : state === "some" && shot.partialCaption ? shot.partialCaption : shot.placeholderCaption;
+  return [{ id, at: 0 }];
 }
 
 /** The shot the film actually uses: a clip shot becomes its fallback when its clip is not in `clipsPresent`. */
@@ -274,6 +285,7 @@ export function validateBeats(beats = BEATS) {
     if (shot.kind === "tx" && (!Array.isArray(shot.txs) || shot.txs.length === 0 || !shot.caption || !shot.placeholderCaption)) {
       problems.push(`${where}: a tx shot needs txs, a caption and a placeholder caption`);
     }
+    if (shot.kind === "tx" && shot.txs?.length > 1 && !shot.partialCaption) problems.push(`${where}: a tx shot of two or more txs needs a partial caption`);
     if (shot.kind === "clip") {
       if (!Object.values(CLIPS).includes(shot.clip)) problems.push(`${where}: unknown clip ${shot.clip}`);
       if (!shot.fallback) problems.push(`${where}: a clip shot needs a fallback for when the clip is missing`);
@@ -311,7 +323,7 @@ export function validateBeats(beats = BEATS) {
 export function captionIds(beats = BEATS) {
   const ids = [];
   const add = (shot) => {
-    if (shot.kind === "tx") ids.push(shot.caption, shot.placeholderCaption);
+    if (shot.kind === "tx") ids.push(shot.caption, shot.placeholderCaption, ...(shot.partialCaption ? [shot.partialCaption] : []));
     else for (const cue of shot.captions ?? []) ids.push(cue.id);
     if (shot.fallback) add(shot.fallback);
   };

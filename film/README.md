@@ -6,7 +6,8 @@ from Base mainnet transactions shown as text beside a Basescan link card. ffmpeg
 sends or uploads anything.
 
 The render runs on a PC, never in CI: it needs Chromium, ffmpeg and the network. CI runs the unit tests of the beat
-plan, the caption sources, the tx cards and the ffmpeg arguments, which need neither ffmpeg nor the network.
+plan, the caption sources, the tx cards and the ffmpeg arguments, which need neither ffmpeg nor the network, and one
+Playwright spec that lays the cards out in Chromium from local files.
 
 ## The beats
 
@@ -18,7 +19,7 @@ plan, the caption sources, the tx cards and the ffmpeg arguments, which need nei
 | 4 | The sourced proposal and its hash tick | `/ledger`, the decision trail with its hash tick; the owner's Basescan input clip, or `/ledger`'s verify-by-hand commands without it | |
 | 5 | Thanksgiving: `MARKET_CLOSED` from the agent | the simulator on Thanksgiving; the tx card | placeholder card |
 | 6 | The early-close pair | the simulator after the early close; the two tx cards | placeholder cards |
-| 7 | A stranger's brief and the vault's answer | `/ask`; the brief and Decision tx cards | placeholder cards |
+| 7 | A stranger's brief and the vault's answer | `/ask`; the brief and Decision tx cards | placeholder cards; `/ask`'s caption says the inbox opens once it is on Base |
 | 8 | Receipts | the deployed contracts; the README's CI figures; `/proof`; the end card | |
 
 `lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues.
@@ -59,11 +60,15 @@ any warning. git ignores `film/out/`. Options:
 `node film/capture.mjs --work <dir>` and `node film/assemble.mjs --work <dir> --out <dir>` run the two halves alone,
 for example to assemble again without capturing again.
 
-The tests run with the website's unit tests (`npm test` in `web/`), or alone:
+The tests run with the website's unit tests (`npm test` in `web/`) and its Playwright tests (`npm run e2e`), or alone:
 
 ```bash
 cd web && npx vitest run test/film-beats.test.ts test/film-captions.test.ts test/film-txcards.test.ts test/film-ffmpeg.test.ts
+cd web && npx playwright test e2e/film-cards.spec.ts --project=chromium
 ```
+
+The Playwright spec opens no site: it writes the cards to local files and checks, in both cuts, that no caption the
+shot can show covers a row of its card, with the longest content each card can hold.
 
 ## Captions and their numbers
 
@@ -76,13 +81,28 @@ at render time from:
 | `deployments.*` | the address table of `deployments/README.md` and its verification note |
 | `readme.*` | the "Tested, in numbers" table of the root `README.md` |
 | `reserve.*` | `RESERVE_CAP_BPS` in `contracts/script/QueueReserveCaps.s.sol` and the basket in `contracts/script/MaatConfig.sol` |
-| `ledger.*` | the live `/ledger` page's mandate panel, read by the capture; a cell it cannot read stops the render |
+| `ledger.*` | the live `/ledger` page's mandate panel, read by the capture once the panel shows the onchain mandate; a cell it cannot read, or one tagged `configured` (the panel could not read the vault), stops the render |
 
 `web/test/film-captions.test.ts` fails on a digit typed into a caption, on a placeholder no source fills, and when a
 source no longer reads its file the way the test reads it. A change to one of those files flows into the next render.
 
-Beat 3's last caption, `mandate-reserve`, shows only when the vault's weight cap, as `/ledger` reads it, equals
-`RESERVE_CAP_BPS`. Until then the render shows `mandate-timelock` in its place and prints a warning.
+Some captions show only while a condition holds, and another caption otherwise (`when` and `else` in `captions.json`):
+
+| Caption | Shows when | Otherwise |
+| --- | --- | --- |
+| `mandate-reserve` | the vault's weight cap, as `/ledger` reads it, equals `RESERVE_CAP_BPS` | `mandate-timelock`, and the render warns |
+| `brief-ask` | `deployments/README.md` has a Base mainnet `MaatInbox` row | `brief-ask-soon`, which says the inbox opens once it is on Base |
+| `receipts-contracts` | the verification note under that table counts as many contracts as the table holds | `receipts-contracts-listed`, which claims no verification; the contracts card leaves the note out, and the render warns |
+
+A tx shot of two transactions with only one hash set shows the real one and a placeholder card, under
+`pair-partial`, a caption labelled PLACEHOLDER; the render warns.
+
+The render also warns when the README's CI figures are more than 3 days older than the render (`CI_MAX_AGE_DAYS` in
+`lib/sources.mjs`). Before the final render, refresh the "Tested, in numbers" table from a current CI run on `main`.
+
+Before it assembles anything, the capture measures each card against each caption burned in over it, in both cuts,
+and stops the render if a caption box would come within 16 px of the card's content (`overlapProblem` in
+`lib/cards.mjs`).
 
 ## Owner steps
 
@@ -98,18 +118,21 @@ Beat 3's last caption, `mandate-reserve`, shows only when the vault's weight cap
 3. **The transactions of beats 5 to 7.** When each is on Base mainnet, put its hash in `txs.json`:
    - `thanksgiving`: the agent's Decision refused with `MARKET_CLOSED` on Thu 26 Nov (New York date);
    - `earlyCloseAllowed` and `earlyCloseRefused`: the agent's Decisions on Fri 27 Nov, allowed before the 13:00 ET
-     early close and refused with `MARKET_CLOSED` after it;
-   - `strangerBrief`: an outside wallet's `Brief` transaction to the inbox; `vaultAnswer`: the vault's Decision on the
-     agent's answer to it.
-4. **Render, review, upload.** Run `node film/render.mjs`, watch both cuts, then upload the 16:9 cut to Loom (a free
-   account) on Wed 9 Dec. Uploads are the owner's: nothing in this folder posts anything.
+     early close and refused with `MARKET_CLOSED` at or after it (not a refusal before the open);
+   - `strangerBrief`: an outside wallet's `Brief` transaction to the inbox, once `deployments/README.md` records the
+     `MaatInbox`; `vaultAnswer`: the vault's Decision on the agent's answer to it.
+4. **Render, review, upload.** Refresh the root README's "Tested, in numbers" table from a current CI run on `main`,
+   run `node film/render.mjs`, watch both cuts, then upload the 16:9 cut to Loom (a free account) on Wed 9 Dec.
+   Uploads are the owner's: nothing in this folder posts anything.
 
 ## Render again once beats 5 to 7 exist
 
 1. Put the hashes in `txs.json` (step 3 above).
 2. Run `node film/render.mjs`. For each hash it reads the receipt from `https://mainnet.base.org` (then
    `https://base-rpc.publicnode.com`) and stops, naming the entry, if the tx reverted, has no event of the expected
-   kind, has another reason, or falls on another New York date than `expect` says. A hash it cannot read stops the
-   render too: it never shows a row it did not read.
+   kind from the expected contract of `deployments/README.md` (`MandateVault` for a Decision, `MaatInbox` for a
+   Brief), has another reason, falls on another New York date than `expect` says, or for the early-close pair falls
+   on the wrong side of 13:00 ET (`etBefore`, `etFrom`). A hash it cannot read stops the render too: it never shows a
+   row it did not read.
 3. Check the printed summary: `placeholders: none` once all five hashes are set, and each placeholder caption replaced
    by the beat's own.
