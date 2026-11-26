@@ -127,6 +127,25 @@ describe("createLogSource", () => {
     expect(fs.readdirSync(dir)).toEqual([]);
   });
 
+  it("reports each span it reads: its cache file name, whether it came from Base or the cache, and whether its file now holds it", async () => {
+    const { r } = reader([answerLog(50, 3n), answerLog(SPAN + 50, 4n)]);
+    const seen: unknown[] = [];
+    const opts = { cacheDir: dir, headBlock: 2 * SPAN + 5_000, onSpan: (s: unknown) => seen.push(s) };
+    await createLogSource(r, opts).updates(["0xAgg"], 0, 2 * SPAN + 100);
+    await createLogSource(r, opts).updates(["0xAgg"], 0, 2 * SPAN + 100);
+    const first = [
+      { name: `answer-0xagg-0-${SPAN - 1}.json`, spanFrom: 0, spanTo: SPAN - 1, from: "rpc", kept: true },
+      { name: `answer-0xagg-${SPAN}-${2 * SPAN - 1}.json`, spanFrom: SPAN, spanTo: 2 * SPAN - 1, from: "rpc", kept: true },
+      // the span that holds the head: read, and never kept
+      { name: `answer-0xagg-${2 * SPAN}-${2 * SPAN + 5_000}.json`, spanFrom: 2 * SPAN, spanTo: 2 * SPAN + 5_000, from: "rpc", kept: false },
+    ];
+    expect(seen).toEqual([...first, { ...first[0], from: "cache" }, { ...first[1], from: "cache" }, first[2]]);
+
+    const none: unknown[] = [];
+    await createLogSource(reader([]).r, { cacheDir: null, headBlock: 2 * SPAN + 5_000, onSpan: (s) => none.push(s) }).swaps("0xpool", 0, 10);
+    expect(none).toEqual([{ name: `swap-0xpool-0-${SPAN - 1}.json`, spanFrom: 0, spanTo: SPAN - 1, from: "rpc", kept: false }]);
+  });
+
   it("returns the rows and leaves no temp file when the cache write fails", async () => {
     const blocker = path.join(dir, "blocker");
     fs.writeFileSync(blocker, "x");

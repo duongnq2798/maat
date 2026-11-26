@@ -4,7 +4,19 @@ import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, byPosition, decodeAnswerUpdated, deco
 import { SPAN, type LogReader } from "./rpc";
 
 /** A span this close to the head may still reorg, so it is read again next time instead of cached. */
-const SETTLED = 1_000;
+export const SETTLED = 1_000;
+
+/** One aligned span the source read for one kind and address list: where its rows came from, and if its file holds it. */
+export interface SpanRead {
+  /** Its cache file's name, `${kind}-${addresses}-${spanFrom}-${spanTo}.json`, also when the span is not cached. */
+  name: string;
+  spanFrom: number;
+  spanTo: number;
+  /** "cache": read from its file; "rpc": read with one eth_getLogs call. */
+  from: "cache" | "rpc";
+  /** Its file in the cache now holds it: the span is SETTLED blocks below the head, and the file was read or written. */
+  kept: boolean;
+}
 
 const toHex = (n: bigint) => (n < 0n ? `-0x${(-n).toString(16)}` : `0x${n.toString(16)}`);
 const fromHex = (s: string) => (s.startsWith("-") ? -BigInt(s.slice(1)) : BigInt(s));
@@ -54,7 +66,7 @@ function writeCache(file: string, rows: Row[]): void {
   }
 }
 
-export function createLogSource(reader: LogReader, opts: { cacheDir: string | null; headBlock: number }) {
+export function createLogSource(reader: LogReader, opts: { cacheDir: string | null; headBlock: number; onSpan?: (s: SpanRead) => void }) {
   async function rows(kind: "swap" | "answer", addresses: readonly string[], topic0: string, from: number, to: number): Promise<Row[]> {
     const out: Row[] = [];
     const withAddress = kind === "answer";
@@ -63,8 +75,11 @@ export function createLogSource(reader: LogReader, opts: { cacheDir: string | nu
       const spanFrom = k * SPAN;
       const spanTo = Math.min(spanFrom + SPAN - 1, opts.headBlock);
       const cacheable = opts.cacheDir !== null && spanTo <= opts.headBlock - SETTLED;
-      const file = cacheable ? path.join(opts.cacheDir!, `${kind}-${lower.join("_")}-${spanFrom}-${spanTo}.json`) : null;
+      const name = `${kind}-${lower.join("_")}-${spanFrom}-${spanTo}.json`;
+      const file = cacheable ? path.join(opts.cacheDir!, name) : null;
       let span = file ? readCache(file, withAddress) : null;
+      const cached = span !== null;
+      let kept = cached;
       if (span === null) {
         const logs = await reader.getLogs({ address: addresses.length === 1 ? addresses[0]! : addresses, topic0, from: spanFrom, to: spanTo });
         span = (kind === "swap" ? logs.map(decodeSwap).sort(byPosition).map((s) => ({ block: s.block, logIndex: s.logIndex, ts: s.ts, tx: s.tx, v: toHex(s.sqrtPriceX96) }))
@@ -72,12 +87,14 @@ export function createLogSource(reader: LogReader, opts: { cacheDir: string | nu
         if (file) {
           try {
             writeCache(file, span);
+            kept = true;
           } catch (e) {
             // The cache only saves time: a failed write must not discard rows already read.
             console.warn(`gap cache: could not write ${file}: ${e instanceof Error ? e.message : String(e)}`);
           }
         }
       }
+      opts.onSpan?.({ name, spanFrom, spanTo, from: cached ? "cache" : "rpc", kept });
       for (const r of span) if (r.block >= from && r.block <= to) out.push(r);
     }
     return out;
