@@ -564,8 +564,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  139 passed (139)
-         Tests  3070 passed (3070)
+    Test Files  140 passed (140)
+         Tests  3114 passed (3114)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
