@@ -12,7 +12,9 @@ import { Journal, type JournalRow } from "../../src/ledger/journal.js";
 import { Store } from "../../src/ledger/store.js";
 import { FixedProposer } from "../../src/llm/proposer.js";
 import type { Batch } from "../../src/llm/schema.js";
-import { runOnce, type RunDeps } from "../../src/loop/runOnce.js";
+import { BILL_MIN_USD6, runOnce, type RunDeps } from "../../src/loop/runOnce.js";
+import { DEFAULT_POLICY } from "../../src/policy.js";
+import { decodeExecuteInput } from "../../src/rationale/calldata.js";
 import { ACTIONS, type OnchainIntent } from "../../src/types.js";
 import { startAnvil } from "./anvil.js";
 import { deployStack } from "./deploy.js";
@@ -47,12 +49,17 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
       mode: "live",
       defaultDailyComputeUsd6: 500_000n,
       maxTxPerDay: 40,
+      billMinUsd6: BILL_MIN_USD6,
+      maxLlmUsd6PerDay: 750_000n,
+      // The first test supplies and borrows: the credit path is what it checks against the fork.
+      policy: { ...DEFAULT_POLICY, creditActions: true },
       stateClient: pub,
       previewClient: pub,
       txClient: {
         estimateGas: pub.estimateGas,
         getTransaction: pub.getTransaction,
         getLogs: pub.getLogs,
+        getBlockNumber: pub.getBlockNumber,
         readContract: pub.readContract,
         // The public RPC makes the first swap on a cold fork take minutes; RunOnce's 120 s default is too short here.
         waitForTransactionReceipt: (a) => pub.waitForTransactionReceipt({ ...a, timeout: 600_000 }),
@@ -61,6 +68,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
       sender,
       store: own?.store ?? store,
       journal: own?.journal ?? journal,
+      commit: "unknown",
       runId,
     });
   });
@@ -76,7 +84,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     (await j.read()).filter((e): e is Extract<JournalRow, { kind: "intent" }> => e.kind === "intent" && e.runId === runId);
   const nonce = () => pub.getTransactionCount({ address: stack.executor as Address });
 
-  /** Every sent tx: to the vault, Builder Code, explicit gas >= its floor, not starved, and successful. */
+  /** Every sent tx: to the vault, Builder Code, an execute's maat:v1 blob, explicit gas >= its floor, not starved, and successful. */
   const checkSent = async (runId: string, hashes: Hex[]) => {
     for (const hash of hashes) {
       const tx = await pub.getTransaction({ hash });
@@ -85,6 +93,8 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
       const fn = call.functionName as GasFunction;
       expect(Object.keys(GAS_FLOOR)).toContain(fn);
       expect(codesIn(tx.input)).toEqual([CODE]);
+      // An execute carries its blob between the call and the suffix, and the intent hashes exactly that blob.
+      if (fn === "execute") expect(decodeExecuteInput(tx.input)).toMatchObject({ status: "v1", hashTick: true, codes: [CODE] });
       expect(getAddress(tx.from)).toBe(getAddress(stack.executor));
       expect(getAddress(tx.to!)).toBe(getAddress(stack.vault));
       expect(receipt.status).toBe("success");
@@ -126,7 +136,7 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(debt).toBeLessThanOrEqual(5_000_010n);
   });
 
-  it("logs a market-closed refusal onchain once per day, with preview == Decision", async () => {
+  it("logs a market-closed refusal onchain once per NYSE date and closed phase, with preview == Decision", async () => {
     // Saturday: market closed, equity feeds frozen.
     const test = createTestClient({ chain: base, transport: http(anvil.url, { timeout: 600_000 }), mode: "anvil" });
     const now = (await pub.getBlock()).timestamp;
@@ -143,13 +153,17 @@ describe.skipIf(!RPC)("agent on a Base fork", () => {
     expect(row?.decision?.allowed).toBe(false);
     expect(row?.decision?.reason).toBe(row?.preview); // contract verdict == off-chain preview
     expect(["MARKET_CLOSED", "FEED_STALE"]).toContain(row?.preview);
+    // A MARKET_CLOSED log names the closed phase in the rationale it hashes.
+    expect(row?.rationale).toBe(row?.preview === "MARKET_CLOSED" ? "GOOGLc underweight (market closed, weekend)" : "GOOGLc underweight");
 
     const before = await nonce();
     const second = await runOnce(await deps(batch, "fork-3"));
     expect(second).toMatchObject({ status: "done", sent: [] });
     const [again] = await intents(journal, "fork-3");
     expect(again?.preview).toBe(row?.preview);
-    expect(again?.gate).toBe(`${row?.preview} already logged today`);
+    // The fork block is Thursday 2026-11-05 10:30 ET and the clock moved 2 days ahead, so both rounds fall on Saturday, NYSE date 2026-11-07.
+    const phase = row?.preview === "MARKET_CLOSED" ? " (weekend)" : "";
+    expect(again?.gate).toBe(`${row?.preview} already logged for NYSE date 2026-11-07${phase}`);
     expect(again?.txHash).toBeUndefined();
     expect(await nonce()).toBe(before);
   });

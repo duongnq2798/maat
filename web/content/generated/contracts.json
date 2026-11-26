@@ -23,7 +23,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "vault",
-          "notice": ""
+          "notice": "",
+          "selector": "0x0ecbcdab"
         },
         {
           "name": "collateralCustodian",
@@ -43,7 +44,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xca07d80f"
         },
         {
           "name": "collateralOperator",
@@ -58,7 +60,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xcdcb2c7d"
         },
         {
           "name": "collaterals",
@@ -73,7 +76,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x4113e5ca"
         },
         {
           "name": "debt",
@@ -88,7 +92,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x0dca59c1"
         },
         {
           "name": "hasPosition",
@@ -103,7 +108,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x75a6a7a9"
         },
         {
           "name": "healthFactor",
@@ -118,7 +124,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x22841f01"
         },
         {
           "name": "hub",
@@ -133,7 +140,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "Holds every supplied collateral token; the spoke pulls supplies into it and it sends withdrawals out."
+          "notice": "Holds every supplied collateral token; the spoke pulls supplies into it and it sends withdrawals out.",
+          "selector": "0x365a86fc"
         },
         {
           "name": "projectedHealthFactorAfterBorrow",
@@ -153,7 +161,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "HF = collateral value x avgCF / debt value, with the new debt valued at the spoke oracle's USDC price. Matched Aave's own post-borrow HF on a Base fork. Existing debt is rounded up."
+          "notice": "HF = collateral value x avgCF / debt value, with the new debt valued at the spoke oracle's USDC price. Matched Aave's own post-borrow HF on a Base fork. Existing debt is rounded up.",
+          "selector": "0x5f7fab8a"
         },
         {
           "name": "repay",
@@ -173,7 +182,8 @@
           ],
           "mutability": "nonpayable",
           "access": "vault",
-          "notice": ""
+          "notice": "",
+          "selector": "0x371fd8e6"
         },
         {
           "name": "spoke",
@@ -188,7 +198,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x47bfbcc6"
         },
         {
           "name": "suppliedOf",
@@ -208,7 +219,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xa117eb44"
         },
         {
           "name": "supply",
@@ -227,7 +239,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "vault",
-          "notice": ""
+          "notice": "",
+          "selector": "0xf2b9fdb8"
         },
         {
           "name": "supportsToken",
@@ -247,7 +260,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x061f7650"
         },
         {
           "name": "usdc",
@@ -262,7 +276,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x3e413bee"
         },
         {
           "name": "usdcReserveId",
@@ -277,7 +292,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xeb78a95f"
         },
         {
           "name": "vault",
@@ -292,7 +308,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xfbfa77cf"
         },
         {
           "name": "withdraw",
@@ -320,7 +337,8 @@
           ],
           "mutability": "nonpayable",
           "access": "vault",
-          "notice": ""
+          "notice": "",
+          "selector": "0xb5c5f672"
         }
       ],
       "events": [],
@@ -337,17 +355,20 @@
               "name": "minHealthFactor"
             }
           ],
-          "notice": "Raised by borrow/withdraw when the health factor after the action is below the minimum."
+          "notice": "Raised by borrow/withdraw when the health factor after the action is below the minimum.",
+          "selector": "0x7e7222b7"
         },
         {
           "name": "LengthMismatch",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xff633a38"
         },
         {
           "name": "NotVault",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x62df0545"
         },
         {
           "name": "ReserveMismatch",
@@ -357,7 +378,8 @@
               "name": "reserveId"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x28ba43e3"
         },
         {
           "name": "TransferFailed",
@@ -367,7 +389,8 @@
               "name": "token"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x39f1c8d9"
         },
         {
           "name": "UnsupportedToken",
@@ -377,12 +400,14 @@
               "name": "token"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0xbf16aab6"
         },
         {
           "name": "ZeroAddress",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xd92e233d"
         }
       ]
     },
@@ -426,7 +451,8 @@
           ],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x7b32b50e"
         },
         {
           "name": "uniswapV3SwapCallback",
@@ -449,7 +475,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "activePool",
-          "notice": ""
+          "notice": "",
+          "selector": "0xfa461e33"
         }
       ],
       "events": [],
@@ -457,7 +484,8 @@
         {
           "name": "BadCallback",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x6c25f7f8"
         },
         {
           "name": "InsufficientOutput",
@@ -471,12 +499,14 @@
               "name": "minOut"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x2c19b8b8"
         },
         {
           "name": "TokenNotInPool",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x07326195"
         },
         {
           "name": "TransferFailed",
@@ -486,7 +516,8 @@
               "name": "token"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x39f1c8d9"
         }
       ]
     },
@@ -513,7 +544,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": "Borrows USDC to the vault. Reverts HealthFactorTooLow if HF ends below `minHealthFactor`."
+          "notice": "Borrows USDC to the vault. Reverts HealthFactorTooLow if HF ends below `minHealthFactor`.",
+          "selector": "0x0ecbcdab"
         },
         {
           "name": "collateralCustodian",
@@ -533,7 +565,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "Holds supplied `token` and sends it out on withdraw (B20 sender / receiver / executor legs)."
+          "notice": "Holds supplied `token` and sends it out on withdraw (B20 sender / receiver / executor legs).",
+          "selector": "0xca07d80f"
         },
         {
           "name": "collateralOperator",
@@ -548,7 +581,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "Pulls supplied tokens from the adapter (B20 executor leg)."
+          "notice": "Pulls supplied tokens from the adapter (B20 executor leg).",
+          "selector": "0xcdcb2c7d"
         },
         {
           "name": "debt",
@@ -563,7 +597,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x0dca59c1"
         },
         {
           "name": "hasPosition",
@@ -578,7 +613,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "True while any debt or supplied collateral remains; the vault refuses to switch adapters then."
+          "notice": "True while any debt or supplied collateral remains; the vault refuses to switch adapters then.",
+          "selector": "0x75a6a7a9"
         },
         {
           "name": "healthFactor",
@@ -593,7 +629,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x22841f01"
         },
         {
           "name": "projectedHealthFactorAfterBorrow",
@@ -613,7 +650,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x5f7fab8a"
         },
         {
           "name": "repay",
@@ -633,7 +671,8 @@
           ],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": "Pulls min(amount, debt) USDC from the vault (approve `amount` first) and repays it."
+          "notice": "Pulls min(amount, debt) USDC from the vault (approve `amount` first) and repays it.",
+          "selector": "0x371fd8e6"
         },
         {
           "name": "suppliedOf",
@@ -653,7 +692,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "Returns 0 (never reverts) for tokens the adapter does not support; the vault reads it for every listed token."
+          "notice": "Returns 0 (never reverts) for tokens the adapter does not support; the vault reads it for every listed token.",
+          "selector": "0xa117eb44"
         },
         {
           "name": "supply",
@@ -672,7 +712,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": "Pulls `amount` of `token` from the vault (approve first), supplies it and enables it as collateral."
+          "notice": "Pulls `amount` of `token` from the vault (approve first), supplies it and enables it as collateral.",
+          "selector": "0xf2b9fdb8"
         },
         {
           "name": "supportsToken",
@@ -692,7 +733,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x061f7650"
         },
         {
           "name": "usdc",
@@ -707,7 +749,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x3e413bee"
         },
         {
           "name": "vault",
@@ -722,7 +765,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xfbfa77cf"
         },
         {
           "name": "withdraw",
@@ -750,7 +794,8 @@
           ],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": "Withdraws collateral to the vault. Reverts HealthFactorTooLow if HF ends below `minHealthFactor`."
+          "notice": "Withdraws collateral to the vault. Reverts HealthFactorTooLow if HF ends below `minHealthFactor`.",
+          "selector": "0xb5c5f672"
         }
       ],
       "events": [],
@@ -767,12 +812,14 @@
               "name": "minHealthFactor"
             }
           ],
-          "notice": "Raised by borrow/withdraw when the health factor after the action is below the minimum."
+          "notice": "Raised by borrow/withdraw when the health factor after the action is below the minimum.",
+          "selector": "0x7e7222b7"
         },
         {
           "name": "NotVault",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x62df0545"
         },
         {
           "name": "UnsupportedToken",
@@ -782,7 +829,8 @@
               "name": "token"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0xbf16aab6"
         }
       ]
     },
@@ -802,7 +850,8 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xef2393afd41f32c607a123de95d703349edd33ea1d86af21535ea8040ec7d984"
         },
         {
           "name": "Decision",
@@ -838,7 +887,8 @@
               "name": "rationaleHash"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322"
         },
         {
           "name": "ExecutorSet",
@@ -849,7 +899,8 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x3e3c5e6d5b512eaa5d5a80669846cfbaf8bde70fc6f7a3be9828cffc9ba5f1db"
         },
         {
           "name": "Funded",
@@ -859,7 +910,8 @@
               "name": "amount"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xc4c14883ae9fd8e26d5d59e3485ed29fd126d781d7e498a4ca5c54c8268e4936"
         },
         {
           "name": "MandateApplied",
@@ -870,7 +922,8 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xaea77b7649e3343e5d89ceb4132fd66a08e73f20f496e5d7161eadd9ec790065"
         },
         {
           "name": "MandateChangeQueued",
@@ -889,7 +942,8 @@
               "name": "mandate"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x7fa3c0bb17162e829120b28266b7550061c3b40db9435802b3b81b4be2f1d4b1"
         },
         {
           "name": "MultiplierChangeDetected",
@@ -908,7 +962,8 @@
               "name": "newMultiplier"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xd2e626325a6f2abbc5f3e654cf4b4bb4221fd1ceb5bdb212fc4d136398943ac9"
         },
         {
           "name": "PausedSet",
@@ -918,7 +973,8 @@
               "name": "paused"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x40db37ff5c0bdc2c427fbb2078c8f24afea940abac0e3c23bb4ea3bf2da2b212"
         },
         {
           "name": "PayeeApplied",
@@ -933,7 +989,8 @@
               "name": "allowed"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x88e8dfde3169975f3002ffc3ae3d6f4f98cd78b415c780b4102860a39de5189c"
         },
         {
           "name": "PayeeChangeQueued",
@@ -957,7 +1014,8 @@
               "name": "allowed"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x423f006fc8dc13dda4a71fe928443739e83a14faa2810b7fcb4a8bd4706eb9c5"
         },
         {
           "name": "PolicyHashUpdated",
@@ -967,7 +1025,8 @@
               "name": "policyHash"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x48a58304e6581974b55d2169e131804a3984e0168c1086504cd7a1d19185d994"
         },
         {
           "name": "RevenueReceived",
@@ -977,7 +1036,8 @@
               "name": "amount"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x41b06c6e0a1531dcb4b86d53ec6268666aa12d55775f8e5a63596fc935cdcc22"
         },
         {
           "name": "TokenConfigApplied",
@@ -992,7 +1052,8 @@
               "name": "config"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xa2c02b8677f11c939af7c4a0d31d7f0d60a5e8bf8596a909d6948b9205189cd1"
         },
         {
           "name": "TokenConfigChangeQueued",
@@ -1016,7 +1077,8 @@
               "name": "config"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x52c7e79abff67f340ea03b262ee706f9f7b59fd984c52ae45155eaef031057d9"
         },
         {
           "name": "Withdrawn",
@@ -1031,7 +1093,8 @@
               "name": "amount"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5"
         }
       ],
       "errors": []
@@ -1076,7 +1139,8 @@
           ],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": "Pulls `amountIn` of `tokenIn` from msg.sender, swaps it in `pool`, sends the output and any unused input to `recipient`. Reverts if the output is below `minOut`."
+          "notice": "Pulls `amountIn` of `tokenIn` from msg.sender, swaps it in `pool`, sends the output and any unused input to `recipient`. Reverts if the output is below `minOut`.",
+          "selector": "0x7b32b50e"
         }
       ],
       "events": [],
@@ -1106,7 +1170,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x48b118f5"
         },
         {
           "name": "applyMandate",
@@ -1121,7 +1186,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0xbc1ad00f"
         },
         {
           "name": "applyPayee",
@@ -1140,7 +1206,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x08f5baab"
         },
         {
           "name": "applyTokenConfig",
@@ -1159,7 +1226,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x5340fb80"
         },
         {
           "name": "cancelChange",
@@ -1174,7 +1242,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x5449b798"
         },
         {
           "name": "execute",
@@ -1198,7 +1267,8 @@
           ],
           "mutability": "nonpayable",
           "access": "executor",
-          "notice": ""
+          "notice": "",
+          "selector": "0x4ad3993f"
         },
         {
           "name": "executor",
@@ -1213,7 +1283,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xc34c08e5"
         },
         {
           "name": "fund",
@@ -1228,7 +1299,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": "Owner capital injection. Pulls USDC from the owner (approve first) and records it so it is not reported as revenue by notifyRevenue(). Revenue that was already pending stays pending."
+          "notice": "Owner capital injection. Pulls USDC from the owner (approve first) and records it so it is not reported as revenue by notifyRevenue(). Revenue that was already pending stays pending.",
+          "selector": "0xca1d209d"
         },
         {
           "name": "GRACE_PERIOD",
@@ -1243,7 +1315,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "A queued change must be applied within this window after its eta, or it expires."
+          "notice": "A queued change must be applied within this window after its eta, or it expires.",
+          "selector": "0xc1a287e2"
         },
         {
           "name": "lastMultiplier",
@@ -1263,7 +1336,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xfcdd251b"
         },
         {
           "name": "mandate",
@@ -1278,7 +1352,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x39b1b96d"
         },
         {
           "name": "mandateChangeHash",
@@ -1298,7 +1373,8 @@
           ],
           "mutability": "pure",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x5006d5f9"
         },
         {
           "name": "mandateHash",
@@ -1313,7 +1389,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xa2afc034"
         },
         {
           "name": "multiplierChangedAt",
@@ -1333,7 +1410,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x2441cb20"
         },
         {
           "name": "notifyRevenue",
@@ -1348,7 +1426,8 @@
           ],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x47f484af"
         },
         {
           "name": "owner",
@@ -1363,7 +1442,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x8da5cb5b"
         },
         {
           "name": "paused",
@@ -1378,7 +1458,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x5c975abb"
         },
         {
           "name": "payeeChangeHash",
@@ -1402,7 +1483,8 @@
           ],
           "mutability": "pure",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x9fa9e0cd"
         },
         {
           "name": "payees",
@@ -1417,7 +1499,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x4e8086aa"
         },
         {
           "name": "policyHash",
@@ -1432,7 +1515,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "Commitment to the whole policy: keccak256(abi.encode(mandate, tokens, configs, payees)), where configs[i] = tokenConfig[tokens[i]] (tokens in listing order, delisted ones included) and payees is the current allowlist in payees() order. Emitted as PolicyHashUpdated on construction and every apply."
+          "notice": "Commitment to the whole policy: keccak256(abi.encode(mandate, tokens, configs, payees)), where configs[i] = tokenConfig[tokens[i]] (tokens in listing order, delisted ones included) and payees is the current allowlist in payees() order. Emitted as PolicyHashUpdated on construction and every apply.",
+          "selector": "0x098fb624"
         },
         {
           "name": "policyRegistry",
@@ -1447,7 +1531,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x1c4dd7d0"
         },
         {
           "name": "previewIntent",
@@ -1467,7 +1552,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": "Same verdict execute() would reach before acting. Cannot predict SWAP_FAILED / TRANSFER_FAILED / CREDIT_FAILED, nor the adapter's own post-action health check on WITHDRAW_COLLATERAL against debt."
+          "notice": "Same verdict execute() would reach before acting. Cannot predict SWAP_FAILED / TRANSFER_FAILED / CREDIT_FAILED, nor the adapter's own post-action health check on WITHDRAW_COLLATERAL against debt.",
+          "selector": "0x0ee774db"
         },
         {
           "name": "queuedAt",
@@ -1487,7 +1573,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xb912de5d"
         },
         {
           "name": "queueMandate",
@@ -1507,7 +1594,8 @@
           ],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": "Timelocked changes are queued with their full parameters (emitted in the event) and can be applied with exactly those parameters between eta = queuedAt + TIMELOCK and eta + GRACE_PERIOD."
+          "notice": "Timelocked changes are queued with their full parameters (emitted in the event) and can be applied with exactly those parameters between eta = queuedAt + TIMELOCK and eta + GRACE_PERIOD.",
+          "selector": "0x58237212"
         },
         {
           "name": "queuePayee",
@@ -1531,7 +1619,8 @@
           ],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0xfbe4f547"
         },
         {
           "name": "queueTokenConfig",
@@ -1555,7 +1644,8 @@
           ],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0xd3410346"
         },
         {
           "name": "recordedUsdc",
@@ -1570,7 +1660,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xaf05d256"
         },
         {
           "name": "setExecutor",
@@ -1585,7 +1676,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x1c3c0ea8"
         },
         {
           "name": "setPaused",
@@ -1600,7 +1692,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x16c38b3c"
         },
         {
           "name": "spentOnDay",
@@ -1620,7 +1713,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xc1a51adc"
         },
         {
           "name": "syncMultiplier",
@@ -1635,7 +1729,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xf344f0a2"
         },
         {
           "name": "TIMELOCK",
@@ -1650,7 +1745,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x7aadef8b"
         },
         {
           "name": "today",
@@ -1665,7 +1761,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xb74e452b"
         },
         {
           "name": "tokenChangeHash",
@@ -1689,7 +1786,8 @@
           ],
           "mutability": "pure",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x02ff1337"
         },
         {
           "name": "tokenConfig",
@@ -1721,7 +1819,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xfe136c4e"
         },
         {
           "name": "tokens",
@@ -1736,7 +1835,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x9d63848a"
         },
         {
           "name": "usdc",
@@ -1751,7 +1851,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x3e413bee"
         },
         {
           "name": "usedIntent",
@@ -1771,7 +1872,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xd88ee47a"
         },
         {
           "name": "withdraw",
@@ -1790,7 +1892,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0xf3fef3a3"
         }
       ],
       "events": [
@@ -1803,7 +1906,8 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xef2393afd41f32c607a123de95d703349edd33ea1d86af21535ea8040ec7d984"
         },
         {
           "name": "Decision",
@@ -1839,7 +1943,8 @@
               "name": "rationaleHash"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322"
         },
         {
           "name": "ExecutorSet",
@@ -1850,7 +1955,8 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x3e3c5e6d5b512eaa5d5a80669846cfbaf8bde70fc6f7a3be9828cffc9ba5f1db"
         },
         {
           "name": "Funded",
@@ -1860,7 +1966,8 @@
               "name": "amount"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xc4c14883ae9fd8e26d5d59e3485ed29fd126d781d7e498a4ca5c54c8268e4936"
         },
         {
           "name": "MandateApplied",
@@ -1871,7 +1978,8 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xaea77b7649e3343e5d89ceb4132fd66a08e73f20f496e5d7161eadd9ec790065"
         },
         {
           "name": "MandateChangeQueued",
@@ -1890,7 +1998,8 @@
               "name": "mandate"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x7fa3c0bb17162e829120b28266b7550061c3b40db9435802b3b81b4be2f1d4b1"
         },
         {
           "name": "MultiplierChangeDetected",
@@ -1909,7 +2018,8 @@
               "name": "newMultiplier"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xd2e626325a6f2abbc5f3e654cf4b4bb4221fd1ceb5bdb212fc4d136398943ac9"
         },
         {
           "name": "PausedSet",
@@ -1919,7 +2029,8 @@
               "name": "paused"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x40db37ff5c0bdc2c427fbb2078c8f24afea940abac0e3c23bb4ea3bf2da2b212"
         },
         {
           "name": "PayeeApplied",
@@ -1934,7 +2045,8 @@
               "name": "allowed"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x88e8dfde3169975f3002ffc3ae3d6f4f98cd78b415c780b4102860a39de5189c"
         },
         {
           "name": "PayeeChangeQueued",
@@ -1958,7 +2070,8 @@
               "name": "allowed"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x423f006fc8dc13dda4a71fe928443739e83a14faa2810b7fcb4a8bd4706eb9c5"
         },
         {
           "name": "PolicyHashUpdated",
@@ -1968,7 +2081,8 @@
               "name": "policyHash"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x48a58304e6581974b55d2169e131804a3984e0168c1086504cd7a1d19185d994"
         },
         {
           "name": "RevenueReceived",
@@ -1978,7 +2092,8 @@
               "name": "amount"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x41b06c6e0a1531dcb4b86d53ec6268666aa12d55775f8e5a63596fc935cdcc22"
         },
         {
           "name": "TokenConfigApplied",
@@ -1993,7 +2108,8 @@
               "name": "config"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xa2c02b8677f11c939af7c4a0d31d7f0d60a5e8bf8596a909d6948b9205189cd1"
         },
         {
           "name": "TokenConfigChangeQueued",
@@ -2017,7 +2133,8 @@
               "name": "config"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x52c7e79abff67f340ea03b262ee706f9f7b59fd984c52ae45155eaef031057d9"
         },
         {
           "name": "Withdrawn",
@@ -2032,14 +2149,16 @@
               "name": "amount"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5"
         }
       ],
       "errors": [
         {
           "name": "BadUsdcDecimals",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xef1930d8"
         },
         {
           "name": "ChangeExpired",
@@ -2049,7 +2168,8 @@
               "name": "changeHash"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x051a48c0"
         },
         {
           "name": "ChangeNotQueued",
@@ -2059,7 +2179,8 @@
               "name": "changeHash"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x8b2bb7d5"
         },
         {
           "name": "ChangeNotReady",
@@ -2073,12 +2194,14 @@
               "name": "eta"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x2b169f55"
         },
         {
           "name": "CreditPositionOpen",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xb26e8aa6"
         },
         {
           "name": "IntentAlreadyUsed",
@@ -2088,27 +2211,32 @@
               "name": "id"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0xb256356e"
         },
         {
           "name": "InvalidConfig",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x35be3ac8"
         },
         {
           "name": "LengthMismatch",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xff633a38"
         },
         {
           "name": "NotExecutor",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xc32d1d76"
         },
         {
           "name": "NotOwner",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x30cd7471"
         },
         {
           "name": "TransferFailed",
@@ -2118,12 +2246,14 @@
               "name": "token"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "selector": "0x39f1c8d9"
         },
         {
           "name": "ZeroAddress",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xd92e233d"
         }
       ]
     },
@@ -2154,7 +2284,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x6fff1033"
         },
         {
           "name": "earlyCloseMin",
@@ -2174,7 +2305,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0xc829aa23"
         },
         {
           "name": "etOffsetSeconds",
@@ -2194,7 +2326,8 @@
           ],
           "mutability": "pure",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x894b0b60"
         },
         {
           "name": "isHoliday",
@@ -2214,7 +2347,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x7597eede"
         },
         {
           "name": "isOpen",
@@ -2238,7 +2372,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x3fef6f98"
         },
         {
           "name": "localTime",
@@ -2266,7 +2401,8 @@
           ],
           "mutability": "pure",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x55688aef"
         },
         {
           "name": "owner",
@@ -2281,7 +2417,8 @@
           ],
           "mutability": "view",
           "access": "anyone",
-          "notice": ""
+          "notice": "",
+          "selector": "0x8da5cb5b"
         },
         {
           "name": "setEarlyClose",
@@ -2308,7 +2445,8 @@
           "returns": [],
           "mutability": "nonpayable",
           "access": "owner",
-          "notice": ""
+          "notice": "",
+          "selector": "0x8f37c11c"
         }
       ],
       "events": [
@@ -2325,7 +2463,8 @@
               "name": "closeMin"
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xc14f9fa8dbeabe3e01ff0aa6deca7892d075cd0eb3afac1511c0614840c4513d"
         },
         {
           "name": "HolidayAdded",
@@ -2336,24 +2475,28 @@
               "indexed": true
             }
           ],
-          "notice": ""
+          "notice": "",
+          "topic0": "0xd3e14dbc0ac010a16494f1bf2cff694328306db82587b8c040781aca31751c9d"
         }
       ],
       "errors": [
         {
           "name": "InvalidClose",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xffe25d71"
         },
         {
           "name": "NotOwner",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0x30cd7471"
         },
         {
           "name": "ZeroAddress",
           "params": [],
-          "notice": ""
+          "notice": "",
+          "selector": "0xd92e233d"
         }
       ]
     }

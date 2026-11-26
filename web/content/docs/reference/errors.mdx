@@ -4,7 +4,7 @@ description: Every custom error in Maat's contracts and adapters, with its param
 type: reference
 audience: [developer, builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-17
 sources:
   - contracts/src/MandateVault.sol
   - contracts/src/MarketCalendar.sol
@@ -12,14 +12,15 @@ sources:
   - contracts/src/adapters/AaveV4CreditAdapter.sol
   - contracts/src/adapters/ICreditAdapter.sol
   - contracts/src/lib/TokenTransfer.sol
+  - contracts/test/MandateVaultMalformed.t.sol
 next: [guides/configure-a-mandate, help/troubleshooting]
 ---
 
-A custom error is a [revert](/docs/help/glossary#revert) with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the [vault](/docs/help/glossary#vault), the calendar and the two adapters, with the condition that raises it. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+A custom error is a [revert](/docs/help/glossary#revert) with a name and parameters, and a transaction that raises one changes nothing. This page lists every custom error in the [vault](/docs/help/glossary#vault), the calendar and the two adapters, with the condition that raises it. Each entry also gives the error's selector, the first four bytes of the keccak-256 hash of its canonical ABI signature (the name and the parameter types): the revert data starts with it, so a decoder can tell which error a revert carries. The contracts are built and fork-tested and have not been audited ([What Maat does not claim](/docs/security/not-claimed#unaudited)). The owner deployed the four Maat contracts on Base mainnet, and [Base addresses](/docs/reference/base-addresses) gives their addresses.
 
 <Callout type="note" title="A refusal is not an error">
 
-When the vault stops a trade, it does not revert. By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed` ([some failures escape](/docs/security/model#fail-closed)). The [README](https://github.com/duongnq2798/maat/blob/main/README.md) assumes that the plain `balanceOf` and `decimals` reads on USDC and the stocks do not revert. A transaction that runs out of gas reverts too. A reverted `execute` records nothing: `usedIntent` stays false, so the same id can be sent again. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `SWAP_FAILED` for the swap adapter, and `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` for the credit adapter, instead of reverting. A credit adapter view that reverts during a `BUY` (`suppliedOf` or `debt`) counts the stock's weight as above its cap, so that `BUY` is recorded as `CONCENTRATION`.
+When the vault stops a trade, it does not revert. By design, `execute` reverts only with `NotExecutor` or `IntentAlreadyUsed`. [Some failures escape](/docs/security/model#fail-closed): a dependency can still make `execute` revert, with nothing recorded, in a few ways the vault does not catch: return data that does not fit the ABI, a revert in a read that no `try` guards (such as USDC's and the stocks' `balanceOf` and the stocks' `decimals`, which the [README](https://github.com/duongnq2798/maat/blob/main/README.md) names), and a pool answer the TWAP cannot use. [`MandateVaultMalformed.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MandateVaultMalformed.t.sol) shows each kind of failure, though not with every read ([Fail closed](/docs/security/model#fail-closed) says which reads it reaches). A transaction that runs out of gas reverts too. A reverted `execute` records nothing: `usedIntent` stays false, so the same id can be sent again. Everything else that blocks a trade is a [refusal code](/docs/concepts/refusal-codes): `execute` returns `allowed = false` and a `Reason`, emits a `Decision` and moves no funds. The same holds for adapter errors during `execute`: the vault catches them and records `SWAP_FAILED` for the swap adapter, and `CREDIT_FAILED`, `HEALTH_FACTOR_LOW` or `DERISK_WINDOW` for the credit adapter, instead of reverting. A credit adapter view that reverts during a `BUY` (`suppliedOf` or `debt`) counts the stock's weight as above its cap, so that `BUY` is recorded as `CONCENTRATION`.
 
 </Callout>
 
@@ -111,7 +112,7 @@ Raised by every owner-only function when the caller is not the owner: `setExecut
 
 <ErrorEntry contract="MandateVault" name="TransferFailed" />
 
-Raised by `withdraw` and `fund` when the token's `transfer` or `transferFrom` returns false. The error is declared in the shared `TokenTransfer` library, so the adapters raise a copy of it. A token that reverts on its own passes its own revert up unchanged, and B20 tokens revert with typed errors of their own. Inside `execute` a failing token call never reverts: it becomes `TRANSFER_FAILED` in the `Decision`.
+Raised by `withdraw` and `fund` when the token's `transfer` or `transferFrom` returns false. The error is declared in the shared `TokenTransfer` library, so the adapters raise a copy of it. A token that reverts on its own passes its own revert up unchanged, and B20 tokens revert with typed errors of their own. Inside `execute` a failing `transfer` or `approve` by the vault never reverts: it becomes `TRANSFER_FAILED` in the `Decision`.
 
 ### ZeroAddress (MandateVault)
 
@@ -239,3 +240,4 @@ The error for a token that the adapter does not support, raised by the functions
 - [Credit and the health factor](/docs/concepts/credit-and-health-factor): how the vault maps the adapter's errors.
 - [Configure a mandate](/docs/guides/configure-a-mandate): the validation errors a bad config raises.
 - [MandateVault](/docs/reference/mandate-vault) and [Adapters](/docs/reference/adapters): the functions that raise them.
+- [Troubleshooting](/docs/help/troubleshooting): fixes for problems that happened while building and testing Maat.

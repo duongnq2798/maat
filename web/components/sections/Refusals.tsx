@@ -1,7 +1,15 @@
+import { ReasonTag } from "@/components/ui/ReasonTag";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FACTS } from "@/content/facts";
 import { numberWord } from "@/content/format";
 import { HIGHLIGHT_REASON, REASON_GROUPS, REASON_MEANING } from "@/content/reasons";
+
+/**
+ * The fork run's refusal keeps its filled red highlight, now on its label. ReasonTag renders the label as its first
+ * child and the code as its last, so these child selectors fill the label only and leave the code a muted tag.
+ */
+const HOT_LABEL =
+  "[&>:first-child]:rounded-md [&>:first-child]:bg-refuse [&>:first-child]:px-2 [&>:first-child]:py-[3px] [&>:first-child]:text-white";
 
 export function Refusals() {
   return (
@@ -25,13 +33,12 @@ export function Refusals() {
                 const hot = code === HIGHLIGHT_REASON;
                 return (
                   <li key={code} data-code={code} data-hot={hot || undefined} className="flex flex-col items-start gap-1">
-                    <span
-                      className={`rounded-md px-2 py-[5px] font-mono text-[11px] ${
-                        hot ? "bg-refuse text-white" : "border border-line bg-surface-soft text-ink-body"
-                      }`}
-                    >
-                      {code}
-                    </span>
+                    <ReasonTag
+                      code={code}
+                      tone="neutral"
+                      layout="inline"
+                      className={hot ? `text-sm font-medium ${HOT_LABEL}` : "text-sm font-medium"}
+                    />
                     <span className="text-sm leading-normal text-ink-2">{REASON_MEANING[code]}</span>
                   </li>
                 );

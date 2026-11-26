@@ -58,3 +58,34 @@ export async function acquireLock(dir: string): Promise<() => Promise<void>> {
   }
   throw new Error(`could not acquire ${file}`);
 }
+
+/**
+ * One round at a time inside the process: the loop's rounds (scheduler.ts) and the probes (loop/probeRound.ts) take
+ * turns here, first come first served, so a probe never runs while a round reads, previews or sends.
+ */
+export class RoundLock {
+  private last: Promise<void> = Promise.resolve();
+  private queued = 0;
+
+  /** How many callers asked for the lock and do not hold it yet. */
+  get waiting(): number {
+    return this.queued;
+  }
+
+  async run<T>(fn: () => Promise<T>): Promise<T> {
+    const before = this.last;
+    let release!: () => void;
+    this.last = new Promise<void>((r) => (release = r));
+    this.queued++;
+    try {
+      await before;
+    } finally {
+      this.queued--;
+    }
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+}

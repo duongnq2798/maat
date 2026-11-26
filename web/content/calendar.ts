@@ -142,6 +142,26 @@ export function regularSession(ts: number): Session {
   return { open: true, closeMin };
 }
 
+/** How far nextOpen looks ahead: no NYSE closure in the calendar runs longer than a long weekend. */
+export const NEXT_OPEN_HORIZON_DAYS = 14;
+
+/**
+ * The UTC timestamp of the first REGULAR open strictly after `ts` (spec 2026-11-23 section 5.1): the next trading day's
+ * 09:30 ET, read from sessionWindow, so weekends, holidays and early closes count as the contract counts them, and the
+ * DST rule of etToTimestamp sets the offset of that day. At the open instant itself it returns the next day's open.
+ */
+export function nextOpen(ts: number): number {
+  if (!Number.isFinite(ts)) throw new Error(`nextOpen needs a finite timestamp: ${ts}`);
+  const { etDay } = localTime(ts);
+  for (let day = etDay; day < etDay + NEXT_OPEN_HORIZON_DAYS; day++) {
+    const session = sessionWindow(day);
+    if (session === undefined) continue;
+    const open = etToTimestamp(day, session.openMin);
+    if (open > ts) return open;
+  }
+  throw new Error(`no NYSE open within ${NEXT_OPEN_HORIZON_DAYS} days of ${ts}`);
+}
+
 /** The dates the simulator offers: from the fork day to the last date the calendar lists. */
 export const WINDOW = {
   first: dayOf(FACTS.forkDay.value),

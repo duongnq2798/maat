@@ -20,6 +20,8 @@ contract DeployForkTest is Test {
         vm.setEnv("MAAT_OWNER", vm.toString(owner));
         vm.setEnv("MAAT_EXECUTOR", vm.toString(executor));
         vm.setEnv("MAAT_EXPENSE_PAYEE", vm.toString(payee));
+        // pinned to unset: forge loads contracts/.env, where an operator may have put a real second payee
+        vm.setEnv("MAAT_EXPENSE_PAYEE_2", vm.toString(address(0)));
         address deployer = makeAddr("deployer");
         vm.setEnv("MAAT_DEPLOYER", vm.toString(deployer));
         // a used deployer: the vault-address prediction must start from its real nonce, not zero

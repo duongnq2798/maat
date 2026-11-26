@@ -14,10 +14,14 @@
     "brand": "tsx scripts/brand.ts",
     "check:out": "tsx scripts/check-out.ts",
     "docs:gen": "tsx scripts/docs-gen.ts",
+    "gap-index": "tsx scripts/gap-index.ts",
+    "rationales": "tsx scripts/rationales.ts",
+    "snapshot": "tsx scripts/decisions-snapshot.ts",
     "verify": "npm run typecheck && npm test && npm run build && npm run check:out",
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@base-org/account": "2.6.0",
     "fumadocs-core": "16.18.1",
     "fumadocs-mdx": "15.5.0",
     "fumadocs-ui": "16.18.1",
@@ -25,11 +29,13 @@
     "next": "16.4.5",
     "react": "19.3.1",
     "react-dom": "19.3.1",
+    "viem": "2.57.16",
     "zbsearch": "4.0.1",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.14.0",
+    "@noble/hashes": "2.4.0",
     "@playwright/test": "1.65.0",
     "@resvg/resvg-js": "2.6.2",
     "@tailwindcss/postcss": "4.3.5",
@@ -52,5 +58,9 @@
     "vite": "8.3.6",
     "vitest": "5.1.0",
     "yaml": "2.9.1"
+  },
+  "overrides": {
+    "compression@1.8.1": "1.8.2",
+    "fflate@0.7.3": "0.7.5"
   }
 }

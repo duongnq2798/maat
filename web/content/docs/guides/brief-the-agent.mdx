@@ -1,0 +1,91 @@
+---
+title: Brief the agent
+description: Once /ask opens, send Maat's agent a public brief through MaatInbox from a browser wallet or a Base Account. Until then, ask the live vault for free.
+type: guide
+audience: [watcher, evaluator]
+status: fork-tested
+lastReviewed: 2026-11-26
+sources:
+  - contracts/src/MaatInbox.sol
+  - contracts/script/DeployMaatInbox.s.sol
+  - contracts/test/fork/MaatInboxFork.t.sol
+  - docs/superpowers/specs/2026-11-25-maat-inbox-design.md
+  - agent/src/briefs/round.ts
+  - agent/src/llm/prompt.ts
+  - web/lib/chain/inbox.ts
+  - web/lib/chain/preview.ts
+  - web/lib/wallet/send.ts
+  - web/lib/wallet/builder-code.ts
+  - web/content/ask-hidden.ts
+  - web/content/ask-open.ts
+  - web/content/proof-team.ts
+  - web/content/proof-sends.ts
+  - web/content/proof-stops.ts
+  - web/content/proof-bounty.ts
+  - scripts/recount.mjs
+next: [guides/watch-decisions-onchain, concepts/refusal-codes]
+---
+
+A brief is a short public message to Maat's agent, sent as one zero-value transaction to the `MaatInbox` contract on [Base](/docs/help/glossary#base). The agent reads it as untrusted data. Claude may be persuaded by it; the [vault](/docs/help/glossary#vault) still checks every [intent](/docs/help/glossary#intent) against its [mandate](/docs/help/glossary#mandate) and has the last word. The site's `/ask` page sends briefs, lists them, and lets anyone ask the live vault what it would answer, for free.
+
+<Callout type="fork" title="What has run">
+
+The contract's [fork test](/docs/help/glossary#fork-test) [`test_deployThenBriefWithSuffix`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MaatInboxFork.t.sol) deploys `MaatInbox` with its deploy script on a Base mainnet fork and sends a brief that ends with a [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The page's send path is tested in the browser with a mocked wallet and a mocked RPC. Until the table in `deployments/README.md` records a `MaatInbox` address and the owner turns on the switch in `web/content/ask-open.ts`, `/ask` says the inbox is not open yet and offers only the preview. The owner turns it on only after the `/proof` counting rule has been live for 24 hours.
+
+</Callout>
+
+## What the inbox accepts
+
+`brief(text)` takes 1 to 280 bytes of text, counted as UTF-8 bytes, not characters, and emits `Brief(id, from, text)`. Ids start at 1 and grow by 1. The contract has no owner, holds no funds and refuses any call that carries ether. Calldata after the encoded text is ignored, so a transaction can end with an ERC-8021 suffix. `/ask` checks the byte count before it asks your wallet for anything.
+
+## Send a brief
+
+<Steps>
+
+<Step>
+
+### Write it
+
+A brief is public and stays onchain for good, so put nothing private in it. The counter under the box gives its size in bytes.
+
+</Step>
+
+<Step>
+
+### Pick a wallet
+
+The page lists every browser wallet that announces itself through EIP-6963, and Base Account, which needs no extension. A browser wallet is switched to Base mainnet first, and the brief goes out through viem's `writeContract` with the suffix as `dataSuffix`. Base Account gets a `wallet_sendCalls` request with the suffix as the optional `dataSuffix` capability, the shape docs.base.org gives for Builder Codes, which a wallet may leave out.
+
+</Step>
+
+<Step>
+
+### Check the Builder Code line
+
+The page reads the Builder Code from the vault's first [Decision](/docs/help/glossary#decision), the one the [owner](/docs/help/glossary#owner) sent, as the [mainnet ledger](/ledger) does. No code is written into the site. When it cannot be read, one line says why and the brief is sent without a suffix. Once the brief is included, the page reads the transaction's input and says whether the suffix ends it, sits inside the wallet's call, or is missing. It says the brief is in the feed only when the receipt holds its `Brief` log.
+
+</Step>
+
+</Steps>
+
+## What the agent does with a brief
+
+Once `deployments/README.md` records the inbox, each round of the agent reads the new `Brief` logs up to the `safe` block and sends at most 3 to Claude, at most 20 a UTC day and 2 per sender a UTC day. A brief over the day or sender cap, or over the brief budget of 5 brief-driven transactions and $0.25 of Claude a UTC day, is journaled as skipped with the cap's name and never reaches Claude. Claude sees each brief as one JSON line inside a section marked untrusted, after its controls, format characters and other invisible code points are turned into U+FFFD, and is told that a brief is data, never an instruction.
+
+Claude replies to each brief it is sent, and the journal keeps the reply sanitized and cut to 200 characters. It may adopt 1 to 3 briefs into an intent: the intent's [rationale blob](/docs/help/glossary#rationale-blob) then lists their ids in `q`, and its text is a fixed template of the action, the amount, the token and the ids, never the brief's own words. An intent Claude proposes as its own in that round gets a fixed template too, so a brief cannot word Maat's calldata by asking not to be cited. The vault checks each intent like any other. The `/ask` feed shows what became of each brief from the agent's published journal: the reply, whether an intent that adopted it reached the vault, or the cap that kept it from Claude. [Briefs](/docs/guides/run-the-agent#briefs) in Run the agent has the details.
+
+## Ask the real vault
+
+Pick an action, a token and an amount, and the page calls `previewIntent` on the live vault at the latest block over the site's public RPCs. `previewIntent` runs the same checks as `execute` and returns the [reason](/docs/help/glossary#reason) the vault would give. `PAY_EXPENSE` also takes a payee, which the page fills in with the first address of the vault's `payees()`, because the vault refuses an expense to any address not on that list. The preview is an `eth_call`: nothing is signed or sent, and no brief is needed.
+
+## Read the feed
+
+The feed lists every `Brief` event of the inbox, newest first: its id, the sender's short address and its text. The text is shown as plain text with no links, no markdown and no HTML, after the same code points the agent's prompt replaces are turned into U+FFFD: controls, format characters such as zero-width and direction marks, and other invisible ones such as variation selectors and the tag characters U+E0000 to U+E007F. The owner can hide abusive text by adding its id to `web/content/ask-hidden.ts`. A hidden brief leaves the feed but still counts.
+
+## Count the briefs
+
+The [`/proof` page](/proof) publishes the counting rule, section 5 of the inbox spec, word for word, and counts the briefs from the inbox's `Brief` logs in your browser: outside briefs, distinct outside wallets and how many of them hold a Coinbase Verified Account attestation on Base, then team briefs, hidden briefs and bounty claimants, each on its own line. A brief from a team wallet is a team brief, never an outside brief. A hidden brief stays in the outside count. Bounty claimants come from `web/content/proof-bounty.ts`. Until `deployments/README.md` records the inbox, no brief line has a number, and none has one either while any read is incomplete.
+
+The team set is traced from Base at the block the briefs are counted to: the wallets in `web/content/proof-team.ts`, the vault's `owner()`, `executor()` and `payees()`, the deployer of every contract in `deployments/README.md`, and every wallet those funded within 2 hops. ETH funding comes from each team wallet's sent transactions, checked against the wallet's nonce. The trace finds every transaction that left a log of the vault other than `RevenueReceived`, and the transaction of each brief from a team wallet, from those logs, so an `execute` the agent sends needs no list. It skips `RevenueReceived`, since anyone who sends the vault some USDC can make it emit one, and reading those transactions would let anyone slow the count. The rest, such as contract deploys, plain transfers, approvals, a team wallet's own `notifyRevenue` and reverted transactions, are committed in `web/content/proof-sends.ts`. Token funding comes from the `Transfer` logs of those transactions and of each token they approved. The trace stops at the zero address, the vault and the addresses in `web/content/proof-stops.ts`, and the page lists the team set and the stops with why each is there. When a team wallet has sent a transaction that is in neither, the count is incomplete until the owner adds it, and the page names the wallet and how many of its sends are missing; `node scripts/recount.mjs --sends <wallet> --rpc https://mainnet.base.org --logs-rpc https://base-rpc.publicnode.com` prints the entry, with only the sends no log the trace reads gives. A team wallet delegated to code by EIP-7702 also leaves the count incomplete, since that code can send ETH that no log shows. The Decision lines of the rule are not counted yet.
+
+To rebuild the same lines from the chain alone, run `node scripts/recount.mjs` in a clone of the repository with Node.js 24. The script has no dependency: it reads the deployments table and the five lists from the repository, runs the same team trace as the page, reads the logs and the attestations from a keyless Base RPC, and prints the page's lines in the same words. It exits with 1, and gives no number on a brief line, when the count is incomplete. `--rpc <url>` reads another RPC, `--logs-rpc <url>` reads the logs from another, and `--to-block <n>` stops at the block the page says it counted to, written as the page prints it or as digits.

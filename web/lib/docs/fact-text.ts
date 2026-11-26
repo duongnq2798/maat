@@ -16,7 +16,11 @@ type FactKey = keyof typeof ALL_FACTS;
 export interface FactCode {
   /** The repository file that sets the value. */
   readonly file: string;
-  /** The code's own name for the value, e.g. "Mandate.maxStaleness"; every dotted part occurs in the file. */
+  /**
+   * The code's own name for the value, e.g. "Mandate.maxStaleness", with at most one qualifier. Every dotted part
+   * occurs in the file (in the body of `in` when that is given), and for X.Y, Y is declared at the top level of X's
+   * own declaration, in the file or in a file it imports by a relative path.
+   */
   readonly identifier?: string;
   /** The value as the code writes it, when the code gives it no name, e.g. "18". */
   readonly literal?: string;
@@ -185,30 +189,47 @@ export const FACT_TEXT = {
     id(POLICY, "DEFAULT_POLICY.driftBps"),
   ),
   targetWeightPct: t(`${F.targetWeightPct.value}%`, "targetWeightPct", "Target weight of each stock"),
-  pendingWindowBlocks: t(
-    `${F.pendingWindowBlocks.value} blocks`,
-    "pendingWindowBlocks",
-    "Blocks before a send with no trace is dropped",
-    id(RUN_ONCE, "PENDING_WINDOW_BLOCKS"),
+  pendingWindowMinutes: t(
+    `${F.pendingWindowMinutes.value} minutes`,
+    "pendingWindowMinutes",
+    "Chain time before a send with no trace is dropped",
+    id(RUN_ONCE, "PENDING_WINDOW_SECONDS"),
   ),
   executorGasEth: t(`about ${F.executorGasEth.value} ETH`, "executorGasEth", "ETH for the executor's gas (estimate)"),
   cashReservePct: t(`${F.cashReservePct.value}%`, "cashReservePct", "Cash target", id(POLICY, "DEFAULT_POLICY.cashReserveBps")),
   runwayDays: t(`${F.runwayDays.value} days`, "runwayDays", "Compute runway kept in USDC", id(POLICY, "DEFAULT_POLICY.runwayDays")),
-  billMinUsd: t(usd(F.billMinUsd.value), "billMinUsd", "Smallest compute bill paid", id(RUN_ONCE, "BILL_MIN_USD6")),
+  billMinUsd: t(usd(F.billMinUsd.value), "billMinUsd", "Smallest compute bill paid in dry-run", id(RUN_ONCE, "BILL_MIN_USD6")),
+  liveBillMinUsd: t(
+    usd(F.liveBillMinUsd.value),
+    "liveBillMinUsd",
+    "Smallest compute bill paid in live mode",
+    id(RUN_ONCE, "LIVE_BILL_MIN_USD6"),
+  ),
   minTradeUsd: t(usd(F.minTradeUsd.value), "minTradeUsd", "Smallest suggestion kept", id(POLICY, "DEFAULT_POLICY.minTradeUsd6")),
-  maxTxPerDay: t(String(F.maxTxPerDay.value), "maxTxPerDay", "Transactions per UTC day", id(CONFIG, "MAAT_MAX_TX_PER_DAY")),
+  maxTxPerDay: t(String(F.maxTxPerDay.value), "maxTxPerDay", "Most transactions per UTC day", id(CONFIG, "MAAT_MAX_TX_PER_DAY")),
   dailyComputeUsd: t(
     usd(F.dailyComputeUsd.value),
     "dailyComputeUsd",
     "Daily compute cost assumed before any history",
     id(CONFIG, "MAAT_DEFAULT_DAILY_COMPUTE_USD"),
   ),
-  maxIntents: t(String(F.maxIntents.value), "maxIntents", "Intents per proposal", id(SCHEMA, "MAX_INTENTS")),
-  maxRationaleChars: t(String(F.maxRationaleChars.value), "maxRationaleChars", "Characters per rationale", id(SCHEMA, "MAX_RATIONALE_CHARS")),
+  maxLlmUsdPerDay: t(
+    cents(F.maxLlmUsdPerDay.value),
+    "maxLlmUsdPerDay",
+    "Most Claude spend per UTC day",
+    id(CONFIG, "MAAT_MAX_LLM_USD_PER_DAY"),
+  ),
+  maxIntents: t(String(F.maxIntents.value), "maxIntents", "Most intents in one Claude answer", id(SCHEMA, "MAX_INTENTS")),
+  maxRationaleChars: t(
+    String(F.maxRationaleChars.value),
+    "maxRationaleChars",
+    "Most characters in a rationale",
+    id(SCHEMA, "MAX_RATIONALE_CHARS"),
+  ),
   maxSummaryChars: t(
     formatInt(F.maxSummaryChars.value),
     "maxSummaryChars",
-    "Characters in a proposal's summary",
+    "Most characters in the summary of a Claude answer",
     id(SCHEMA, "MAX_SUMMARY_CHARS"),
   ),
   maxAmountUsd: t(usd(F.maxAmountUsd.value), "maxAmountUsd", "Largest amount of one proposed intent", id(SCHEMA, "MAX_AMOUNT_USD")),

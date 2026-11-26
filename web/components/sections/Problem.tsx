@@ -1,8 +1,10 @@
 import type { ReactNode } from "react";
 import { PremiumChart } from "@/components/charts/PremiumChart";
 import { WeekChart } from "@/components/charts/WeekChart";
+import { ReasonTag } from "@/components/ui/ReasonTag";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FACTS } from "@/content/facts";
+import { PUBLISHED } from "@/content/gap-index";
 import type { RefusalCode } from "@/content/reasons";
 
 interface CardProps {
@@ -16,9 +18,11 @@ interface CardProps {
 function ProblemCard({ tag, code, title, body, children }: CardProps) {
   return (
     <article className="card flex flex-col gap-[18px] p-7">
-      <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1.5">
         <span className="font-mono text-xs text-ink-2">{tag}</span>
-        <span className="font-mono text-[11px] text-refuse">{code}</span>
+        {/* The trap's plain label in the refuse colour, its code under it, both right-aligned; the tag drops under the
+            eyebrow when the two do not fit on one line. */}
+        <ReasonTag code={code} tone="refuse" layout="stacked" className="ml-auto items-end text-right text-sm font-medium" />
       </div>
       <h3 className="m-0 text-2xl font-semibold leading-[1.15] tracking-[-0.03em]">{title}</h3>
       {children}
@@ -75,6 +79,11 @@ export function Problem() {
           </div>
         </ProblemCard>
       </div>
+      {/* The weekends measured on Base mainnet: the latest Gap Index edition, by its own title. */}
+      <a href="/gap-index" className="-mt-6 self-start text-[15px] font-medium">
+        Weekend Gap Index · {PUBLISHED[0]!.title}
+        <span aria-hidden="true"> →</span>
+      </a>
     </section>
   );
 }

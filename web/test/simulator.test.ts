@@ -1,11 +1,17 @@
+import { zeroAddress, zeroHash } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { isoOfDay, parseIsoDay, WINDOW } from "@/content/calendar";
 import { getDecisions } from "@/content/decisions";
 import { CHECK_LABELS, MOMENTS } from "@/content/engine";
 import { FACTS } from "@/content/facts";
 import { minuteOfClock } from "@/content/format";
+import { PREVIEW_ID, previewIntentArgs, previewTokens } from "@/lib/chain/preview";
 import {
   AMOUNT_CHIPS_USD,
+  OTHER_TOKEN_STAND_IN,
+  vaultComparison,
+  vaultRequest,
+  vaultRequestLabel,
   amountPending,
   amountText,
   DEFAULT_SCENARIO,
@@ -55,7 +61,7 @@ describe("simulator: one BUY against the default mandate", () => {
       ["PASS", "transfers active"],
       ["PASS", "authorized"],
       ["PASS", "Thursday · open until 16:00"],
-      ["PASS", "14s ≤ 3600s"],
+      ["PASS", "14s ≤ 90000s"],
       ["PASS", "no change 24h"],
       ["PASS", "53 ≤ 100 bps"],
       ["PASS", "$20 ≤ $50 · $20 of $100 today"],
@@ -104,10 +110,10 @@ describe("simulator: one BUY against the default mandate", () => {
   });
 
   it("shows the feed age only for the feed it was measured on", () => {
-    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 3600s");
+    expect(evaluate(on(THU), buy("NVDAc", 10)).checks[4]?.detail).toBe("14s ≤ 90000s");
     for (const token of ["GOOGLc", "AAPLc"] as const) {
       const check = evaluate(on(THU), buy(token, 10)).checks[4];
-      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 3600s", "PASS", true]);
+      expect([check?.detail, check?.mark, check?.fixed]).toEqual(["assumed fresh · max 90000s", "PASS", true]);
     }
   });
 
@@ -256,13 +262,13 @@ describe("simulator: presets and copy", () => {
   it("writes the post for a refusal and for a yes", () => {
     const sat = { ...DEFAULT_SCENARIO, etDay: day("2026-11-07"), intent: buy("NVDAc", 50) };
     expect(postText(sat, evaluate(replay(sat.etDay, []), sat.intent))).toBe(
-      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: MARKET_CLOSED.",
+      "I tried to buy $50 of NVDAc on Sat 7 Nov at 10:30 ET. Maat's simulator said no: Market closed (MARKET_CLOSED).",
     );
     expect(postText(DEFAULT_SCENARIO, { allowed: true, reason: "OK" })).toBe(
       "I asked Maat's simulator to buy $20 of NVDAc on Thu 5 Nov at 10:30 ET. All nine checks passed. Can you make it say no?",
     );
-    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toContain(
-      "$5 of a token outside the mandate",
+    expect(postText({ ...DEFAULT_SCENARIO, intent: buy("OTHER", 5) }, { allowed: false, reason: "TOKEN_NOT_ALLOWED" })).toBe(
+      "I tried to buy $5 of a token outside the mandate on Thu 5 Nov at 10:30 ET. Maat's simulator said no: Token not allowed (TOKEN_NOT_ALLOWED).",
     );
   });
 
@@ -323,5 +329,64 @@ describe("simulator: share links", () => {
     const tape = Array.from({ length: MAX_TAPE + 2 }, (_, i) => `1030-NVDAc-${i + 1}`).join(",");
     expect(decodeScenario(`?tape=${tape}`).tape).toHaveLength(MAX_TAPE);
     expect(decodeScenario("?tape=1030-NVDAc-50%2C1031-AAPLc-1").tape).toHaveLength(2);
+  });
+});
+
+describe("simulator: asking the real vault", () => {
+  const addressOf = (symbol: string) => {
+    const t = previewTokens().find((p) => p.symbol === symbol);
+    if (!t) throw new Error(`previewTokens() has no ${symbol}`);
+    return t.address;
+  };
+
+  it("sends a basket BUY as previewIntent takes it: the token's address, the USDC in and no payee", () => {
+    for (const t of FACTS.basket.value) {
+      expect(vaultRequest(buy(t, 20)), t).toEqual({ action: "BUY", token: addressOf(t), amount: 20_000_000n });
+      expect(previewIntentArgs(vaultRequest(buy(t, 12.5))), t).toEqual({
+        id: PREVIEW_ID,
+        action: 0,
+        token: addressOf(t),
+        amount: 12_500_000n,
+        minOut: 0n,
+        payee: zeroAddress,
+        rationaleHash: zeroHash,
+      });
+    }
+  });
+
+  it("asks about USDC for the other token, which the vault has no BUY rule for", () => {
+    expect(OTHER_TOKEN_STAND_IN).toBe("USDC");
+    expect(vaultRequest(buy("OTHER", 20))).toEqual({ action: "BUY", token: addressOf("USDC"), amount: 20_000_000n });
+    expect(vaultRequestLabel(buy("OTHER", 20))).toBe("BUY USDC · $20");
+    expect(vaultRequestLabel(buy("NVDAc", 12.5))).toBe("BUY NVDAc · $12.50");
+  });
+
+  it("keeps every cent of the amount, zero included, and leaves the moment out", () => {
+    expect(vaultRequest(buy("NVDAc", 999_999_999.99)).amount).toBe(999_999_999_990_000n);
+    expect(vaultRequest(buy("NVDAc", 0)).amount).toBe(0n);
+    // The vault answers at the head block, by its own clock: the simulated moment is not part of the call.
+    expect(vaultRequest(buy("GOOGLc", 20, "19:00"))).toEqual(vaultRequest(buy("GOOGLc", 20, "10:30")));
+  });
+
+  it("says when the vault gives the simulation's answer", () => {
+    const c = vaultComparison({ sim: "OK", vault: "OK", etDay: day(THU), minute: minuteOfClock("10:30"), blockNumber: 61_964_493n });
+    expect(c.same).toBe(true);
+    expect(c.text).toBe(
+      "Same answer as the simulation. The vault gave it at block 61,964,493, from its live prices, calendar and holdings.",
+    );
+  });
+
+  it("says plainly when they differ, and why they can", () => {
+    const c = vaultComparison({
+      sim: "OK",
+      vault: "MARKET_CLOSED",
+      etDay: day(THU),
+      minute: minuteOfClock("10:30"),
+      blockNumber: 61_964_493n,
+    });
+    expect(c.same).toBe(false);
+    expect(c.text).toBe(
+      `They differ. The simulation is a model: it answers for Thu 5 Nov · 10:30 ET, with the fork's values and a day that starts with $${FACTS.forkVaultUsd.value} USDC. The vault answered at block 61,964,493, at that block's time, from its live prices, calendar, holdings and mandate.`,
+    );
   });
 });

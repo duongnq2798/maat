@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { DEPLOYMENT_HEAD, DEPLOYMENT_NETWORK, DEPLOYMENTS_FILE, FULL_ADDRESS, FULL_HASH, ISO_DATE } from "./reference-labels";
 import { buildSurface, type SolSource, type SolSurface } from "./sol-surface";
 
 /** Maat's own contracts and interfaces; third-party interfaces (Aave, Chainlink, B20, ERC-20) are left out. */
@@ -16,6 +17,22 @@ export const DOCUMENTED_CONTRACTS = [
 const TYPES_FILE = "contracts/src/Types.sol";
 const ADDRESSES_FILE = "contracts/script/BaseAddresses.sol";
 
+/** The ABIs the agent compiled with `npm run gen:abi`; the docs publish some of them as /data/abi/<contract>.json. */
+export const AGENT_ABI_FILE = "agent/src/abi/generated.ts";
+
+/**
+ * The ABIs the docs publish, by contract, each with its export in AGENT_ABI_FILE. Maat's own contracts only: the
+ * third-party interfaces in that file (IB20Asset, IAggregatorV3, IERC20Minimal) are left out, and it holds no ABI for
+ * the swap adapter.
+ */
+export const PUBLISHED_ABIS = {
+  MandateVault: "mandateVaultAbi",
+  ICreditAdapter: "creditAdapterAbi",
+  MarketCalendar: "marketCalendarAbi",
+} as const;
+
+export type AbiName = keyof typeof PUBLISHED_ABIS;
+
 export interface BaseConstant {
   readonly name: string;
   readonly type: "address" | "uint256";
@@ -24,6 +41,15 @@ export interface BaseConstant {
   readonly note: string;
   /** The `///` block above the run of constants this one belongs to; empty when it is in no group. */
   readonly group: string;
+}
+
+/** A row of the table in deployments/README.md. The owner fills in Address, Tx and Date after a deploy; until then they are empty. */
+export interface Deployment {
+  readonly network: string;
+  readonly contract: string;
+  readonly address: string;
+  readonly tx: string;
+  readonly date: string;
 }
 
 export interface AgentEnvVar {
@@ -58,6 +84,7 @@ export interface AgentData {
 export interface DocsData {
   readonly surface: SolSurface;
   readonly addresses: readonly BaseConstant[];
+  readonly deployments: readonly Deployment[];
   readonly agent: AgentData;
 }
 
@@ -133,6 +160,59 @@ export function parseBaseAddresses(text: string): BaseConstant[] {
   return out;
 }
 
+/**
+ * The rows of the first table in deployments/README.md, whose columns must be Network | Contract | Address | Tx | Date.
+ * A cell is its text: a link gives its text, and code marks are dropped. The table ends at the first line that is not
+ * a row; any later table is not read. An Address is empty or a full address, a Tx empty or a full hash, and a Date
+ * empty or a calendar day as YYYY-MM-DD, so a placeholder fails here; so does a row on any network but
+ * DEPLOYMENT_NETWORK.
+ */
+export function parseDeployments(text: string): Deployment[] {
+  const lines = text.replace(/\r\n/g, "\n").split("\n");
+  const isRow = (line: string) => line.trimStart().startsWith("|");
+  const cells = (line: string) =>
+    line
+      .trim()
+      .replace(/^\||\|$/g, "")
+      .split("|")
+      .map((c) =>
+        c
+          .trim()
+          .replace(/^\[([^\]]*)\]\([^)]*\)$/, "$1")
+          .replace(/^`([^`]*)`$/, "$1"),
+      );
+  const start = lines.findIndex(isRow);
+  if (start < 0) throw new Error(`${DEPLOYMENTS_FILE} has no table`);
+  const head = cells(lines[start] ?? "");
+  if (head.join(" | ") !== DEPLOYMENT_HEAD.join(" | ")) {
+    throw new Error(`${DEPLOYMENTS_FILE}: the table's columns are ${head.join(" | ")}, not ${DEPLOYMENT_HEAD.join(" | ")}`);
+  }
+  const out: Deployment[] = [];
+  // The row after the header is the |---| separator.
+  for (const line of lines.slice(start + 2)) {
+    if (!isRow(line)) break;
+    const row = cells(line);
+    if (row.length !== DEPLOYMENT_HEAD.length) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has ${row.length} cells, not ${DEPLOYMENT_HEAD.length}`);
+    }
+    const [network = "", contract = "", address = "", tx = "", date = ""] = row;
+    if (address !== "" && !FULL_ADDRESS.test(address)) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the address ${address}, not an empty cell or 0x and 40 hex digits`);
+    }
+    if (network !== DEPLOYMENT_NETWORK) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} is on the network ${network}, not ${DEPLOYMENT_NETWORK}`);
+    }
+    if (tx !== "" && !FULL_HASH.test(tx)) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the transaction ${tx}, not an empty cell or 0x and 64 hex digits`);
+    }
+    if (date !== "" && !ISO_DATE.safeParse(date).success) {
+      throw new Error(`${DEPLOYMENTS_FILE}: the row ${line.trim()} has the date ${date}, not an empty cell or a calendar day as YYYY-MM-DD`);
+    }
+    out.push({ network, contract, address, tx, date });
+  }
+  return out;
+}
+
 /** Everything docs-gen writes, built from the repo at `root`. Pure apart from reading the sources. */
 export function generateDocsData(root: string): DocsData {
   const read = (rel: string) => readFileSync(join(root, rel), "utf8");
@@ -145,6 +225,7 @@ export function generateDocsData(root: string): DocsData {
       structs: full.structs.filter((s) => s.file === TYPES_FILE),
     },
     addresses: parseBaseAddresses(read(ADDRESSES_FILE)),
+    deployments: parseDeployments(read(DEPLOYMENTS_FILE)),
     agent: {
       env: parseAgentEnv(read("agent/.env.example"), read("agent/src/config.ts")),
       scripts: Object.entries(JSON.parse(read("agent/package.json")).scripts as Record<string, string>).map(
@@ -155,6 +236,43 @@ export function generateDocsData(root: string): DocsData {
         .sort(),
     },
   };
+}
+
+/**
+ * The ABI behind each `export const <name> = [...] as const;` of agent/src/abi/generated.ts that PUBLISHED_ABIS names,
+ * by contract. gen:abi writes each array as JSON, so it parses as JSON.
+ */
+export function parseAbis(generatedTs: string): Record<AbiName, unknown[]> {
+  const text = generatedTs.replace(/\r\n/g, "\n");
+  const out = {} as Record<AbiName, unknown[]>;
+  for (const [contract, name] of Object.entries(PUBLISHED_ABIS) as [AbiName, string][]) {
+    const head = `export const ${name} = `;
+    const start = text.indexOf(head);
+    if (start < 0) throw new Error(`${name} is not in ${AGENT_ABI_FILE} (run npm run gen:abi in agent/)`);
+    out[contract] = JSON.parse(text.slice(start + head.length, text.indexOf(" as const;", start))) as unknown[];
+  }
+  return out;
+}
+
+/** The published ABIs, read from the repo at `root`, as docs-gen writes them to content/generated/abi.json. */
+export function generateAbis(root: string): Record<AbiName, unknown[]> {
+  return parseAbis(readFileSync(join(root, AGENT_ABI_FILE), "utf8"));
+}
+
+/** The market-guard skill's instructions, which /skill.md serves (app/skill.md/route.ts). */
+export const SKILL_FILE = "skills/maat-market-guard/SKILL.md";
+
+export interface SkillCopy {
+  readonly source: typeof SKILL_FILE;
+  readonly text: string;
+}
+
+/**
+ * SKILL_FILE read from the repo at `root`, with LF line ends, as docs-gen writes it to content/generated/skill.json.
+ * The build reads that copy, never skills/, as it reads the ABIs from abi.json and never agent/.
+ */
+export function generateSkillCopy(root: string): SkillCopy {
+  return { source: SKILL_FILE, text: readFileSync(join(root, SKILL_FILE), "utf8").replace(/\r\n/g, "\n") };
 }
 
 /** JSON as committed: two-space indent and a trailing newline, so the sync test compares text exactly. */
