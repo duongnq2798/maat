@@ -18,6 +18,7 @@ sources:
   - web/lib/wallet/builder-code.ts
   - web/content/ask-hidden.ts
   - web/content/ask-open.ts
+  - web/components/sections/Nav.tsx
   - web/content/proof-team.ts
   - web/content/proof-sends.ts
   - web/content/proof-stops.ts
@@ -30,7 +31,7 @@ A brief is a short public message to Maat's agent, sent as one zero-value transa
 
 <Callout type="fork" title="What has run">
 
-The contract's [fork test](/docs/help/glossary#fork-test) [`test_deployThenBriefWithSuffix`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MaatInboxFork.t.sol) deploys `MaatInbox` with its deploy script on a Base mainnet fork and sends a brief that ends with a [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The page's send path is tested in the browser with a mocked wallet and a mocked RPC. Until the table in `deployments/README.md` records a `MaatInbox` address and the owner turns on the switch in `web/content/ask-open.ts`, `/ask` says the inbox is not open yet and offers only the preview. The owner turns it on only after the `/proof` counting rule has been live for 24 hours.
+The contract's [fork test](/docs/help/glossary#fork-test) [`test_deployThenBriefWithSuffix`](https://github.com/duongnq2798/maat/blob/main/contracts/test/fork/MaatInboxFork.t.sol) deploys `MaatInbox` with its deploy script on a Base mainnet fork and sends a brief that ends with a [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix. The page's send path is tested in the browser with a mocked wallet and a mocked RPC. Until the table in `deployments/README.md` records a `MaatInbox` address and the owner turns on the switch in `web/content/ask-open.ts`, `/ask` says the inbox is not open yet and offers only the preview. The owner turns it on only after the `/proof` counting rule has been live for 24 hours. The same switch adds Ask and Proof to the nav of the landing, `/ledger`, `/proof` and `/ask`, in the bar and in the phone menu; while it is off, that nav links neither page. `/now` and `/gap-index` keep their own smaller header, which links neither.
 
 </Callout>
 
