@@ -475,6 +475,20 @@ describe("checkOgImage", () => {
     const home = html.replaceAll(OWN, "https://maat.example/og/docs.png");
     expect(checkOgImage(home, "/docs", "out/docs.html", (path) => (path === "og/docs.png" ? png(1200, 630) : undefined))).toEqual([]);
   });
+
+  it.each(["/now", "/ledger", "/gap-index", "/proof"])("wants %s to name its own card under /og, not the landing's image", (page) => {
+    const file = `og${page}.png`;
+    const own = html.replaceAll(OWN, `https://maat.example/${file}`);
+    const readOwn = (path: string) => (path === file ? png(1200, 630) : undefined);
+    const out = `out${page}.html`;
+    expect(checkOgImage(own, page, out, readOwn)).toEqual([]);
+    expect(checkOgImage(own, page, out, () => undefined)).toEqual([`${out}: missing out/${file}`]);
+    const landing = own.replaceAll(`https://maat.example/${file}`, "https://maat.example/opengraph-image.png");
+    expect(checkOgImage(landing, page, out, readOwn)).toEqual([
+      `${out}: og:image is https://maat.example/opengraph-image.png, not the page's own image /${file}`,
+      `${out}: twitter:image is https://maat.example/opengraph-image.png, not the page's own image /${file}`,
+    ]);
+  });
 });
 
 describe("checkAbiFiles", () => {

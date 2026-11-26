@@ -24,6 +24,7 @@ import {
   shipsPublicly,
 } from "../lib/check-out";
 import { ASK_OPEN } from "../content/ask-open";
+import { CARD_PAGES } from "../content/page-cards";
 import rationales from "../content/generated/rationales.json";
 import skill from "../content/generated/skill.json";
 import { reasonsFile } from "../content/reasons";
@@ -51,6 +52,10 @@ const REQUIRED = [
   "proof.html",
   "ask.html",
   "og/ask.png",
+  "og/now.png",
+  "og/ledger.png",
+  "og/gap-index.png",
+  "og/proof.png",
   "api/search.json",
   "llms.txt",
   "llms-full.txt",
@@ -113,10 +118,13 @@ if (existsSync(join(OUT, "proof.html")) && existsSync(join(OUT, "sitemap.xml")))
   );
 }
 
-// /ask's own link preview, out/og/ask.png (content/ask-card.ts): its og:image and twitter:image name that card, a
-// 1200x630 PNG, and not the landing's image.
-if (existsSync(join(OUT, "ask.html"))) {
-  problems.push(...checkOgImage(read("ask.html"), "/ask", "out/ask.html", (path) => (isFile(join(OUT, path)) ? readFileSync(join(OUT, path)) : undefined)));
+// The pages with a link preview of their own, out/og/<page>.png (content/ask-card.ts, content/page-cards.ts): each page's
+// og:image and twitter:image name its card, a 1200x630 PNG, and not the landing's image.
+for (const page of ["/ask", ...CARD_PAGES]) {
+  const html = `${page.slice(1)}.html`;
+  if (existsSync(join(OUT, html))) {
+    problems.push(...checkOgImage(read(html), page, `out/${html}`, (path) => (isFile(join(OUT, path)) ? readFileSync(join(OUT, path)) : undefined)));
+  }
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
@@ -202,5 +210,5 @@ if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, /ask's link preview and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);

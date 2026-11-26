@@ -569,7 +569,7 @@ it has not been re-timed.
     Test Files  153 passed (153)
          Tests  3413 passed (3413)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, /ask's link preview and 53 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 

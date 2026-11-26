@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import satori, { type SatoriOptions } from "satori";
 import { ASK_INVITATION } from "../content/ask-card";
+import { type CardPage, PAGE_CARDS, type PageCard } from "../content/page-cards";
 import { REASON_LABEL, type RefusalCode, reasonText } from "../content/reasons";
 import { OG_IMAGE_SIZE, type OgCard } from "../lib/docs/og";
 import { SITE } from "../lib/site";
@@ -367,6 +368,56 @@ function AskOg() {
   );
 }
 
+/**
+ * The link preview of /now, /ledger, /gap-index or /proof (content/page-cards.ts), laid out as /ask's: the lockup with
+ * the page's h1 beside it, as a docs card names "Docs", the line from the page's lead with its second part in the
+ * accent, the tagline, and the mark at rest beside them, inside the landing image's 64 x 72 px margins. The longer a
+ * line, the smaller its type, so every line fits its column. It shows no verdict and no figure, so it claims no weighing.
+ */
+function PageOg({ card }: { card: PageCard }) {
+  const length = card.line.join(" ").length;
+  const size = length <= 90 ? 58 : length <= 125 ? 50 : 44;
+  return (
+    <div
+      style={{
+        width: OG_IMAGE_SIZE.width,
+        height: OG_IMAGE_SIZE.height,
+        display: "flex",
+        position: "relative",
+        backgroundColor: PALETTE.paper,
+        fontFamily: "Geist",
+        color: PALETTE.ink,
+      }}
+    >
+      <Grid />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "64px 72px",
+          // The content box: the line ends 76 px left of the mark (satori adds the padding to this width).
+          width: 760,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Lockup mark={44} />
+          <span style={{ fontSize: 31, fontWeight: 500, letterSpacing: "-0.03em", color: PALETTE.ink2 }}>{card.heading}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: size, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1.08 }}>
+          <span>{card.line[0]}</span>
+          <span style={{ color: PALETTE.accent }}>{card.line[1]}</span>
+        </div>
+        <span style={{ fontFamily: "Geist Mono", fontSize: 22, fontWeight: 500, color: PALETTE.ink2 }}>{SITE.tagline}</span>
+      </div>
+      <div style={{ position: "absolute", right: 72, top: 205, display: "flex" }}>
+        <img src={dataUri(markSvg("dark"))} width={220} height={220} />
+      </div>
+    </div>
+  );
+}
+
 /** Content sits right of x = 560 so the avatar never covers it. */
 function Banner() {
   return (
@@ -422,6 +473,16 @@ export function askOgSvg(onNodeDetected?: SatoriOptions["onNodeDetected"], f: Sa
 /** /ask's link preview as a PNG, drawn when the site is built (app/og/ask.png/route.ts). Never written to brand/out. */
 export async function renderAskOg(): Promise<Buffer> {
   return png(await askOgSvg(), OG_IMAGE_SIZE.width);
+}
+
+/** The link preview of /now, /ledger, /gap-index or /proof as SVG, with the same `onNodeDetected` as ogSvg. */
+export function pageOgSvg(page: CardPage, onNodeDetected?: SatoriOptions["onNodeDetected"], f: SatoriOptions["fonts"] = fonts()): Promise<string> {
+  return satori(<PageOg card={PAGE_CARDS[page]} />, { ...OG_IMAGE_SIZE, fonts: f, onNodeDetected });
+}
+
+/** A page's link preview as a PNG, drawn when the site is built (app/og/<page>.png/route.ts). Never written to brand/out. */
+export async function renderPageOg(page: CardPage): Promise<Buffer> {
+  return png(await pageOgSvg(page), OG_IMAGE_SIZE.width);
 }
 
 /** The X header (brand/out/x-banner.png) as SVG, with the same `onNodeDetected` as ogSvg. */

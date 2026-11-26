@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { act } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
@@ -16,6 +14,7 @@ import { formatInt } from "@/content/format";
 import { etDateTime, formatHours, gapBps, gapSide, PUBLISHED, signedBps, TAB_ORDER } from "@/content/gap-index";
 import edition0 from "@/content/gap-index/edition-0.json";
 import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
+import { pageOgImage } from "@/content/page-cards";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { LOOKBACK_SEC } from "@/lib/gap/measure";
 import { GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/lib/gap/rpc";
@@ -116,20 +115,14 @@ describe("the /gap-index page", () => {
     expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
   });
 
-  it("names itself in its metadata: title, description, canonical /gap-index and the landing's link preview image", () => {
+  it("names itself in its metadata: title, description, canonical /gap-index and its own link preview image", () => {
     expect(metadata.title).toBe("Weekend Gap Index · Maat");
     const description = String(metadata.description);
     expect(description.length).toBeGreaterThanOrEqual(50);
     expect(description.length).toBeLessThanOrEqual(160);
     neverSafe(description);
     expect(metadata.alternates?.canonical).toBe("/gap-index");
-    const image = {
-      url: "/opengraph-image.png",
-      type: "image/png",
-      width: 1200,
-      height: 630,
-      alt: readFileSync(join(process.cwd(), "app/opengraph-image.alt.txt"), "utf8"),
-    };
+    const image = pageOgImage("/gap-index");
     const og = metadata.openGraph as { url?: string; title?: string; description?: string; images?: unknown };
     expect(og.url).toBe("/gap-index");
     expect(og.title).toBe("Weekend Gap Index · Maat");
