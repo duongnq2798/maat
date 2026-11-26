@@ -1,17 +1,19 @@
 import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
 import { encodeFunctionData, getAddress, keccak256, toBytes, toHex, type Address, type Hex } from "viem";
 import { ASK_OPEN } from "../content/ask-open";
+import { NAV_TOKENS } from "../content/b20-nav";
 import { FACTS } from "../content/facts";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { REASON_LABEL, REASONS } from "../content/reasons";
 import { vaultAbi } from "../lib/chain/abi";
+import { word } from "../lib/live/abi";
 import { deploymentConfig } from "../lib/chain/config";
 import { basescanTx } from "../lib/live/basescan";
 import { LIVE_RPCS } from "../lib/live/rpc";
 import { SITE } from "../lib/site";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
-import { routeLiveRpc, WEEKEND_TS } from "./fake-live-rpc";
+import { fixtureResults, routeLiveRpc, type Scenario, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
 import { collectErrors, lineCount } from "./helpers";
 
@@ -307,16 +309,45 @@ function firstScreenSizes(page: Page) {
   });
 }
 
-for (const vp of VIEWPORTS) {
-  test(`at ${vp.width}x${vp.height} the largest text in the first screen after the H1 is a verdict, and the strip sets its verdict above and larger than the block number`, async ({
+/**
+ * In-session readings whose headline names a reason for each refused token (kind "mixed"), the strip's longest: the
+ * first basket token's feed older than maxStalenessSec; and, as in e2e/instrument-states.spec.ts, each token refused
+ * for its own reason (FEED_STALE, MULTIPLIER_COOLDOWN, PREMIUM_TOO_HIGH).
+ */
+function sessionReading(refuse: "one" | "three"): Scenario {
+  const [stale, cooling, premium] = FACTS.basket.value;
+  const { maxPremiumBps, maxStalenessSec, twapWindowSec } = FACTS.mandate.value;
+  let r = fixtureResults(SESSION_TS);
+  for (const symbol of FACTS.basket.value) {
+    const twap = twapOf(r, symbol, twapWindowSec);
+    const answer = refuse === "three" && symbol === premium ? (twap * 10_000n) / BigInt(10_000 + 2 * maxPremiumBps + 100) : twap;
+    r = withFeed(r, symbol, answer, symbol === stale ? SESSION_TS - maxStalenessSec - 600 : SESSION_TS - 10);
+  }
+  if (refuse === "three") {
+    // effectiveAt: the third of each token's five calls, after the block number and the timestamp.
+    const i = NAV_TOKENS.findIndex((t) => t.symbol === cooling);
+    r[2 + i * 5 + 2] = { success: true, returnData: `0x${word(BigInt(SESSION_TS + 3600))}` };
+  }
+  return { results: r, open: true };
+}
+
+const READINGS = [
+  { name: "the weekend's refusal", clock: WEEKEND_TS + 5, scenario: (): Scenario => "weekend", kind: "refuse-all" },
+  { name: "one stale feed", clock: SESSION_TS + 5, scenario: () => sessionReading("one"), kind: "mixed" },
+  { name: "three refusals", clock: SESSION_TS + 5, scenario: () => sessionReading("three"), kind: "mixed" },
+] as const;
+
+for (const vp of VIEWPORTS) for (const reading of READINGS) {
+  test(`at ${vp.width}x${vp.height} with ${reading.name}, the largest text in the first screen after the H1 is a verdict, and the strip sets its verdict above and larger than the block number`, async ({
     page,
   }) => {
     await page.setViewportSize(vp);
-    await page.clock.install({ time: (WEEKEND_TS + 5) * 1000 });
-    await routeLiveRpc(page, "weekend");
+    await page.clock.install({ time: reading.clock * 1000 });
+    await routeLiveRpc(page, reading.scenario());
     await page.goto("/");
     const strip = page.locator("#top [data-live-strip]");
     await expect(strip).toHaveAttribute("data-live-strip", "live");
+    await expect(strip.locator("[data-verdict-line]")).toHaveAttribute("data-verdict-line", reading.kind);
     await page.evaluate(() => document.fonts.ready);
 
     const runs = (await firstScreenSizes(page)).filter((r) => r.in !== "h1");
@@ -328,11 +359,17 @@ for (const vp of VIEWPORTS) {
     expect(runs.filter((r) => r.in === "block").every((r) => r.px < largest)).toBe(true);
 
     const line = strip.locator("[data-verdict-line]");
+    // A mixed line keeps its reasons at the strip's 13 px; its verb, REFUSE, is set at the verdict size.
+    const verdict = reading.kind === "mixed" ? line.locator("[data-verdict-word]") : line;
     const block = strip.locator(".readout-figure");
     const size = (l: Locator) => l.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
-    expect(await size(line)).toBeGreaterThan(await size(block));
+    // At 390 px the vault card is below the first screen, so the strip's verdict is the largest text after the H1; at
+    // 1440 px the card's verdict plate, beside it, is.
+    if (vp.width === 390) expect(await size(verdict)).toBe(largest);
+    expect(await size(verdict)).toBeGreaterThan(await size(block));
     expect((await line.boundingBox())!.y).toBeLessThan((await block.boundingBox())!.y);
-    await page.screenshot({ path: `test-results/screens/landing-verdict-first-${vp.width}.png` });
+    const shot = reading.kind === "refuse-all" ? "" : `-${reading.name.replaceAll(" ", "-")}`;
+    await page.screenshot({ path: `test-results/screens/landing-verdict-first${shot}-${vp.width}.png` });
   });
 }
 

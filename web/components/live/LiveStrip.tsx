@@ -37,9 +37,9 @@ const GHOST_BLOCK = "88,888,888";
  * Linux), which 268 clears by 18 px, and the rule's 272 would move the 1440x900 CTAs from 880.23 to 884.23 px.
  *
  * The verdict has led the Readout since 2026-11-26 (culture plan Q5), at its larger size over a 12 px block number. The
- * reserves were kept: measured that day on Windows Chromium, the tallest frames are 356 px at 360 (three refusals,
- * against 366 before), 192 px at 640 (the session's pass, against 194), and 204 px at 1000 and at 1280 to 1920
- * (against 234 and 248).
+ * reserves were kept: measured on Windows Chromium with a mixed headline's REFUSE at the verdict size, the tallest
+ * frames are 360 px at 360 (three refusals, against 366 before), 192 px at 640 (the session's pass, against 194), and
+ * 206 px at 1000 and 208 px at 1280 to 1920 (three refusals, against 234 and 248).
  *
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
  * measures (at 320 px the three-refusal frame needs 450 px on Windows), grows the window and moves the lead down

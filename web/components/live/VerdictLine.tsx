@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Surface } from "@/components/instrument/types";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { type RefusalCode, reasonText } from "@/content/reasons";
-import { type Headline, headlineText, LEAD, VAULT_NOT_RUN } from "@/lib/live/verdict";
+import { type Headline, headlineText, LEAD, REFUSE, VAULT_NOT_RUN } from "@/lib/live/verdict";
 
 export type VerdictTone = "ink" | "muted";
 
@@ -41,7 +41,8 @@ function codes(h: Headline): RefusalCode[] {
  * the closing "vault checks not run" links `methodHref`, the method that says which checks need a vault. `palette`
  * picks TONE (the faceplate, the default) or CHASSIS_TONE; data-tone says the tone on either. With `lead`, the
  * headline's first words (LEAD) are their own span, data-verdict-lead, so a stylesheet can set them apart from the
- * verdict; the text stays the same sentence.
+ * verdict; in a mixed headline, its verb (REFUSE) right after them is its own span too, data-verdict-word, so the verb
+ * can be set at the verdict size while the reasons keep a smaller one. The text stays the same sentence.
  */
 export function VerdictLine({
   headline: h,
@@ -67,6 +68,16 @@ export function VerdictLine({
       </span>,
     );
     rest = rest.slice(LEAD.length);
+    const verb = ` ${REFUSE} `;
+    if (h.kind === "mixed" && rest.startsWith(verb)) {
+      parts.push(
+        " ",
+        <span key="verb" data-verdict-word="">
+          {REFUSE}
+        </span>,
+      );
+      rest = rest.slice(verb.length - 1);
+    }
   }
   codes(h).forEach((code, i) => {
     const text = reasonText(code);

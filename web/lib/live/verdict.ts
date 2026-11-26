@@ -202,19 +202,21 @@ export function headline(verdicts: readonly TokenVerdict[]): Headline {
 
 /** Every headline's first words; the landing's Readout sets them apart, above the verdict (components/live/VerdictLine.tsx). */
 export const LEAD = "An agent under Maat's default mandate would";
+/** The verdict's verb when a token is refused; the landing's Readout sets it at the verdict size in a mixed headline. */
+export const REFUSE = "REFUSE";
 /** Ends the headline when nothing is refused; the strip and /now link these words to the method (spec 4). */
 export const VAULT_NOT_RUN = "vault checks not run";
 
 export function headlineText(h: Headline): string {
   switch (h.kind) {
     case "refuse-all":
-      return `${LEAD} REFUSE: ${reasonText(h.reason)}`;
+      return `${LEAD} ${REFUSE}: ${reasonText(h.reason)}`;
     case "pass-all":
       return `${LEAD} pass the market checks for ${andList(h.passed)}; ${VAULT_NOT_RUN}.`;
     case "mixed": {
       const refused = h.refused.map((x) => `${x.symbol}: ${reasonText(x.reason)}`).join("; ");
       const tail = h.passed.length > 0 ? ` Market checks pass for ${andList(h.passed)}.` : "";
-      return `${LEAD} REFUSE ${refused}.${tail}`;
+      return `${LEAD} ${REFUSE} ${refused}.${tail}`;
     }
   }
 }
