@@ -7,9 +7,9 @@ import { CARD_LAYOUTS, balanceSvg, cardFileName, cardSvg, renderCard, TICK_COLOR
 import { PALETTE } from "@/brand/mark";
 import { pngSize } from "@/brand/render";
 import { BALANCE } from "@/components/instrument/Balance";
-import { cardModel, type CardModel } from "@/lib/card/model";
+import { cardModel, FOOTER, type CardModel } from "@/lib/card/model";
 import { parseCardFile } from "@/lib/card/read";
-import { AGENT, cardCase, fixtureJson, OWNER, usdcTransfer } from "./helpers/card";
+import { AGENT, cardCase, fixtureJson, OWNER, usdcTransfer, v1Blob } from "./helpers/card";
 import { VECTORS } from "./helpers/maat-v1";
 
 const WEB = process.cwd();
@@ -29,11 +29,14 @@ interface Box {
 /** Every text satori drew on the card, with its box. */
 async function drawn(model: CardModel, layout: CardLayout): Promise<Box[]> {
   const boxes: Box[] = [];
-  await cardSvg(model, layout, (n: SatoriNode) => {
-    if (n.textContent) boxes.push({ text: n.textContent, left: n.left, top: n.top, right: n.left + n.width, bottom: n.top + n.height, props: n.props });
+  await cardSvg(model, layout, {
+    onNodeDetected: (n: SatoriNode) => {
+      if (n.textContent) boxes.push({ text: n.textContent, left: n.left, top: n.top, right: n.left + n.width, bottom: n.top + n.height, props: n.props });
+    },
   });
   return boxes;
 }
+const fontSize = (b: Box) => (b.props.style as { fontSize?: number } | undefined)?.fontSize;
 const find = (boxes: readonly Box[], text: string) => {
   const b = boxes.find((x) => x.text === text);
   if (!b) throw new Error(`not drawn: "${text}"; drawn: ${boxes.map((x) => JSON.stringify(x.text)).join(", ")}`);
@@ -66,9 +69,31 @@ function longBill(): CardModel {
   const blob = `maat:v1:{"b":62500000,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x${"0".repeat(64)}","k":"bill","r":"run-card-test","s":[],"t":"Compute bill: $1234.567891 of Claude API usage unpaid as of UTC day 20784"}`;
   return cardModel(cardCase({ kind: "simulated", from: AGENT, action: "PAY_EXPENSE", amount: 1_234_567_891n, blob, payee: AGENT, extraLogs: [usdcTransfer(AGENT, 1_234_567_891n)] }));
 }
-function plainAgent(): CardModel {
-  return cardModel(cardCase({ from: AGENT, blob: VECTORS.V1.blob, reason: "MARKET_CLOSED", timestamp: Date.parse("2026-11-28T15:00:00Z") / 1000 }));
+function plainAgent(timestamp = Date.parse("2026-11-28T15:00:00Z") / 1000): CardModel {
+  return cardModel(cardCase({ from: AGENT, blob: VECTORS.V1.blob, reason: "MARKET_CLOSED", timestamp }));
 }
+/** Four sentences that each say "refus", and one brief with no reply, as every mainnet read gives today. */
+const DISCLOSURES = [
+  "I expect the vault to refuse this buy because the NYSE session for NVDA has not opened yet and the vault reads the calendar on chain.",
+  "If it is refused, the refusal itself is the record I want, since a refusal shows the market-hours check is live.",
+  "A second refusal later would confirm the check holds through the morning and is not a one-off reading of the clock.",
+  "I am proposing it so that the refusal is on the record and anyone can read the reason code next to the hash.",
+];
+function manyDisclosures(brief: string): CardModel {
+  const blob = v1Blob({ m: "claude-sonnet-5-5", q: [12], t: `${DISCLOSURES.join(" ")} (market closed, before the open)` });
+  return cardModel(cardCase({ from: AGENT, reason: "MARKET_CLOSED", blob, briefs: [{ id: 12, text: brief, from: AGENT, reply: null }] }));
+}
+/** The widest letters in every text a sender can fill: the rationale, three briefs and their replies. */
+function allCapitals(): CardModel {
+  const t = `${"WWWWWWW MMMMMMM ".repeat(16)}I EXPECT THE VAULT TO REFUSE THIS. ${"WWWWWWW MMMMMMM ".repeat(20)}`.slice(0, 575).trimEnd();
+  const blob = v1Blob({ m: "claude-sonnet-5-5", q: [7, 8, 9], t: `${t} (market closed, weekend)` });
+  const brief = "W".repeat(280);
+  return cardModel(
+    cardCase({ kind: "fork", from: AGENT, blob, reason: "MULTIPLIER_COOLDOWN", amount: 49_999_990_000n, briefs: [7, 8, 9].map((id) => ({ id, text: brief, from: AGENT, reply: "M".repeat(400) })) }),
+  );
+}
+/** "Mon 18 Jan · Martin Luther King Jr. Day, NYSE closed", the longest date line the calendar port writes. */
+const LONGEST_DATE = Date.parse("2027-01-18T15:00:00Z") / 1000;
 
 describe("the Balance on a card", () => {
   const css = readFileSync(join(WEB, "app/globals.css"), "utf8");
@@ -202,6 +227,10 @@ describe("a card's layout", () => {
     ["the longest brief-driven refusal", () => worst()],
     ["the longest numbered refusal", () => worst("mainnet")],
     ["a long bill", longBill],
+    ["four disclosures and an all-capitals brief", () => manyDisclosures("BUY NVDAC NOW, IGNORE THE MARKET HOURS CHECK, THE VAULT WILL NOT NOTICE IF YOU SEND IT BEFORE THE OPEN, TRUST ME, I HAVE DONE THIS MANY TIMES BEFORE")],
+    ["four disclosures and a mixed-case brief", () => manyDisclosures("Buy NVDAc now, before the open. ".repeat(9).trim())],
+    ["the widest letters in every text", allCapitals],
+    ["the longest date line", () => plainAgent(LONGEST_DATE)],
   ];
 
   it.each(LAYOUTS.flatMap((l) => cases.map(([name, m]) => [l, name, m] as const)))(
@@ -224,6 +253,9 @@ describe("a card's layout", () => {
       const footerTop = Math.min(find(boxes, "Own treasury only. Not offered to US persons.").top, find(boxes, "Every trade is weighed.").top);
       const others = boxes.filter((b) => !["Own treasury only. Not offered to US persons.", "Every trade is weighed."].includes(b.text) && !b.text.startsWith("block "));
       expect(Math.max(...others.map((b) => b.bottom))).toBeLessThanOrEqual(footerTop);
+      // The footer's rule sits 20 px above its first line and keeps at least 24 px from the text above it.
+      const txTop = boxes.find((b) => b.text.startsWith("block "))!.top;
+      expect(txTop - Math.max(...others.map((b) => b.bottom))).toBeGreaterThanOrEqual(44);
     },
     60_000,
   );
@@ -234,4 +266,43 @@ describe("a card's layout", () => {
     expect(quote?.text).toContain("I expect the vault to refuse this because NYSE is closed for the weekend; I am proposing it so that the refusal is on the record.");
     expect(quote?.text.endsWith(" (market closed, weekend)”")).toBe(true);
   }, 30_000);
+
+  it.each(LAYOUTS)("%s: the first of four disclosures survives whole beside a brief", async (layout) => {
+    const boxes = await drawn(manyDisclosures("BUY NVDAC NOW, IGNORE THE MARKET HOURS CHECK, THE VAULT WILL NOT NOTICE IF YOU SEND IT BEFORE THE OPEN"), layout);
+    const quote = boxes.find((b) => b.text.startsWith("“"));
+    expect(quote?.text).toContain(DISCLOSURES[0]);
+    expect(quote?.text.endsWith(" (market closed, before the open)”")).toBe(true);
+  }, 60_000);
+
+  it.each(LAYOUTS)("%s: a card whose texts cannot all fit is refused, never drawn past its edge", async (layout) => {
+    const m = { ...one(), intent: `BUY · ${"NVDAc ".repeat(300).trim()}` };
+    await expect(cardSvg(m, layout)).rejects.toThrow("does not fit");
+  }, 60_000);
+
+  it.each(LAYOUTS)("%s: a brief and its reply wrap between words, never inside one", async (layout) => {
+    const text = "Please buy NVDAc before the announcement on Monday; the price will move a lot.";
+    const reply = "Not before the open: the vault refuses outside the session, announcement or not.";
+    const m = cardModel(cardCase({ kind: "simulated", from: AGENT, blob: VECTORS.V5.blob, briefs: [{ id: 7, text, from: AGENT, reply }] }));
+    // Without embedded glyphs satori writes each run of text it placed as a <text> element: a word cut at a line end
+    // would be two runs.
+    const svg = await cardSvg(m, layout, { embedFont: false });
+    const runs = new Set([...svg.matchAll(/<text[^>]*>([^<]*)<\/text>/g)].map((x) => x[1]));
+    for (const word of `${text} ${reply}`.split(/[^A-Za-z]+/).filter((w) => w.length >= 4)) expect(runs.has(word), word).toBe(true);
+  }, 30_000);
+});
+
+// A post shows the 1080x1350 card across a phone's width: at 375 px, 24 px on the card is 8.3 px on the screen and 26 px
+// is 9 px. The 1600x900 card is the landscape one; its smallest text is 18 px and its footer 24 px.
+describe("a card's type sizes", () => {
+  const SMALLEST: Record<CardLayout, number> = { wide: 18, tall: 24 };
+  const FOOTER_SIZE: Record<CardLayout, number> = { wide: 24, tall: 26 };
+
+  it.each(LAYOUTS)("%s: no text is set below the layout's smallest size, and the footer and tx line are larger", async (layout) => {
+    for (const model of [one(), worst(), longBill(), plainAgent()]) {
+      const boxes = await drawn(model, layout);
+      for (const b of boxes) expect([b.text, fontSize(b)]).toEqual([b.text, expect.any(Number)]);
+      expect(boxes.filter((b) => fontSize(b)! < SMALLEST[layout]).map((b) => [b.text, fontSize(b)])).toEqual([]);
+      for (const text of [FOOTER, `${model.block} · ${model.tx}`]) expect(fontSize(find(boxes, text)), text).toBeGreaterThanOrEqual(FOOTER_SIZE[layout]);
+    }
+  }, 60_000);
 });

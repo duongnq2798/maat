@@ -1,4 +1,5 @@
 import { decodeFunctionData, getAddress, type Address, type Hash, type Hex } from "viem";
+import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
 import { holidayName, isoOfDay, localTime, regularSession, sessionWindow } from "@/content/calendar";
 import type { ActionName } from "@/content/decisions";
 import { CHECK_LABELS, type CheckMark } from "@/content/engine";
@@ -132,11 +133,35 @@ export function clip(text: string, max: number): string {
   return `${(space > 0 ? head.slice(0, space) : head).trimEnd()}…`;
 }
 
+/** The start of the first word at or after `at` in `s`, or `s.length` when there is none. */
+function wordStart(s: string, at: number): number {
+  if (at <= 0) return 0;
+  const space = s.indexOf(" ", at - 1);
+  return space === -1 ? s.length : space + 1;
+}
+
 /**
- * The part of a rationale a card prints, about `budget` characters. Kept whole: every sentence in which the agent says
- * it expects a refusal, and the closed-market note the agent's code appends. Then the first sentence (cut on a space
- * when only part of it fits) and the sentences after it, in order, up to the first that does not fit. Left-out text
- * shows as "…". What is kept whole can run past `budget`: a disclosure is never cut.
+ * `s`, a sentence in which the agent discloses an expected refusal, cut to at most `room` characters so that its
+ * refusal word stays in: from the start when the word is near it, else the end of the sentence, else a window that
+ * ends on that word. A cut side shows "…".
+ */
+function cutDisclosure(s: string, room: number): string {
+  const head = clip(s, room);
+  const m = DISCLOSURE.exec(s);
+  if (!m) return head;
+  const wordEnd = s.indexOf(" ", m.index) === -1 ? s.length : s.indexOf(" ", m.index);
+  if (wordEnd <= head.length - 1) return head;
+  const tail = wordStart(s, s.length - (room - 1));
+  if (tail <= m.index) return `…${s.slice(tail)}`;
+  // The window ends on the refusal word and the space after it, so the cut after that space keeps the word whole.
+  return `…${clip(s.slice(wordStart(s, Math.max(0, wordEnd - (room - 3)))), room - 1)}`;
+}
+
+/**
+ * The part of a rationale a card prints: at most `budget` characters. First the sentences in which the agent says it
+ * expects a refusal, whole and in order while they fit; when the first of them does not fit alone, it is cut around its
+ * refusal word. Then the closed-market note the agent's code appends, and the first sentence (cut on a space when only
+ * part of it fits) and the sentences after it, in order, up to the first that does not fit. Left-out text shows as "…".
  */
 export function excerpt(text: string, budget: number): string {
   if (text.length <= budget) return text;
@@ -147,31 +172,38 @@ export function excerpt(text: string, budget: number): string {
     let out = "";
     let last = -1;
     for (const [i, s] of [...parts].sort(([a], [b]) => a - b)) {
-      if (last === -1) out = i === 0 ? s : `… ${s}`;
-      else out += i === last + 1 || out.endsWith("…") ? ` ${s}` : ` … ${s}`;
+      // A cut part already shows "…" on its cut side; a left-out sentence between parts adds one.
+      const gap = i !== last + 1 && !out.endsWith("…") && !s.startsWith("…");
+      out = last === -1 ? (gap ? `… ${s}` : s) : `${out}${gap ? " … " : " "}${s}`;
       last = i;
     }
-    if (last < sentences.length - 1 && !out.endsWith("…")) out += " …";
+    if (last < sentences.length - 1 && !out.endsWith("…")) out += out === "" ? "…" : " …";
     return out + note;
   };
-  const parts = new Map<number, string>(sentences.flatMap((s, i) => (DISCLOSURE.test(s) ? [[i, s] as const] : [])));
+  const parts = new Map<number, string>();
   const fits = (i: number, s: string) => assemble(new Map(parts).set(i, s)).length <= budget;
+  for (const [i, s] of sentences.entries()) {
+    if (!DISCLOSURE.test(s)) continue;
+    if (fits(i, s)) parts.set(i, s);
+    else if (parts.size === 0) parts.set(i, cutDisclosure(s, budget - (assemble(new Map([[i, s]])).length - s.length)));
+  }
   const first = sentences[0] ?? "";
   if (!parts.has(0)) {
     if (fits(0, first)) parts.set(0, first);
     else {
       const room = budget - (assemble(new Map(parts).set(0, first)).length - first.length);
-      if (room >= MIN_CUT || parts.size === 0) parts.set(0, clip(first,Math.max(room, MIN_CUT)));
+      if (room >= MIN_CUT || parts.size === 0) parts.set(0, clip(first, room));
     }
   }
-  if (parts.has(0) && parts.get(0) === first) {
+  if (parts.get(0) === first) {
     for (let i = 1; i < sentences.length; i++) {
       if (parts.has(i)) continue;
       if (!fits(i, sentences[i]!)) break;
       parts.set(i, sentences[i]!);
     }
   }
-  return assemble(parts);
+  const out = assemble(parts);
+  return out.length <= budget ? out : clip(out, budget);
 }
 
 /** What a card says about the Decision's rationale (spec maat:v1 §1 and §4, as /ledger checks it). */
@@ -179,6 +211,9 @@ export type RationaleView =
   /** keccak256 of the maat:v1 blob in the calldata is the Decision's rationaleHash. */
   | { state: "verified"; status: "hash verified"; text: string; by: string }
   | { state: "mismatch" | "none" | "undecoded" | "not-read"; status: string };
+
+/** The senders whose Decision is Maat's agent's own: an operator Decision, or one whose sender is unknown, never is. */
+const AGENT_SENT: ReadonlySet<string> = new Set(["agent", "brief-driven"]);
 
 function rationaleView(trail: DecisionTrail): RationaleView {
   const call = trail.call;
@@ -188,7 +223,15 @@ function rationaleView(trail: DecisionTrail): RationaleView {
   if (trail.blobHashOk !== true) return { state: "mismatch", status: "hash mismatch: text not shown" };
   if (blob.status === "v1") {
     const f = blob.fields;
-    const by = f.k === "probe" ? "probe text, not a Claude proposal" : f.k === "bill" ? "bill text, written by the agent's code" : `Maat's agent · ${f.m ?? "model not named"}`;
+    const model = f.m ?? "not named";
+    const by =
+      f.k === "probe"
+        ? "probe text, not a Claude proposal"
+        : f.k === "bill"
+          ? "bill text, written by the agent's code"
+          : trail.label !== null && AGENT_SENT.has(trail.label)
+            ? `Maat's agent · ${f.m ?? "model not named"}`
+            : `model ${model}`;
     return { state: "verified", status: "hash verified", text: f.t, by };
   }
   return {
@@ -219,6 +262,9 @@ export interface BriefView {
 
 export const NO_BRIEF_TEXT = "brief text not available";
 export const NO_REPLY = "reply not available";
+/** What a card prints for a brief on the owner's /ask hide-list (content/ask-hidden.ts), and for the reply to it. */
+export const HIDDEN_BRIEF_TEXT = "brief text hidden by the owner, as on /ask";
+export const HIDDEN_REPLY = "reply hidden with its brief";
 
 /** Everything a card is drawn from: one transaction, read from Base or from a fixture file. */
 export interface CardRead {
@@ -310,16 +356,23 @@ function billOf(read: CardRead, d: MainnetDecision, event: DecisionEvent, ration
   return { line: `${name} paid · ${amount} · ${to}`, payee: payee ? shortAddress(payee) : null };
 }
 
-function briefViews(trail: DecisionTrail, reads: readonly BriefRead[]): BriefView[] {
+/**
+ * The briefs a Decision adopts, as /ledger's Briefs lists them: only from a blob whose keccak256 is the Decision's
+ * rationaleHash. A brief on the owner's /ask hide-list keeps its id and sender, as /proof lists it, but neither its text
+ * nor the reply to it is printed.
+ */
+function briefViews(trail: DecisionTrail, reads: readonly BriefRead[], hidden: readonly number[]): BriefView[] {
   const blob = trail.call?.blob;
-  if (blob?.status !== "v1" || blob.fields.q === undefined) return [];
+  if (trail.blobHashOk !== true || blob?.status !== "v1" || blob.fields.q === undefined) return [];
   return blob.fields.q.map((id) => {
     const r = reads.find((b) => b.id === id);
+    const head = r?.from ? `Brief #${id} · from ${shortAddress(r.from)}` : `Brief #${id}`;
+    if (hidden.includes(id)) return { id, head, text: HIDDEN_BRIEF_TEXT, reply: HIDDEN_REPLY, hasText: false, hasReply: false };
     const text = r?.text ?? null;
     const reply = r?.reply ?? null;
     return {
       id,
-      head: r?.from ? `Brief #${id} · from ${shortAddress(r.from)}` : `Brief #${id}`,
+      head,
       text: text === null ? NO_BRIEF_TEXT : plainBriefText(text),
       reply: reply === null ? NO_REPLY : plainBriefText(reply),
       hasText: text !== null,
@@ -328,8 +381,11 @@ function briefViews(trail: DecisionTrail, reads: readonly BriefRead[]): BriefVie
   });
 }
 
-/** The card for the one Decision the vault logged in `read`'s transaction. Throws when there is not exactly one. */
-export function cardModel(read: CardRead): CardModel {
+/**
+ * The card for the one Decision the vault logged in `read`'s transaction. Throws when there is not exactly one.
+ * `hidden` is the owner's /ask hide-list.
+ */
+export function cardModel(read: CardRead, hidden: readonly number[] = HIDDEN_BRIEFS): CardModel {
   const events = decodeVaultLogs(
     read.logs
       .filter((l) => same(l.address, read.vault))
@@ -367,7 +423,7 @@ export function cardModel(read: CardRead): CardModel {
     sender: trail.label ?? (trail.call ? "sender unknown" : "sender not labeled"),
     rationale,
     rationaleHash: shortHash(d.rationaleHash),
-    briefs: briefViews(trail, read.briefs),
+    briefs: briefViews(trail, read.briefs, hidden),
     block: `block ${formatInt(Number(read.blockNumber))}`,
     tx: `tx ${shortHash(read.txHash)}`,
     footer: FOOTER,

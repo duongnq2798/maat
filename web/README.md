@@ -243,7 +243,7 @@ It reads Base mainnet, read-only, through the ledger's keyless RPCs (`https://ba
 - the vault's owner, for the sender label;
 - every Decision log of the vault from its deploy block (the MandateVault tx in the deployments table) through this one, to number it;
 - the token's decimals when the amount is in token units (a SELL, SUPPLY or WITHDRAW_COLLATERAL);
-- the Brief logs of the MaatInbox in the deployments table, for the text of an adopted brief.
+- the Brief logs of the MaatInbox in the deployments table, for the text of a brief that a verified blob adopts.
 
 What the card prints:
 
@@ -255,11 +255,13 @@ What the card prints:
 | Verdict | `Refused · Market closed (MARKET_CLOSED)`, with the label from `content/reasons.ts` |
 | Intent | action, token and amount: `BUY · NVDAc · $5.00` |
 | Sent by | the label of the `/ledger` chip: `owner, by hand`, `agent`, `probe` or `brief-driven`. Without one: `sender unknown`, or `sender not labeled` when the tx is not a direct `execute` call to the vault |
-| Rationale | the maat:v1 text in the calldata. `hash verified` when its keccak256 is the Decision's `rationaleHash`, then an excerpt that keeps whole every sentence where the agent says it expects a refusal; `hash mismatch: text not shown`; or `no rationale in this tx` |
+| Rationale | the maat:v1 text in the calldata. `hash verified` when its keccak256 is the Decision's `rationaleHash`, then an excerpt (below); `hash mismatch: text not shown`; or `no rationale in this tx`. The text is credited to `Maat's agent` only when the sender is `agent` or `brief-driven`; otherwise the card names the blob's model, as `/ledger` does |
 | Bill | a PAY_EXPENSE reads `Compute bill paid · $1.00 · to the owner's allowlisted address`, with the real amount and payee, on a neutral plate, never as a trade |
-| Brief | the brief id, its sender and text; `brief text not available` when the text was not read. The reply is in the agent's journal, which the card does not read: `reply not available` |
+| Brief | from a verified blob only, as `/ledger`'s Briefs: the brief id, its sender and text; `brief text not available` when the text was not read. The reply is in the agent's journal, which the card does not read: `reply not available`. A brief on the owner's `/ask` hide-list (`content/ask-hidden.ts`) shows `brief text hidden by the owner, as on /ask`, and its reply is not shown either |
 | Footer | block, short tx, `Own treasury only. Not offered to US persons.` and `Every trade is weighed.` |
+
+The excerpt starts with the sentences where the agent says it expects a refusal, whole while they fit; one too long to fit is cut around its refusal word. When a card's text would push the footer past the 48 px margin, the brief and its reply are cut shorter first, then the rationale, until it fits. A card that cannot fit is refused rather than drawn without its footer. The 1080x1350 card is the one for phones: no text on it is under 24 px, which is 8.3 px at a 375 px screen width.
 
 `npm run card -- --fixture FILE` draws a transaction from a JSON file shaped like `test/fixtures/weighing-card-1.json`, with `kind` set to `fork`, `simulated` or `preview`. The card is not numbered and carries a band across the top: FORK REPLAY, SIMULATED or PREVIEW, NOT A DECISION. A `mainnet` file is refused: a mainnet Decision is read from Base by its hash.
 
-The tests are `test/card-model.test.ts`, `test/card-render.test.ts` and `test/card-cli.test.ts`. The card of № 1 must re-draw `test/fixtures/weighing-card-1-1600x900.svg` and `test/fixtures/weighing-card-1-1080x1350.svg` byte for byte. They are SVG because the PNG bytes can differ between operating systems. After a deliberate change to the card, rewrite them with `npx vitest run test/card-render.test.ts -u` and look at the PNGs before committing.
+The tests are `test/card-model.test.ts`, `test/card-render.test.ts`, `test/card-cli.test.ts` and `test/card-hidden.test.ts`. The card of № 1 must re-draw `test/fixtures/weighing-card-1-1600x900.svg` and `test/fixtures/weighing-card-1-1080x1350.svg` byte for byte. They are SVG because the PNG bytes can differ between operating systems. After a deliberate change to the card, rewrite them with `npx vitest run test/card-render.test.ts -u` and look at the PNGs before committing.

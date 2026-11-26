@@ -128,5 +128,11 @@ export function cardCase(c: CardCase = {}): CardRead {
   };
 }
 
+/** A maat:v1 blob in canonical form (keys sorted, no spaces) with made-up b, c, j, r and s, and `fields` on top. */
+export function v1Blob(fields: { t: string; m?: string; k?: "probe" | "bill"; q?: number[] }): string {
+  const all: Record<string, unknown> = { b: 62_500_000, c: "0123456789abcdef0123456789abcdef01234567", j: `0x${"0".repeat(64)}`, r: "run-card-test", s: [], ...fields };
+  return `maat:v1:${JSON.stringify(Object.fromEntries(Object.keys(all).sort().map((k) => [k, all[k]])))}`;
+}
+
 /** A recorded fixture file, as JSON. */
 export const fixtureJson = (name: string): unknown => JSON.parse(readFileSync(join(process.cwd(), "test/fixtures", name), "utf8"));

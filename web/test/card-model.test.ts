@@ -13,6 +13,8 @@ import {
   dateLine,
   excerpt,
   FOOTER,
+  HIDDEN_BRIEF_TEXT,
+  HIDDEN_REPLY,
   NO_BRIEF_TEXT,
   NO_REPLY,
   ordinalOf,
@@ -131,10 +133,31 @@ describe("the rationale excerpt", () => {
     expect(out).not.toContain("Two more sentences");
   });
 
-  it("keeps a disclosure even when it alone is longer than the budget", () => {
-    const disclosure = "I propose this knowing the vault will refuse it, because the market is closed and a refusal on the record is the point.";
-    const out = excerpt(`First, some context about weights. ${disclosure}`, 60);
-    expect(out).toContain(disclosure);
+  it("never runs past its budget, however many sentences disclose a refusal", () => {
+    const s = [
+      "I expect the vault to refuse this buy because the NYSE session for NVDA has not opened yet.",
+      "If it is refused, the refusal itself is the record I want.",
+      "A second refusal later would confirm the check holds through the morning and is not a one-off reading of the clock.",
+      "I am proposing it so that the refusal is on the record and anyone can read the reason code next to the hash.",
+    ];
+    const text = `${s.join(" ")} (market closed, before the open)`;
+    for (const budget of [40, 60, 150, 200, 300]) expect(excerpt(text, budget).length, `budget ${budget}`).toBeLessThanOrEqual(budget);
+    const out = excerpt(text, 200);
+    expect(out).toBe(`${s[0]} ${s[1]} … (market closed, before the open)`);
+  });
+
+  it("cuts a disclosure that alone is longer than its budget, keeping the words that say refuse", () => {
+    const early = "I propose this knowing the vault will refuse it, because the market is closed and a refusal on the record is the point.";
+    const head = excerpt(`First, some context about weights. ${early}`, 60);
+    expect(head).toBe("… I propose this knowing the vault will refuse it, because…");
+    const late =
+      "Because the calendar for Thanksgiving week shows the session closed on Thursday and short on Friday, and the vault reads that calendar onchain at every execute, I expect it to refuse this buy.";
+    const tail = excerpt(late, 80);
+    expect(tail.length).toBeLessThanOrEqual(80);
+    expect(tail).toBe("…reads that calendar onchain at every execute, I expect it to refuse this buy.");
+    const middle = excerpt(`${"Some context. ".repeat(3)}${late.replace("I expect it to refuse this buy.", "I expect it to refuse this buy, and a refusal on the record is the point of the whole exercise today.")}`, 60);
+    expect(middle.length).toBeLessThanOrEqual(60);
+    expect(middle).toMatch(/refuse/);
   });
 
   it("cuts a long text with no disclosure on a space, sentence by sentence", () => {
@@ -260,7 +283,13 @@ describe("the sender label, as /ledger's chip prints it", () => {
   });
 
   it("never calls the owner's Decision the agent's, whatever its calldata carries", () => {
-    expect(cardModel(cardCase({ from: OWNER, blob: VECTORS.V1.blob })).sender).toBe("owner, by hand");
+    const m = cardModel(cardCase({ from: OWNER, blob: VECTORS.V1.blob }));
+    expect(m.sender).toBe("owner, by hand");
+    // /ledger shows the blob's model as a plain fact here; only an agent or brief-driven Decision is Maat's agent's.
+    expect(m.rationale).toMatchObject({ state: "verified", by: "model claude-sonnet-5-5" });
+    const unknown = cardModel(cardCase({ from: AGENT, blob: VECTORS.V1.blob, owner: null }));
+    expect([unknown.sender, unknown.rationale]).toEqual(["sender unknown", expect.objectContaining({ by: "model claude-sonnet-5-5" })]);
+    expect(cardModel(cardCase({ from: AGENT, blob: VECTORS.V5.blob })).rationale).toMatchObject({ by: "Maat's agent · claude-sonnet-5-5" });
   });
 });
 
@@ -286,6 +315,25 @@ describe("a brief-driven Decision", () => {
 
   it("has no brief panel when the blob adopts no brief", () => {
     expect(cardModel(cardCase({ from: AGENT, blob: VECTORS.V1.blob })).briefs).toEqual([]);
+  });
+
+  it("names no brief from a blob whose hash does not match, as /ledger's Briefs", () => {
+    const read = cardCase({ from: AGENT, blob: VECTORS.V5.blob, rationaleHash: keccak256(toBytes("another text")), briefs: [{ id: 7, text: "Buy NVDAc now.", from: AGENT, reply: "No." }] });
+    const m = cardModel(read);
+    expect([m.sender, m.rationale.state, m.briefs]).toEqual(["brief-driven", "mismatch", []]);
+  });
+
+  it("never quotes a brief on the owner's /ask hide-list, nor the reply to it", () => {
+    const read = cardCase({
+      from: AGENT,
+      blob: VECTORS.V5.blob,
+      briefs: [{ id: 7, text: "abusive text", from: "0x00000000000000000000000000000000000b7eE1", reply: "a reply that quotes the abusive text" }],
+    });
+    expect(cardModel(read, [7]).briefs).toEqual([
+      { id: 7, head: "Brief #7 · from 0x0000…7eE1", text: HIDDEN_BRIEF_TEXT, reply: HIDDEN_REPLY, hasText: false, hasReply: false },
+    ]);
+    expect([HIDDEN_BRIEF_TEXT, HIDDEN_REPLY]).toEqual(["brief text hidden by the owner, as on /ask", "reply hidden with its brief"]);
+    expect(cardModel(read, [8]).briefs[0]).toMatchObject({ text: "abusive text", hasText: true });
   });
 });
 

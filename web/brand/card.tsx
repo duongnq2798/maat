@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import satori, { type SatoriOptions } from "satori";
+import satori, { type SatoriNode, type SatoriOptions } from "satori";
 import { BALANCE, FEATHER_TOP, tickPath } from "../components/instrument/Balance";
 import type { CheckMark } from "../content/engine";
 import { clip, excerpt, type CardModel } from "../lib/card/model";
@@ -58,7 +58,14 @@ export function balanceSvg(balance: CardModel["balance"]): string {
   );
 }
 
-/** Sizes and text budgets of one layout. The budgets are characters; the layout test draws the longest cases. */
+/** Every text but the band keeps this far from each edge; cardSvg checks it on every card it draws. */
+export const CARD_MARGIN = 48;
+
+/**
+ * Sizes and text budgets of one layout. A post shows the 1080x1350 card across a phone's width, so no text on it is
+ * set below 24 px (8.3 px at 375 px); the 1600x900 card is the landscape one. The budgets are characters, before the
+ * fit (cardSvg); the layout test draws the longest cases.
+ */
 interface Spec {
   padX: number;
   padTop: number;
@@ -73,11 +80,23 @@ interface Spec {
   plateInner: number;
   verdict: number;
   intent: number;
+  /** The rationale's quote. */
   body: number;
-  small: number;
-  rationale: { alone: number; withBrief: number };
+  /** A brief's text, and the reply to it. */
   brief: number;
   reply: number;
+  /** The header's date line and time line. */
+  date: number;
+  time: number;
+  /** The smallest text: the caps labels, the rationale's author, rationaleHash, a brief's head, a bill's intent line. */
+  label: number;
+  /** The sender and rationale status chips. */
+  chip: number;
+  /** The block and tx line, and the footer voice.md requires. */
+  tx: number;
+  footer: number;
+  signOff: number;
+  chars: { rationale: number; rationaleWithBrief: number; brief: number; reply: number };
 }
 
 const SPECS: Readonly<Record<CardLayout, Spec>> = {
@@ -94,10 +113,16 @@ const SPECS: Readonly<Record<CardLayout, Spec>> = {
     verdict: 28,
     intent: 34,
     body: 24,
-    small: 18,
-    rationale: { alone: 300, withBrief: 150 },
-    brief: 100,
-    reply: 80,
+    brief: 22,
+    reply: 20,
+    date: 24,
+    time: 22,
+    label: 18,
+    chip: 22,
+    tx: 24,
+    footer: 24,
+    signOff: 30,
+    chars: { rationale: 300, rationaleWithBrief: 200, brief: 100, reply: 80 },
   },
   tall: {
     padX: 72,
@@ -112,12 +137,39 @@ const SPECS: Readonly<Record<CardLayout, Spec>> = {
     verdict: 26,
     intent: 36,
     body: 26,
-    small: 19,
-    rationale: { alone: 420, withBrief: 220 },
-    brief: 180,
-    reply: 140,
+    brief: 26,
+    reply: 24,
+    date: 24,
+    time: 24,
+    label: 24,
+    chip: 26,
+    tx: 26,
+    footer: 28,
+    signOff: 34,
+    chars: { rationale: 420, rationaleWithBrief: 220, brief: 180, reply: 140 },
   },
 };
+
+/** The share of the character budgets a card is drawn with: of the rationale, and of a brief's text and reply. */
+export interface CardFit {
+  rationale: number;
+  brief: number;
+}
+
+/**
+ * The fits a card tries, in order: cardSvg draws the first that keeps every text inside the margins, so a long
+ * rationale or brief gives up text, never the footer or the sign-off. A brief and its reply give up text first, so the
+ * agent's own words, and its disclosure of an expected refusal, keep the most room.
+ */
+export const CARD_FITS: readonly CardFit[] = [
+  { rationale: 1, brief: 1 },
+  { rationale: 1, brief: 0.6 },
+  { rationale: 0.8, brief: 0.6 },
+  { rationale: 0.8, brief: 0.3 },
+  { rationale: 0.6, brief: 0.3 },
+  { rationale: 0.45, brief: 0.3 },
+  { rationale: 0.3, brief: 0.3 },
+];
 
 /** Geist Mono's advance, in ems; Geist's average letter is narrower than this. */
 const MONO_EM = 0.6;
@@ -163,8 +215,8 @@ function Header({ m, spec }: { m: CardModel; spec: Spec }) {
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexShrink: 0 }}>
       <Lockup mark={44} />
       <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 6 }}>
-        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.small + 4, color: PALETTE.ink }}>{m.dateLine}</span>
-        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.small + 2, color: PALETTE.ink2 }}>{m.timeLine}</span>
+        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.date, color: PALETTE.ink }}>{m.dateLine}</span>
+        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.time, color: PALETTE.ink2 }}>{m.timeLine}</span>
       </div>
     </div>
   );
@@ -203,7 +255,7 @@ function Intent({ m, spec }: { m: CardModel; spec: Spec }) {
     return (
       <div style={{ display: "flex", flexDirection: "column", gap: 8, flexShrink: 0 }}>
         <span style={{ fontWeight: 600, fontSize: spec.intent - 6, letterSpacing: "-0.02em", color: PALETTE.ink }}>{m.bill.line}</span>
-        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.small, color: PALETTE.ink2 }}>
+        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.label, color: PALETTE.ink2 }}>
           {`intent ${m.intent}${m.bill.payee ? ` · payee ${m.bill.payee}` : ""}`}
         </span>
       </div>
@@ -222,67 +274,92 @@ const SENDER_TONE: Readonly<Record<string, "accent" | "neutral" | "quiet">> = {
 function Sender({ m, spec }: { m: CardModel; spec: Spec }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 14, flexShrink: 0 }}>
-      <span style={{ ...caps, fontSize: spec.small - 2 }}>SENT BY</span>
-      <Chip tone={SENDER_TONE[m.sender] ?? "quiet"} size={spec.small + 2}>
+      <span style={{ ...caps, fontSize: spec.label }}>SENT BY</span>
+      <Chip tone={SENDER_TONE[m.sender] ?? "quiet"} size={spec.chip}>
         {m.sender}
       </Chip>
     </div>
   );
 }
 
-function Rationale({ m, spec }: { m: CardModel; spec: Spec }) {
+/** `budget` characters at the card's fit (cardSvg). */
+const share = (budget: number, fit: number) => Math.floor(budget * fit);
+
+function Rationale({ m, spec, fit }: { m: CardModel; spec: Spec; fit: CardFit }) {
   const r = m.rationale;
-  const budget = m.briefs.length > 0 ? spec.rationale.withBrief : spec.rationale.alone;
+  const budget = m.briefs.length > 0 ? spec.chars.rationaleWithBrief : spec.chars.rationale;
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 10, flexShrink: 0 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ ...caps, fontSize: spec.small - 2 }}>RATIONALE</span>
-        <Chip tone={r.state === "verified" ? "accent" : "quiet"} size={spec.small}>
+      {/* A long author wraps under the status rather than push past the margin. */}
+      <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", columnGap: 14, rowGap: 6 }}>
+        <span style={{ ...caps, fontSize: spec.label }}>RATIONALE</span>
+        <Chip tone={r.state === "verified" ? "accent" : "quiet"} size={spec.chip}>
           {r.status}
         </Chip>
-        {r.state === "verified" ? <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.small - 2, color: PALETTE.ink2 }}>{r.by}</span> : null}
+        {r.state === "verified" ? <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.label, color: PALETTE.ink2 }}>{r.by}</span> : null}
       </div>
       {r.state === "verified" ? (
-        <span style={{ fontSize: spec.body, lineHeight: 1.4, color: PALETTE.ink, wordBreak: "break-word" }}>{`“${excerpt(r.text, budget)}”`}</span>
+        <span style={{ fontSize: spec.body, lineHeight: 1.4, color: PALETTE.ink, wordBreak: "break-word" }}>{`“${excerpt(r.text, share(budget, fit.rationale))}”`}</span>
       ) : null}
-      <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.small - 2, color: PALETTE.ink2 }}>{`rationaleHash ${m.rationaleHash}`}</span>
+      <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.label, color: PALETTE.ink2 }}>{`rationaleHash ${m.rationaleHash}`}</span>
     </div>
   );
 }
 
-function Briefs({ m, spec }: { m: CardModel; spec: Spec }) {
+function Briefs({ m, spec, fit }: { m: CardModel; spec: Spec; fit: CardFit }) {
   const [first, ...more] = m.briefs;
   if (!first) return null;
   const head = more.length === 0 ? first.head : `${first.head} · also ${more.map((b) => `#${b.id}`).join(", ")}`;
+  // break-word wraps between words, and inside a word only when the word alone is wider than the line.
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 8, paddingLeft: 18, borderLeft: `3px solid ${PALETTE.line}`, flexShrink: 0 }}>
-      <span style={{ fontFamily: MONO, fontWeight: 600, fontSize: spec.small - 1, color: PALETTE.ink2 }}>{head}</span>
-      <span style={{ fontSize: spec.body - 2, lineHeight: 1.35, color: first.hasText ? PALETTE.ink : PALETTE.ink2, wordBreak: "break-all" }}>
-        {first.hasText ? `“${clip(first.text, spec.brief)}”` : first.text}
+      <span style={{ fontFamily: MONO, fontWeight: 600, fontSize: spec.label, color: PALETTE.ink2 }}>{head}</span>
+      <span style={{ fontSize: spec.brief, lineHeight: 1.35, color: first.hasText ? PALETTE.ink : PALETTE.ink2, wordBreak: "break-word" }}>
+        {first.hasText ? `“${clip(first.text, share(spec.chars.brief, fit.brief))}”` : first.text}
       </span>
-      <span style={{ fontSize: spec.body - 4, lineHeight: 1.35, color: PALETTE.ink2, wordBreak: "break-all" }}>{`Reply: ${first.hasReply ? clip(first.reply, spec.reply) : first.reply}`}</span>
+      <span style={{ fontSize: spec.reply, lineHeight: 1.35, color: PALETTE.ink2, wordBreak: "break-word" }}>
+        {`Reply: ${first.hasReply ? clip(first.reply, share(spec.chars.reply, fit.brief)) : first.reply}`}
+      </span>
     </div>
   );
 }
 
-function Footer({ m, spec }: { m: CardModel; spec: Spec }) {
+function TxLine({ m, spec }: { m: CardModel; spec: Spec }) {
+  return <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.tx, color: PALETTE.ink2 }}>{`${m.block} · ${m.tx}`}</span>;
+}
+function FooterLine({ m, spec }: { m: CardModel; spec: Spec }) {
+  return <span style={{ fontWeight: 500, fontSize: spec.footer, color: PALETTE.ink2 }}>{m.footer}</span>;
+}
+function SignOff({ m, spec }: { m: CardModel; spec: Spec }) {
+  return <span style={{ fontWeight: 600, fontSize: spec.signOff, letterSpacing: "-0.02em", color: PALETTE.ink }}>{m.signOff}</span>;
+}
+
+/** The least room between the card's content and the footer's rule, however full the card is. */
+const FOOTER_CLEARANCE = 24;
+const footerRule = { marginTop: "auto", paddingTop: 20, borderTop: `1px solid ${PALETTE.line}`, flexShrink: 0 } as const;
+
+/** The wide card's footer: the tx line and the footer on the left, the sign-off on the right. */
+function WideFooter({ m, spec }: { m: CardModel; spec: Spec }) {
   return (
-    <div
-      style={{
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "flex-end",
-        marginTop: "auto",
-        paddingTop: 20,
-        borderTop: `1px solid ${PALETTE.line}`,
-        flexShrink: 0,
-      }}
-    >
+    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end", ...footerRule }}>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <span style={{ fontFamily: MONO, fontWeight: 500, fontSize: spec.small, color: PALETTE.ink2 }}>{`${m.block} · ${m.tx}`}</span>
-        <span style={{ fontWeight: 500, fontSize: spec.small, color: PALETTE.ink2 }}>{m.footer}</span>
+        <TxLine m={m} spec={spec} />
+        <FooterLine m={m} spec={spec} />
       </div>
-      <span style={{ fontWeight: 600, fontSize: spec.title, letterSpacing: "-0.02em", color: PALETTE.ink }}>{m.signOff}</span>
+      <SignOff m={m} spec={spec} />
+    </div>
+  );
+}
+
+/** The tall card's footer, one line each, so that every line keeps its size at a phone's width. */
+function TallFooter({ m, spec }: { m: CardModel; spec: Spec }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10, ...footerRule }}>
+      <TxLine m={m} spec={spec} />
+      <FooterLine m={m} spec={spec} />
+      <div style={{ display: "flex", marginTop: 8 }}>
+        <SignOff m={m} spec={spec} />
+      </div>
     </div>
   );
 }
@@ -318,12 +395,12 @@ function Frame({ layout, m, children }: { layout: CardLayout; m: CardModel; chil
   );
 }
 
-function Wide({ m }: { m: CardModel }) {
+function Wide({ m, fit }: { m: CardModel; fit: CardFit }) {
   const spec = SPECS.wide;
   return (
     <Frame layout="wide" m={m}>
       <Header m={m} spec={spec} />
-      <div style={{ display: "flex", gap: spec.gap, marginTop: 36 }}>
+      <div style={{ display: "flex", gap: spec.gap, marginTop: 36, marginBottom: FOOTER_CLEARANCE }}>
         <div style={{ display: "flex", flexDirection: "column", gap: 20, width: spec.balance, flexShrink: 0 }}>
           <Title m={m} spec={spec} />
           <BalanceImage m={m} size={spec.balance} />
@@ -337,16 +414,16 @@ function Wide({ m }: { m: CardModel }) {
             </div>
             <Sender m={m} spec={spec} />
           </div>
-          <Rationale m={m} spec={spec} />
-          <Briefs m={m} spec={spec} />
+          <Rationale m={m} spec={spec} fit={fit} />
+          <Briefs m={m} spec={spec} fit={fit} />
         </div>
       </div>
-      <Footer m={m} spec={spec} />
+      <WideFooter m={m} spec={spec} />
     </Frame>
   );
 }
 
-function Tall({ m }: { m: CardModel }) {
+function Tall({ m, fit }: { m: CardModel; fit: CardFit }) {
   const spec = SPECS.tall;
   return (
     <Frame layout="tall" m={m}>
@@ -358,13 +435,13 @@ function Tall({ m }: { m: CardModel }) {
           <Plate m={m} spec={spec} pad="20px 24px 22px" />
         </div>
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 26, marginTop: 34 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 26, marginTop: 34, marginBottom: FOOTER_CLEARANCE }}>
         <Intent m={m} spec={spec} />
         <Sender m={m} spec={spec} />
-        <Rationale m={m} spec={spec} />
-        <Briefs m={m} spec={spec} />
+        <Rationale m={m} spec={spec} fit={fit} />
+        <Briefs m={m} spec={spec} fit={fit} />
       </div>
-      <Footer m={m} spec={spec} />
+      <TallFooter m={m} spec={spec} />
     </Frame>
   );
 }
@@ -372,11 +449,43 @@ function Tall({ m }: { m: CardModel }) {
 // Read once per process: both sizes, and a test's many cards, share the same font buffers.
 let cardFonts: SatoriOptions["fonts"] | undefined;
 
-/** The card as SVG. `onNodeDetected` gets the box of every element, so a test can see what it shows and where. */
-export function cardSvg(m: CardModel, layout: CardLayout, onNodeDetected?: SatoriOptions["onNodeDetected"]): Promise<string> {
+/** Satori's options a caller may set: `onNodeDetected` gets the box of every element of the card drawn. */
+export type CardSvgOptions = Pick<SatoriOptions, "onNodeDetected" | "embedFont">;
+
+/** True when no text but the band comes closer than CARD_MARGIN to an edge. */
+function insideMargins(nodes: readonly SatoriNode[], band: string | null, width: number, height: number): boolean {
+  const e = 0.5;
+  return nodes.every(
+    (n) =>
+      !n.textContent ||
+      n.textContent === band ||
+      (n.left >= CARD_MARGIN - e && n.top >= CARD_MARGIN - e && n.left + n.width <= width - CARD_MARGIN + e && n.top + n.height <= height - CARD_MARGIN + e),
+  );
+}
+
+/**
+ * The card as SVG, at the first of CARD_FITS whose text keeps inside the margins: a long rationale, brief or reply is
+ * cut shorter until the footer and the sign-off are on the card. Throws when even the shortest cut does not fit, so a
+ * card is never drawn without them.
+ */
+export async function cardSvg(m: CardModel, layout: CardLayout, options: CardSvgOptions = {}): Promise<string> {
   cardFonts ??= fonts();
   const { width, height } = CARD_LAYOUTS[layout];
-  return satori(layout === "wide" ? <Wide m={m} /> : <Tall m={m} />, { width, height, fonts: cardFonts, onNodeDetected });
+  for (const fit of CARD_FITS) {
+    const nodes: SatoriNode[] = [];
+    const svg = await satori(layout === "wide" ? <Wide m={m} fit={fit} /> : <Tall m={m} fit={fit} />, {
+      width,
+      height,
+      fonts: cardFonts,
+      embedFont: options.embedFont ?? true,
+      onNodeDetected: (n) => nodes.push(n),
+    });
+    if (insideMargins(nodes, m.band, width, height)) {
+      if (options.onNodeDetected) for (const n of nodes) options.onNodeDetected(n);
+      return svg;
+    }
+  }
+  throw new Error(`the ${width}x${height} card ${m.stem} does not fit its frame, even with the shortest excerpts`);
 }
 
 /** "weighing-1-dfdb6739-1600x900.png". */

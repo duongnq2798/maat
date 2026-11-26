@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
-import { encodeAbiParameters, encodeEventTopics, getAddress, type Address, type Hash, type Hex } from "viem";
+import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { afterEach, describe, expect, it } from "vitest";
 import { pngSize } from "@/brand/render";
 import { inboxAbi } from "@/lib/chain/inbox";
@@ -136,6 +136,20 @@ describe("npm run card -- <txhash>", () => {
     const inboxRanges = asked.filter((a) => a.address === INBOX);
     expect(inboxRanges[0]!.toBlock).toBe(read.blockNumber);
     expect(inboxRanges.at(-1)!.fromBlock).toBe(DEPLOY_BLOCK + 10n);
+  }, 60_000);
+
+  it("reads no brief for a blob whose hash does not match the Decision's rationaleHash", async () => {
+    const read = { ...cardCase({ from: AGENT, blob: VECTORS.V5.blob, rationaleHash: keccak256(toBytes("another text")) }), txHash: TX1 };
+    const at: ChainPosition = { blockNumber: read.blockNumber, logIndex: read.logs.at(-1)!.logIndex };
+    const brief = inboxAbi[3];
+    const briefLog = {
+      topics: encodeEventTopics({ abi: [brief], eventName: "Brief", args: { id: 7n, from: AGENT } }) as Hex[],
+      data: encodeAbiParameters([{ type: "string" }], ["Buy 5 USD of NVDAc if the mandate allows it."]),
+    };
+    const { client, asked } = fakeBase(read, { decisions: [at], briefLogs: [briefLog] });
+    const result = await runCard([TX1, "--out", tempDir()], deps(client, { sources: { ...SOURCES, inbox: { inbox: INBOX, deployTx: INBOX_TX } } }));
+    expect(asked.filter((a) => a.address === INBOX)).toEqual([]);
+    expect([result.model.rationale.state, result.model.briefs]).toEqual(["mismatch", []]);
   }, 60_000);
 
   it("says brief text not available when the deployments table has no inbox", async () => {

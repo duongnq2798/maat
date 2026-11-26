@@ -184,8 +184,10 @@ export async function readMainnetCard(client: CardClient, txHash: Hash, src: Car
   if (event && event.action !== "BUY" && event.action !== "PAY_EXPENSE" && event.action !== "BORROW" && event.action !== "REPAY") {
     decimals[event.token.toLowerCase()] = Number(await client.readContract({ address: event.token, abi: DECIMALS_ABI, functionName: "decimals" }));
   }
+  // Only a blob whose keccak256 is the Decision's rationaleHash names briefs, as on /ledger: an unverified one reads none.
   const call = base.tx.to?.toLowerCase() === src.vault.toLowerCase() ? decodeExecuteInput(base.tx.input) : null;
-  const ids = call?.blob.status === "v1" ? (call.blob.fields.q ?? []) : [];
+  const verified = event !== undefined && call !== null && call.blobHash !== null && call.blobHash.toLowerCase() === event.rationaleHash.toLowerCase();
+  const ids = verified && call.blob.status === "v1" ? (call.blob.fields.q ?? []) : [];
   const briefs = await readBriefTexts(client, src.inbox, ids, receipt.blockNumber);
   return { ...base, owner, timestamp: Number(block.timestamp), ordinal, decimals, briefs };
 }
