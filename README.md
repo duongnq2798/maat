@@ -20,7 +20,7 @@
 
 </div>
 
-> The LLM proposes. The contract decides.
+> Claude proposes. The vault decides.
 
 > [!IMPORTANT]
 > **Status as of 2026-11-24.** The contracts are **unaudited**. The owner deployed the four Maat contracts to
@@ -544,8 +544,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  52 passed (52)
-         Tests  734 passed (734)
+    Test Files  53 passed (53)
+         Tests  745 passed (745)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed

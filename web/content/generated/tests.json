@@ -524,12 +524,12 @@
   "agent/test/prompt.test.ts": {
     "prompt": 8,
     "system prompt carries the mandate rules and stays free of volatile data": 9,
-    "states the limits the zod schema enforces": 15,
-    "user message shows state, weights, suggestions and the bill in dollars": 25,
-    "credit actions": 38,
-    "off (the default prompt): says so, names every credit action, and drops the supply, borrow and repay policy": 48,
-    "on: keeps the supply, borrow and repay policy, and the rest of the prompt is the same": 55,
-    "the user message says whether credit actions are on": 63
+    "states the limits the zod schema enforces": 17,
+    "user message shows state, weights, suggestions and the bill in dollars": 27,
+    "credit actions": 40,
+    "off (the default prompt): says so, names every credit action, and drops the supply, borrow and repay policy": 50,
+    "on: keeps the supply, borrow and repay policy, and the rest of the prompt is the same": 57,
+    "the user message says whether credit actions are on": 65
   },
   "agent/test/proposer.test.ts": {
     "ClaudeProposer": 30,
@@ -866,6 +866,21 @@
     "defaults to the Base mainnet MandateVault and names it in the calldata check": 308,
     "fails the calldata check for a tx to another contract, however its logs and owner() look": 316,
     "checks against the vault --vault names, and needs --rpc and an address": 327
+  },
+  "agent/test/voice.test.ts": {
+    "the banned words": 46,
+    "are the voice guide's Never line, in its order, with its scopes": 47,
+    "leave only 'only' to a reader, since a word match cannot tell a limit from a claim": 55,
+    "are each flagged in a summary or a reply, in any case": 60,
+    "are flagged as whole words: a plural or a space for the hyphen counts, a longer word does not": 69,
+    "are listed once each, in the list's order, however often they appear": 81,
+    "pass a summary and a reply in the agent's voice": 85,
+    "the voice of the prompt": 91,
+    "never instructs a banned word, in any text the agent sends Claude": 92,
+    "uses 'only' as a limit and never as a claim: each use is one a reader has checked": 96,
+    "calls the AI Maat's agent, and never Maat alone: Maat is the vault, and MaatInbox a contract": 114,
+    "gives the summary and the replies one calm voice, and keeps the instruction to say when a refusal is expected": 122,
+    "puts the voice before the brief rules, so the rules for untrusted briefs still come last and unchanged": 138
   },
   "contracts/test/AaveV4CreditAdapter.t.sol": {
     "test_constructorBindsReserves": 73,

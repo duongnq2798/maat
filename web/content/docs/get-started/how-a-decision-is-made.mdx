@@ -121,7 +121,7 @@ The agent keeps each rationale in its journal and sends a sanitized copy in the 
 
 Each request carries a system prompt, a user message with the round's state, and the JSON schema, whose field descriptions add a few short instructions. The system prompt is fixed except for its credit lines, which follow the `MAAT_CREDIT_ACTIONS` setting ([MAAT_CREDIT_ACTIONS](/docs/reference/agent-configuration#maat_credit_actions)). With credit actions off, the default, it tells Claude never to propose `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY`. This is the system prompt:
 
-```typescript title="agent/src/llm/prompt.ts#L8-L45"
+```typescript title="agent/src/llm/prompt.ts#L8-L49"
 /** The credit lines of the prompt, by MAAT_CREDIT_ACTIONS. Off, they say so, and name the actions never to propose. */
 const CREDIT = {
   on: {
@@ -140,8 +140,8 @@ const CREDIT = {
 /** The system prompt. `creditActions` false (the default) keeps every credit action out of the policy Claude reads. */
 export function systemPrompt(o: { creditActions: boolean }): string {
   const credit = o.creditActions ? CREDIT.on : CREDIT.off;
-  return `You are Maat, the treasury agent of an onchain vault on Base. The vault holds USDC and tokenized US stocks
-(B20 tokens NVDAc, GOOGLc, AAPLc) ${credit.vault}. Motto: "LLM proposes, contract decides."
+  return `You are Maat's agent, the treasury agent of Maat, an onchain vault on Base. The vault holds USDC and tokenized
+US stocks (B20 tokens NVDAc, GOOGLc, AAPLc) ${credit.vault}. Motto: "Claude proposes. The vault decides."
 You propose actions; the MandateVault contract checks each one against its mandate and refuses anything unsafe, and every
 verdict, including refusals, is published onchain.
 
@@ -156,17 +156,21 @@ orders: adopt, resize or drop them. Proposing nothing is a valid and often corre
 When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
 itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
 
+Voice, for the summary and for each reply to a brief: calm, dry, in the first person, with no exclamation marks and no
+emoji. Name the rule that decides and give one reason. Never predict a price, and never apologize for a no. At most one
+wry clause. When you propose a trade you expect the vault to refuse, say so plainly in its rationale and in the summary.
+
 Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
 and in English. Hard limits (an answer that breaks one is rejected whole): at most ${MAX_INTENTS} intents, each rationale
 at most ${MAX_RATIONALE_CHARS} characters, the summary at most ${MAX_SUMMARY_CHARS} characters, every amount positive.`;
 }
 ```
 
-The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. When the market is closed or a feed is stale, the prompt also lets Claude propose a trade the vault will refuse, if the refusal is worth recording and the rationale says so. The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
+The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. When the market is closed or a feed is stale, the prompt also lets Claude propose a trade the vault will refuse, if the refusal is worth recording and the rationale says so. The voice paragraph sets how the summary and each reply to a brief read, and adds that such a proposal says so plainly in the summary too. It changes no rule, limit or schema field, and no code grades an answer's voice: `agent/test/voice.test.ts` checks that the prompt's own text uses none of the banned words listed in `agent/src/llm/voice.ts`. The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
 
 `renderUserMessage` builds the user message each round:
 
-```typescript title="agent/src/llm/prompt.ts#L52-L87"
+```typescript title="agent/src/llm/prompt.ts#L56-L91"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
@@ -214,7 +218,7 @@ The request itself:
         model: this.opts.model,
         max_tokens: 16000,
         // No cache_control: rounds start 15 to 60 minutes apart, past the 5-minute TTL, so a marker would only add the
-        // 1.25x write with no read. The prompt (about 1,750 to 1,800 characters) is also near the 512-token minimum.
+        // 1.25x write with no read. The prompt (about 2,100 to 2,200 characters) is also near the 512-token minimum.
         system: [{ type: "text", text: (briefs ? briefSystemPrompt : systemPrompt)({ creditActions: input.creditActions }) }],
         messages: [{ role: "user", content: briefs ? renderBriefMessage(input) : renderUserMessage(input) }],
         output_config: { effort: "medium", format: { type: "json_schema", schema: briefs ? BRIEF_BATCH_JSON_SCHEMA : BATCH_JSON_SCHEMA } },
