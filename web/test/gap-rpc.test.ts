@@ -200,6 +200,36 @@ describe("blocks", () => {
   });
 });
 
+describe("the finalized block and a transaction", () => {
+  it("finalized reads the block Base has finalized, with its number and timestamp, never the latest", async () => {
+    const { f, calls } = fake((req) =>
+      req.method === "eth_getBlockByNumber" && req.params[0] === "finalized" ? { number: "0x3b6a402", timestamp: "0x6b077434" } : new Error(`unexpected ${req.method}`),
+    );
+    expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 0x3b6a402, ts: 0x6b077434 });
+    expect(calls.map((c) => [c.method, c.params])).toEqual([["eth_getBlockByNumber", ["finalized", false]]]);
+  });
+
+  it("finalized refuses an answer without a number or a timestamp", async () => {
+    const { f } = fake(() => ({ timestamp: "0x10" }));
+    await expect(createLogReader({ fetch: f, sleep: noSleep }).finalized()).rejects.toMatchObject({ name: "RpcRefused" });
+  });
+
+  it("transaction reads the sender, the recipient and the input of a hash, lowercase", async () => {
+    const hash = `0x${"ab".repeat(32)}`;
+    const { f, calls } = fake(() => ({ from: "0xAbC0000000000000000000000000000000000001", to: "0xDEF0000000000000000000000000000000000002", input: "0x4AD3993F" }));
+    const r = createLogReader({ fetch: f, sleep: noSleep });
+    expect(await r.transaction(hash)).toEqual({ from: "0xabc0000000000000000000000000000000000001", to: "0xdef0000000000000000000000000000000000002", input: "0x4ad3993f" });
+    expect(calls[0]!).toMatchObject({ method: "eth_getTransactionByHash", params: [hash] });
+  });
+
+  it("transaction keeps a contract creation's null recipient and refuses an unknown hash", async () => {
+    const created = fake(() => ({ from: "0x01", to: null, input: "0x" }));
+    expect(await createLogReader({ fetch: created.f, sleep: noSleep }).transaction("0x01")).toEqual({ from: "0x01", to: null, input: "0x" });
+    const missing = fake(() => null);
+    await expect(createLogReader({ fetch: missing.f, sleep: noSleep }).transaction("0x02")).rejects.toThrow(/no transaction 0x02/);
+  });
+});
+
 describe("single-shot reads retry", () => {
   it("one refusal then success gives the answer; three refusals throw", async () => {
     const sleeps: number[] = [];

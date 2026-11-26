@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { NAV_TOKENS } from "@/content/b20-nav";
+import { DECISION_TOPIC } from "@/lib/gap/decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { GAP_RPC } from "@/lib/gap/rpc";
 import { editionSchema, EditionFileSchema, formatDec8, toTokenRow } from "@/lib/gap/schema";
@@ -179,5 +180,63 @@ describe("toTokenRow refuses an incomplete freeze", () => {
     const up = { block: 1, logIndex: 0, ts: 1, answer: 1n, tx: hash(1), address: addr(4) };
     const figures = { feedLive: true, freeze: { from: up, to: up, hours: 1, returnMoveBps: 0 }, swapsInWindow: 0, swapsWhileFrozen: null, largestGap: null, series: { pool: [], feed: [] } };
     expect(() => toTokenRow(nav, { aggregator: addr(4), phase: 1 }, figures, { from: 1, to: 2 })).toThrow("swapsWhileFrozen");
+  });
+});
+
+describe("a window's Decisions", () => {
+  const VAULT = "0x3f956072d18ddd20d5efb74e9ccabf8deade699b";
+  const dec = (block: number, sender: string, reason: string, logIndex = 0) => ({
+    block,
+    logIndex,
+    ts: 100 + block,
+    tx: hash(block),
+    sender,
+    allowed: reason === "OK",
+    reason,
+  });
+  const zero = { count: 0, marketClosed: 0 };
+  const decisions = (over: Record<string, unknown> = {}) => ({
+    vault: VAULT,
+    topic: DECISION_TOPIC,
+    count: 3,
+    marketClosed: 2,
+    bySender: { agent: { count: 1, marketClosed: 1 }, probe: { count: 1, marketClosed: 1 }, brief: zero, owner: { count: 1, marketClosed: 0 }, unlabelled: zero },
+    list: [dec(2, "agent", "MARKET_CLOSED"), dec(5, "probe", "MARKET_CLOSED"), dec(5, "owner", "OK", 3)],
+    ...over,
+  });
+  const withDecisions = (d: unknown) => file([{ ...complete(all13()), decisions: d }]);
+  const issues = (f: unknown) => EditionFileSchema.safeParse(f).error?.issues.map((i) => i.message) ?? [];
+
+  it("accepts a complete window with its Decisions, and one without them, as edition 0's windows are", () => {
+    expect(issues(withDecisions(decisions()))).toEqual([]);
+    expect(issues(withDecisions({ ...decisions(), count: 0, marketClosed: 0, bySender: { agent: zero, probe: zero, brief: zero, owner: zero, unlabelled: zero }, list: [] }))).toEqual([]);
+    expect(issues(file([complete(all13())]))).toEqual([]);
+  });
+
+  it("rejects Decisions on a pending window, an unknown sender, an unknown reason or another topic", () => {
+    expect(EditionFileSchema.safeParse(file([{ status: "pending", ...base, decisions: decisions() }])).success).toBe(false);
+    expect(issues(withDecisions(decisions({ list: [dec(2, "bot", "MARKET_CLOSED")] })))).not.toEqual([]);
+    expect(issues(withDecisions(decisions({ list: [dec(2, "agent", "CLOSED")] })))).not.toEqual([]);
+    expect(issues(withDecisions(decisions({ topic: hash(1) })))).not.toEqual([]);
+  });
+
+  it("rejects counts that are not the list's", () => {
+    expect(issues(withDecisions(decisions({ count: 4 })))).toContain("window 2026-11-13: the Decision counts are not those of its list");
+    expect(issues(withDecisions(decisions({ marketClosed: 3 })))).toContain("window 2026-11-13: the Decision counts are not those of its list");
+    const bySender = { ...decisions().bySender, agent: { count: 1, marketClosed: 0 } };
+    expect(issues(withDecisions(decisions({ bySender })))).toContain("window 2026-11-13: the Decision counts are not those of its list");
+  });
+
+  it("rejects a Decision outside the window's blocks, out of order, or allowed with a refusal", () => {
+    const at = (list: unknown[]) => decisions({ list, count: list.length });
+    expect(issues(withDecisions(decisions({ list: [dec(0, "agent", "MARKET_CLOSED"), dec(5, "probe", "MARKET_CLOSED"), dec(5, "owner", "OK", 3)] })))).toContain(
+      "window 2026-11-13: a Decision at block 0 lies outside blocks 1 to 9",
+    );
+    expect(issues(withDecisions(decisions({ list: [dec(5, "probe", "MARKET_CLOSED"), dec(2, "agent", "MARKET_CLOSED"), dec(5, "owner", "OK", 3)] })))).toContain(
+      "window 2026-11-13: the Decisions are not in block and log order",
+    );
+    expect(issues(withDecisions(at([{ ...dec(2, "agent", "MARKET_CLOSED"), allowed: true }, dec(5, "probe", "MARKET_CLOSED"), dec(5, "owner", "OK", 3)])))).toContain(
+      "window 2026-11-13: the Decision at block 2 log 0 is allowed only if its reason is OK",
+    );
   });
 });

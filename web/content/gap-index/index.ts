@@ -1,8 +1,9 @@
 import { NAV_TOKENS } from "@/content/b20-nav";
-import { isoOfDay, localTime } from "@/content/calendar";
+import { holidayName, isoOfDay, localTime } from "@/content/calendar";
 import { FACTS } from "@/content/facts";
-import { dayLabel, formatInt } from "@/content/format";
-import { EditionFileSchema, type EditionFile } from "@/lib/gap/schema";
+import { clockLabel, dayLabel, formatInt } from "@/content/format";
+import { SENDERS, type Sender } from "@/lib/gap/decisions";
+import { EditionFileSchema, type Decisions, type EditionFile } from "@/lib/gap/schema";
 import { formatEt } from "@/lib/live/format";
 import edition0 from "./edition-0.json";
 
@@ -59,6 +60,59 @@ export function etDateTime(ts: number): string {
 export const SPOT_NOT_TWAP = `the pool's spot price after a swap, not the ${FACTS.mandate.value.twapWindowSec / 60}-minute TWAP the vault checks`;
 
 export type CompleteWindow = Extract<EditionFile["windows"][number], { status: "complete" }>;
+
+const capitalized = (s: string) => `${s.charAt(0).toUpperCase()}${s.slice(1)}`;
+
+/** "a", "a and b", "a, b and c". */
+function andList(parts: readonly string[]): string {
+  return parts.length < 2 ? (parts[0] ?? "") : `${parts.slice(0, -1).join(", ")} and ${parts.at(-1)}`;
+}
+
+/**
+ * What closed a window, when it is not a plain weekend: its early close, then each holiday and the weekend in the order
+ * they come, and its length. Null for a regular Friday close to the Monday open, so edition 0's windows print nothing.
+ */
+export function closureNote(w: { closeTs: number; openTs: number }): string | null {
+  const close = localTime(w.closeTs);
+  const open = localTime(w.openTs);
+  const parts: string[] = [];
+  const early = close.minuteOfDay < FACTS.nyseSessionMin.value.close;
+  if (early) parts.push(`early close at ${clockLabel(close.minuteOfDay)} ET`);
+  let weekend = false;
+  for (let day = close.etDay + 1; day < open.etDay; day++) {
+    const holiday = holidayName(day);
+    if (holiday !== undefined) parts.push(`${holiday}, ${dayLabel(isoOfDay(day))}`);
+    else if (!weekend) {
+      parts.push("the weekend");
+      weekend = true;
+    }
+  }
+  if (!early && parts.length === 1 && weekend) return null;
+  return `${capitalized(parts.join(", then "))} · ${formatHours((w.openTs - w.closeTs) / 3600)} closed`;
+}
+
+const SENT_BY: Record<Sender, string> = {
+  agent: "from the agent",
+  probe: "probe",
+  brief: "brief-driven",
+  owner: "from the owner by hand",
+  unlabelled: "through another contract",
+};
+const sentBy = (s: Sender, n: number) => (s === "probe" && n !== 1 ? "probes" : SENT_BY[s]);
+
+/** One sentence on a window's Decisions: how many, from whom as /ledger labels them, and how many MARKET_CLOSED refused. */
+export function decisionsSentence(d: Decisions): string {
+  if (d.count === 0) return "The vault recorded no Decision in this window.";
+  const senders = SENDERS.filter((s) => d.bySender[s].count > 0);
+  const who = andList(senders.map((s) => `${formatInt(d.bySender[s].count)} ${sentBy(s, d.bySender[s].count)}`));
+  const head = `The vault recorded ${formatInt(d.count)} ${d.count === 1 ? "Decision" : "Decisions"} in this window: ${who}.`;
+  if (d.marketClosed === d.count) {
+    const them = d.count === 1 ? "it" : d.count === 2 ? "both" : `all ${formatInt(d.count)}`;
+    return `${head} It refused ${them} with MARKET_CLOSED.`;
+  }
+  const refused = senders.map((s) => `${formatInt(d.bySender[s].marketClosed)} of the ${formatInt(d.bySender[s].count)} ${sentBy(s, d.bySender[s].count)}`);
+  return `${head} Refused with MARKET_CLOSED: ${andList(refused)}.`;
+}
 
 /** A complete window's rows in tab order. */
 export function rowsInTabOrder(w: CompleteWindow): CompleteWindow["tokens"] {

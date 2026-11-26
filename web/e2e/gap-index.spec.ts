@@ -94,6 +94,15 @@ test("the page raises no console error and makes no request outside its own orig
   expect(errors).toEqual([]);
 });
 
+// Edition 0's windows are plain weekends and its edition counts no Decisions, so they show neither line, whatever
+// later edition is published above them.
+test("edition 0's weekends carry no closure note and no Decisions line", async ({ page }) => {
+  await page.goto("/gap-index");
+  const edition0 = page.locator('section[data-edition="0"]');
+  await expect(edition0.locator("section[data-window]")).toHaveCount(3);
+  await expect(edition0.locator("[data-window-note], [data-window-decisions]")).toHaveCount(0);
+});
+
 test("/now links the Weekend Gap Index from its method section", async ({ page }) => {
   await page.goto("/now");
   const link = page.locator("#method").getByRole("link", { name: "Weekend Gap Index" });

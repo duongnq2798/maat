@@ -1,7 +1,11 @@
-import { etToTimestamp, isoOfDay, parseIsoDay, sessionWindow } from "@/content/calendar";
+import { etToTimestamp, isoOfDay, localTime, parseIsoDay, sessionWindow } from "@/content/calendar";
+import { FACTS } from "@/content/facts";
 import { clockLabel, dayLabel } from "@/content/format";
 
-/** One closed NYSE window (spec section 2): a regular-session close to the next open, with a day without a session between. */
+/**
+ * One closed NYSE window (spec section 2): a regular-session close to the next open, with a day without a session between.
+ * The close may be an early close, and the window may start on any weekday, as before a holiday.
+ */
 export interface ClosedWindow {
   /** The ISO ET date of the close, e.g. "2026-11-13". */
   id: string;
@@ -37,4 +41,29 @@ export function closedWindows(fromIso: string, toIso: string): ClosedWindow[] {
     });
   }
   return out;
+}
+
+/** One instant at which MarketCalendar.isOpen(ts, REGULAR) must give `open` for a window's edges to hold. */
+export interface CalendarCheck {
+  ts: number;
+  open: boolean;
+}
+
+/**
+ * The instants that pin a window to MarketCalendar on Base: open the second before the close, closed at the close,
+ * closed at 09:30 ET of every day between, closed the second before the open, and open at the open. Every REGULAR
+ * session of the contract starts at 09:30 ET, so a day that is closed then has no session at all.
+ */
+export function calendarChecks(w: Pick<ClosedWindow, "closeTs" | "openTs">): CalendarCheck[] {
+  const closeDay = localTime(w.closeTs).etDay;
+  const openDay = localTime(w.openTs).etDay;
+  const between: CalendarCheck[] = [];
+  for (let day = closeDay + 1; day < openDay; day++) between.push({ ts: etToTimestamp(day, FACTS.nyseSessionMin.value.open), open: false });
+  return [
+    { ts: w.closeTs - 1, open: true },
+    { ts: w.closeTs, open: false },
+    ...between,
+    { ts: w.openTs - 1, open: false },
+    { ts: w.openTs, open: true },
+  ];
 }
