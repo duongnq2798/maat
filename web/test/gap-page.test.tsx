@@ -36,10 +36,11 @@ const TWAP_SENTENCE = `the pool's spot price after a swap, not the ${FACTS.manda
 const neverSafe = (text: string) => expect(text).not.toMatch(/safe/i);
 
 describe("the published editions", () => {
-  it("holds every committed edition file, parsed with the schema, latest first", () => {
+  it("holds every committed edition file, parsed with the schema, latest first, one per edition", () => {
     expect(PUBLISHED.length).toBeGreaterThanOrEqual(1);
     const numbers = PUBLISHED.map((e) => e.edition);
     expect(numbers).toEqual([...numbers].sort((a, b) => b - a));
+    expect(new Set(numbers).size).toBe(numbers.length);
     expect(PUBLISHED.find((e) => e.edition === 0)).toEqual(EditionFileSchema.parse(edition0));
   });
 
@@ -186,7 +187,8 @@ describe("the /gap-index page", () => {
     expect(document.body.textContent).not.toMatch(/npm run gap-index/);
   });
 
-  it("puts every token's figures of every complete window in its table row and in its chart", () => {
+  // Its own timeout, as the static HTML test has: it walks every window, and each edition adds windows.
+  it("puts every token's figures of every complete window in its table row and in its chart", { timeout: 60_000 }, () => {
     setup();
     for (const w of complete) {
       const s = section(w.id);
@@ -431,7 +433,8 @@ describe("GapChart", () => {
   });
 
   it("says feed not live in this window, and the swaps in window, for a token without a live feed", () => {
-    const w = complete[0]!;
+    // ANTc's feed was not live in edition 0's first window: named by id, so a later edition published first changes nothing.
+    const w = complete.find((x) => x.id === "2026-11-06")!;
     const c = draw(w, "ANTc");
     expect(c).toHaveTextContent("feed not live in this window");
     expect(c).toHaveTextContent("0 swaps in window");

@@ -12,6 +12,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { B20_DECIMALS, NAV_TOKENS } from "@/content/b20-nav";
 import { formatInt } from "@/content/format";
 import { etDateTime, PUBLISHED, SPOT_NOT_TWAP } from "@/content/gap-index";
+import { DECISION_TOPIC } from "@/lib/gap/decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { BUCKET_SEC, LOOKBACK_SEC } from "@/lib/gap/measure";
 import { GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/lib/gap/rpc";
@@ -66,6 +67,9 @@ const EXAMPLE_EDITION = PUBLISHED.find((e) => e.windows.some((w) => w.status ===
 
 /** The exact command that reproduces one row of an edition, in the parts a narrow screen may wrap between. */
 const COMMAND = commandParts(EXAMPLE_EDITION.edition);
+
+/** Whether a published window counts the vault's Decisions: the method describes how only once one does. */
+const COUNTS_DECISIONS = PUBLISHED.some((e) => e.windows.some((w) => w.status === "complete" && w.decisions));
 
 /** The day of the first block the keyless endpoint serves, as the ISO date of its timestamp. */
 const ENDPOINT_FROM = new Date(GAP_RPC_FIRST_BLOCK_TS * 1000).toISOString().slice(0, 10);
@@ -176,16 +180,20 @@ function Method() {
               <p className="m-0">
                 A closed window runs from one NYSE regular-session close to the next regular-session open, when at least
                 one full calendar day without a session lies between them: a weekend or a holiday. An overnight gap
-                between two session days is not a window. Session times come from{" "}
+                between two session days is not a window. The close may be an early close, and a window may start on
+                any weekday, as on the eve of a holiday. Session times come from{" "}
                 <RepoFile path="web/content/calendar.ts" />, the repository&apos;s tested port of{" "}
                 <RepoFile path="contracts/src/MarketCalendar.sol" />, with its holidays, its early closes and New York
-                daylight saving time.
+                daylight saving time. Before it measures, the script asks the deployed MarketCalendar&apos;s{" "}
+                <Code>isOpen</Code> about each window: open the second before the close, closed at the close and at 09:30
+                ET of each day between, closed the second before the open, and open at the open.
               </p>
               <p className="m-0">
                 A window&apos;s blocks run from the first block at or after the close to the last block before the open,
                 found by binary search over block headers. An edition is a date range in{" "}
                 <RepoFile path="web/content/gap-index/editions.ts" />, and its windows are the ones whose close falls in
-                it. A window that has not ended when the script runs is pending: its figures are added after it ends.
+                it. The script reads through the latest finalized block, so a reorg cannot change a figure; a window
+                whose open comes after that block is pending: its figures are added after it ends.
               </p>
             </Part>
 
@@ -218,6 +226,15 @@ function Method() {
                   <Code>{SWAP_TOPIC}</Code>, are read over the window and over the interval without a feed update,
                   whichever reaches further. In every pool, token0 is USDC and token1 is the stock.
                 </li>
+                {COUNTS_DECISIONS ? (
+                  <li>
+                    <span className="font-medium text-ink">Decisions.</span> For an edition that counts them, the
+                    vault&apos;s <Code>Decision</Code> logs, topic <Code>{DECISION_TOPIC}</Code>, are read over the
+                    window&apos;s blocks, with <Code>eth_getTransactionByHash</Code> for each one&apos;s sender and
+                    calldata. Each is labeled as /ledger labels it: by the owner by hand, a probe, brief-driven or the
+                    agent. A window&apos;s command prints them under <Code>decisions</Code>, whichever token it names.
+                  </li>
+                ) : null}
               </ul>
             </Part>
           </div>
