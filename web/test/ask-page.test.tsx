@@ -8,6 +8,7 @@ import { PreviewForm } from "@/app/(site)/ask/PreviewForm";
 import AskPage, { metadata } from "@/app/(site)/ask/page";
 import { askConfig, askIsOpen, fetchAskConfig } from "@/app/(site)/ask/config";
 import { GET as GET_ASK } from "@/app/data/ask.json/route";
+import { Nav } from "@/components/sections/Nav";
 import { ASK_OPEN } from "@/content/ask-open";
 import { ACTIONS } from "@/content/decisions";
 import { REASONS } from "@/content/reasons";
@@ -131,9 +132,21 @@ describe("no page links /ask while it is not open", () => {
   it.skipIf(open)("finds no link to /ask in the site's code or docs outside the page itself", () => {
     const web = join(REPO_ROOT, "web");
     const own = join(web, "app", "(site)", "ask");
-    const sources = ["app", "components", "content", "lib"].flatMap((d) => files(join(web, d))).filter((f) => !f.startsWith(own));
+    // The nav draws its Ask link only while the owner's switch is on; the next test renders it.
+    const nav = join(web, "components", "sections", "Nav.tsx");
+    const sources = ["app", "components", "content", "lib"]
+      .flatMap((d) => files(join(web, d)))
+      .filter((f) => !f.startsWith(own) && f !== nav);
     const linked = sources.filter((f) => links(f, readFileSync(f, "utf8"))).map((f) => relative(web, f).split(sep).join("/"));
     expect(linked).toEqual([]);
+  });
+
+  it.skipIf(open)("renders no nav link to /ask, on the landing or off it", () => {
+    for (const onLanding of [true, false]) {
+      const { container, unmount } = render(<Nav onLanding={onLanding} />);
+      expect([...container.querySelectorAll("a")].map((a) => a.getAttribute("href")), `onLanding=${onLanding}`).not.toContain("/ask");
+      unmount();
+    }
   });
 });
 
