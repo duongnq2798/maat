@@ -252,6 +252,24 @@ function Method() {
               )}
             </Part>
 
+            <Part title="The week and the agent's note">
+              <p className="m-0">
+                The week is drawn from <RepoFile path="web/content/calendar.ts" /> at your clock: its sessions, holidays and
+                early closes, in New York time. The large line under its heading comes from the reading above: while the
+                reading&apos;s session is closed it names the next REGULAR open, as <Code>nextOpen</Code> counts it.
+              </p>
+              <p className="m-0">
+                The ticks are the vault&apos;s <Code>Decision</Code> events on Base mainnet, read with the ledger&apos;s own
+                loader over the same RPCs: <Code>eth_getLogs</Code> from the deploy block, then each Decision&apos;s block,
+                receipt and transaction, so each one has its time and its sender. Nothing is signed or sent.
+              </p>
+              <p className="m-0">
+                The note is the newest round summary on the public agent-journal branch, fetched from raw.githubusercontent.com
+                and shown only after your browser has checked the hash of every line, as the ledger&apos;s Rounds tab does.
+                While the branch has no summary, the page shows no note.
+              </p>
+            </Part>
+
             <Part title="The limits">
               <p className="m-0">The default mandate&apos;s values, as the checks use them.</p>
               <dl className="m-0 flex flex-col">
