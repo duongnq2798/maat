@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { NowBoard } from "@/components/live/NowBoard";
@@ -11,6 +9,7 @@ import { MULTICALL3, NAV_TOKENS } from "@/content/b20-nav";
 import { CHECK_LABELS } from "@/content/engine";
 import { FACTS, type MandateFacts } from "@/content/facts";
 import { andList, formatInt } from "@/content/format";
+import { pageOgImage } from "@/content/page-cards";
 import type { RefusalCode } from "@/content/reasons";
 import { basescanAddress } from "@/lib/live/basescan";
 import { formatAge } from "@/lib/live/format";
@@ -19,19 +18,10 @@ import { LIVE_RPCS } from "@/lib/live/rpc";
 import { buildCalls, calendarAddress } from "@/lib/live/snapshot";
 import { repoFileUrl, SITE } from "@/lib/site";
 
-// A page's openGraph replaces the layout's whole object, so /now names the landing's link preview image again: the
-// same object as app/(site)/layout.tsx.
-const ogImage = {
-  url: "/opengraph-image.png",
-  type: "image/png",
-  width: 1200,
-  height: 630,
-  alt: readFileSync(join(process.cwd(), "app/opengraph-image.alt.txt"), "utf8"),
-};
-
 const TITLE = `Right now on Base · ${SITE.name}`;
 const DESCRIPTION = `What an agent under ${SITE.name}'s default mandate would do right now with the ${NAV_TOKENS.length} B20 tokens that have a NAV, read from Base mainnet in your browser.`;
 
+// Its own card (content/page-cards.ts), drawn at build time by app/og/now.png/route.ts; the landing's image stays the landing's.
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
@@ -43,7 +33,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     locale: "en_US",
-    images: [ogImage],
+    images: [pageOgImage("/now")],
   },
   twitter: {
     card: "summary_large_image",
@@ -51,7 +41,7 @@ export const metadata: Metadata = {
     creator: SITE.xHandle,
     title: TITLE,
     description: DESCRIPTION,
-    images: [ogImage],
+    images: [pageOgImage("/now")],
   },
 };
 

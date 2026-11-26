@@ -288,7 +288,7 @@ The built site is checked too. `npm run check:out` reads the static export and f
 - a page loads a third-party script, or the landing page, `/now`, `/gap-index` or a docs page loads Google Fonts at runtime;
 - a docs page lacks `lang="en"`, the docs title suffix, a description of the right length, a canonical link or an absolute OG image;
 - a docs page's `og:image` or `twitter:image` is not the page's own link preview image, or that image is missing or is not a PNG of the size its tags give;
-- `/ask`'s `og:image` or `twitter:image` is not its own card, `/og/ask.png`, or that card is missing or is not a PNG of the size its tags give;
+- the `og:image` or `twitter:image` of `/ask`, `/now`, `/ledger`, `/gap-index` or `/proof` is not that page's own card (`/og/ask.png`, `/og/now.png`, `/og/ledger.png`, `/og/gap-index.png` or `/og/proof.png`), or that card is missing or is not a PNG of the size its tags give;
 - a page links a same-page anchor (`#id`) that is not on it, or a docs page links a docs page that was not exported or another file that is not in the export (anchors on other pages are checked by `docs-content.test.ts`);
 - an MDX block component ended up inside a paragraph;
 - a Markdown copy still holds the tag of a component that prints data, such as a reference entry, a table or a diagram, instead of its text;
