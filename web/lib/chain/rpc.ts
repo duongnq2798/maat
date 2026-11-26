@@ -1,4 +1,4 @@
-import { createPublicClient, fallback, http } from "viem";
+import { createPublicClient, fallback, http, type Transport } from "viem";
 import { base } from "viem/chains";
 import type { LedgerClient } from "./load";
 
@@ -38,14 +38,31 @@ const NO_LOG_SCAN: ReadonlySet<string> = new Set(["https://mainnet.base.org"]);
 export const scansLogs = (url: string): boolean => !NO_LOG_SCAN.has(url);
 
 /**
- * A read-only Base client over `urls`, falling back in order and batching JSON-RPC calls. A call that fails on every
- * RPC is retried once, with viem's backoff; the scan retries a failed chunk once more on its own.
+ * One RPC, with each eth_getLogs in an HTTP request of its own and every other call batched. base-rpc.publicnode.com
+ * serves the eth_getLogs of one batch one after another (measured 2026-11-25: 8 windows of 50,000 blocks in one request
+ * took 927 to 2,019 ms, 32 requests of one window each, sent at once, 567 to 960 ms), while the other reads are cheap
+ * and batch well.
+ */
+function logsApart(url: string, methods?: { exclude: string[] }): Transport {
+  const batched = http(url, { batch: { batchSize: 50 }, methods });
+  const single = http(url, { methods });
+  return (config) => {
+    const transport = batched(config);
+    const alone = single(config);
+    return { ...transport, request: ((args, options) => (args.method === "eth_getLogs" ? alone : transport).request(args, options)) as typeof transport.request };
+  };
+}
+
+/**
+ * A read-only Base client over `urls`, falling back in order, with each eth_getLogs sent on its own and the other
+ * JSON-RPC calls batched. A call that fails on every RPC is retried once, with viem's backoff; the scan retries a failed
+ * chunk once more on its own.
  */
 export function createLedgerClient(urls: readonly string[] = rpcUrls()): LedgerClient {
   return createPublicClient({
     chain: base,
     transport: fallback(
-      urls.map((u) => http(u, { batch: { batchSize: 50 }, ...(!scansLogs(u) ? { methods: { exclude: ["eth_getLogs"] } } : {}) })),
+      urls.map((u) => logsApart(u, !scansLogs(u) ? { exclude: ["eth_getLogs"] } : undefined)),
       { retryCount: 1 },
     ),
   }) as unknown as LedgerClient;
