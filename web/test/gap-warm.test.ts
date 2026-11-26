@@ -9,7 +9,7 @@ import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
 import { runGapIndex, UsageError, type GapCliDeps } from "@/lib/gap/cli";
 import { DECISION_TOPIC } from "@/lib/gap/decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, type RawLog } from "@/lib/gap/decode";
-import { measureEdition, warmEdition } from "@/lib/gap/edition";
+import { measureEdition, warmEdition, type WarmResult } from "@/lib/gap/edition";
 import { createLogSource, SETTLED } from "@/lib/gap/logs";
 import { SPAN, type LogQuery, type LogReader, type TxRead } from "@/lib/gap/rpc";
 import { OWNER_SELECTOR } from "@/lib/gap/vault";
@@ -205,8 +205,8 @@ describe("warmEdition", () => {
     // span below the weekend's close holds NVDAc's last update before it, and Thanksgiving's reads after its open read
     // that span already: both answer files and NVDAc's swaps come from the cache.
     const below = Math.floor((at(WK!.closeTs) - 40_000) / SPAN) * SPAN;
-    expect(weekend.spans[0]).toEqual({ from: below, to: below + SPAN - 1, read: 0, cached: 3, kept: 3 });
-    expect(weekend.spans.at(-1)).toEqual({ from: Math.floor(SUNDAY / SPAN) * SPAN, to: SUNDAY, read: 4, cached: 0, kept: 0 });
+    expect(weekend.spans[0]).toEqual({ from: below, to: below + SPAN - 1, read: 0, cached: 3, kept: 3, failed: 0 });
+    expect(weekend.spans.at(-1)).toEqual({ from: Math.floor(SUNDAY / SPAN) * SPAN, to: SUNDAY, read: 4, cached: 0, kept: 0, failed: 0 });
     expect(weekend.kept).toBe(weekend.spans.reduce((n, s) => n + s.kept, 0));
     expect(lines).toContain(`window 2026-11-27: blocks ${below}-${below + SPAN - 1}: 0 read from Base, 3 from the cache, 3 kept`);
     expect(lines).toContain(
@@ -289,6 +289,81 @@ describe("warmEdition", () => {
     expect(result).not.toHaveProperty("windows.0.tokens");
   });
 
+  it("counts the span files it could not write to the cache and says so, instead of blaming the head", async () => {
+    const base = thanksgivingWeek();
+    base.finalizedBlock = SUNDAY;
+    // A file where the cache folder should be: every write fails, as on a full disk or an unwritable folder.
+    const blocker = path.join(tmp(), "gap");
+    fs.writeFileSync(blocker, "x");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let result!: WarmResult;
+    let lines: string[] = [];
+    try {
+      const run = warm(base, blocker);
+      result = await run.done;
+      lines = run.lines;
+    } finally {
+      warn.mockRestore();
+    }
+    expect(result.windows.map((w) => w.kept)).toEqual([0, 0]);
+    for (const w of result.windows) {
+      // Every file of a span settled below the head was read from Base, and none of them is kept.
+      const settled = w.spans.filter((s) => s.to <= SUNDAY - SETTLED);
+      expect(settled.length).toBeGreaterThan(0);
+      for (const s of settled) expect(s).toMatchObject({ cached: 0, kept: 0, failed: s.read });
+      expect(w.failed).toBe(settled.reduce((n, s) => n + s.read, 0));
+      expect(w.writeError).toMatch(/EEXIST|ENOTDIR/);
+      for (const s of settled) {
+        expect(lines).toContain(`window ${w.id}: blocks ${s.from}-${s.to}: ${s.read} read from Base, 0 from the cache, 0 kept, ${s.read} could not be written to the cache`);
+      }
+      expect(lines.some((l) => l.startsWith(`window ${w.id}: ${w.failed} span files settled below the head could not be written to the cache (`))).toBe(true);
+    }
+    expect(lines.filter((l) => l.includes("every span it read is within"))).toEqual([]);
+  });
+
+  it("says which span files a partly failed warm-up could not write, and never that a later run reads only after the last kept one", async () => {
+    const base = thanksgivingWeek();
+    base.finalizedBlock = SUNDAY;
+    const cache = tmp();
+    const real = fs.renameSync;
+    const refused: string[] = [];
+    // Only the feeds' files fail, as a Windows EPERM on rename can.
+    const ren = vi.spyOn(fs, "renameSync").mockImplementation(((from: fs.PathLike, to: fs.PathLike) => {
+      if (path.basename(String(to)).startsWith("answer-")) {
+        refused.push(path.basename(String(to)));
+        throw new Error("EPERM: operation not permitted, rename");
+      }
+      return real(from, to);
+    }) as typeof fs.renameSync);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let result!: WarmResult;
+    let lines: string[] = [];
+    try {
+      const run = warm(base, cache);
+      result = await run.done;
+      lines = run.lines;
+    } finally {
+      ren.mockRestore();
+      warn.mockRestore();
+    }
+    expect(refused.length).toBeGreaterThan(0);
+    // A window counts each file once, also one it read twice; two windows may each count one file, the run counts it once.
+    expect(result.windows.reduce((n, w) => n + w.failed, 0)).toBeGreaterThanOrEqual(new Set(refused).size);
+    expect(result.failed).toBe(new Set(refused).size);
+    expect(result.writeError).toBe("EPERM: operation not permitted, rename");
+    expect(fs.readdirSync(cache).filter((f) => f.startsWith("answer-"))).toEqual([]);
+    expect(fs.readdirSync(cache).filter((f) => f.startsWith("swap-")).length).toBeGreaterThan(0);
+    for (const w of result.windows) {
+      // Each file of a settled span is either kept or counted as not written.
+      for (const s of w.spans.filter((x) => x.to <= SUNDAY - SETTLED)) expect(s.kept + s.failed).toBe(s.read + s.cached);
+      expect(w.failed).toBeGreaterThan(0);
+      expect(w.kept).toBeGreaterThan(0);
+      expect(w.writeError).toBe("EPERM: operation not permitted, rename");
+      expect(lines.some((l) => l.startsWith(`window ${w.id}: ${w.failed} span files settled below the head could not be written to the cache (EPERM`))).toBe(true);
+    }
+    expect(lines.filter((l) => l.includes("from Base only after it"))).toEqual([]);
+  });
+
   it("leaves edition 0's measurement as it was: a warm-up inside its last window, then a run at a later head, gives the file a run with no cache gives", async () => {
     const [, , last] = editionWindows(EDITIONS[0]!);
     const seed = (b: Base) => {
@@ -349,6 +424,27 @@ describe("npm run gap-index -- --warm", () => {
 
     await runGapIndex(["--edition", "1"], deps);
     expect(fs.readdirSync(deps.outDir)).toEqual(["edition-1.json"]);
+  });
+
+  it("fails, so the script exits 1, when a settled span file could not be written to the cache", async () => {
+    const base = thanksgivingWeek();
+    base.finalizedBlock = SUNDAY;
+    const blocker = path.join(tmp(), "gap");
+    fs.writeFileSync(blocker, "x");
+    const { deps, printed, lines } = cli(base, { cacheDir: blocker });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const run = runGapIndex(["--edition", "1", "--warm", "--token", "NVDAc"], deps);
+      await expect(run).rejects.toThrow(new RegExp(`^--warm could not write \\d+ span files to ${blocker.replace(/\\/g, "\\\\")}, so a later run reads them from Base again: (EEXIST|ENOTDIR)`));
+      await expect(run).rejects.not.toBeInstanceOf(UsageError);
+    } finally {
+      warn.mockRestore();
+    }
+    // It read every window it could before it failed, and it does not say the cache is filled.
+    expect(lines.filter((l) => / span files settled below the head could not be written to the cache \(/.test(l))).toHaveLength(2);
+    expect(lines.filter((l) => l.startsWith("wrote nothing under"))).toEqual([]);
+    expect(fs.readdirSync(deps.outDir)).toEqual([]);
+    expect(printed).toEqual([]);
   });
 
   it.each([

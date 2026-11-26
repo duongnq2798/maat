@@ -16,6 +16,8 @@ export interface SpanRead {
   from: "cache" | "rpc";
   /** Its file in the cache now holds it: the span is SETTLED blocks below the head, and the file was read or written. */
   kept: boolean;
+  /** Set only when the span was settled, read from Base, and its file could not be written: the write's error. */
+  writeError?: string;
 }
 
 const toHex = (n: bigint) => (n < 0n ? `-0x${(-n).toString(16)}` : `0x${n.toString(16)}`);
@@ -80,6 +82,7 @@ export function createLogSource(reader: LogReader, opts: { cacheDir: string | nu
       let span = file ? readCache(file, withAddress) : null;
       const cached = span !== null;
       let kept = cached;
+      let writeError: string | undefined;
       if (span === null) {
         const logs = await reader.getLogs({ address: addresses.length === 1 ? addresses[0]! : addresses, topic0, from: spanFrom, to: spanTo });
         span = (kind === "swap" ? logs.map(decodeSwap).sort(byPosition).map((s) => ({ block: s.block, logIndex: s.logIndex, ts: s.ts, tx: s.tx, v: toHex(s.sqrtPriceX96) }))
@@ -90,11 +93,12 @@ export function createLogSource(reader: LogReader, opts: { cacheDir: string | nu
             kept = true;
           } catch (e) {
             // The cache only saves time: a failed write must not discard rows already read.
-            console.warn(`gap cache: could not write ${file}: ${e instanceof Error ? e.message : String(e)}`);
+            writeError = e instanceof Error ? e.message : String(e);
+            console.warn(`gap cache: could not write ${file}: ${writeError}`);
           }
         }
       }
-      opts.onSpan?.({ name, spanFrom, spanTo, from: cached ? "cache" : "rpc", kept });
+      opts.onSpan?.({ name, spanFrom, spanTo, from: cached ? "cache" : "rpc", kept, ...(writeError === undefined ? {} : { writeError }) });
       for (const r of span) if (r.block >= from && r.block <= to) out.push(r);
     }
     return out;

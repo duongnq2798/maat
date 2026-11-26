@@ -267,13 +267,17 @@ export interface WarmDeps {
 }
 export type WarmOptions = Omit<EditionOptions, "complete">;
 
-/** One aligned span of a window's reads: how many of its files (one per token and kind) came from Base or the cache, and are kept. */
+/**
+ * One aligned span of a window's reads: how many of its files (one per token and kind) came from Base or the cache, are
+ * kept, and were settled but could not be written to the cache.
+ */
 export interface WarmSpan {
   from: number;
   to: number;
   read: number;
   cached: number;
   kept: number;
+  failed: number;
 }
 export interface WarmWindow {
   id: string;
@@ -283,12 +287,27 @@ export interface WarmWindow {
   kept: number;
   /** The last block of the last span kept, or null when none is. */
   keptThrough: number | null;
+  /** The span files of this window that were settled below the head but could not be written: a later run reads them from Base. */
+  failed: number;
+  /** The first of those writes' errors, or null when every settled file is kept. */
+  writeError: string | null;
   /** The eth_getLogs calls the window's reads made: one per span read from Base. */
   getLogs: number;
 }
 export interface WarmResult {
   head: { block: number; ts: number };
   windows: WarmWindow[];
+  /** The distinct span files of the run that were settled but could not be written, so a later run reads them from Base. */
+  failed: number;
+  /** The first of those writes' errors, or null when there is none. */
+  writeError: string | null;
+}
+
+/** One file's reads in a run or a window: read from Base if any read was, kept if any read kept it, and its first write error. */
+function mergeRead(seen: SpanRead | undefined, s: SpanRead): SpanRead {
+  if (!seen) return s;
+  const writeError = seen.writeError ?? s.writeError;
+  return { ...s, from: seen.from === "rpc" ? "rpc" : s.from, kept: seen.kept || s.kept, ...(writeError === undefined ? {} : { writeError }) };
 }
 
 /**
@@ -304,6 +323,8 @@ export async function warmEdition(deps: WarmDeps, opts: WarmOptions): Promise<Wa
   const head = await readHead(reader, opts.head);
   if (deps.calendar) for (const w of windows) await checkCalendar(reader, deps.calendar, w, log);
   let files = new Map<string, SpanRead>();
+  // Every file of the run, across windows: two windows can read the same span file.
+  const runFiles = new Map<string, SpanRead>();
   let getLogs = 0;
   const source = createLogSource(reader, {
     cacheDir: deps.cacheDir,
@@ -311,8 +332,8 @@ export async function warmEdition(deps: WarmDeps, opts: WarmOptions): Promise<Wa
     onSpan: (s) => {
       if (s.from === "rpc") getLogs++;
       // A file this window read from Base counts as read, even when a later read of it in the window hits the cache.
-      const seen = files.get(s.name);
-      files.set(s.name, seen ? { ...s, from: seen.from === "rpc" ? "rpc" : s.from, kept: seen.kept || s.kept } : s);
+      files.set(s.name, mergeRead(files.get(s.name), s));
+      runFiles.set(s.name, mergeRead(runFiles.get(s.name), s));
     },
   });
   const aggregatorsOf = new Map<string, string[]>();
@@ -322,7 +343,7 @@ export async function warmEdition(deps: WarmDeps, opts: WarmOptions): Promise<Wa
   for (const w of windows) {
     if (w.closeTs > head.ts) {
       log(`window ${w.id}: not started: its close, ${w.closeLabel}, is after ${through}, so there is nothing to read yet`);
-      out.push({ id: w.id, status: "not started", spans: [], kept: 0, keptThrough: null, getLogs: 0 });
+      out.push({ id: w.id, status: "not started", spans: [], kept: 0, keptThrough: null, failed: 0, writeError: null, getLogs: 0 });
       continue;
     }
     const started = Date.now();
@@ -354,27 +375,39 @@ export async function warmEdition(deps: WarmDeps, opts: WarmOptions): Promise<Wa
     }
 
     const bySpan = new Map<number, WarmSpan>();
+    let writeError: string | null = null;
     for (const f of files.values()) {
-      const s = bySpan.get(f.spanFrom) ?? { from: f.spanFrom, to: f.spanTo, read: 0, cached: 0, kept: 0 };
+      const s = bySpan.get(f.spanFrom) ?? { from: f.spanFrom, to: f.spanTo, read: 0, cached: 0, kept: 0, failed: 0 };
       if (f.from === "rpc") s.read++;
       else s.cached++;
       if (f.kept) s.kept++;
+      else if (f.writeError !== undefined) {
+        s.failed++;
+        writeError ??= f.writeError;
+      }
       bySpan.set(f.spanFrom, s);
     }
     const spans = [...bySpan.values()].sort((a, b) => a.from - b.from);
     for (const s of spans) {
-      const kept = s.to > head.block - SETTLED ? `not kept: within ${SETTLED} blocks of the head` : `${s.kept} kept`;
+      const kept =
+        s.to > head.block - SETTLED
+          ? `not kept: within ${SETTLED} blocks of the head`
+          : `${s.kept} kept${s.failed ? `, ${s.failed} could not be written to the cache` : ""}`;
       log(`window ${w.id}: blocks ${s.from}-${s.to}: ${s.read} read from Base, ${s.cached} from the cache, ${kept}`);
     }
     const kept = spans.reduce((n, s) => n + s.kept, 0);
+    const failed = spans.reduce((n, s) => n + s.failed, 0);
     const keptThrough = spans.filter((s) => s.kept > 0).at(-1)?.to ?? null;
     const done = `${getLogs} eth_getLogs calls, ${((Date.now() - started) / 1000).toFixed(1)} s`;
     log(
-      keptThrough === null
-        ? `window ${w.id}: no span file in the cache: every span it read is within ${SETTLED} blocks of the head (${done})`
-        : `window ${w.id}: ${kept} span files in the cache, the last ending at block ${keptThrough}: a later run reads this window's feed and pool logs from Base only after it (${done})`,
+      failed > 0
+        ? `window ${w.id}: ${failed} span files settled below the head could not be written to the cache (${writeError}), so a later run reads them from Base again; the cache holds ${kept} of this window's span files (${done})`
+        : keptThrough === null
+          ? `window ${w.id}: no span file in the cache: every span it read is within ${SETTLED} blocks of the head (${done})`
+          : `window ${w.id}: ${kept} span files in the cache, the last ending at block ${keptThrough}: a later run reads this window's feed and pool logs from Base only after it (${done})`,
     );
-    out.push({ id: w.id, status: ended ? "complete" : "pending", spans, kept, keptThrough, getLogs });
+    out.push({ id: w.id, status: ended ? "complete" : "pending", spans, kept, keptThrough, failed, writeError, getLogs });
   }
-  return { head, windows: out };
+  const notWritten = [...runFiles.values()].filter((f) => !f.kept && f.writeError !== undefined);
+  return { head, windows: out, failed: notWritten.length, writeError: notWritten[0]?.writeError ?? null };
 }

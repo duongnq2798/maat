@@ -74,7 +74,11 @@ export async function runGapIndex(argv: readonly string[], deps: GapCliDeps): Pr
   const head = values.head === undefined ? undefined : Number(values.head);
   if (values.warm) {
     const opts = { edition, windows: values.window, tokens: values.token, head };
-    await warmEdition({ reader, cacheDir: deps.cacheDir, log: deps.log, calendar: deps.calendar, editions: deps.editions }, opts);
+    const warmed = await warmEdition({ reader, cacheDir: deps.cacheDir, log: deps.log, calendar: deps.calendar, editions: deps.editions }, opts);
+    // The cache is all --warm is for: a settled span it could not keep fails the run, so the owner sees it before the deadline.
+    if (warmed.failed > 0) {
+      throw new Error(`--warm could not write ${warmed.failed} span files to ${deps.cacheDir}, so a later run reads them from Base again: ${warmed.writeError}`);
+    }
     deps.log(`wrote nothing under ${deps.outDir}: --warm only fills ${deps.cacheDir}`);
     return;
   }

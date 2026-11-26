@@ -171,4 +171,24 @@ describe("createLogSource", () => {
       warn.mockRestore();
     }
   });
+
+  it("reports a span whose cache write failed as not kept, with the write's error, and a span it never tried to write with none", async () => {
+    const blocker = path.join(dir, "blocker");
+    fs.writeFileSync(blocker, "x");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const seen: Array<Record<string, unknown>> = [];
+      const { r } = reader([answerLog(50, 3n)]);
+      await createLogSource(r, { cacheDir: blocker, headBlock: SPAN + 5_000, onSpan: (s) => seen.push({ ...s }) }).updates(["0xAgg"], 0, SPAN + 100);
+      expect(seen.map((s) => [s.spanFrom, s.from, s.kept])).toEqual([
+        [0, "rpc", false],
+        [SPAN, "rpc", false],
+      ]);
+      // The settled span was read and its write failed: the report says why. The head's span was never written.
+      expect(seen[0]!.writeError).toMatch(/EEXIST|ENOTDIR/);
+      expect(seen[1]).not.toHaveProperty("writeError");
+    } finally {
+      warn.mockRestore();
+    }
+  });
 });
