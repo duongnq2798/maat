@@ -30,11 +30,21 @@ export interface LogQuery {
   to: number;
 }
 
+/** What the index reads of a transaction: who sent it, to what, with which calldata, all lowercase. */
+export interface TxRead {
+  from: string;
+  to: string | null;
+  input: string;
+}
+
 export interface LogReader {
   getLogs(q: LogQuery): Promise<RawLog[]>;
   blockTs(n: number): Promise<number>;
   blockAt(ts: number): Promise<number>;
   head(): Promise<{ block: number; ts: number }>;
+  /** The latest block Base has finalized: no reorg can change a window read through it. */
+  finalized(): Promise<{ block: number; ts: number }>;
+  transaction(hash: string): Promise<TxRead>;
   call(to: string, data: string): Promise<string>;
 }
 
@@ -146,6 +156,16 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
     },
     blockTs,
     head,
+    async finalized() {
+      const b = (await retried(() => rpc("eth_getBlockByNumber", ["finalized", false]))) as { number?: string; timestamp?: string } | null;
+      if (!b || typeof b.number !== "string" || typeof b.timestamp !== "string") throw new RpcRefused("eth_getBlockByNumber", "no finalized block");
+      return { block: Number(BigInt(b.number)), ts: Number(BigInt(b.timestamp)) };
+    },
+    async transaction(hash) {
+      const t = (await retried(() => rpc("eth_getTransactionByHash", [hash]))) as { from?: string; to?: string | null; input?: string } | null;
+      if (!t || typeof t.from !== "string" || typeof t.input !== "string") throw new RpcRefused("eth_getTransactionByHash", `no transaction ${hash}`);
+      return { from: t.from.toLowerCase(), to: typeof t.to === "string" ? t.to.toLowerCase() : null, input: t.input.toLowerCase() };
+    },
     async blockAt(ts) {
       const h = await head();
       if (ts > h.ts) throw new Error(`timestamp ${ts} is after the head (block ${h.block}, ${h.ts})`);

@@ -1,26 +1,70 @@
 import { NAV_TOKENS, type NavToken } from "@/content/b20-nav";
-import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
+import { EDITIONS, editionWindows, type EditionDef } from "@/content/gap-index/editions";
 import { encodeCall } from "@/lib/live/abi";
+import { DECISION_TOPIC, decisionCounts } from "./decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, byPosition, type FeedUpdate } from "./decode";
 import type { LogSource } from "./logs";
 import { feedLiveIn, findFreeze, LOOKBACK_SEC, measureToken } from "./measure";
 import { GAP_RPC, SPAN, type LogReader } from "./rpc";
 import { toTokenRow, type EditionFile, type TokenRow } from "./schema";
+import { readDecisions, readOwner } from "./vault";
+import { calendarChecks, type ClosedWindow } from "./windows";
 
 export type LogSourceFactory = (headBlock: number) => LogSource;
 
 const PHASE_ID = "0x58303b10";
 const PHASE_AGGREGATORS = "0xc1597304";
+/** MarketCalendar.isOpen(uint256,uint8), asked with SessionMode.REGULAR = 0 (contracts/src/Types.sol). */
+const IS_OPEN = "0x3fef6f98";
+const REGULAR = 0n;
 
 export interface EditionDeps {
   reader: LogReader;
   source: LogSourceFactory;
   log: (line: string) => void;
+  /** MarketCalendar on Base: when given, every selected window's edges are checked against its isOpen before any is measured. */
+  calendar?: string;
+  /** MandateVault on Base, for an edition that counts the vault's Decisions in each window. */
+  vault?: string;
+  /** Where the edition number is looked up: EDITIONS, unless a test gives its own. */
+  editions?: readonly EditionDef[];
 }
 export interface EditionOptions {
   edition: number;
   windows?: string[];
   tokens?: string[];
+  /**
+   * Read through this block instead of the latest finalized one, as a rerun of a committed file does with the file's
+   * head block. It must already be finalized.
+   */
+  head?: number;
+  /** Refuse, before any log is read, unless every selected window ends at or before the head: nothing is written. */
+  complete?: boolean;
+}
+
+const utcIso = (ts: number) => new Date(ts * 1000).toISOString().replace(".000Z", "Z");
+
+/** The block the run reads through: the latest finalized one, or a pinned block that is finalized already. */
+async function readHead(reader: LogReader, pinned: number | undefined): Promise<{ block: number; ts: number }> {
+  const finalized = await reader.finalized();
+  if (pinned === undefined) return finalized;
+  if (!Number.isSafeInteger(pinned) || pinned < 0) throw new Error(`--head ${pinned} is not a block number`);
+  if (pinned > finalized.block) throw new Error(`block ${pinned} is not finalized yet: the latest finalized block is ${finalized.block}`);
+  return { block: pinned, ts: await reader.blockTs(pinned) };
+}
+
+/** Asks MarketCalendar at each instant of calendarChecks, and throws at the first answer the window does not allow. */
+async function checkCalendar(reader: LogReader, calendar: string, w: ClosedWindow, log: (line: string) => void): Promise<void> {
+  const checks = calendarChecks(w);
+  for (const c of checks) {
+    const r = await reader.call(calendar, encodeCall(IS_OPEN, BigInt(c.ts), REGULAR));
+    const v = /^0x[0-9a-fA-F]{64}$/.test(r) ? BigInt(r) : -1n;
+    if (v !== 0n && v !== 1n) throw new Error(`window ${w.id}: MarketCalendar ${calendar} answered isOpen(${c.ts}) with ${r}, not a bool`);
+    if ((v === 1n) !== c.open) {
+      throw new Error(`window ${w.id}: MarketCalendar ${calendar} answers isOpen(${c.ts}) = ${v === 1n} where the window needs ${c.open}`);
+    }
+  }
+  log(`window ${w.id}: MarketCalendar ${calendar} agrees at ${checks.length} instants`);
 }
 
 /** Every phase's aggregator, phase 1 first; the current one is last. */
@@ -36,18 +80,30 @@ async function readAggregators(reader: LogReader, nav: NavToken): Promise<string
 }
 
 export async function measureEdition(deps: EditionDeps, opts: EditionOptions): Promise<EditionFile> {
-  const def = EDITIONS.find((e) => e.edition === opts.edition);
+  const def = (deps.editions ?? EDITIONS).find((e) => e.edition === opts.edition);
   if (!def) throw new Error(`unknown edition ${opts.edition}`);
   const all = editionWindows(def);
   for (const id of opts.windows ?? []) if (!all.some((w) => w.id === id)) throw new Error(`edition ${def.edition} has no window ${id}`);
   for (const sym of opts.tokens ?? []) if (!NAV_TOKENS.some((t) => t.symbol === sym)) throw new Error(`unknown token ${sym}`);
+  if (def.decisions && !deps.vault) throw new Error(`edition ${def.edition} counts the vault's Decisions: it needs the MandateVault address`);
   const windows = opts.windows ? all.filter((w) => opts.windows!.includes(w.id)) : all;
   const navs = opts.tokens ? NAV_TOKENS.filter((t) => opts.tokens!.includes(t.symbol)) : NAV_TOKENS;
 
   const { reader, log } = deps;
-  const head = await reader.head();
+  // A window is measured only once its open is at or before a finalized block, so no reorg can change its figures.
+  const head = await readHead(reader, opts.head);
+  if (deps.calendar) for (const w of windows) await checkCalendar(reader, deps.calendar, w, log);
+  const notYet = windows.filter((w) => w.openTs > head.ts);
+  if (opts.complete && notYet.length) {
+    const which = notYet.map((w) => `window ${w.id} ends ${w.openLabel}`).join(", ");
+    const [them, their] = notYet.length === 1 ? ["it is", "its open"] : ["they are", "the last of their opens"];
+    throw new Error(
+      `${which}, after block ${head.block}, the latest finalized one (${utcIso(head.ts)}): ${them} not measured yet, so nothing is written; run again once Base has finalized a block at or after ${their}`,
+    );
+  }
   const source = deps.source(head.block);
   const aggregatorsOf = new Map<string, string[]>();
+  const owner = def.decisions && windows.some((w) => w.openTs <= head.ts) ? await readOwner(reader, deps.vault!) : null;
 
   const out: EditionFile["windows"] = [];
   // Live feeds with no update after the window: every token is measured first, then one error names them all.
@@ -55,12 +111,18 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
   for (const w of windows) {
     const base = { id: w.id, closeTs: w.closeTs, openTs: w.openTs, closeLabel: w.closeLabel, openLabel: w.openLabel };
     if (w.openTs > head.ts) {
-      log(`window ${w.id}: pending, it opens after the head`);
+      log(`window ${w.id}: pending, it ends ${w.openLabel}, after block ${head.block} (${utcIso(head.ts)}), the block this run reads through`);
       out.push({ status: "pending", ...base });
       continue;
     }
     const fromBlock = await reader.blockAt(w.closeTs);
     const toBlock = (await reader.blockAt(w.openTs)) - 1;
+    let decisions: Extract<EditionFile["windows"][number], { status: "complete" }>["decisions"];
+    if (owner !== null) {
+      const list = await readDecisions(reader, { vault: deps.vault!, owner, from: fromBlock, to: toBlock });
+      decisions = { vault: deps.vault!.toLowerCase(), topic: DECISION_TOPIC, ...decisionCounts(list), list };
+      log(`window ${w.id}: ${decisions.count} Decisions, ${decisions.marketClosed} refused with MARKET_CLOSED`);
+    }
     const ahead = w.openTs + LOOKBACK_SEC > head.ts ? head.block : await reader.blockAt(w.openTs + LOOKBACK_SEC);
     const span = { closeTs: w.closeTs, openTs: w.openTs, fromBlock, toBlock };
 
@@ -126,7 +188,7 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
       tokens.push(toTokenRow(nav, { aggregator, phase }, figures, freeze ? swapsRead : null));
       log(`${nav.symbol} ${w.id}: ${calls} reads, ${((Date.now() - started) / 1000).toFixed(1)} s`);
     }
-    out.push({ status: "complete", ...base, blocks: { from: fromBlock, to: toBlock }, tokens });
+    out.push({ status: "complete", ...base, blocks: { from: fromBlock, to: toBlock }, ...(decisions ? { decisions } : {}), tokens });
   }
 
   if (waiting.length) throw new Error(`${waiting.join(", ")}: the feed has not updated since the window; run again later`);
