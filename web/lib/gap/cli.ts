@@ -8,13 +8,14 @@ import type { LogReader } from "./rpc";
 import { editionSchema } from "./schema";
 
 export const USAGE =
-  "usage: npm run gap-index -- --edition N [--window ID]... [--token SYM]... [--head BLOCK] [--complete] [--stdout] [--no-cache] [--warm]";
+  "usage: npm run gap-index -- --edition N [--window ID]... [--token SYM]... [--head BLOCK] [--complete [--wait MINUTES]] [--stdout] [--no-cache] [--warm]";
 
 /** --warm only reads logs into the cache: each of these flags asks for something it does not do, so it refuses them. */
 const NOT_WITH_WARM = [
   ["complete", "--complete measures every window and writes the edition file, and --warm measures nothing; run --warm first, then --complete on its own"],
   ["stdout", "--warm measures nothing and writes no edition, so it has nothing to print"],
   ["no-cache", "--warm only fills the log cache, and --no-cache would keep nothing it reads"],
+  ["wait", "--wait holds a --complete run until it can measure every window, and --warm measures nothing; run --warm on its own"],
 ] as const;
 
 /** A command line refused before anything is read: the script prints its message and the usage line. */
@@ -39,6 +40,9 @@ export interface GapCliDeps {
   log: (line: string) => void;
   /** Where the edition number is looked up: EDITIONS, unless a test gives its own. */
   editions?: readonly EditionDef[];
+  /** The clock and the pause of --wait: Date.now and setTimeout, unless a test gives its own. */
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }
 
 /**
@@ -57,6 +61,7 @@ export async function runGapIndex(argv: readonly string[], deps: GapCliDeps): Pr
       stdout: { type: "boolean", default: false },
       "no-cache": { type: "boolean", default: false },
       warm: { type: "boolean", default: false },
+      wait: { type: "string" },
     },
     strict: true,
   });
@@ -67,6 +72,11 @@ export async function runGapIndex(argv: readonly string[], deps: GapCliDeps): Pr
     throw new UsageError("--window and --token filter a run, so they need --stdout");
   }
   if (values.head !== undefined && !/^\d+$/.test(values.head)) throw new UsageError("--head takes a block number");
+  if (values.wait !== undefined) {
+    if (!/^[1-9]\d*$/.test(values.wait)) throw new UsageError("--wait takes a whole number of minutes, 1 or more");
+    if (!values.complete) throw new UsageError("--wait needs --complete: it holds the run that must measure every window, and a run without --complete writes a window that has not ended as pending instead");
+    if (values.head !== undefined) throw new UsageError("--wait refuses --head: a pinned head never moves, so waiting cannot change what the run reads");
+  }
   if (deps.calendar === null) throw new UsageError("deployments/README.md names no MarketCalendar on Base mainnet");
 
   const { reader } = deps;
@@ -90,6 +100,8 @@ export async function runGapIndex(argv: readonly string[], deps: GapCliDeps): Pr
       calendar: deps.calendar,
       vault: deps.vault,
       editions: deps.editions,
+      now: deps.now,
+      sleep: deps.sleep,
     },
     {
       edition,
@@ -97,6 +109,7 @@ export async function runGapIndex(argv: readonly string[], deps: GapCliDeps): Pr
       tokens: values.token,
       head,
       complete: values.complete,
+      waitMinutes: values.wait === undefined ? undefined : Number(values.wait),
     },
   );
   const checked = editionSchema({ partial: Boolean(values.token?.length) }).parse(file);

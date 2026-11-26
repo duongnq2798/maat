@@ -205,8 +205,8 @@ describe("the finalized block and a transaction", () => {
     const { f, calls } = fake((req) =>
       req.method === "eth_getBlockByNumber" && req.params[0] === "finalized" ? { number: "0x3b6a402", timestamp: "0x6b077434" } : new Error(`unexpected ${req.method}`),
     );
-    expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 0x3b6a402, ts: 0x6b077434 });
-    expect(calls.map((c) => [c.method, c.params])).toEqual([["eth_getBlockByNumber", ["finalized", false]]]);
+    expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 0x3b6a402, ts: 0x6b077434, rpc: GAP_RPC, answers: 6, reads: 6 });
+    expect(calls.map((c) => [c.method, c.params])).toEqual(Array.from({ length: 6 }, () => ["eth_getBlockByNumber", ["finalized", false]]));
   });
 
   it("finalized refuses an answer without a number or a timestamp", async () => {
@@ -227,6 +227,136 @@ describe("the finalized block and a transaction", () => {
     expect(await createLogReader({ fetch: created.f, sleep: noSleep }).transaction("0x01")).toEqual({ from: "0x01", to: null, input: "0x" });
     const missing = fake(() => null);
     await expect(createLogReader({ fetch: missing.f, sleep: noSleep }).transaction("0x02")).rejects.toThrow(/no transaction 0x02/);
+  });
+});
+
+describe("the newest finalized block across two RPCs", () => {
+  const BASE = "https://mainnet.base.org";
+  type Answer = unknown | Error | Response;
+  /** A fetch that answers each RPC's n-th finalized read from its own list, and records every call with its URL. */
+  function twoRpcs(finalized: Record<string, Answer[]>, other: (req: Req) => unknown = () => null) {
+    const calls: (Req & { url: string })[] = [];
+    const seen: Record<string, number> = {};
+    const f = (async (url: string, init: { body: string }) => {
+      const req = JSON.parse(init.body) as Req & { id: number };
+      calls.push({ url, method: req.method, params: req.params });
+      let out: Answer;
+      if (req.method === "eth_getBlockByNumber" && req.params[0] === "finalized") {
+        const n = (seen[url] = (seen[url] ?? 0) + 1);
+        out = finalized[url]?.[n - 1] ?? new Error(`no answer ${n} from ${url}`);
+      } else out = other(req);
+      if (out instanceof Response) return out;
+      if (out instanceof TypeError) throw out;
+      const body = out instanceof Error ? { jsonrpc: "2.0", id: req.id, error: { message: out.message } } : { jsonrpc: "2.0", id: req.id, result: out };
+      return new Response(JSON.stringify(body));
+    }) as unknown as typeof fetch;
+    return { f, calls };
+  }
+  const blk = (n: number) => ({ number: `0x${n.toString(16)}`, timestamp: `0x${(1_000_000 + n).toString(16)}` });
+  const finalizedCalls = (calls: { url: string; method: string; params: unknown[] }[]) =>
+    calls.filter((c) => c.method === "eth_getBlockByNumber" && c.params[0] === "finalized").map((c) => c.url);
+
+  it("asks each of the two public RPCs three times, in parallel, and returns the newest answer with its own timestamp", async () => {
+    // publicnode's second answer is older than its first, as a stale server behind its load balancer answers.
+    const { f, calls } = twoRpcs({ [GAP_RPC]: [blk(500), blk(380), blk(470)], [BASE]: [blk(490), blk(520), blk(400)] });
+    const sleeps: number[] = [];
+    const r = createLogReader({ fetch: f, sleep: async (ms) => void sleeps.push(ms) });
+    expect(await r.finalized()).toEqual({ block: 520, ts: 1_000_520, rpc: BASE, answers: 6, reads: 6 });
+    expect(finalizedCalls(calls)).toEqual([GAP_RPC, GAP_RPC, GAP_RPC, BASE, BASE, BASE]);
+    expect(sleeps).toEqual([]);
+  });
+
+  it("keeps the newest answer when the newest comes first and every later one is older", async () => {
+    const { f } = twoRpcs({ [GAP_RPC]: [blk(900), blk(899), blk(700)], [BASE]: [blk(850), blk(640), blk(898)] });
+    expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 900, ts: 1_000_900, rpc: GAP_RPC, answers: 6, reads: 6 });
+  });
+
+  it("names the first RPC when both answer the same newest block", async () => {
+    const { f } = twoRpcs({ [GAP_RPC]: [blk(10), blk(30), blk(20)], [BASE]: [blk(30), blk(30), blk(30)] });
+    expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toMatchObject({ block: 30, rpc: GAP_RPC });
+  });
+
+  // Each read gets its own answer: a Response body can be read once.
+  const down: [string, () => Answer][] = [
+    ["unreachable", () => new TypeError("fetch failed")],
+    ["HTTP 503", () => new Response("busy", { status: 503 })],
+    ["a JSON-RPC error", () => new Error("header not found")],
+    ["a body that is not JSON", () => new Response("<html>")],
+    ["null", () => null],
+    ["a block with no number", () => ({ timestamp: "0x10" })],
+    ["a block with no timestamp", () => ({ number: "0x10" })],
+    ["a number that is not hex", () => ({ number: "64293122", timestamp: "0x10" })],
+  ];
+  for (const [what, bad] of down) {
+    it(`returns publicnode's newest when every read of mainnet.base.org gives ${what}, and the other way round`, async () => {
+      const a = twoRpcs({ [GAP_RPC]: [blk(7), blk(9), blk(8)], [BASE]: [bad(), bad(), bad()] });
+      expect(await createLogReader({ fetch: a.f, sleep: noSleep }).finalized()).toEqual({ block: 9, ts: 1_000_009, rpc: GAP_RPC, answers: 3, reads: 6 });
+      expect(finalizedCalls(a.calls)).toHaveLength(6);
+
+      const b = twoRpcs({ [GAP_RPC]: [bad(), bad(), bad()], [BASE]: [blk(11), blk(5), blk(12)] });
+      expect(await createLogReader({ fetch: b.f, sleep: noSleep }).finalized()).toEqual({ block: 12, ts: 1_000_012, rpc: BASE, answers: 3, reads: 6 });
+    });
+  }
+
+  it("counts only the reads that answered a block when some of each RPC's fail", async () => {
+    const { f } = twoRpcs({ [GAP_RPC]: [new Error("busy"), blk(40), { timestamp: "0x1" }], [BASE]: [blk(41), new Response("x", { status: 429 }), new TypeError("fetch failed")] });
+    expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 41, ts: 1_000_041, rpc: BASE, answers: 2, reads: 6 });
+  });
+
+  it("asks all six again 1 s later when a short drop fails every read at once, as the other single reads retry", async () => {
+    const drop = () => new TypeError("fetch failed");
+    const { f, calls } = twoRpcs({
+      [GAP_RPC]: [drop(), drop(), drop(), blk(60), blk(61), blk(59)],
+      [BASE]: [drop(), drop(), drop(), blk(62), blk(58), blk(60)],
+    });
+    const sleeps: number[] = [];
+    expect(await createLogReader({ fetch: f, sleep: async (ms) => void sleeps.push(ms) }).finalized()).toEqual({ block: 62, ts: 1_000_062, rpc: BASE, answers: 6, reads: 6 });
+    expect(sleeps).toEqual([1000]);
+    expect(finalizedCalls(calls)).toHaveLength(12);
+  });
+
+  it("throws RpcRefused, naming both RPCs and the last try's first reason, only when no read of three tries answers a block", async () => {
+    const { f, calls } = twoRpcs({
+      [GAP_RPC]: [new Error("busy"), null, new Response("x", { status: 503 }), new Error("busy"), null, null, new Error("still busy"), null, null],
+      [BASE]: [new TypeError("fetch failed"), { number: "0x1" }, new Error("over rate limit"), null, null, null, null, null, null],
+    });
+    const sleeps: number[] = [];
+    const run = createLogReader({ fetch: f, sleep: async (ms) => void sleeps.push(ms) }).finalized();
+    await expect(run).rejects.toMatchObject({ name: "RpcRefused" });
+    await expect(run).rejects.toThrow(`eth_getBlockByNumber refused: no finalized block in 3 tries of 6 reads of ${GAP_RPC} and ${BASE}: still busy`);
+    expect(finalizedCalls(calls)).toHaveLength(18);
+    expect(sleeps).toEqual([1000, 2000]);
+  });
+
+  it("sends logs, headers, calls and transactions to publicnode only: mainnet.base.org is asked only for the finalized block", async () => {
+    const hash = `0x${"cd".repeat(32)}`;
+    const { f, calls } = twoRpcs({ [GAP_RPC]: [blk(1_000)], [BASE]: [blk(1_001)] }, (req) => {
+      if (req.method === "eth_getLogs") return [];
+      if (req.method === "eth_blockNumber") return "0x3e8";
+      if (req.method === "eth_getBlockByNumber") return { timestamp: `0x${(1000 + Number(req.params[0])).toString(16)}` };
+      if (req.method === "eth_call") return "0x01";
+      if (req.method === "eth_getTransactionByHash") return { from: "0x01", to: "0x02", input: "0x" };
+      return new Error(`unexpected ${req.method}`);
+    });
+    const r = createLogReader({ fetch: f, sleep: noSleep });
+    expect((await r.finalized()).block).toBe(1_001);
+    await r.getLogs({ address: "0xaa", topic0: "0x01", from: 0, to: 120_000 });
+    await r.blockTs(5);
+    await r.head();
+    await r.blockAt(1_100);
+    await r.call("0xaa", "0x00");
+    await r.transaction(hash);
+    const notFinalized = calls.filter((c) => !(c.method === "eth_getBlockByNumber" && c.params[0] === "finalized"));
+    expect(notFinalized.filter((c) => c.method === "eth_getLogs")).toHaveLength(3);
+    expect([...new Set(notFinalized.map((c) => c.url))]).toEqual([GAP_RPC]);
+    expect([...new Set(calls.filter((c) => c.url === BASE).map((c) => [c.method, ...c.params].join(" ")))]).toEqual(["eth_getBlockByNumber finalized false"]);
+  });
+
+  it("reads a given url's own finalized block when the reader is pointed at another RPC", async () => {
+    const other = "https://rpc.fake.example";
+    const { f, calls } = twoRpcs({ [other]: [blk(3), blk(4), blk(2)] });
+    expect(await createLogReader({ url: other, fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 4, ts: 1_000_004, rpc: other, answers: 3, reads: 3 });
+    expect(finalizedCalls(calls)).toEqual([other, other, other]);
   });
 });
 

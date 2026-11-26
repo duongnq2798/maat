@@ -469,3 +469,83 @@ describe("npm run gap-index -- --warm", HEAVY, () => {
     expect(printed).toEqual([]);
   });
 });
+
+describe("npm run gap-index -- --complete --wait MINUTES", HEAVY, () => {
+  /** The command line on the fake Base, with a clock only its sleeps move; `onSleep` runs at each sleep, as time passing. */
+  const cli = (base: Base, onSleep: (n: number) => void = () => {}) => {
+    const printed: string[] = [];
+    const lines: string[] = [];
+    const clock = { ms: 0, sleeps: [] as number[], logReadsAtSleep: [] as number[] };
+    const deps: GapCliDeps = {
+      reader: base,
+      cacheDir: tmp(),
+      outDir: tmp(),
+      calendar: CALENDAR,
+      vault: VAULT,
+      stdout: (t) => printed.push(t),
+      log: (l) => lines.push(l),
+      now: () => clock.ms,
+      sleep: async (ms: number) => {
+        clock.sleeps.push(ms);
+        clock.logReadsAtSleep.push(base.queries.length);
+        clock.ms += ms;
+        onSleep(clock.sleeps.length);
+      },
+    };
+    return { deps, printed, lines, clock };
+  };
+
+  it("--wait 1 rereads the finalized block twice, 30 s apart, then refuses with the message of a run without it, and writes nothing", async () => {
+    const base = thanksgivingWeek();
+    base.finalizedBlock = SUNDAY;
+    const { deps, printed, lines, clock } = cli(base);
+    const run = runGapIndex(["--edition", "1", "--complete", "--wait", "1"], deps);
+    await expect(run).rejects.toThrow(
+      `window 2026-11-27 ends Mon 30 Nov 09:30 ET, after block ${SUNDAY}, the latest finalized one (2026-11-29T12:00:00Z): it is not measured yet, so nothing is written; run again once Base has finalized a block at or after its open`,
+    );
+    await expect(run).rejects.not.toBeInstanceOf(UsageError);
+    expect(clock.sleeps).toEqual([30_000, 30_000]);
+    expect(lines.filter((l) => l.startsWith("--wait")).map((l) => l.split(":")[0])).toEqual(["--wait 1", "--wait 1, reread 1 of 2", "--wait 1, reread 2 of 2"]);
+    expect(base.queries).toEqual([]);
+    expect(fs.readdirSync(deps.outDir)).toEqual([]);
+    expect(printed).toEqual([]);
+  });
+
+  it("with --stdout, waits until the finalized block passes Monday's open, then reads the logs and prints the file", async () => {
+    const base = thanksgivingWeek();
+    base.finalizedBlock = SUNDAY;
+    const { deps, printed, lines, clock } = cli(base, (n) => {
+      base.finalizedBlock = n === 1 ? at(utc("2026-11-30T14:20:00Z")) : MONDAY;
+    });
+    await runGapIndex(["--edition", "1", "--complete", "--wait", "5", "--stdout", "--token", "NVDAc", "--token", "AAPLc"], deps);
+    expect(clock.sleeps).toEqual([30_000, 30_000]);
+    expect(clock.logReadsAtSleep).toEqual([0, 0]);
+    expect(base.queries.length).toBeGreaterThan(0);
+    const waits = lines.filter((l) => l.startsWith("--wait"));
+    expect(waits).toHaveLength(3);
+    expect(waits[1]).toBe(`--wait 5, reread 1 of 10: finalized block ${at(utc("2026-11-30T14:20:00Z"))} (2026-11-30T14:20:00Z); 600 s before the last open, Mon 30 Nov 09:30 ET (2026-11-30T14:30:00Z)`);
+    expect(waits[2]).toBe(`--wait 5, reread 2 of 10: finalized block ${MONDAY} (2026-11-30T16:00:00Z); 5400 s after the last open, Mon 30 Nov 09:30 ET (2026-11-30T14:30:00Z): measuring`);
+    expect(printed).toHaveLength(1);
+    expect(JSON.parse(printed[0]!).head).toEqual({ block: MONDAY, ts: tsOf(MONDAY) });
+    expect(fs.readdirSync(deps.outDir)).toEqual([]);
+  });
+
+  it.each([
+    [["--wait", "5"], "--wait needs --complete: it holds the run that must measure every window, and a run without --complete writes a window that has not ended as pending instead"],
+    [["--warm", "--wait", "5"], "--warm refuses --wait: --wait holds a --complete run until it can measure every window, and --warm measures nothing; run --warm on its own"],
+    [["--complete", "--wait", "5", "--head", "62000000"], "--wait refuses --head: a pinned head never moves, so waiting cannot change what the run reads"],
+    [["--complete", "--wait", "0"], "--wait takes a whole number of minutes, 1 or more"],
+    [["--complete", "--wait", "1.5"], "--wait takes a whole number of minutes, 1 or more"],
+    [["--complete", "--wait", "soon"], "--wait takes a whole number of minutes, 1 or more"],
+  ])("refuses %j before it reads anything, and says why", async (args, message) => {
+    const base = thanksgivingWeek();
+    const { deps, printed, clock } = cli(base);
+    const run = runGapIndex(["--edition", "1", ...args], deps);
+    await expect(run).rejects.toThrow(message);
+    await expect(run).rejects.toBeInstanceOf(UsageError);
+    expect(base.reads).toBe(0);
+    expect(clock.sleeps).toEqual([]);
+    expect(fs.readdirSync(deps.outDir)).toEqual([]);
+    expect(printed).toEqual([]);
+  });
+});
