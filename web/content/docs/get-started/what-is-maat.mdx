@@ -4,7 +4,7 @@ description: The problem with agents that trade tokenized stocks around the cloc
 type: overview
 audience: [newcomer, watcher, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-26
 sources:
   - README.md
   - contracts/src/MandateVault.sol
@@ -16,7 +16,13 @@ sources:
 next: [get-started/how-a-decision-is-made, get-started/quickstart, concepts/nine-checks]
 ---
 
-Maat is an experiment in letting an AI agent trade without letting it decide what is safe. This page explains the problem it solves, the one idea behind the answer, and what is built so far, so you can judge the rest of the docs against it.
+Maat is an experiment in letting an AI agent trade without letting it decide what is safe. This page explains where the name comes from, the problem Maat solves, the one idea behind the answer, and what is built so far, so you can judge the rest of the docs against it.
+
+## The name
+
+In the Egyptian Book of the Dead, a heart is weighed against a feather that stands for Ma'at: what is right. A heart that does not balance does not pass. Maat weighs every trade its AI agent proposes against a written mandate, and the chain records the verdict either way.
+
+Source: the British Museum's text on the [Page from the Book of the Dead of Hunefer](https://artsandculture.google.com/asset/page-from-the-book-of-the-dead-of-hunefer/-gFGdB-pjqRpeg), on Google Arts & Culture.
 
 ## The problem
 
@@ -35,9 +41,9 @@ Each hazard below is something the [vault](/docs/help/glossary#vault) checks for
 
 Spending caps on an agent wallet stop the last row. They do not know whether NYSE is open, whether the feed is alive or whether a split is pending. Maat's vault is built to check all of these, onchain, on every BUY and SELL (concentration on a BUY only).
 
-## The answer: the agent proposes, the mandate decides
+## The answer
 
-> The agent proposes. The mandate decides.
+> Claude proposes. The vault decides.
 
 In Maat's design, the [owner](/docs/help/glossary#owner) deploys a vault with a [mandate](/docs/help/glossary#mandate): which stocks it may trade, how much per trade and per day, the largest gap between the pool and the oracle, the trading session, and the [health factor](/docs/help/glossary#health-factor) for borrowing. Claude reads the vault's state and proposes trades. The agent can send them only through `execute`. For a BUY, `execute` runs <Fact name="checksPerTrade" /> market and mandate checks in a fixed order, after a pause switch and with a balance check between the market checks and the size limits. For a SELL it runs the same checks except concentration, and its first check asks less: a BUY needs a stock that is [allowed](/docs/concepts/mandate#allowed), while a SELL needs only one that still has its feed or pool set, so an [exit-only](/docs/help/glossary#exit-only) stock can still be sold. The other [actions](/docs/help/glossary#action) have their own checks.
 

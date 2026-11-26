@@ -2,7 +2,7 @@
   "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise.",
   "captions": {
     "gap-held": "{gap.close} → {gap.open}. NYSE is closed, and the NVDAc price feed held one answer for {gap.hours} h.",
-    "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the frozen answer.",
+    "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the held answer.",
     "decides-how": "Claude proposes. The vault decides. It is a contract on Base that checks every intent.",
     "decides-log": "A refusal does not revert: the vault records a typed Decision either way, with its reason code.",
     "decides-clip": "On Basescan: the vault's Decision event, with its reason code.",

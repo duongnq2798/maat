@@ -22,7 +22,7 @@ sources:
 next: [security/threat-model, security/testing]
 ---
 
-This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "the agent proposes, the contract decides" against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run, so the agent-side rows describe code that was tested against fakes.
+This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "Claude proposes. The vault decides." against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run, so the agent-side rows describe code that was tested against fakes.
 
 ## At a glance
 
@@ -37,7 +37,7 @@ This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the c
 | **Tests** | Unit tests with mocks and fakes, an [invariant suite](/docs/security/testing#invariant-tests) that runs random sequences of calls on the same mocks, plus [fork tests](/docs/help/glossary#fork-test) at two pinned Base blocks. CI runs the unit tests and the invariant suite on every pull request and every push to `main`, and the fork tests run by hand. No fuzz test with random inputs beyond the invariant suite, no fuzzing on a fork, and no static-analysis report is committed | [What is not tested](/docs/security/testing#what-is-not-tested) |
 | **Report a problem** | Privately, through GitHub's report form or a direct message on X | [Report a vulnerability](/docs/security/report-a-vulnerability) |
 
-## The principle: the agent proposes, the contract decides
+## The principle: the vault has the last word
 
 Claude reads the vault's state and proposes trades as JSON. The agent turns each proposal into an [intent](/docs/help/glossary#intent), and an intent can move money in only one way: it is sent to `execute` on the vault, which only the [executor](/docs/help/glossary#executor) may call. The vault then runs its checks, in its own code, against its own state. Every step before that (Claude, the agent's validation, the [preview](/docs/help/glossary#preview), the guarded sender and the CDP policy) is untrusted. Those steps save gas and keep a [journal](/docs/help/glossary#journal). They are not what makes a trade safe.
 

@@ -21,8 +21,9 @@ describe("landing page", () => {
   it("every in-page link has a target", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
-    // The nav's "Ledger" opens /ledger; the landing's #ledger section links there too.
-    expect([...ids].sort()).toEqual(["how", "main", "mandate", "reasons", "top", "try"]);
+    // The nav lists pages, not the landing's sections, so the in-page links are the skip link, the home link and the
+    // hero's and the sections' own links.
+    expect([...ids].sort()).toEqual(["main", "reasons", "top", "try"]);
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
   });
 

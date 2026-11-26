@@ -220,11 +220,12 @@ test("when Base does not answer, the landing shows the two recorded Decisions an
   expect(errors.filter((e) => !(LIVE_RPCS.includes(originOf(e.url)) && /status of 503\b/.test(e.text)))).toEqual([]);
 });
 
-// The owner's switch, content/ask-open.ts, adds Ask and Proof before Docs (e2e/nav.spec.ts checks the nav at each width).
+// The pages, as the bar lists them too; the owner's switch, content/ask-open.ts, adds Ask and Proof after Ledger
+// (e2e/nav.spec.ts checks the nav at each width).
 const MENU = [
-  ["Ledger", "/ledger"],
   ["Now", "/now"],
   ["Gap Index", "/gap-index"],
+  ["Ledger", "/ledger"],
   ...(ASK_OPEN ? [["Ask", "/ask"], ["Proof", "/proof"]] : []),
   ["Docs", SITE.docsUrl],
 ] as const;
@@ -235,7 +236,8 @@ test(`at 390 px the Menu lists ${MENU_NAMES.slice(0, -1).join(", ")} and Docs, a
   await routeLiveRpc(page, "weekend");
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: "How it works" })).toBeHidden();
+  // The bar's links are display: none up to 720 px, and the menu's while it is closed.
+  await expect(nav.getByRole("link", { name: "Gap Index" })).toBeHidden();
   const pages = nav.getByRole("list", { name: "Pages" });
   await expect(pages).toBeHidden();
   await nav.locator("[data-phone-menu] > summary").click();
@@ -247,13 +249,15 @@ test(`at 390 px the Menu lists ${MENU_NAMES.slice(0, -1).join(", ")} and Docs, a
   await expect(page).toHaveURL(/\/gap-index$/);
 });
 
-test("at 1440 px the Menu gives way to the links, and the problem section links the Gap Index", async ({ page }) => {
+test("at 1440 px the Menu gives way to the pages, and the problem section links the Gap Index", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await routeLiveRpc(page, "weekend");
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.locator("[data-phone-menu] > summary")).toBeHidden();
-  await expect(nav.getByRole("link", { name: "Ledger" })).toBeVisible();
+  const bar = nav.getByRole("link");
+  await expect(bar).toHaveText(["maat", ...MENU_NAMES, "View on GitHub ↗"]);
+  expect(await bar.evaluateAll((els) => els.slice(1, -1).map((el) => el.getAttribute("href")))).toEqual(MENU.map(([, href]) => href));
   const gap = page.locator('section[aria-labelledby="problem-title"]').getByRole("link", { name: /^Weekend Gap Index · / });
   await expect(gap).toBeVisible();
   await expect(gap).toHaveAttribute("href", "/gap-index");

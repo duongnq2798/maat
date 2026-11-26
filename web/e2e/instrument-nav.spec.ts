@@ -92,11 +92,12 @@ for (const [width, height] of [
   });
 }
 
+// The nav links pages only, so the hero's own link to the simulator stands in for any link to a section of the landing.
 for (const width of [1024, 1440]) {
-  test(`from lg, at ${width} px, a nav link lands its section below the pinned bar`, async ({ page }) => {
+  test(`from lg, at ${width} px, an in-page link lands its section below the pinned bar`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await liveWeekend(page, width);
-    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Try it" }).click();
+    await page.locator("#top").getByRole("link", { name: "Try to make it say no" }).click();
     await expect(page).toHaveURL(/#try$/);
     const navBottom = await navBar(page).evaluate((el) => el.getBoundingClientRect().bottom);
     const sectionTop = await page.locator("#try").evaluate((el) => el.getBoundingClientRect().top);

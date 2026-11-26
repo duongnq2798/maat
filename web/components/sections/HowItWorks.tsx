@@ -53,7 +53,7 @@ export function HowItWorks() {
         <SectionHeading
           id="how-title"
           eyebrow="How it works"
-          title="The model may advise. The contract decides."
+          title="Claude proposes. The vault decides."
           lead="Claude never holds the keys to the rules. It writes intents. The vault checks them against a mandate it cannot change, then emits a Decision either way."
         />
         <ol className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,250px),1fr))] gap-4 p-0">

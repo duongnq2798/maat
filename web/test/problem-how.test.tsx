@@ -20,7 +20,10 @@ describe("WeekChart", () => {
     expect(sessions).toHaveLength(5);
     expect([...sessions].map(width)).toEqual(Array(5).fill(11.6));
     expect(sessions[0]?.getAttribute("x")).toBe("27");
-    expect(screen.getByRole("img")).toHaveAccessibleName(/frozen over the weekend/);
+    // The lexicon (docs/brand/lexicon.md): a feed is held without an update, never frozen; a short label says "feed held".
+    expect(screen.getByRole("img")).toHaveAccessibleName(/ET, held without an update over the weekend;/);
+    expect([...container.querySelectorAll("text")].map((t) => t.textContent)).toContain("feed held");
+    expect(container.textContent).not.toMatch(/frozen/i);
   });
 });
 
@@ -99,6 +102,8 @@ describe("HowItWorks", () => {
   it("walks the four steps and decodes the Saturday refusal", () => {
     const { container } = render(<HowItWorks />);
     expect(container.querySelector("section#how")).not.toBeNull();
+    // The mechanism line, word for word (docs/brand/lexicon.md).
+    expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent(/^Claude proposes\. The vault decides\.$/);
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
       "Claude proposes",
       "Preview as executor",
