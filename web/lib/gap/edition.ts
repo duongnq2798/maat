@@ -5,7 +5,7 @@ import { DECISION_TOPIC, decisionCounts } from "./decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, byPosition, type FeedUpdate } from "./decode";
 import { createLogSource, SETTLED, type LogSource, type SpanRead } from "./logs";
 import { feedLiveIn, findFreeze, LOOKBACK_SEC, measureToken, type Freeze } from "./measure";
-import { GAP_RPC, SPAN, type LogReader } from "./rpc";
+import { GAP_RPC, SPAN, type FinalizedHead, type Head, type LogReader } from "./rpc";
 import { toTokenRow, type EditionFile, type TokenRow } from "./schema";
 import { readDecisions, readOwner } from "./vault";
 import { calendarChecks, type ClosedWindow } from "./windows";
@@ -28,6 +28,9 @@ export interface EditionDeps {
   vault?: string;
   /** Where the edition number is looked up: EDITIONS, unless a test gives its own. */
   editions?: readonly EditionDef[];
+  /** The clock and the pause of a --wait: Date.now and setTimeout, unless a test gives its own. */
+  now?: () => number;
+  sleep?: (ms: number) => Promise<void>;
 }
 export interface EditionOptions {
   edition: number;
@@ -40,17 +43,61 @@ export interface EditionOptions {
   head?: number;
   /** Refuse, before any log is read, unless every selected window ends at or before the head: nothing is written. */
   complete?: boolean;
+  /**
+   * With complete: while a window's open is after the finalized block, read that block again every 30 s, reading no
+   * log, for up to this many minutes; then refuse as complete does.
+   */
+  waitMinutes?: number;
 }
+
+const WAIT_STEP_MS = 30_000;
 
 const utcIso = (ts: number) => new Date(ts * 1000).toISOString().replace(".000Z", "Z");
 
-/** The block the run reads through: the latest finalized one, or a pinned block that is finalized already. */
-async function readHead(reader: LogReader, pinned: number | undefined): Promise<{ block: number; ts: number }> {
+/** A finalized block for the log, with the RPC that answered it and how many reads did, when the reader says. */
+const finalizedText = (f: FinalizedHead) =>
+  `finalized block ${f.block} (${utcIso(f.ts)})${f.rpc === undefined ? "" : ` from ${f.rpc}, newest of ${f.answers} answers to ${f.reads} reads`}`;
+
+/** The block the run reads through, the latest finalized one or a pinned block that is finalized already, and that finalized block. */
+async function readHead(reader: LogReader, pinned: number | undefined): Promise<{ head: Head; finalized: FinalizedHead }> {
   const finalized = await reader.finalized();
-  if (pinned === undefined) return finalized;
+  if (pinned === undefined) return { head: { block: finalized.block, ts: finalized.ts }, finalized };
   if (!Number.isSafeInteger(pinned) || pinned < 0) throw new Error(`--head ${pinned} is not a block number`);
   if (pinned > finalized.block) throw new Error(`block ${pinned} is not finalized yet: the latest finalized block is ${finalized.block}`);
-  return { block: pinned, ts: await reader.blockTs(pinned) };
+  return { head: { block: pinned, ts: await reader.blockTs(pinned) }, finalized };
+}
+
+/** Says which RPC answered the run's head and how many reads answered, when the reader says. */
+function logHead(log: (line: string) => void, { head, finalized }: { head: Head; finalized: FinalizedHead }, pinned: boolean): void {
+  if (finalized.rpc === undefined) return;
+  log(pinned ? `head: block ${head.block} (${utcIso(head.ts)}), pinned with --head; ${finalizedText(finalized)}` : `head: ${finalizedText(finalized)}`);
+}
+
+/**
+ * --complete --wait: while the head is before the last open, reads the finalized block again every 30 s from the start,
+ * at most twice a minute, one line each, and reads no log. Returns the last head read.
+ */
+async function waitForOpen(
+  deps: Pick<EditionDeps, "reader" | "log" | "now" | "sleep">,
+  read: { head: Head; finalized: FinalizedHead },
+  windows: readonly ClosedWindow[],
+  minutes: number,
+): Promise<{ head: Head; finalized: FinalizedHead }> {
+  const last = windows.reduce<ClosedWindow | undefined>((l, w) => (l && l.openTs >= w.openTs ? l : w), undefined);
+  if (!last || read.head.ts >= last.openTs) return read;
+  const now = deps.now ?? Date.now;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  const times = Math.round((minutes * 60_000) / WAIT_STEP_MS);
+  const open = `the last open, ${last.openLabel} (${utcIso(last.openTs)})`;
+  const fromOpen = (ts: number) => (ts < last.openTs ? `${last.openTs - ts} s before ${open}` : ts === last.openTs ? `at ${open}` : `${ts - last.openTs} s after ${open}`);
+  deps.log(`--wait ${minutes}: ${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}; reading it again every 30 s, ${times} times at most`);
+  const start = now();
+  for (let k = 1; k <= times && read.head.ts < last.openTs; k++) {
+    await sleep(Math.max(0, start + k * WAIT_STEP_MS - now()));
+    read = await readHead(deps.reader, undefined);
+    deps.log(`--wait ${minutes}, reread ${k} of ${times}: ${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}${read.head.ts >= last.openTs ? ": measuring" : ""}`);
+  }
+  return read;
 }
 
 /** Asks MarketCalendar at each instant of calendarChecks, and throws at the first answer the window does not allow. */
@@ -171,8 +218,11 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
 
   const { reader, log } = deps;
   // A window is measured only once its open is at or before a finalized block, so no reorg can change its figures.
-  const head = await readHead(reader, opts.head);
+  let read = await readHead(reader, opts.head);
   if (deps.calendar) for (const w of windows) await checkCalendar(reader, deps.calendar, w, log);
+  if (opts.complete && opts.waitMinutes) read = await waitForOpen(deps, read, windows, opts.waitMinutes);
+  logHead(log, read, opts.head !== undefined);
+  const { head } = read;
   const notYet = windows.filter((w) => w.openTs > head.ts);
   if (opts.complete && notYet.length) {
     const which = notYet.map((w) => `window ${w.id} ends ${w.openLabel}`).join(", ");
@@ -320,7 +370,9 @@ function mergeRead(seen: SpanRead | undefined, s: SpanRead): SpanRead {
 export async function warmEdition(deps: WarmDeps, opts: WarmOptions): Promise<WarmResult> {
   const { windows, navs } = selectRun(deps.editions, opts);
   const { reader, log } = deps;
-  const head = await readHead(reader, opts.head);
+  const read = await readHead(reader, opts.head);
+  logHead(log, read, opts.head !== undefined);
+  const { head } = read;
   if (deps.calendar) for (const w of windows) await checkCalendar(reader, deps.calendar, w, log);
   let files = new Map<string, SpanRead>();
   // Every file of the run, across windows: two windows can read the same span file.
