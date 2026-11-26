@@ -6,7 +6,9 @@
 
 ### The AI agent that knows when not to trade
 
-**An AI treasury agent for tokenized stocks on Base. A model (Claude) proposes trades; the onchain `MandateVault` decides. It refuses when the US market is closed, the feed is stale, the pool has drifted from the oracle or a stock split is pending. A refusal does not revert: the vault emits a typed `Decision` event and moves no money.**
+Named for Ma'at, whose feather every heart was weighed against. Here the feather is the mandate.
+
+**Maat's agent proposes trades in tokenized stocks on Base, and the onchain `MandateVault` checks each one against a written mandate. It refuses when the US market is closed, the feed is stale, the pool has drifted from the oracle or a stock split is pending. A refusal does not revert: the vault emits a typed `Decision` event and moves no money.**
 
 [![Status: unaudited, on Base mainnet](https://img.shields.io/badge/status-unaudited%20%C2%B7%20on%20Base%20mainnet-b45309?style=flat-square)](#status)
 [![Base mainnet fork tested](https://img.shields.io/badge/Base%20mainnet-fork%20tested-1F3BFF?style=flat-square)](#base-mainnet-fork-evidence)
@@ -20,7 +22,7 @@
 
 </div>
 
-> The LLM proposes. The contract decides.
+> Claude proposes. The vault decides.
 
 > [!IMPORTANT]
 > **Status as of 2026-11-24.** The contracts are **unaudited**. The owner deployed the four Maat contracts to
@@ -261,9 +263,9 @@ spot price plus fee, every 15 minutes) was 121 bps on NVDAc, p99 109 bps, so 150
 $50 trade. Simulated $50 BUYs passed 81% / 60% / 53% of the time (NVDAc / GOOGLc / AAPLc) with the old limits
 (3600 s staleness, 100 bps slippage) and 93% / 98% / 99% with these. Most NVDAc refusals left are
 `PREMIUM_TOO_HIGH` in the first 45 minutes after the open, while the 30-minute TWAP still reflects the overnight
-price. A dead feed is still caught. For `BUY` and `SELL` the premium check is the guard against a frozen price;
-`BORROW` and `WITHDRAW_COLLATERAL` against debt have no premium check and rely on the 25 h limit alone. The
-measurement script and its data are not in the repository, so these figures cannot be re-run from it.
+price. A dead feed is still caught. For `BUY` and `SELL` the premium check is the guard against a price held
+without an update; `BORROW` and `WITHDRAW_COLLATERAL` against debt have no premium check and rely on the 25 h limit
+alone. The measurement script and its data are not in the repository, so these figures cannot be re-run from it.
 
 ## What the model decides, and what code enforces
 
@@ -564,8 +566,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  152 passed (152)
-         Tests  3397 passed (3397)
+    Test Files  153 passed (153)
+         Tests  3413 passed (3413)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, /ask's link preview and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
@@ -779,6 +781,7 @@ film/                      the demo film: captures the live site with Playwright
                            are read from files, opens and closes on the mark, assembles a silent 16:9 and 9:16 cut
                            with ffmpeg, on a PC only
 docs/superpowers/          design specs and implementation plans
+docs/brand/lexicon.md      the approved lines, names and words, and the variants they retired
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately
 ```
@@ -788,6 +791,7 @@ SECURITY.md                how to report a security problem privately
 | Document | What it covers |
 | --- | --- |
 | [Docs center](web/content/docs) | The website's `/docs` pages: get started, concepts, guides, the reference, security and help. Tests tie their reference entries, code excerpts and cited tests to the code, and check most of their facts against the contracts, the agent, the fork run or the document each one cites |
+| [Brand lexicon](docs/brand/lexicon.md) | The approved lines, one per slot, the names (Maat, Maat's agent, Claude, the vault, the operator), the words that replace retired ones, and the two lines on where the name comes from. `web/test/lexicon.test.ts` fails on a retired variant in the public copy |
 | [Design spec](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) | Product, architecture, the checks, threat model, open assumptions |
 | [Web design spec](docs/superpowers/specs/2026-11-07-maat-web-design.md) | Website goals, design tokens, page structure, parity tests, W2 and W3 |
 | [Docs center spec](docs/superpowers/specs/2026-11-07-maat-docs-center-design.md) | The readers of `/docs`, its honesty rules, pages, content model and quality gates |
@@ -796,7 +800,7 @@ SECURITY.md                how to report a security problem privately
 | [CI spec](docs/superpowers/specs/2026-11-18-maat-ci-design.md) | The one CI workflow: its jobs and hardening, the secret scan, the counts in each run's summary, `SECURITY.md`, Dependabot and the pre-flip scan |
 | [Readable refusals spec](docs/superpowers/specs/2026-11-20-readable-refusals-design.md) | Plain labels beside the vault's refusal codes on the landing, the simulator, the social images and the docs, and a week map of when the market session check passes |
 | [Live strip spec](docs/superpowers/specs/2026-11-20-maat-web-live-strip-design.md) | The live line under the landing H1 and `/now`: one keyless multicall from the browser reads the 13 B20s with a NAV, judged in `MandateVault`'s order for a BUY |
-| [Weekend Gap Index spec](docs/superpowers/specs/2026-11-21-weekend-gap-index-design.md) | How long each B20's Chainlink feed stays frozen in each closed NYSE window, the Aerodrome swaps meanwhile and the largest pool-vs-feed gap, measured from Base logs and published as dated editions |
+| [Weekend Gap Index spec](docs/superpowers/specs/2026-11-21-weekend-gap-index-design.md) | How long each B20's Chainlink feed is held without an update in each closed NYSE window, the Aerodrome swaps meanwhile and the largest pool-vs-feed gap, measured from Base logs and published as dated editions |
 | [Web instrument spec](docs/superpowers/specs/2026-11-23-maat-web-instrument-design.md) | The site redrawn as one weighing instrument: the Balance hero, the live Readout, the annunciator with a lamp per refusal code, the Weekend Scope and the verdict tape, with its motion, type, colour, sources and phases |
 | [maat:v1 blob spec](docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md) | The rationale and sources the agent appends to `execute` calldata, its hash and byte cap, the hash-chained journal and its public `agent-journal` branch, the sender labels, and test vectors |
 | [MaatInbox spec](docs/superpowers/specs/2026-11-25-maat-inbox-design.md) | Briefs to the agent: the inbox contract, what the agent reads from it, the `/ask` notice and the `/proof` counting rule |

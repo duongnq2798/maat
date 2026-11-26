@@ -253,11 +253,11 @@ function Method() {
                 <Term name="Answer held">
                   The <Code>current</Code> of the last <Code>AnswerUpdated</Code> at or before that swap.
                 </Term>
-                <Term name="Frozen">
+                <Term name="Without a feed update">
                   The longest interval between two consecutive feed updates that overlaps the window, from the update
                   whose answer held to the next one, in hours, with both blocks and times. It can start before the close
-                  and end after the open. These feeds update on a price move or on a heartbeat; frozen here says only
-                  that no update was logged.
+                  and end after the open. These feeds update on a price move or on a heartbeat; held without an update
+                  here says only that no update was logged.
                 </Term>
                 <Term name="Swaps meanwhile, swaps in window">
                   Swap logs strictly after the update that starts the interval and strictly before the one that ends

@@ -90,8 +90,8 @@ function summary(row: TokenRow, w: CompleteWindow): string {
   }
   const g = row.largestGap;
   const back = `feed came back ${signedBps(f.returnMoveBps)}.`;
-  if (!g) return `${head} ${formatHours(f.hours)} frozen, no swap meanwhile, ${back}`;
-  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${gapPrices(g)}. ${formatHours(f.hours)} frozen, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
+  if (!g) return `${head} ${formatHours(f.hours)} held without an update, no swap meanwhile, ${back}`;
+  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${gapPrices(g)}. ${formatHours(f.hours)} held without an update, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
 }
 
 /** The two prices a largest gap compares, as the edition holds them, 8 decimals each. */
@@ -135,7 +135,7 @@ function Header({ row }: { row: TokenRow }) {
         {f ? (
           <>
             <li>
-              <strong className="font-semibold text-ink">{formatHours(f.hours)}</strong> frozen
+              <strong className="font-semibold text-ink">{formatHours(f.hours)}</strong> held without an update
             </li>
             {g ? (
               <li>

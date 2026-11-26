@@ -219,7 +219,7 @@ describe("the /gap-index page", () => {
         );
         expect(cell("swapsWhileFrozen").textContent, name).toBe(formatInt(f.swapsWhileFrozen));
         expect(cell("returnMove").textContent, name).toBe(signedBps(f.returnMoveBps));
-        expect(chart).toHaveTextContent(`${formatHours(f.hours)} frozen`);
+        expect(chart).toHaveTextContent(`${formatHours(f.hours)} held without an update`);
         expect(chart).toHaveTextContent(`feed came back ${signedBps(f.returnMoveBps)}`);
         if (t.largestGap) {
           // The gap's two prices, as the edition holds them with all 8 decimals, in the chart's header and under the table's bps.
@@ -257,7 +257,7 @@ describe("the /gap-index page", () => {
     const chart = section("2026-11-13").querySelector<HTMLElement>('[data-gap-chart="NVDAc"]')!;
     expect(chart.querySelector("[data-gap-value]")!.textContent).toBe("+356 bps");
     expect(chart.querySelector("[data-gap-value]")).toHaveClass("text-accent");
-    for (const text of ["pool above the held answer", "49.40 h frozen", "17,478 swaps meanwhile", "feed came back +254 bps"]) {
+    for (const text of ["pool above the held answer", "49.40 h held without an update", "17,478 swaps meanwhile", "feed came back +254 bps"]) {
       expect(chart).toHaveTextContent(text);
     }
     const below = section("2026-11-13").querySelector<HTMLElement>('[data-gap-chart="CRCLc"]')!;
@@ -349,7 +349,7 @@ describe("the /gap-index page", () => {
       expect(s.querySelectorAll("[data-gap-chart]")).toHaveLength(NAV_TOKENS.length);
       expect(s.querySelectorAll("[hidden]")).toHaveLength(0);
       const nvda = w.tokens.find((t) => t.symbol === "NVDAc")!;
-      expect(s.textContent).toContain(`${formatHours(nvda.freeze!.hours)} frozen`);
+      expect(s.textContent).toContain(`${formatHours(nvda.freeze!.hours)} held without an update`);
     }
     neverSafe(html);
     neverSafe(setup().textContent ?? "");
@@ -384,7 +384,7 @@ describe("GapChart", () => {
       w.openLabel,
       "+356 bps",
       "pool above the held answer",
-      "49.40 h frozen",
+      "49.40 h held without an update",
       "17,478 swaps meanwhile",
       "feed came back +254 bps",
       `pool ${row.largestGap!.pool} vs held ${row.largestGap!.held}`,
@@ -438,7 +438,7 @@ describe("GapChart", () => {
     const c = draw(w, "ANTc");
     expect(c).toHaveTextContent("feed not live in this window");
     expect(c).toHaveTextContent("0 swaps in window");
-    expect(c).not.toHaveTextContent(/bps|frozen|meanwhile/);
+    expect(c).not.toHaveTextContent(/bps|held without|meanwhile/);
   });
 
   // The y of every vertex a path draws: M and L carry x then y, H an x, V a y.
@@ -523,7 +523,7 @@ describe("GapChart", () => {
     const header = c.querySelector("[data-gap-chart]")!.firstElementChild!;
     expect(header.textContent!.match(/no swap meanwhile/g)).toHaveLength(1);
     expect(header.textContent).not.toMatch(/\d swaps? meanwhile/);
-    expect(header).toHaveTextContent(`${formatHours(row.freeze!.hours)} frozen`);
+    expect(header).toHaveTextContent(`${formatHours(row.freeze!.hours)} held without an update`);
     const label = c.querySelector("svg[role=img]")!.getAttribute("aria-label")!;
     expect(label.match(/no swap meanwhile/gi)).toHaveLength(1);
     expect(label).not.toMatch(/\d swaps? meanwhile/);
