@@ -1,9 +1,12 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, posix, relative, sep } from "node:path";
+import { parseEnv } from "node:util";
 import { describe, expect, it } from "vitest";
+import { DEPLOYMENTS_FILE } from "../src/briefs/inbox.js";
 
 // No Docker on the dev machine: the image is built remotely, so these text checks are what guards it before a build.
-const read = (file: string) => readFileSync(join(import.meta.dirname, "..", file), "utf8");
+const AGENT_DIR = join(import.meta.dirname, "..");
+const read = (file: string) => readFileSync(join(AGENT_DIR, file), "utf8");
 
 /** Dockerfile instructions in order, with comments dropped and `\` continuations joined. */
 function instructions(text: string): { op: string; args: string }[] {
@@ -75,18 +78,81 @@ describe("agent/Dockerfile", () => {
     expect(all("ENV").map((i) => i.args)).toEqual(["MAAT_DATA_DIR=/data"]);
   });
 
-  it("copies only the runtime files, and never .env", () => {
+  it("copies only the runtime files and the heartbeat check, and never .env", () => {
     expect(copySources.filter((s) => /(^|\/)\.env/.test(s))).toEqual([]);
-    expect([...copySources].sort()).toEqual(["package-lock.json", "package.json", "src", "tsconfig.json"]);
+    expect([...copySources].sort()).toEqual(["package-lock.json", "package.json", "scripts/heartbeat.ts", "src", "tsconfig.json"]);
   });
 });
 
+/**
+ * Whether agent/.dockerignore leaves `path` (relative to agent/) out of the build context: the last line that matches
+ * it, or a folder above it, wins, and a line that starts with `!` lets it back in. `*` stays inside one path segment.
+ */
+function leftOut(path: string): boolean {
+  let out = false;
+  for (const line of ignored) {
+    const keep = line.startsWith("!");
+    const glob = (keep ? line.slice(1) : line).replace(/^\/+|\/+$/g, "");
+    const parts = glob.split("*").map((s) => s.replace(/[.+?^${}()|[\]\\]/g, "\\$&"));
+    if (new RegExp(`^${parts.join("[^/]*")}(/.*)?$`).test(path)) out = !keep;
+  }
+  return out;
+}
+
 describe("agent/.dockerignore", () => {
   it("keeps secrets, local state and installed modules out of the build context", () => {
-    expect(ignored).toEqual(expect.arrayContaining([".env", ".env.*", "data", "node_modules"]));
+    expect(ignored).toEqual(expect.arrayContaining([".env", ".env.*", "data*", "node_modules"]));
+    // data-dryrun: the soak's folder in the Windows runbook.
+    for (const p of [".env", ".env.local", "data/agent.lock", "data-dryrun/journal.jsonl", "node_modules/tsx/package.json"]) {
+      expect(leftOut(p), p).toBe(true);
+    }
   });
 
   it("keeps the lockfile that npm ci installs from", () => {
     expect(ignored.filter((p) => /json|lock/.test(p))).toEqual([]);
+  });
+
+  it("keeps every file the Dockerfile copies in the build context, and no other script", () => {
+    expect(copySources.filter(leftOut)).toEqual([]);
+    expect(leftOut("scripts/cdp-setup.ts")).toBe(true);
+  });
+});
+
+describe("Run in a container, in agent/README.md", () => {
+  const readme = read("README.md");
+  const start = readme.indexOf("\n## Run in a container\n");
+  const section = readme.slice(start, readme.indexOf("\n## ", start + 1));
+  const toml = /```toml\n([\s\S]*?)```/.exec(section)?.[1] ?? "";
+  const flyEnv = [.../\[env\]\n((?:[ \t]+.*\n)+)/.exec(toml)?.[1]?.matchAll(/^\s+([A-Z0-9_]+) = /gm) ?? []].map((m) => m[1]!);
+  const settings = Object.keys(parseEnv(read(".env.example")));
+  // The keys and URLs: BASE_RPC_URL and its fallback name no secret but can carry a provider key.
+  const secrets = ["ANTHROPIC_API_KEY", "CDP_API_KEY_ID", "CDP_API_KEY_SECRET", "CDP_WALLET_SECRET", "BASE_RPC_URL", "BASE_RPC_URL_FALLBACK"];
+
+  it("is found", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(flyEnv.length).toBeGreaterThan(0);
+  });
+
+  it("names every setting of .env.example", () => {
+    expect(settings.filter((k) => !new RegExp(`\\b${k}\\b`).test(section))).toEqual([]);
+  });
+
+  it("passes every secret at run time, and fly.toml holds none of them and no unknown setting", () => {
+    const flySecrets = /^fly secrets set (.*)$/m.exec(section)?.[1] ?? "";
+    expect(secrets.filter((k) => !flySecrets.split(" ").some((w) => w.startsWith(`${k}=`)))).toEqual([]);
+    expect(flyEnv.filter((k) => secrets.includes(k) || k === "MAAT_DATA_DIR")).toEqual([]);
+    expect(flyEnv.filter((k) => !settings.includes(k) && k !== "TINI_SUBREAPER")).toEqual([]);
+  });
+
+  it("mounts deployments/README.md where the agent in the image reads the MaatInbox row from", () => {
+    const workdir = all("WORKDIR").at(-1)?.args ?? "";
+    const inImage = posix.resolve(workdir, relative(AGENT_DIR, DEPLOYMENTS_FILE).split(sep).join("/"));
+    // The loop's docker run and the one-off --once run.
+    expect(section.split(`/deployments/README.md:${inImage}:ro`).length - 1).toBe(2);
+  });
+
+  it("checks the agent's health with the heartbeat script that the image holds", () => {
+    expect(section).toContain("node --import tsx scripts/heartbeat.ts");
+    expect(copySources).toContain("scripts/heartbeat.ts");
   });
 });

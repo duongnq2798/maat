@@ -16,9 +16,10 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-# tsx reads tsconfig.json, so src/ compiles as it does in a dev run.
+# tsx reads tsconfig.json, so src/ compiles as it does in a dev run. scripts/heartbeat.ts is the health check.
 COPY tsconfig.json ./
 COPY src ./src
+COPY scripts/heartbeat.ts ./scripts/
 
 # state.json, the journal and agent.lock live here. Secrets are passed at run time, never built in.
 ENV MAAT_DATA_DIR=/data

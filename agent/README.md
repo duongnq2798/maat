@@ -58,19 +58,25 @@ When `agent/.env` has no `ANTHROPIC_API_KEY`, or leaves it blank, the terminal's
 
 `agent/Dockerfile` builds one image for the agent loop, with `agent/` as the build context. The image has not been built yet: the dev machine has no Docker, so build it remotely, on Fly.io's remote builder or on the VPS that runs it. Do live-run steps 1–5 first.
 
-The image holds `src/`, the package files and `tsconfig.json`, with production dependencies only (`npm ci --omit=dev`; `tsx` is a dependency because it runs `src/`). It runs `node --import tsx src/main.ts` under tini as the non-root `node` user, so a stop signal reaches the agent. `MAAT_DATA_DIR` is `/data`, a volume. Pin `node:24-slim` by digest when you build (see the top of the Dockerfile). The same image can run another entry point in `src/` by overriding the command.
+The image holds `src/`, the package files, `tsconfig.json` and `scripts/heartbeat.ts` (the [health check](#health-check)), with production dependencies only (`npm ci --omit=dev`; `tsx` is a dependency because it runs `src/`). It runs `node --import tsx src/main.ts` under tini as the non-root `node` user, so a stop signal reaches the agent. `MAAT_DATA_DIR` is `/data`, a volume. Pin `node:24-slim` by digest when you build (see the top of the Dockerfile). The same image can run another entry point in `src/` by overriding the command.
 
-**Keys.** The vault owner key is never on the agent host or in the container. The host only holds the CDP API credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`) and the Anthropic key (`ANTHROPIC_API_KEY`), plus `BASE_RPC_URL` when it carries a provider key. None of them is in the image: pass them at run time.
+**Settings.** The agent takes the settings of `.env.example` at run time, as on the PC. `MAAT_DATA_DIR` stays `/data`, which the image sets. An optional setting left unset takes its default: `MAAT_LOOP_MODEL`, `MAAT_MAX_TX_PER_DAY`, `MAAT_DEFAULT_DAILY_COMPUTE_USD`, `MAAT_CREDIT_ACTIONS`, `MAAT_MAX_LLM_USD_PER_DAY` and `MAAT_BILL_MIN_USD`. `MAAT_PROBES` works as on the PC: the loop fires each instant beside its rounds (see [Probes](#probes-maat_probes)).
+
+**Keys.** The vault owner key is never on the agent host or in the container. The host only holds the CDP API credentials (`CDP_API_KEY_ID`, `CDP_API_KEY_SECRET`, `CDP_WALLET_SECRET`) and the Anthropic key (`ANTHROPIC_API_KEY`), plus `BASE_RPC_URL` and `BASE_RPC_URL_FALLBACK` when they carry a provider key. None of them is in the image: pass them at run time. The image has no `.env`, so the agent calls Claude with the `ANTHROPIC_API_KEY` of its environment.
+
+**Briefs.** The agent reads MaatInbox briefs only when `deployments/README.md` records the inbox with its deploy tx (see [MaatInbox briefs](#maatinbox-briefs)). In the image it looks for that file at `/deployments/README.md`, outside the build context, so the VPS commands below mount the clone's copy there, read-only. Without it the agent starts with `briefs=off` and says why on the next line. It reads the file once, at its start.
+
+**Commit.** Every journal row and every blob carry the commit of the agent code, from git. The image holds no git checkout, so in a container that commit is `unknown`. The VPS build below labels the image with the commit it was built from, for your own record (`sudo docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.revision" }}' maat-agent`).
 
 **One volume, one container.** Never mount one data volume in two running containers, and never run two agents against one vault. `agent.lock` holds a process id, and process ids are per container, so the lock cannot be relied on to stop a second container.
 
-**Stop timeout.** A stop signal ends the wait between rounds, not a round in flight, and a round can wait up to 2 minutes for each receipt. Give the agent time to finish the round and remove `agent.lock` before it is killed: Docker's default is 10 s and Fly's is 5 s. The 300 s set below is the most Fly allows: it covers a normal round, where Base receipts arrive in seconds, and about two full receipt waits, not a round that waits long on several. A killed agent leaves `agent.lock` behind. If the restarted agent then stops at `another agent (pid N) is running` while no other container uses the volume, the lock is stale (in a container the new agent can get the old one's process id): read the journal, then delete `/data/agent.lock` with a one-off command, as for the `--once` run below.
+**Stop timeout.** A stop signal ends the wait between rounds and a probe's pause before a retry, not a round or a probe in flight, and a round can wait up to 2 minutes for each receipt. Give the agent time to finish the round and remove `agent.lock` before it is killed: Docker's default is 10 s and Fly's is 5 s. The 300 s set below is the most Fly allows: it covers a normal round, where Base receipts arrive in seconds, and about two full receipt waits, not a round that waits long on several. A killed agent leaves `agent.lock` behind. If the restarted agent then stops at `another agent (pid N) is running` while no other container uses the volume, the lock is stale (in a container the new agent can get the old one's process id): read the journal, then delete `/data/agent.lock` with a one-off command, as for the `--once` run below.
 
 ### On a VPS with Docker
 
 ```bash
-# From the repository root, on the VPS.
-sudo docker build -t maat-agent agent/
+# From the repository root, on the VPS. Run every command below from there.
+sudo docker build --label org.opencontainers.image.revision="$(git rev-parse HEAD)" -t maat-agent agent/
 
 # Settings and secrets in a root-only file outside the repository, in the format of .env.example.
 sudo install -d -m 700 /etc/maat
@@ -81,6 +87,7 @@ sudo docker run -d --name maat-agent \
   --stop-timeout 300 \
   --env-file /etc/maat/agent.env \
   -v maat-data:/data \
+  -v "$PWD/deployments/README.md:/deployments/README.md:ro" \
   maat-agent
 ```
 
@@ -90,13 +97,14 @@ Leave `MAAT_DATA_DIR` out of the env file: the image sets it to `/data`, and `./
 
 ```bash
 sudo docker stop maat-agent
-sudo docker run --rm --env-file /etc/maat/agent.env -v maat-data:/data maat-agent node --import tsx src/main.ts --once
+sudo docker run --rm --env-file /etc/maat/agent.env -v maat-data:/data \
+  -v "$PWD/deployments/README.md:/deployments/README.md:ro" maat-agent node --import tsx src/main.ts --once
 sudo docker start maat-agent
 ```
 
 ### On Fly.io
 
-Save this as `agent/fly.toml`, next to the Dockerfile (`.dockerignore` keeps it out of the image). The settings that are not secret go in `[env]`. `CDP_ACCOUNT_NAME` must be the name `cdp-setup.ts` created the executor under. On a Machine, Fly's init starts tini as its child, so tini is not PID 1: `TINI_SUBREAPER` lets it reap zombies there too, and stops it from logging a warning about that at each boot.
+Save this as `agent/fly.toml`, next to the Dockerfile (`.dockerignore` keeps it out of the image). The settings that are not secret go in `[env]`; add any other one you set, such as `MAAT_PROBES`, never a key or an RPC URL. `CDP_ACCOUNT_NAME` must be the name `cdp-setup.ts` created the executor under. On a Machine, Fly's init starts tini as its child, so tini is not PID 1: `TINI_SUBREAPER` lets it reap zombies there too, and stops it from logging a warning about that at each boot.
 
 ```toml
 app = "<APP_NAME>"
@@ -124,25 +132,26 @@ kill_timeout = 300
 cd agent
 fly apps create <APP_NAME>
 fly volumes create maat_data --size 1 --region <REGION>
-fly secrets set ANTHROPIC_API_KEY=... CDP_API_KEY_ID=... CDP_API_KEY_SECRET=... CDP_WALLET_SECRET=... BASE_RPC_URL=...
+fly secrets set ANTHROPIC_API_KEY=... CDP_API_KEY_ID=... CDP_API_KEY_SECRET=... CDP_WALLET_SECRET=... BASE_RPC_URL=... BASE_RPC_URL_FALLBACK=...
 fly deploy --remote-only
 fly scale count 1
 ```
 
-`fly secrets import` reads the same `NAME=value` lines from stdin and keeps the values out of your shell history. Keep exactly one Machine: a volume attaches to one Machine only, so a second Machine would run on a volume of its own, with a lock that cannot see the first agent.
+Leave `BASE_RPC_URL_FALLBACK` out when you have no second RPC. `fly secrets import` reads the same `NAME=value` lines from stdin and keeps the values out of your shell history. Keep exactly one Machine: a volume attaches to one Machine only, so a second Machine would run on a volume of its own, with a lock that cannot see the first agent. The build context has no `deployments/README.md`, so on Fly the agent runs with `briefs=off`.
 
 ### Health check
 
-The agent serves no port, but every round appends to `/data/journal.jsonl`, and off session the loop waits 60 minutes between rounds. A newest line older than about 70 minutes (that wait plus a round) means the loop is stuck or failing before it writes. This command exits 0 when the newest line is younger than 70 minutes, and 1 otherwise, also when the journal is missing:
+The agent serves no port. After every round, failed ones included, it writes `/data/heartbeat.json`, and `scripts/heartbeat.ts` (`npm run agent:heartbeat` on the PC) prints one line on it and exits 0 when the last round ended at most 90 minutes ago, 1 when it is older, and 2 when there is no heartbeat yet or it cannot be read. On the PC the restart loop checks it every 5 minutes. In a container the restart policy starts the agent again, but nothing reads the heartbeat until you do:
 
 ```bash
-sudo docker exec maat-agent node -e '
-const last = require("node:fs").readFileSync("/data/journal.jsonl", "utf8").trimEnd().split("\n").at(-1);
-process.exit(Date.now() - Date.parse(JSON.parse(last).ts) < 70 * 60_000 ? 0 : 1);
-'
+sudo docker exec maat-agent node --import tsx scripts/heartbeat.ts --data-dir /data
 ```
 
-On Fly, run the same `node -e` through `fly ssh console`. It is not a `HEALTHCHECK` in the image, because it has not run in a container yet. Run it from cron or a monitor, and give a fresh start one round to write its first line.
+On Fly, run `cd /app && node --import tsx scripts/heartbeat.ts --data-dir /data` in `fly ssh console`. It is not a `HEALTHCHECK` in the image, because it has not run in a container yet. Run it from cron or a monitor, and give a fresh start one round to write its first heartbeat.
+
+### Journal publisher
+
+The journal publisher (`ops/journal/`) is not in the image, and its README covers the owner's PC only. It reads `journal.jsonl` in the agent's data folder and pushes with your git login, so it runs on a host that can read the volume: on a VPS, the host itself, from the clone, with `--data-dir` set to the folder that `sudo docker volume inspect -f '{{ .Mountpoint }}' maat-data` prints. That setup has not been tried. A Fly volume can be read only from its Machine, so the journal is not published from Fly.
 
 ## Safety
 
