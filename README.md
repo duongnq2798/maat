@@ -564,8 +564,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  137 passed (137)
-         Tests  2964 passed (2964)
+    Test Files  141 passed (141)
+         Tests  3011 passed (3011)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
@@ -613,6 +613,8 @@ Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` an
 `web/` (typecheck, tests, build and output checks), and `npm run gen:abi` in `agent/` after a contract change.
 `npm test` in `ops/journal/` runs the journal publisher's tests, which need git and no network and run by hand;
 CI's web unit tests check the chain it writes, on its fixtures.
+`node film/render.mjs` renders the demo film from the live site; it needs ffmpeg and the network and runs by hand
+([`film/README.md`](film/README.md)). CI's web unit tests check its beat plan, caption sources and ffmpeg arguments.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
@@ -770,6 +772,8 @@ skills/maat-market-guard/  the read-only guard other agents call, in BankrBot's 
                            at /skill.md), catalog.json, scripts/check.mjs and its offline selftest
 ops/journal/               the journal publisher the owner starts beside the agent: it appends the public fields
                            of the agent's journal to the public agent-journal branch every 15 min, never by force
+film/                      the demo film: captures the live site with Playwright, burns in captions whose numbers
+                           are read from files, assembles a 16:9 and a 9:16 cut with ffmpeg, on a PC only
 docs/superpowers/          design specs and implementation plans
 docs/assets/readme/        the screenshots in this README
 SECURITY.md                how to report a security problem privately
@@ -809,6 +813,7 @@ SECURITY.md                how to report a security problem privately
 | [`deployments/go-live.md`](deployments/go-live.md) | The owner's go-live runbook: deploy, fund, the first-decision BUY intents built by `agent/scripts/first-decision.ts`, and the executor handover to the CDP Server Wallet |
 | [`deployments/README.md`](deployments/README.md) | The mainnet deploy reference (environment, dry run, checklist, smoke tests, unwind, executor switch) and the address table |
 | [`ops/journal/README.md`](ops/journal/README.md) | The journal publisher: the fields it copies from the agent's journal to the public `agent-journal` branch, how the owner starts and stops it on Windows, what it prints, and when and why it stops |
+| [`film/README.md`](film/README.md) | The demo film: its beats, the render command, where each caption number is read from, and the owner's steps (the two Basescan clips, the transactions of beats 5 to 7, the Loom upload) |
 | [`web/README.md`](web/README.md) | Website commands, numbers, deploy, and the rules for the docs pages |
 | [`skills/maat-market-guard/SKILL.md`](skills/maat-market-guard/SKILL.md) | The market-guard skill for other agents: when to call it, its commands, its JSON output and exit codes, the typed reasons, its addresses and limits |
 | [`SECURITY.md`](SECURITY.md) | How to report a security problem privately |
