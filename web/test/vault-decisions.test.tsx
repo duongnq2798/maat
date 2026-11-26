@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { getAddress } from "viem";
+import { getAddress, keccak256, toBytes } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LedgerDeps } from "@/components/ledger/useLedger";
 import { HeroCard } from "@/components/sections/HeroCard";
@@ -18,10 +18,14 @@ import { decodeVaultLogs } from "@/lib/chain/events";
 import { toMainnetDecisions } from "@/lib/chain/ledger";
 import type { RationaleSource } from "@/lib/chain/rationale";
 import { basescanTx } from "@/lib/live/basescan";
+import { executeInput, OWNER } from "./helpers/card";
 import { decisionLog, fakeLedgerClient, hash32, memoryStorage, type FakeChain } from "./helpers/fake-ledger";
 
 const RECORDED = FACTS.mainnetDecisions.value;
 const USDC = getAddress(addresses.find((a) => a.name === "USDC")!.value);
+/** A compute bill's maat:v1 blob, as the agent's code writes it (kind "bill"). */
+const BILL_BLOB = `maat:v1:{"b":62500000,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x${"0".repeat(64)}","k":"bill","r":"run-landing-test","s":[],"t":"Compute bill: $1.000000 of Claude API usage unpaid as of UTC day 20784"}`;
+const BILL_HASH = keccak256(toBytes(BILL_BLOB));
 const asLog = ({ blockNumber, logIndex, transactionHash, topics, data }: (typeof RECORDED)[number]): CachedLog => ({
   blockNumber,
   logIndex,
@@ -36,7 +40,7 @@ describe("the recorded Decisions", () => {
     const gasUsed = Object.fromEntries(RECORDED.map((l) => [l.transactionHash, l.gasUsed]));
     const decisions = toMainnetDecisions(decodeVaultLogs(RECORDED.map(asLog)), { blockTimes, gasUsed, decimals: {}, usdc: USDC });
     expect(decisions).toHaveLength(RECORDED.length);
-    expect(RECORDED_ROWS).toEqual(decisions.map(toVaultRow));
+    expect(RECORDED_ROWS).toEqual(decisions.map((d) => toVaultRow(d)));
   });
 
   it("are the deployed vault's, and match the transactions the status page records", () => {
@@ -124,6 +128,12 @@ describe("the landing's view of the mainnet vault", () => {
     expect(plate(container)).toHaveAttribute("href", basescanTx(NEWEST.txHash));
     expect(plate(container)).toHaveTextContent(`BASE MAINNET Recorded Decision: Allowed · ${intentText(NEWEST)} · ${NEWEST.timeLabel} ET`);
     expect(card(container)).toHaveTextContent("LATEST RECORDED DECISION");
+    // The newest recorded Decision is allowed: its plate is the quiet accent tint, never the solid accent.
+    const verdict = card(container).querySelector<HTMLElement>("[data-verdict]")!;
+    expect(verdict).toHaveAttribute("data-verdict", "allowed");
+    expect(verdict.className.split(" ")).toContain("bg-accent-tint");
+    expect(verdict.className.split(" ")).not.toContain("bg-accent");
+    expect(verdict).toHaveTextContent("Allowed");
     expect(card(container)).toHaveTextContent(`${RECORDED.length} Decisions recorded in this build. Reading the vault on Base…`);
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
     expect(container.textContent).not.toMatch(/fork/i);
@@ -172,6 +182,34 @@ describe("the landing's view of the mainnet vault", () => {
     expect(rows[0]).not.toHaveTextContent(/\bET\b/);
     // The recorded Decisions keep their New York time.
     expect(rows[1]).toHaveTextContent(`${NEWEST.timeLabel} ET`);
+  }, WAITS);
+
+  it("labels a paid compute bill as a bill, with its amount and payee, on a neutral plate", async () => {
+    const vault = deploymentConfig(deployments)!.vault;
+    const c0 = chain();
+    c0.logs = [...RECORDED.map(asLog), decisionLog(9, HEAD - 10n, { action: "PAY_EXPENSE", token: USDC, amount: 1_000_000n, rationaleHash: BILL_HASH })];
+    c0.owner = OWNER;
+    c0.txs = { [hash32(9)]: { from: OWNER, to: vault, input: executeInput({ action: "PAY_EXPENSE", token: USDC, amount: 1_000_000n, payee: OWNER, rationaleHash: BILL_HASH, blob: BILL_BLOB }) } };
+    const { container } = landing(deps(c0));
+    await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "live"), READ);
+
+    const line = "Compute bill paid · $1.00 · to the owner's allowlisted address";
+    const p = plate(container);
+    expect(p).toHaveTextContent(`BASE MAINNET Last Decision: ${line} · 2 h 5 min ago`);
+    expect(p).toHaveAttribute("title", `Last Decision: ${line} · 2 h 5 min ago`);
+
+    const c = card(container);
+    expect(c.querySelector("[data-latest-line]")).toHaveTextContent(line);
+    const verdict = c.querySelector<HTMLElement>("[data-verdict]")!;
+    expect(verdict).toHaveAttribute("data-verdict", "bill");
+    expect(verdict).toHaveTextContent("Paid");
+    expect(verdict).not.toHaveTextContent("Allowed");
+    expect(verdict.className).not.toMatch(/(^|\s)bg-(accent|refuse|ink)(-|\s|$)/);
+    const rows = within(within(c).getByRole("list", { name: "Recent decisions" })).getAllByRole("listitem");
+    expect(rows.map((r) => r.getAttribute("data-decision"))).toEqual(["bill", "allowed", "refused"]);
+    expect(rows[0]).toHaveTextContent(line);
+    // Never written as a trade.
+    expect(container.textContent).not.toMatch(/PAY_EXPENSE|USDC/);
   }, WAITS);
 
   it("says the vault has made no Decision yet when Base has none", async () => {

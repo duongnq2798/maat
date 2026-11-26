@@ -18,6 +18,7 @@ import { ConnectingStrip, ErrorStrip, MainnetStrip, WaitingStrip } from "./Statu
 import { TrailTabs, type TrailTab } from "./TrailTabs";
 import { TreasuryTable } from "./TreasuryTable";
 import { useJournal } from "./useJournal";
+import { useLastLook, type LookDeps } from "./useLastLook";
 import { useLedger } from "./useLedger";
 
 const WAD = 1e18;
@@ -68,15 +69,17 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 
 /**
  * The mainnet ledger. `initial` comes from the build's deployments table, so the static HTML shows the same state the
- * page settles on: the waiting view before the deploy, a connecting line after it.
+ * page settles on: the waiting view before the deploy, a connecting line after it. `look` is where the viewer's last look
+ * is kept (default: this browser's localStorage).
  */
-export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
+export function LedgerApp({ initial, look }: { initial: "waiting" | "loading"; look?: LookDeps }) {
   const state = useLedger();
   const [reason, setReason] = useState<RefusalCode | null>(null);
   const [tab, setTab] = useState<TrailTab>("decisions");
   const [roundsOpened, setRoundsOpened] = useState(false);
   const mode = state.mode === "loading-config" ? initial : state.mode;
   const snapshot = state.mode === "mainnet" ? state.snapshot : null;
+  const since = useLastLook(snapshot, state.mode === "mainnet" && state.loading, look);
   // GitHub is asked for the journal only when the Rounds tab opens or a Decision carries a blob to anchor in it, and
   // asked again when a refresh brings more blobs.
   const blobs = snapshot ? [...snapshot.trails.values()].filter((t) => t.call?.blob.status === "v1").length : 0;
@@ -130,6 +133,7 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
                 reason={reason}
                 onReason={setReason}
                 scanning={state.mode === "mainnet" && state.loading && !snapshot.scan.done}
+                since={since}
               />
             }
             rounds={<RoundsPanel journal={journal} onReload={journal.reload} briefs={briefMap(snapshot.decisions, snapshot.trails)} />}

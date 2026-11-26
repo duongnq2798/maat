@@ -28,92 +28,58 @@ function navLinks() {
   return { bar: all.filter((a) => !menu.contains(a)).map(pair), menu: within(menu).getAllByRole("link").map(pair), all };
 }
 
+// Pages first (spec 2026-11-23 section 2, decision 3): the bar and the phone menu list the same pages, and the landing's
+// section links are not in the nav.
+const PAGES = [
+  ["Now", "/now"],
+  ["Gap Index", "/gap-index"],
+  ["Ledger", "/ledger"],
+  ["Docs", SITE.docsUrl],
+];
+const ASK_PAGES = [
+  ["Ask", "/ask"],
+  ["Proof", "/proof"],
+];
+
 describe("nav", () => {
-  it("links to the sections and the ledger, and opens a phone menu of the pages", () => {
+  it("puts the pages first, the same in the bar and in the phone menu, and links no section of the landing", () => {
     render(<Nav askOpen={false} />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const menu = nav.querySelector<HTMLElement>("[data-phone-menu]")!;
-    const outside = within(nav)
-      .getAllByRole("link")
-      .filter((a) => !menu.contains(a))
-      .map((a) => [a.textContent, a.getAttribute("href")]);
-    expect(outside).toEqual([
-      ["maat", "#top"],
-      ["How it works", "#how"],
-      ["Refusals", "#reasons"],
-      ["Try it", "#try"],
-      ["Ledger", "/ledger"],
-      ["Mandate", "#mandate"],
-      ["Docs", SITE.docsUrl],
-      ["View on GitHub ↗", SITE.repoUrl],
-    ]);
+    const { bar, menu: pages, all } = navLinks();
+    expect(bar).toEqual([["maat", "#top"], ...PAGES, ["View on GitHub ↗", SITE.repoUrl]]);
     expect(within(nav).getByRole("link", { name: "Maat home" })).toBeInTheDocument();
     expect(nav.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(all.map((a) => a.getAttribute("href")).filter((h) => h?.startsWith("#") || h?.startsWith("/#"))).toEqual(["#top"]);
 
     // A <details>, so it opens without JavaScript; shown up to 720 px, where the links above are hidden.
     expect(menu.tagName).toBe("DETAILS");
     expect(menu.querySelector("summary")).toHaveTextContent("Menu");
     expect(menu.className.split(" ")).toContain("min-[721px]:hidden");
-    const pages = within(menu).getByRole("list", { name: "Pages" });
-    expect(within(pages).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["Ledger", "/ledger"],
-      ["Now", "/now"],
-      ["Gap Index", "/gap-index"],
-      ["Docs", SITE.docsUrl],
-    ]);
+    expect(within(menu).getByRole("list", { name: "Pages" })).toBeInTheDocument();
+    expect(pages).toEqual(PAGES);
+    const navlinks = all.filter((a) => a.classList.contains("navlink") && !a.closest("[data-phone-menu]"));
+    expect(navlinks.map((a) => a.textContent)).toEqual(PAGES.map(([label]) => label));
+    for (const a of navlinks) expect(a.className).toBe("navlink max-[720px]:hidden");
   });
 
-  it("points its section links at the landing from any other page", () => {
+  it("points its home link at the landing from any other page, and every page link as it is", () => {
     render(<Nav onLanding={false} askOpen={false} />);
-    const links = within(screen.getByRole("navigation", { name: "Main" }))
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href"));
-    expect(links).toEqual([
-      "/",
-      "/#how",
-      "/#reasons",
-      "/#try",
-      "/ledger",
-      "/#mandate",
-      "/ledger",
-      "/now",
-      "/gap-index",
-      SITE.docsUrl,
-      SITE.docsUrl,
-      SITE.repoUrl,
-    ]);
+    const hrefs = navLinks().all.map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/", ...PAGES.map(([, href]) => href), ...PAGES.map(([, href]) => href), SITE.repoUrl]);
   });
 
   // The owner's switch, content/ask-open.ts, opens /ask; the same deploy adds Ask and Proof to the bar and the menu.
-  it("adds Ask and Proof before Docs, in the bar and in the phone menu, when the owner's switch is on", () => {
+  it("adds Ask and Proof after Ledger, in the bar and in the phone menu, when the owner's switch is on", () => {
     render(<Nav askOpen />);
     const { bar, menu, all } = navLinks();
-    expect(bar).toEqual([
-      ["maat", "#top"],
-      ["How it works", "#how"],
-      ["Refusals", "#reasons"],
-      ["Try it", "#try"],
-      ["Ledger", "/ledger"],
-      ["Mandate", "#mandate"],
-      ["Ask", "/ask"],
-      ["Proof", "/proof"],
-      ["Docs", SITE.docsUrl],
-      ["GitHub ↗", SITE.repoUrl],
-    ]);
-    expect(menu).toEqual([
-      ["Ledger", "/ledger"],
-      ["Now", "/now"],
-      ["Gap Index", "/gap-index"],
-      ["Ask", "/ask"],
-      ["Proof", "/proof"],
-      ["Docs", SITE.docsUrl],
-    ]);
-    // In the bar they give way to the Menu up to 720 px, as the section links do. With two more links, every bar link
-    // takes 10 px side padding and the pill reads GitHub, so the docked reading keeps its 340 px on the row at 1280 px
-    // (e2e/instrument-nav.spec.ts).
+    const pages = [...PAGES.slice(0, -1), ...ASK_PAGES, ...PAGES.slice(-1)];
+    expect(bar).toEqual([["maat", "#top"], ...pages, ["View on GitHub ↗", SITE.repoUrl]]);
+    expect(menu).toEqual(pages);
+    // In the bar they give way to the Menu up to 720 px, as the other pages do.
     const navlinks = all.filter((a) => a.classList.contains("navlink") && !a.closest("[data-phone-menu]"));
-    expect(navlinks.map((a) => a.textContent)).toEqual(["How it works", "Refusals", "Try it", "Ledger", "Mandate", "Ask", "Proof", "Docs"]);
-    for (const a of navlinks) expect(a.className).toBe("navlink px-2.5 max-[720px]:hidden");
+    expect(navlinks.map((a) => a.textContent)).toEqual(["Now", "Gap Index", "Ledger", "Ask", "Proof", "Docs"]);
+    for (const a of navlinks) expect(a.className).toBe("navlink max-[720px]:hidden");
   });
 
   it("links /ask and /proof as they are from any other page, and by default follows the owner's switch", () => {

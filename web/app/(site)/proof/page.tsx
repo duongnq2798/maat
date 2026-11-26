@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 import { Footer } from "@/components/sections/Footer";
 import { Nav } from "@/components/sections/Nav";
+import { pageOgImage } from "@/content/page-cards";
 import { docsData } from "@/lib/docs/generated";
-import { OG_IMAGE } from "@/lib/og-image";
 import { SITE } from "@/lib/site";
 import { proofConfig } from "./config";
 import { ProofApp } from "./ProofApp";
@@ -18,8 +18,9 @@ export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   alternates: { canonical: "/proof" },
-  openGraph: { type: "website", url: "/proof", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [OG_IMAGE] },
-  twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [OG_IMAGE] },
+  // Its own card (content/page-cards.ts), drawn at build time by app/og/proof.png/route.ts; the landing's image stays the landing's.
+  openGraph: { type: "website", url: "/proof", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [pageOgImage("/proof")] },
+  twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [pageOgImage("/proof")] },
 };
 
 export default function ProofPage() {

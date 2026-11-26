@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Command, commandParts } from "@/components/gap/Command";
@@ -12,6 +10,7 @@ import { SectionHeading } from "@/components/ui/SectionHeading";
 import { B20_DECIMALS, NAV_TOKENS } from "@/content/b20-nav";
 import { formatInt } from "@/content/format";
 import { etDateTime, PUBLISHED, SPOT_NOT_TWAP } from "@/content/gap-index";
+import { pageOgImage } from "@/content/page-cards";
 import { DECISION_TOPIC } from "@/lib/gap/decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { BUCKET_SEC, LOOKBACK_SEC } from "@/lib/gap/measure";
@@ -19,20 +18,11 @@ import { GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/li
 import type { EditionFile } from "@/lib/gap/schema";
 import { repoFileUrl, SITE } from "@/lib/site";
 
-// A page's openGraph replaces the layout's whole object, so /gap-index names the landing's link preview image again: the
-// same object as app/(site)/layout.tsx.
-const ogImage = {
-  url: "/opengraph-image.png",
-  type: "image/png",
-  width: 1200,
-  height: 630,
-  alt: readFileSync(join(process.cwd(), "app/opengraph-image.alt.txt"), "utf8"),
-};
-
 const HEADING = "Weekend Gap Index";
 const TITLE = `${HEADING} · ${SITE.name}`;
 const DESCRIPTION = `For each closed NYSE window: how long the Chainlink feeds of the ${NAV_TOKENS.length} B20 stocks on Base went without an update, and the Aerodrome swaps and gaps meanwhile.`;
 
+// Its own card (content/page-cards.ts), drawn at build time by app/og/gap-index.png/route.ts; the landing's image stays the landing's.
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
@@ -44,7 +34,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     locale: "en_US",
-    images: [ogImage],
+    images: [pageOgImage("/gap-index")],
   },
   twitter: {
     card: "summary_large_image",
@@ -52,7 +42,7 @@ export const metadata: Metadata = {
     creator: SITE.xHandle,
     title: TITLE,
     description: DESCRIPTION,
-    images: [ogImage],
+    images: [pageOgImage("/gap-index")],
   },
 };
 
@@ -253,11 +243,11 @@ function Method() {
                 <Term name="Answer held">
                   The <Code>current</Code> of the last <Code>AnswerUpdated</Code> at or before that swap.
                 </Term>
-                <Term name="Frozen">
+                <Term name="Without a feed update">
                   The longest interval between two consecutive feed updates that overlaps the window, from the update
                   whose answer held to the next one, in hours, with both blocks and times. It can start before the close
-                  and end after the open. These feeds update on a price move or on a heartbeat; frozen here says only
-                  that no update was logged.
+                  and end after the open. These feeds update on a price move or on a heartbeat; held without an update
+                  here says only that no update was logged.
                 </Term>
                 <Term name="Swaps meanwhile, swaps in window">
                   Swap logs strictly after the update that starts the interval and strictly before the one that ends

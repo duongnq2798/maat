@@ -97,6 +97,7 @@ const NOW = [
   '<main id="main"><h1 class="m-0 text-ink">Right now on Base</h1>',
   '<div data-now-board="reading" class="b"><span role="status" aria-live="polite" class="sr-only">Reading Base mainnet…</span>',
   '<p class="m-0">Reading Base mainnet…</p></div>',
+  '<section data-market-week="waiting"><ol data-week-days><li>Mon</li></ol></section>',
   '<a href="https://basescan.org/address/0xcA11bde05977b3631167028862bE2a173976CA11">0xcA11bde05977b3631167028862bE2a173976CA11</a>',
   "</main></body></html>",
 ].join("");
@@ -124,6 +125,12 @@ describe("checkNowPage", () => {
     ],
     ["a baked LIVE pill", NOW.replace("</h1>", '</h1><span class="p"><span aria-hidden="true"></span>LIVE</span>'), /LIVE pill/],
     ["a baked verdict", NOW.replace("</h1>", '</h1><span data-verdict-line="refuse-all">An agent…</span>'), /verdict/],
+    ["no waiting market week", NOW.replace('data-market-week="waiting"', ""), /market week/],
+    ["a week drawn at build time", NOW.replace('data-market-week="waiting"', 'data-market-week="drawn"'), /market week/],
+    ["a baked now line", NOW.replace("<li>Mon</li>", '<li>Mon<span data-now-marker=""></span></li>'), /now line/],
+    ["a baked session line", NOW.replace("</h1>", '</h1><p data-session-line="closed">NYSE closed</p>'), /session line/],
+    ["a baked Decision tick", NOW.replace("<li>Mon</li>", '<li>Mon<span data-tick="" data-verdict="refused"></span></li>'), /Decision tick/],
+    ["a baked agent note", NOW.replace("</main>", '<aside data-agent-note="">Latest note</aside></main>'), /agent note/],
     ["a link without a target", NOW.replace('href="#main"', 'href="#nowhere"'), /#nowhere/],
     ["a third-party script", NOW.replace("/_next/static/chunks/main.js", "https://cdn.example/x.js"), /third-party script/],
     ["Google Fonts", NOW.replace("</head>", '<link href="https://fonts.googleapis.com/css2"/></head>'), /Google Fonts/],
@@ -467,6 +474,20 @@ describe("checkOgImage", () => {
   it("wants the docs home's image at /og/docs.png", () => {
     const home = html.replaceAll(OWN, "https://maat.example/og/docs.png");
     expect(checkOgImage(home, "/docs", "out/docs.html", (path) => (path === "og/docs.png" ? png(1200, 630) : undefined))).toEqual([]);
+  });
+
+  it.each(["/now", "/ledger", "/gap-index", "/proof"])("wants %s to name its own card under /og, not the landing's image", (page) => {
+    const file = `og${page}.png`;
+    const own = html.replaceAll(OWN, `https://maat.example/${file}`);
+    const readOwn = (path: string) => (path === file ? png(1200, 630) : undefined);
+    const out = `out${page}.html`;
+    expect(checkOgImage(own, page, out, readOwn)).toEqual([]);
+    expect(checkOgImage(own, page, out, () => undefined)).toEqual([`${out}: missing out/${file}`]);
+    const landing = own.replaceAll(`https://maat.example/${file}`, "https://maat.example/opengraph-image.png");
+    expect(checkOgImage(landing, page, out, readOwn)).toEqual([
+      `${out}: og:image is https://maat.example/opengraph-image.png, not the page's own image /${file}`,
+      `${out}: twitter:image is https://maat.example/opengraph-image.png, not the page's own image /${file}`,
+    ]);
   });
 });
 

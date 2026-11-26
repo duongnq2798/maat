@@ -173,7 +173,7 @@ describe("/ledger while the deployments file has no vault", () => {
     render(<LedgerPage />);
     expect(screen.getByRole("region", { name: "Decision ledger" })).toBeInTheDocument();
     const nav = screen.getByRole("navigation", { name: "Main" });
-    expect(within(nav).getByRole("link", { name: "How it works" })).toHaveAttribute("href", "/#how");
+    expect(within(nav).getByRole("link", { name: "Maat home" })).toHaveAttribute("href", "/");
     // The bar's link and the phone menu's (components/sections/Nav.tsx); CSS shows one of the two at any width.
     const ledger = within(nav).getAllByRole("link", { name: "Ledger" });
     expect(ledger.map((a) => a.getAttribute("href"))).toEqual(["/ledger", "/ledger"]);

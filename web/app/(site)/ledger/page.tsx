@@ -8,21 +8,22 @@ import { Footer } from "@/components/sections/Footer";
 import { Nav } from "@/components/sections/Nav";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { getDecisions } from "@/content/decisions";
+import { pageOgImage } from "@/content/page-cards";
 import { deploymentConfig } from "@/lib/chain/config";
 import { docsData } from "@/lib/docs/generated";
-import { OG_IMAGE } from "@/lib/og-image";
 import { SITE } from "@/lib/site";
 
 const TITLE = "Mainnet ledger · Maat";
 const DESCRIPTION =
   "Every decision Maat's MandateVault makes on Base, allowed or refused, with its treasury and rules, read from the chain in your browser.";
 
+// Its own card (content/page-cards.ts), drawn at build time by app/og/ledger.png/route.ts; the landing's image stays the landing's.
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
   alternates: { canonical: "/ledger" },
-  openGraph: { type: "website", url: "/ledger", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [OG_IMAGE] },
-  twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [OG_IMAGE] },
+  openGraph: { type: "website", url: "/ledger", siteName: SITE.name, title: TITLE, description: DESCRIPTION, locale: "en_US", images: [pageOgImage("/ledger")] },
+  twitter: { card: "summary_large_image", site: SITE.xHandle, creator: SITE.xHandle, title: TITLE, description: DESCRIPTION, images: [pageOgImage("/ledger")] },
 };
 
 /** The addresses the verify-by-hand commands read, from the deployments table; null until the vault and calendar are recorded. */

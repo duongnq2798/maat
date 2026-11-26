@@ -1,5 +1,18 @@
 import type { Locator, Page } from "@playwright/test";
 
+/** The raw files of the public agent-journal branch, which /now reads for the agent's latest note (lib/chain/ledger.ts). */
+export const JOURNAL_RAW_URL = "https://raw.githubusercontent.com/duongnq2798/maat/agent-journal/journal/";
+
+/**
+ * Answers every read of the agent-journal branch with a journal that lists no day yet, so a spec that opens /now sends
+ * nothing to GitHub, logs no error for it, and the page shows no note.
+ */
+export async function serveEmptyJournal(page: Page) {
+  await page.route(`${JOURNAL_RAW_URL}**`, (route) =>
+    route.fulfill({ status: 200, headers: { "access-control-allow-origin": "*" }, contentType: "application/json", body: '{"days":[],"v":1}' }),
+  );
+}
+
 export function collectErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("console", (m) => {

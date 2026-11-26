@@ -9,7 +9,7 @@ import { LIVE_RPCS } from "../lib/live/rpc";
 import { headlineText } from "../lib/live/verdict";
 import { SITE } from "../lib/site";
 import { fixtureResults, routeLiveRpc, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
-import { collectErrors, measureFit } from "./helpers";
+import { collectErrors, measureFit, serveEmptyJournal } from "./helpers";
 
 // The live strip under the landing H1 and /now, end to end against the fake RPC of e2e/fake-live-rpc.ts: no test here
 // touches the network. A reading shows as LIVE only while its block is at most 120 s behind the visitor's clock, so
@@ -26,6 +26,9 @@ async function clockAfter(page: Page, blockTs: number) {
 }
 
 const strip = (page: Page) => page.locator("#top [data-live-strip]");
+
+// /now also reads the agent-journal branch for the agent's latest note; here it holds none, and GitHub is never asked.
+test.beforeEach(async ({ page }) => serveEmptyJournal(page));
 const board = (page: Page) => page.locator("[data-now-board]");
 
 /**

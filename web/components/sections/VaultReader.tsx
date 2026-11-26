@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { type LedgerDeps, useLedger } from "@/components/ledger/useLedger";
 import { RECORDED_VIEW, type VaultView } from "./VaultDecisions";
-import { RECORDED_ROWS, toVaultRow, type VaultRow } from "./vault-rows";
+import { liveRows } from "./vault-live";
+import { RECORDED_ROWS, type VaultRow } from "./vault-rows";
 
 interface Whole {
   decisions: readonly VaultRow[];
@@ -22,7 +23,7 @@ export default function VaultReader({ deps, onView }: { deps?: LedgerDeps; onVie
   const isWhole = snapshot !== null && snapshot.scan.done && snapshot.rationaleState !== "checking";
 
   useEffect(() => {
-    if (snapshot && isWhole) setWhole({ decisions: snapshot.decisions.map(toVaultRow), head: snapshot.scan.head.toString() });
+    if (snapshot && isWhole) setWhole({ decisions: liveRows(snapshot), head: snapshot.scan.head.toString() });
   }, [snapshot, isWhole]);
 
   const failed = !whole && (ledger.mode === "error" || ledger.mode === "waiting" || (ledger.mode === "mainnet" && !ledger.loading && !isWhole));

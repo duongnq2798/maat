@@ -5,9 +5,10 @@ description: Ask Maat's onchain guard on Base, read-only, before trading a token
 
 # maat-market-guard: ask the vault before you trade
 
-[Maat](https://maatonbase.xyz) is a treasury agent on Base. Its trades go through a vault contract, `MandateVault`,
-that checks every intent against a mandate and records the verdict onchain as a `Decision` with a typed reason. This
-skill asks the same contracts the same questions, read-only, so any agent can use the guard before it trades.
+[Maat](https://maatonbase.xyz) is an onchain vault on Base and the mandate it keeps. Maat's agent trades only through
+that vault, `MandateVault`, which checks every intent against the mandate and records the verdict onchain as a
+`Decision` with a typed reason. This skill asks the same contracts the same questions, read-only, so any agent can use
+the guard before it trades.
 
 **Division of labor.** `scripts/check.mjs` (plain Node.js with its built-in fetch, zero dependencies) does the chain reads and
 prints one JSON object. You relay the answer. Do not work out market hours yourself, and do not trade unless the exit

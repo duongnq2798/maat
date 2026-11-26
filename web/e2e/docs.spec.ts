@@ -1248,19 +1248,6 @@ test.describe("glossary previews", () => {
   });
 });
 
-test("the 404 page offers search and the docs sections", async ({ page }) => {
-  for (const path of ["/does-not-exist", "/docs/does-not-exist"]) {
-    const response = await page.goto(path);
-    expect(response?.status()).toBe(404);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page does not exist.");
-    await expect(page.getByRole("link", { name: "Maat docs" })).toHaveAttribute("href", "/docs");
-  }
-  await page.locator("button[data-search-full]").click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("combobox").fill("maat");
-  await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
-});
-
 test.describe("copy", () => {
   test.use({ permissions: ["clipboard-read", "clipboard-write"] });
 

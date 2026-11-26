@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
-import { render } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { Tape, TapeRow } from "@/components/instrument/Tape";
 
 // Read from web/, where vitest runs: under jsdom, import.meta.url is not a file URL.
@@ -49,6 +49,21 @@ describe("Tape (components/instrument/Tape.tsx)", () => {
     expect(old?.className).toBe("tape-row");
     expect(fresh).toHaveAttribute("data-fresh", "");
     expect(fresh?.className).toBe("tape-row py-2");
+  });
+
+  it("says when its own print-in ends, never when an animation inside it does", () => {
+    const onPrinted = vi.fn();
+    const { container } = render(
+      <Tape>
+        <TapeRow verdict="refused" fresh onPrinted={onPrinted}>
+          <span data-inner="">new</span>
+        </TapeRow>
+      </Tape>,
+    );
+    fireEvent.animationEnd(container.querySelector("[data-inner]")!);
+    expect(onPrinted).not.toHaveBeenCalled();
+    fireEvent.animationEnd(container.querySelector("li")!);
+    expect(onPrinted).toHaveBeenCalledTimes(1);
   });
 
   it("prints a fresh row in once over 260 ms with clip-path, from nothing to the whole row", () => {

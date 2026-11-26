@@ -36,6 +36,11 @@ const GHOST_BLOCK = "88,888,888";
  * frame is 249.70 px at 1920 and 250 px rounded up at 1440, both on Firefox and WebKit (248 px on Chromium, Windows and
  * Linux), which 268 clears by 18 px, and the rule's 272 would move the 1440x900 CTAs from 880.23 to 884.23 px.
  *
+ * The verdict has led the Readout since 2026-11-26 (culture plan Q5), at its larger size over a 12 px block number. The
+ * reserves were kept: measured on Windows Chromium with a mixed headline's REFUSE at the verdict size, the tallest
+ * frames are 360 px at 360 (three refusals, against 366 before), 192 px at 640 (the session's pass, against 194), and
+ * 206 px at 1000 and 208 px at 1280 to 1920 (three refusals, against 234 and 248).
+ *
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
  * measures (at 320 px the three-refusal frame needs 450 px on Windows), grows the window and moves the lead down
  * instead of running over it.
@@ -51,7 +56,7 @@ function NowLink() {
 }
 
 /**
- * The three basket tokens on row 3: each one's lamp (PASS or REFUSE, what the default mandate does with a BUY) and its
+ * The three basket tokens on the last row: each one's lamp (PASS or REFUSE, what the default mandate does with a BUY) and its
  * pool premium on a meter scaled to FACTS.mandate.value.maxPremiumBps, with the number written. No reason tag: the
  * reasons are the verdict line's.
  */
@@ -116,8 +121,15 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
       const block = formatBlock(snapshot.block);
       // The visitor's clock as it stood at this frame: HOLD freezes the age, so it freezes the countdown too.
       const countdown = countdownText(session, snapshot.timestamp, wallAtReadSec + state.ageMs / 1000);
+      // The verdict leads, set larger than the block number under its own small lead (culture plan Q5), then the block
+      // it was read at, the session, and the basket's lamps.
       return (
         <p className="m-0" {...liveAttrs(snapshot)}>
+          <span className="block">
+            <VerdictLine headline={headline} tone="ink" palette="chassis" methodHref="/now#method" className="readout-verdict" lead />
+            <Sep />
+            <NowLink />
+          </span>
           <span className="block">
             <LivePill live palette="chassis" />{" "}
             <BlockLink n={snapshot.block} label={`Base block ${block}`} palette="chassis">
@@ -140,9 +152,6 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
             )}
           </span>
           <span className="block">
-            <VerdictLine headline={headline} tone="ink" palette="chassis" methodHref="/now#method" />
-            <Sep />
-            <NowLink />
             <Basket reading={state.reading} />
           </span>
         </p>
