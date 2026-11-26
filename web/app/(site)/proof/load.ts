@@ -1,8 +1,10 @@
-import type { Hex, PublicClient } from "viem";
+import type { Address, Hex, PublicClient } from "viem";
+import { browserStorage, loadCache } from "@/lib/chain/cache";
 import { readBriefs, type InboxDeployment } from "@/lib/chain/inbox";
 import { errorText, type LedgerClient } from "@/lib/chain/load";
+import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
 import { countBriefs, type ProofCount, type ProofLists } from "./count";
-import { traceTeam, type Rpc, type TeamInputs, type TeamTrace } from "./team";
+import { LOG_WORKERS, snapshotSeed, traceTeam, type Rpc, type TeamInputs, type TeamTrace, type VaultSeed } from "./team";
 import { readVerifiedAccounts } from "./verified";
 
 /** The reads /proof makes: the ledger's, plus raw JSON-RPC requests for the team trace. A viem PublicClient has both. */
@@ -31,23 +33,60 @@ export const clientRpc =
   (method, params) =>
     client.request({ method, params } as never) as Promise<unknown>;
 
+/** Vault logs /proof may start from instead of reading every block from the vault's deploy. */
+export interface ProofSeeds {
+  /** The committed snapshot, as /data/decisions-snapshot.json serves it (parsed JSON), or a promise of it. */
+  snapshot?: unknown;
+  /** Where the ledger keeps its cache of the vault's logs: this browser's localStorage unless given. */
+  storage?: Storage | null;
+}
+
+/**
+ * The seed of `vault` that reaches the highest block: the committed snapshot below its reorg window, or the ledger's
+ * browser cache. The trace checks every log it takes from either against its receipt (team.ts), so neither is trusted.
+ * A cache that took logs from a snapshot is used only while the site serves that same file, the rule loadLedger keeps
+ * it by (lib/chain/load.ts), so a file that is replaced or removed takes with it what it left in this browser.
+ */
+async function vaultSeed(vault: string, seeds: ProofSeeds): Promise<VaultSeed | null> {
+  const raw = await Promise.resolve(seeds.snapshot).catch(() => null);
+  const file = snapshotSeed(raw, vault);
+  const served = file ? parseSnapshot(raw, vault as Address) : null;
+  const stored = loadCache(vault as Address, seeds.storage === undefined ? browserStorage() : seeds.storage);
+  const cached = stored && (!stored.snapshot || (served !== null && snapshotId(served) === stored.snapshot)) ? stored : null;
+  const cache: VaultSeed | null = cached
+    ? { source: "cache", vault: vault.toLowerCase(), from: BigInt(cached.from), to: BigInt(cached.to), logs: cached.logs, anchor: null }
+    : null;
+  if (!file || !cache) return file ?? cache;
+  return cache.to > file.to ? cache : file;
+}
+
 /**
  * Everything /proof shows, from the chain: every Brief log of the inbox up to the head (the /ask reader), the team set
  * traced at the head from those logs, the vault's and the committed lists, the briefs counted by the rule, then the
  * Verified Account of each outside wallet, read at the head block and judged at its timestamp. An incomplete read gives
- * no column, since its lines show no number.
+ * no column, since its lines show no number. The vault's logs may start from `seeds` (ProofSeeds); both scans read
+ * LOG_WORKERS windows at a time.
  */
 export async function readProof(
   client: ProofClient,
   config: { inbox: Pick<InboxDeployment, "inbox" | "deployTx">; deployments: TeamInputs["deployments"] },
   lists: ProofLists,
   signal?: AbortSignal,
+  seeds: ProofSeeds = {},
 ): Promise<ProofRead> {
   // The head first, so the trace reads the vault's logs to it while the Brief logs are read.
   const head = await client.getBlockNumber();
-  const scan = readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, head, signal });
+  const scan = readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, head, signal, concurrency: LOG_WORKERS });
+  const vault = config.deployments.find((r) => r.contract === "MandateVault" && r.address.trim() !== "")?.address.trim();
   // The trace takes a team wallet's briefs as its sends from the Brief logs read here, so it reads none twice.
-  const inputs = { team: lists.team, sends: lists.sends, stops: lists.stops, deployments: config.deployments, briefScan: scan };
+  const inputs = {
+    team: lists.team,
+    sends: lists.sends,
+    stops: lists.stops,
+    deployments: config.deployments,
+    briefScan: scan,
+    vaultSeed: vault ? vaultSeed(vault, seeds) : null,
+  };
   const [read, team] = await Promise.all([scan, traceTeam(clientRpc(client), inputs, head, signal)]);
   const count = countBriefs(read.briefs, { ...lists, team: team.members });
   const problems = [...(read.complete ? [] : [SCAN_GAP]), ...team.gaps];

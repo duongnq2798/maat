@@ -91,12 +91,17 @@ export interface ProofChain {
   failLogs?: readonly { from: bigint; to: bigint; address?: Address }[];
   /** Answer this many requests with HTTP 429 first, as mainnet.base.org does when it rate-limits. */
   rateLimitFirst?: number;
+  /** serveProofChain holds each answer to an eth_getLogs this many milliseconds, so reads overlap as they would on Base. */
+  logDelayMs?: number;
 }
 
 export interface ProofRpcLog {
   methods: string[];
-  logRanges: { from: bigint; to: bigint }[];
+  /** Each eth_getLogs answered: its range, and its lowercased address (comma-separated when it asked for several). */
+  logRanges: { from: bigint; to: bigint; address: string }[];
   calls: { to: string; functionName: string; block: string }[];
+  /** serveProofChain: lowercased address → the most eth_getLogs requests of it the server held at once. */
+  logsInFlight: Record<string, number>;
 }
 
 const ZERO32: Hex = `0x${"0".repeat(64)}`;
@@ -263,6 +268,22 @@ function txsOf(c: ProofChain): FakeTx[] {
   return txs;
 }
 
+/**
+ * The committed snapshot `npm run snapshot` would write for `c` at block `n` (web/lib/chain/snapshot.ts): every log of
+ * `vault` in [floor, n] in block and log order, RevenueReceived included, with the hash the chain gives block n.
+ */
+export function vaultSnapshot(c: ProofChain, vault: Address, floor: bigint, n: bigint) {
+  const logs = txsOf(c)
+    .filter((t) => t.status !== 0 && t.block >= floor && t.block <= n)
+    .sort((a, b) => (a.block < b.block ? -1 : a.block > b.block ? 1 : 0))
+    .flatMap((t) =>
+      (t.logs ?? []).flatMap((l, i) =>
+        lower(l.address) === lower(vault) ? [{ blockNumber: t.block.toString(), logIndex: i, transactionHash: lower(t.hash) as Hash, topics: l.topics.map(lower) as Hex[], data: l.data ?? "0x" }] : [],
+      ),
+    );
+  return { v: 1 as const, chainId: 8453 as const, vault, floor: floor.toString(), block: n.toString(), blockHash: blockHash(n), logs };
+}
+
 /** The Brief log of `b`, as a log of its transaction's receipt. */
 function briefLog(inbox: Address, b: FakeBrief): FakeLog {
   return {
@@ -406,7 +427,7 @@ export function answer(c: ProofChain, seen: ProofRpcLog, method: string, params:
       const asked = new Set((Array.isArray(filter.address) ? filter.address : [filter.address ?? ""]).map(lower));
       const fails = (c.failLogs ?? []).filter((r) => r.address === undefined || asked.has(lower(r.address)));
       if (fails.some((r) => from <= r.to && to >= r.from)) throw new RpcError(-32000, "upstream request timed out");
-      seen.logRanges.push({ from, to });
+      seen.logRanges.push({ from, to, address: [...asked].join(",") });
       if (!Array.isArray(filter.address) && lower(String(filter.address ?? "")) === lower(c.inbox)) {
         return c.briefs.filter((b) => b.block >= from && b.block <= to).map((b) => briefRpcLog(c.inbox, b));
       }
@@ -445,7 +466,7 @@ export function answerBody(c: ProofChain, seen: ProofRpcLog, body: unknown): unk
   return Array.isArray(body) ? body.map(one) : one(body as never);
 }
 
-export const newRpcLog = (): ProofRpcLog => ({ methods: [], logRanges: [], calls: [] });
+export const newRpcLog = (): ProofRpcLog => ({ methods: [], logRanges: [], calls: [], logsInFlight: {} });
 
 /** One JSON-RPC call over `c`, answered in memory, as the team trace takes it. */
 export function proofChainRpc(c: ProofChain, seen: ProofRpcLog = newRpcLog()) {
@@ -479,6 +500,7 @@ export function proofChainClient(c: ProofChain, opts: { fail?: boolean } = {}): 
 export async function serveProofChain(c: ProofChain): Promise<{ url: string; seen: ProofRpcLog; close: () => Promise<void> }> {
   const seen = newRpcLog();
   let limited = c.rateLimitFirst ?? 0;
+  const now = new Map<string, number>();
   const server: Server = createServer((req, res) => {
     let raw = "";
     req.on("data", (chunk: Buffer) => (raw += chunk.toString("utf8")));
@@ -488,8 +510,20 @@ export async function serveProofChain(c: ProofChain): Promise<{ url: string; see
         res.writeHead(429, { "content-type": "text/plain" }).end("Too Many Requests");
         return;
       }
-      const out = answerBody(c, seen, JSON.parse(raw));
-      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(out));
+      const body = JSON.parse(raw) as { method?: string; params?: { address?: string }[] } | { method?: string; params?: { address?: string }[] }[];
+      const logs = (Array.isArray(body) ? body : [body]).filter((r) => r.method === "eth_getLogs").map((r) => lower(String(r.params?.[0]?.address)));
+      for (const a of logs) {
+        now.set(a, (now.get(a) ?? 0) + 1);
+        seen.logsInFlight[a] = Math.max(seen.logsInFlight[a] ?? 0, now.get(a)!);
+      }
+      setTimeout(
+        () => {
+          for (const a of logs) now.set(a, now.get(a)! - 1);
+          const out = answerBody(c, seen, body);
+          res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify(out));
+        },
+        logs.length > 0 ? (c.logDelayMs ?? 0) : 0,
+      );
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
