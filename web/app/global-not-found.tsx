@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
-import { FullSearchTrigger } from "fumadocs-ui/layouts/shared/slots/search-trigger";
-import Link from "next/link";
-import { DocsProvider } from "@/components/docs/DocsProvider";
-import { source } from "@/lib/docs-source";
+import { Mark } from "@/components/ui/Mark";
 import { SITE, siteUrl } from "@/lib/site";
-import "./(docs)/docs.css";
+import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: siteUrl(),
@@ -14,47 +11,44 @@ export const metadata: Metadata = {
   description: "This page does not exist.",
 };
 
-/** Each top-level docs section with the URL of its first page, in sidebar order. */
-function sections() {
-  return source.getPageTree().children.flatMap((node) => {
-    if (node.type === "page") return [{ name: node.name, url: node.url }];
-    if (node.type !== "folder") return [];
-    const first = node.index ?? node.children.find((child) => child.type === "page");
-    return first && first.type === "page" ? [{ name: node.name, url: first.url }] : [];
-  });
-}
+/** The way back: the landing, the ledger of every Decision, and the docs. */
+const LINKS = [
+  { href: "/", label: "Home", className: "pill-dark" },
+  { href: "/ledger", label: "Ledger", className: "pill-line" },
+  { href: SITE.docsUrl, label: "Docs", className: "pill-line" },
+] as const;
 
 /**
  * 404 for any URL no route matches, landing or docs. With two root layouts there is no shared layout to wrap a
- * not-found.tsx, so this page brings the docs stylesheet and providers itself (search needs them).
+ * not-found.tsx, so this page brings its own <html>: the landing's stylesheet and fonts, its white page and its mark,
+ * one line, and the links back. It reads no chain and loads no script of its own.
  */
 export default function GlobalNotFound() {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`} suppressHydrationWarning>
-      <body className="flex min-h-screen flex-col">
-        <DocsProvider>
-          <main className="mx-auto w-full max-w-xl px-4 py-24">
-            <p className="font-mono text-sm text-fd-muted-foreground">404</p>
-            <h1 className="mt-2 text-3xl font-semibold">This page does not exist.</h1>
-            <p className="mt-4 text-fd-muted-foreground">Search the docs, or start from a section.</p>
-            <FullSearchTrigger className="mt-6 min-h-11 w-full" />
-            <h2 className="mt-10 text-sm font-semibold">Docs sections</h2>
-            <ul className="mt-2 grid gap-1">
-              {sections().map((s) => (
-                <li key={s.url}>
-                  <Link href={s.url} className="inline-flex min-h-11 items-center text-fd-primary underline-offset-4 hover:underline">
-                    {s.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-10 text-sm">
-              <Link href="/" className="inline-flex min-h-11 items-center text-fd-muted-foreground hover:text-fd-foreground">
-                Back to the home page
-              </Link>
-            </p>
-          </main>
-        </DocsProvider>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
+      <body>
+        <header className="wrap py-[18px]">
+          <a href="/" aria-label="Maat home" className="inline-flex items-center gap-2.5 text-ink">
+            <Mark />
+            <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
+          </a>
+        </header>
+        <main className="wrap pb-24 pt-16 sm:pt-24">
+          <p className="eyebrow m-0">404 · Page not found</p>
+          <h1 className="m-0 mt-4 text-[clamp(36px,4.4vw,60px)] font-semibold leading-[1.02] tracking-[-0.045em] text-ink">
+            Nothing here to weigh.
+          </h1>
+          <p className="lead mt-5 max-w-[34rem]">No page lives at this address. Start from the landing, read every Decision on the ledger, or open the docs.</p>
+          <ul aria-label="Pages" className="m-0 mt-8 flex list-none flex-wrap gap-3 p-0">
+            {LINKS.map((l) => (
+              <li key={l.href}>
+                <a href={l.href} className={l.className}>
+                  {l.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </main>
       </body>
     </html>
   );

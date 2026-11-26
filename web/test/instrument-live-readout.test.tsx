@@ -3,7 +3,9 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { meterText } from "@/components/instrument/Meter";
 import { LiveStrip, STRIP_RESERVE } from "@/components/live/LiveStrip";
+import { VerdictLine } from "@/components/live/VerdictLine";
 import { FACTS } from "@/content/facts";
+import type { Headline } from "@/lib/live/verdict";
 import { LIVE_RPCS } from "@/lib/live/rpc";
 import { type Answer, advance, fakeReader, FRI, installLiveClocks, readingAt, SAT } from "./helpers/fake-reader";
 import { passingBasket } from "./helpers/live";
@@ -51,7 +53,7 @@ afterEach(() => {
 });
 
 describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)", () => {
-  it("keeps the strip's DOM: announcer, one <p> of three block rows, the bezel keys, then the noscript", async () => {
+  it("keeps the strip's DOM: announcer, one <p> of four block rows led by the verdict, the bezel keys, then the noscript", async () => {
     await mount({ timestamp: SAT }, SAT + 14);
     const s = strip();
     expect(s).toHaveAttribute("data-readout");
@@ -59,8 +61,20 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)",
     expect(s).toHaveAttribute("tabindex", "-1");
     expect([...s.children].map((c) => c.tagName)).toEqual(["SPAN", "P", "DIV", "NOSCRIPT"]);
     expect(s.children[2]).toHaveAttribute("data-readout-keys");
-    expect(rows()).toHaveLength(3);
+    expect(rows()).toHaveLength(4);
     for (const row of rows()) expect(row.className.split(" ")).toContain("block");
+    // The verdict leads (culture plan Q5), then the block it was read at, the session, and the basket's lamps.
+    const [verdict, block, session, basket] = rows();
+    expect(verdict!.querySelector("[data-verdict-line]")).not.toBeNull();
+    // Its lead is a kicker of its own, so what the agent would do is the line set at the verdict size.
+    const lead = verdict!.querySelector("[data-verdict-line]")!.firstElementChild;
+    expect(lead).toHaveAttribute("data-verdict-lead");
+    expect(lead!.textContent).toBe("An agent under Maat's default mandate would");
+    expect(verdict).toHaveTextContent("All 13 B20s");
+    expect(block!.querySelector(".readout-figure")).not.toBeNull();
+    expect(block).toHaveTextContent("LIVE");
+    expect(session).toHaveTextContent("Saturday · NYSE closed");
+    expect(basket!.querySelector("[data-basket]")).not.toBeNull();
     expect(s.querySelectorAll("[aria-live]")).toHaveLength(1);
     expect(s.querySelectorAll('[role="status"]')).toHaveLength(1);
   });
@@ -81,7 +95,7 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)",
 
   it("counts down to the next open on a closed day, and HOLD freezes the countdown", async () => {
     const fake = await mount({ timestamp: SAT }, SAT + 14);
-    expect(rows()[1]).toHaveTextContent("Saturday · NYSE closed · opens Mon 09:30 ET · in 1 d 23 h");
+    expect(rows()[2]).toHaveTextContent("Saturday · NYSE closed · opens Mon 09:30 ET · in 1 d 23 h");
     expect(countdown()).toHaveTextContent("opens Mon 09:30 ET · in 1 d 23 h");
     const hold = screen.getByRole("button", { name: "Hold" });
     fireEvent.click(hold);
@@ -102,7 +116,7 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)",
 
   it("shows no countdown in session", async () => {
     await mount({ timestamp: FRI }, FRI + 14);
-    expect(rows()[1]).toHaveTextContent("Friday · open until 16:00 ET");
+    expect(rows()[2]).toHaveTextContent("Friday · open until 16:00 ET");
     expect(countdown()).toBeNull();
   });
 
@@ -209,12 +223,61 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1)",
     expect(strip().className).not.toMatch(/(^|\s)([^\s:]+:)?h-\[/);
   });
 
-  it("draws the block number at readout size with a weight settle, and keeps the scan line hidden at rest", () => {
-    expect(css).toMatch(
-      /\.readout-figure\s*\{\s*font-size:\s*clamp\(26px, 2\.6vw, 38px\);\s*line-height:\s*1\.15;\s*letter-spacing:\s*-0\.02em;\s*font-weight:\s*560;\s*\}/,
-    );
+  it("sets the live verdict line larger than the block number at every width, the block number with a weight settle, and keeps the scan line hidden at rest", async () => {
+    // Every font size the verdict line takes, at any width and for any headline, is above the block number's one size.
+    const px = (body: string) => [...body.matchAll(/font-size:\s*(\d+(?:\.\d+)?)px\s*;/g)].map((m) => Number(m[1]));
+    const figure = [...css.matchAll(/\.readout-figure\s*\{([^}]*)\}/g)].flatMap((m) => px(m[1]!));
+    const verdict = [...css.matchAll(/\.readout-verdict[^{,]*\{([^}]*)\}/g)].flatMap((m) => px(m[1]!));
+    expect(figure).toHaveLength(1);
+    expect(verdict.length).toBeGreaterThan(1);
+    for (const size of verdict) expect(size).toBeGreaterThan(figure[0]!);
+    expect(css).toMatch(/\.readout-figure\s*\{[^}]*font-weight:\s*560;[^}]*\}/);
+    // The lead sits on a line of its own above the verdict; a headline that names a reason for each token keeps its
+    // reasons at the strip's own 13 px, so the tallest frame keeps within the Readout's reserve (its verb: next test).
+    expect(css).toMatch(/\.readout-verdict \[data-verdict-lead\]\s*\{[^}]*display:\s*block;[^}]*\}/);
+    expect(css).toMatch(/\.readout-verdict\[data-verdict-line="mixed"\]\s*\{[^}]*font-size:\s*13px;[^}]*\}/);
+    // The live line carries the class; a muted line, on a reading that is not live, keeps the strip's own size.
+    await mount({ timestamp: SAT }, SAT + 14);
+    expect(strip().querySelector("[data-verdict-line]")!.className.split(" ")).toContain("readout-verdict");
     expect(css).toMatch(/\.readout-digits\s*\{\s*animation:\s*wght-settle var\(--t-flip\) var\(--ease-instrument\) both;\s*\}/);
     expect(css).toMatch(/@keyframes wght-settle\s*\{\s*from\s*\{\s*font-weight:\s*300;\s*\}\s*\}/);
     expect(css).toMatch(/\.readout-scan\s*\{[^}]*position:\s*absolute;[^}]*height:\s*1px;[^}]*visibility:\s*hidden;[^}]*\}/);
+  });
+
+  it("in a headline that refuses some tokens, sets its REFUSE at the verdict's own size at every width, the reasons at the strip's 13 px", () => {
+    const mixed: Headline = {
+      kind: "mixed",
+      refused: [
+        { symbol: "NVDAc", reason: "FEED_STALE" },
+        { symbol: "GOOGLc", reason: "MULTIPLIER_COOLDOWN" },
+      ],
+      passed: ["AAPLc"],
+    };
+    const { container } = render(
+      <>
+        <VerdictLine headline={mixed} palette="chassis" className="readout-verdict" lead />
+        <VerdictLine headline={mixed} />
+        <VerdictLine headline={{ kind: "refuse-all", reason: "MARKET_CLOSED" }} palette="chassis" className="readout-verdict" lead />
+      </>,
+    );
+    const [strip, now, all] = [...container.querySelectorAll<HTMLElement>("[data-verdict-line]")];
+    // The same sentence as /now prints, word for word, with the verb its own span right after the lead.
+    expect(strip!.textContent).toBe(now!.textContent);
+    expect(strip!.textContent).toMatch(/^An agent under Maat.s default mandate would REFUSE NVDAc: /);
+    const word = strip!.querySelectorAll("[data-verdict-word]");
+    expect(word).toHaveLength(1);
+    expect(word[0]!.textContent).toBe("REFUSE");
+    expect(word[0]!.previousSibling?.textContent).toBe(" ");
+    expect(word[0]!.previousSibling?.previousSibling).toHaveAttribute("data-verdict-lead");
+    // /now's line and a refuse-all line, set whole at the verdict size, have no such span.
+    expect(now!.querySelector("[data-verdict-word]")).toBeNull();
+    expect(all!.querySelector("[data-verdict-word]")).toBeNull();
+
+    // The verb takes each size the verdict line takes, base, 40rem and 80rem, in the same order.
+    const sizes = (selector: RegExp) =>
+      [...css.matchAll(new RegExp(`${selector.source}\\s*\\{([^}]*)\\}`, "g"))].map((m) => /font-size:\s*(\d+)px;/.exec(m[1]!)?.[1]);
+    const verdict = sizes(/\.readout-verdict/);
+    expect(verdict).toEqual(["22", "18", "22"]);
+    expect(sizes(/\.readout-verdict\[data-verdict-line="mixed"\] \[data-verdict-word\]/)).toEqual(verdict);
   });
 });

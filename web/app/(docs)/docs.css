@@ -1,4 +1,4 @@
-/* Docs stylesheet. Loaded by app/(docs)/layout.tsx and the 404; the landing page keeps app/globals.css. */
+/* Docs stylesheet. Loaded by app/(docs)/layout.tsx; the landing page and the 404 keep app/globals.css. */
 @import "tailwindcss" source(none);
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
@@ -7,8 +7,6 @@
 @source "./";
 @source "../../components/docs";
 @source "../../content/docs";
-/* The 404 page (app/global-not-found.tsx) uses this stylesheet too. */
-@source "../global-not-found.tsx";
 
 /* Signal tokens (app/globals.css) mapped onto the Fumadocs color slots. Light is the default. */
 @theme {
