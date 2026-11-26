@@ -12,6 +12,7 @@ import { CHECK_LABELS } from "@/content/engine";
 import { FACTS, type MandateFacts } from "@/content/facts";
 import { andList, formatInt } from "@/content/format";
 import type { RefusalCode } from "@/content/reasons";
+import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
 import { basescanAddress } from "@/lib/live/basescan";
 import { formatAge } from "@/lib/live/format";
 import { HEAD_MAX_LAG_SEC, LIVE_MAX_AGE_MS, REFRESH_MS } from "@/lib/live/freshness";
@@ -169,7 +170,7 @@ function Method() {
           eyebrow="Method"
           id="method-title"
           title="How this page reads Base"
-          lead="Your browser asks a public Base RPC for one block's state and judges it the way MandateVault would judge a BUY. Only eth_call: nothing is signed or sent, and this site has no server."
+          lead="Your browser asks a public Base RPC for one block's state with eth_call and judges it the way MandateVault would judge a BUY. For the week it reads the vault's Decisions as the ledger does, with eth_getCode, eth_getLogs and block, receipt and transaction reads, and the agent's journal from raw.githubusercontent.com. Every one is a read: nothing is signed or sent, and this site has no server."
         />
 
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-start gap-x-16 gap-y-14">
@@ -250,6 +251,28 @@ function Method() {
                   <Code>isOpen(blockTimestamp, REGULAR)</Code>. A failed call counts as closed.
                 </p>
               )}
+            </Part>
+
+            <Part title="The week and the agent's note">
+              <p className="m-0">
+                The week is drawn from <RepoFile path="web/content/calendar.ts" /> at your clock: its sessions, holidays and
+                early closes, in New York time. The large line under its heading comes from the reading above: while the
+                reading&apos;s session is closed it names the next REGULAR open, as <Code>nextOpen</Code> counts it.
+              </p>
+              <p className="m-0">
+                The ticks are the vault&apos;s <Code>Decision</Code> events on Base mainnet, read with the ledger&apos;s own
+                loader over the same RPCs. The first read starts from the committed snapshot,{" "}
+                <Code>/data/decisions-snapshot.json</Code>: once Base gives the same hash for its block and the same logs in
+                their receipts, the logs up to {formatInt(Number(SNAPSHOT_REORG_WINDOW + 1n))} blocks before it come from the file, and{" "}
+                <Code>eth_getLogs</Code> scans the rest to the head. Without it, the scan starts at the deploy block. Then each Decision&apos;s block, receipt and
+                transaction are read, so each one has its time and its sender. The line under the week says which way the
+                read went. Nothing is signed or sent.
+              </p>
+              <p className="m-0">
+                The note is the newest round summary on the public agent-journal branch, fetched from raw.githubusercontent.com
+                and shown only after your browser has checked the hash of every line, as the ledger&apos;s Rounds tab does.
+                While the branch has no summary, the page shows no note.
+              </p>
             </Part>
 
             <Part title="The limits">
