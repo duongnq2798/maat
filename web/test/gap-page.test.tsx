@@ -36,10 +36,11 @@ const TWAP_SENTENCE = `the pool's spot price after a swap, not the ${FACTS.manda
 const neverSafe = (text: string) => expect(text).not.toMatch(/safe/i);
 
 describe("the published editions", () => {
-  it("holds every committed edition file, parsed with the schema, latest first", () => {
+  it("holds every committed edition file, parsed with the schema, latest first, one per edition", () => {
     expect(PUBLISHED.length).toBeGreaterThanOrEqual(1);
     const numbers = PUBLISHED.map((e) => e.edition);
     expect(numbers).toEqual([...numbers].sort((a, b) => b - a));
+    expect(new Set(numbers).size).toBe(numbers.length);
     expect(PUBLISHED.find((e) => e.edition === 0)).toEqual(EditionFileSchema.parse(edition0));
   });
 

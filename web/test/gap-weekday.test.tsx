@@ -1,25 +1,26 @@
 // What the Monday data PR commits: edition 1, whose windows start on a Wednesday before a holiday and after a Friday
-// early close, measured, with the vault's Decisions in each. The edition is made up from edition 0 (helpers/gap-edition.ts),
-// never written to disk, and published here beside the committed files, so the page, the file checks and every page test
-// run on it before it exists.
+// early close, measured, with the vault's Decisions in each. Until that PR, the edition is made up from edition 0
+// (helpers/gap-edition.ts), never written to disk, and published here beside the committed files, so the page, the file
+// checks and every page test run on it before it exists. Once edition-1.json is committed, they run on that file instead.
 import { render } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import Page, { metadata } from "@/app/(site)/gap-index/page";
 import { GapWindow } from "@/components/gap/GapWindow";
 import { closureNote, decisionsSentence, PUBLISHED } from "@/content/gap-index";
+import edition0 from "@/content/gap-index/edition-0.json";
 import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
 import { checkGapIndexPage } from "@/lib/check-out";
 import { DECISION_TOPIC, decisionCounts, type WindowDecision } from "@/lib/gap/decisions";
-import type { Decisions, EditionFile } from "@/lib/gap/schema";
+import { EditionFileSchema, type Decisions, type EditionFile } from "@/lib/gap/schema";
 import { closedWindows } from "@/lib/gap/windows";
 import { SITE } from "@/lib/site";
-import { editionFileChecks } from "./helpers/gap-edition";
+import { editionFileChecks, publishedWithEdition1, syntheticEdition1 } from "./helpers/gap-edition";
 
 vi.mock("@/content/gap-index", async (importActual) => {
   const real = await importActual<typeof import("@/content/gap-index")>();
-  const { syntheticEdition1 } = await import("./helpers/gap-edition");
-  return { ...real, PUBLISHED: [syntheticEdition1(real.PUBLISHED.find((e) => e.edition === 0)!), ...real.PUBLISHED] };
+  const { publishedWithEdition1: published } = await import("./helpers/gap-edition");
+  return { ...real, PUBLISHED: published(real.PUBLISHED) };
 });
 
 type Complete = Extract<EditionFile["windows"][number], { status: "complete" }>;
@@ -91,12 +92,30 @@ describe("the Decisions line", () => {
   });
 });
 
+describe("which edition 1 these tests publish", () => {
+  const e0 = EditionFileSchema.parse(edition0);
+
+  it("puts the made-up edition 1 in front while no edition 1 is committed", () => {
+    const published = publishedWithEdition1([e0]);
+    expect(published.map((e) => e.edition)).toEqual([1, 0]);
+    expect(published[0]).toEqual(syntheticEdition1(e0));
+    expect(published[1]).toBe(e0);
+  });
+
+  it("publishes a committed edition 1 as it is, with no made-up one beside it", () => {
+    // As index.ts publishes them once the Monday data PR imports edition-1.json.
+    const committed = [syntheticEdition1(e0), e0];
+    expect(publishedWithEdition1(committed)).toBe(committed);
+  });
+});
+
 describe("a window that starts on a weekday, on the page", () => {
   const e1 = PUBLISHED.find((e) => e.edition === 1)!;
   const e0 = PUBLISHED.find((e) => e.edition === 0)!;
-  const [thanksgiving, weekend] = e1.windows as Complete[];
+  // The made-up edition's windows, whichever edition 1 is published: their Decisions are known, so the lines can be pinned.
+  const [thanksgiving, weekend] = syntheticEdition1(e0).windows as Complete[];
 
-  it("publishes the made-up edition 1 first, both windows measured", () => {
+  it("publishes one edition 1, made up or committed, first, both windows measured", () => {
     expect(PUBLISHED.map((e) => e.edition)).toEqual([1, 0]);
     expect(e1.windows.map((w) => [w.id, w.status])).toEqual([
       ["2026-11-25", "complete"],

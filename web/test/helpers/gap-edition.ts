@@ -123,6 +123,18 @@ export function syntheticEdition1(e0: EditionFile): EditionFile {
   });
 }
 
+/**
+ * What the tests of edition 1 publish: the made-up edition 1 in front of the committed editions while none of them is
+ * edition 1, and the committed editions as they are once the Monday data PR imports edition-1.json, so no second edition 1
+ * stands beside the measured one.
+ */
+export function publishedWithEdition1(published: readonly EditionFile[]): readonly EditionFile[] {
+  if (published.some((e) => e.edition === 1)) return published;
+  const e0 = published.find((e) => e.edition === 0);
+  if (!e0) throw new Error("no edition 0 to make edition 1 from");
+  return [syntheticEdition1(e0), ...published];
+}
+
 /** The checks every edition file must pass, named after the file. */
 export function editionFileChecks(name: string, json: unknown): void {
   describe(name, () => {
