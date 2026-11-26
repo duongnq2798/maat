@@ -202,18 +202,22 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
     blockTs,
     head,
     // Every RPC is asked finalizedReads times at once, each read once: the newest block answered wins, and a read that
-    // fails or answers no block is only not counted. It throws only when no read answers a block.
+    // fails or answers no block is only not counted. When no read answers, as in a short network drop, all are asked
+    // again after 1 s and then 2 s, as the other single reads retry. It throws only when no read of the three tries answers.
     async finalized() {
       const asks = finalizedRpcs.flatMap((u) => Array.from({ length: finalizedReads }, () => u));
-      const settled = await Promise.allSettled(asks.map(async (u) => ({ rpc: u, ...blockOf(await rpcAt(u, "eth_getBlockByNumber", ["finalized", false])) })));
-      const answered = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
-      const newest = answered.reduce<(typeof answered)[number] | undefined>((best, a) => (best && best.block >= a.block ? best : a), undefined);
-      if (!newest) {
-        const first = settled.find((s) => s.status === "rejected")?.reason;
-        const why = first instanceof RpcRefused ? first.reason : reasonOf(first);
-        throw new RpcRefused("eth_getBlockByNumber", `no finalized block in ${asks.length} reads of ${finalizedRpcs.join(" and ")}: ${why}`);
+      for (let attempt = 1; ; attempt++) {
+        const settled = await Promise.allSettled(asks.map(async (u) => ({ rpc: u, ...blockOf(await rpcAt(u, "eth_getBlockByNumber", ["finalized", false])) })));
+        const answered = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
+        const newest = answered.reduce<(typeof answered)[number] | undefined>((best, a) => (best && best.block >= a.block ? best : a), undefined);
+        if (newest) return { block: newest.block, ts: newest.ts, rpc: newest.rpc, answers: answered.length, reads: asks.length };
+        if (attempt >= 3) {
+          const first = settled.find((s) => s.status === "rejected")?.reason;
+          const why = first instanceof RpcRefused ? first.reason : reasonOf(first);
+          throw new RpcRefused("eth_getBlockByNumber", `no finalized block in ${attempt} tries of ${asks.length} reads of ${finalizedRpcs.join(" and ")}: ${why}`);
+        }
+        await sleep(1000 * attempt);
       }
-      return { block: newest.block, ts: newest.ts, rpc: newest.rpc, answers: answered.length, reads: asks.length };
     },
     async transaction(hash) {
       const t = (await retried(() => rpc("eth_getTransactionByHash", [hash]))) as { from?: string; to?: string | null; input?: string } | null;

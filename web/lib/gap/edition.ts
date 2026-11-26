@@ -5,7 +5,7 @@ import { DECISION_TOPIC, decisionCounts } from "./decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, byPosition, type FeedUpdate } from "./decode";
 import { createLogSource, SETTLED, type LogSource, type SpanRead } from "./logs";
 import { feedLiveIn, findFreeze, LOOKBACK_SEC, measureToken, type Freeze } from "./measure";
-import { GAP_RPC, SPAN, type FinalizedHead, type Head, type LogReader } from "./rpc";
+import { GAP_RPC, RpcRefused, SPAN, type FinalizedHead, type Head, type LogReader } from "./rpc";
 import { toTokenRow, type EditionFile, type TokenRow } from "./schema";
 import { readDecisions, readOwner } from "./vault";
 import { calendarChecks, type ClosedWindow } from "./windows";
@@ -44,8 +44,9 @@ export interface EditionOptions {
   /** Refuse, before any log is read, unless every selected window ends at or before the head: nothing is written. */
   complete?: boolean;
   /**
-   * With complete: while a window's open is after the finalized block, read that block again every 30 s, reading no
-   * log, for up to this many minutes; then refuse as complete does.
+   * With complete: for up to this many minutes, read the finalized block again every 30 s, reading no log, while a
+   * window's open is after it, and after a measurement in which a live feed had no update after its window by it, until
+   * a newer block is finalized; then refuse as complete does.
    */
   waitMinutes?: number;
 }
@@ -58,8 +59,14 @@ const utcIso = (ts: number) => new Date(ts * 1000).toISOString().replace(".000Z"
 const finalizedText = (f: FinalizedHead) =>
   `finalized block ${f.block} (${utcIso(f.ts)})${f.rpc === undefined ? "" : ` from ${f.rpc}, newest of ${f.answers} answers to ${f.reads} reads`}`;
 
+/** The block a run reads through, and the finalized block it was checked against. */
+interface HeadRead {
+  head: Head;
+  finalized: FinalizedHead;
+}
+
 /** The block the run reads through, the latest finalized one or a pinned block that is finalized already, and that finalized block. */
-async function readHead(reader: LogReader, pinned: number | undefined): Promise<{ head: Head; finalized: FinalizedHead }> {
+async function readHead(reader: LogReader, pinned: number | undefined): Promise<HeadRead> {
   const finalized = await reader.finalized();
   if (pinned === undefined) return { head: { block: finalized.block, ts: finalized.ts }, finalized };
   if (!Number.isSafeInteger(pinned) || pinned < 0) throw new Error(`--head ${pinned} is not a block number`);
@@ -68,36 +75,72 @@ async function readHead(reader: LogReader, pinned: number | undefined): Promise<
 }
 
 /** Says which RPC answered the run's head and how many reads answered, when the reader says. */
-function logHead(log: (line: string) => void, { head, finalized }: { head: Head; finalized: FinalizedHead }, pinned: boolean): void {
+function logHead(log: (line: string) => void, { head, finalized }: HeadRead, pinned: boolean): void {
   if (finalized.rpc === undefined) return;
   log(pinned ? `head: block ${head.block} (${utcIso(head.ts)}), pinned with --head; ${finalizedText(finalized)}` : `head: ${finalizedText(finalized)}`);
 }
 
 /**
- * --complete --wait: while the head is before the last open, reads the finalized block again every 30 s from the start,
- * at most twice a minute, one line each, and reads no log. Returns the last head read.
+ * --complete --wait: rereads of the finalized block on a 30 s beat from the start of the wait, at most twice a minute
+ * for its minutes, one line each, reading no log. A beat that passed while the run measured is skipped, and a reread
+ * that no RPC answers keeps the head the run has, so a short network drop costs one beat, not the run.
  */
-async function waitForOpen(
-  deps: Pick<EditionDeps, "reader" | "log" | "now" | "sleep">,
-  read: { head: Head; finalized: FinalizedHead },
-  windows: readonly ClosedWindow[],
-  minutes: number,
-): Promise<{ head: Head; finalized: FinalizedHead }> {
-  const last = windows.reduce<ClosedWindow | undefined>((l, w) => (l && l.openTs >= w.openTs ? l : w), undefined);
-  if (!last || read.head.ts >= last.openTs) return read;
+function createWait(deps: Pick<EditionDeps, "reader" | "log" | "now" | "sleep">, minutes: number, windows: readonly ClosedWindow[]) {
   const now = deps.now ?? Date.now;
   const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const times = Math.round((minutes * 60_000) / WAIT_STEP_MS);
-  const open = `the last open, ${last.openLabel} (${utcIso(last.openTs)})`;
-  const fromOpen = (ts: number) => (ts < last.openTs ? `${last.openTs - ts} s before ${open}` : ts === last.openTs ? `at ${open}` : `${ts - last.openTs} s after ${open}`);
-  deps.log(`--wait ${minutes}: ${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}; reading it again every 30 s, ${times} times at most`);
+  const last = windows.reduce<ClosedWindow | undefined>((l, w) => (l && l.openTs >= w.openTs ? l : w), undefined);
+  const lastOpen = last?.openTs ?? -Infinity;
+  const open = last ? `the last open, ${last.openLabel} (${utcIso(last.openTs)})` : "";
+  const fromOpen = (ts: number) => (ts < lastOpen ? `${lastOpen - ts} s before ${open}` : ts === lastOpen ? `at ${open}` : `${ts - lastOpen} s after ${open}`);
+  const line = (k: number, text: string) => deps.log(`--wait ${minutes}, reread ${k} of ${times}: ${text}`);
   const start = now();
-  for (let k = 1; k <= times && read.head.ts < last.openTs; k++) {
+  let k = 0;
+
+  /** Rereads on the next beat that has not passed: null once the minutes are up, and `read: null` when no RPC answered. */
+  async function reread(read: HeadRead): Promise<{ k: number; read: HeadRead | null } | null> {
+    k = Math.max(k + 1, Math.ceil((now() - start) / WAIT_STEP_MS));
+    if (k > times) return null;
     await sleep(Math.max(0, start + k * WAIT_STEP_MS - now()));
-    read = await readHead(deps.reader, undefined);
-    deps.log(`--wait ${minutes}, reread ${k} of ${times}: ${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}${read.head.ts >= last.openTs ? ": measuring" : ""}`);
+    try {
+      return { k, read: await readHead(deps.reader, undefined) };
+    } catch (e) {
+      if (!(e instanceof RpcRefused)) throw e;
+      line(k, `no answer (${e.message}); still ${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}`);
+      return { k, read: null };
+    }
   }
-  return read;
+
+  return {
+    /** While the head is before the last open: the first head at or after it, or the last one read once the minutes are up. */
+    async forOpen(read: HeadRead): Promise<HeadRead> {
+      if (read.head.ts >= lastOpen) return read;
+      deps.log(`--wait ${minutes}: ${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}; reading it again every 30 s, ${times} times at most`);
+      while (read.head.ts < lastOpen) {
+        const r = await reread(read);
+        if (!r) break;
+        if (!r.read) continue;
+        read = r.read;
+        line(r.k, `${finalizedText(read.finalized)}; ${fromOpen(read.head.ts)}${read.head.ts >= lastOpen ? ": measuring" : ""}`);
+      }
+      return read;
+    },
+    /**
+     * After a measurement in which a live feed had no update after its window by the head: the first newer head, as
+     * the same head would read the same logs, or null once the minutes are up.
+     */
+    async forNewer(read: HeadRead, waiting: readonly string[]): Promise<HeadRead | null> {
+      deps.log(`--wait ${minutes}: ${waiting.join(", ")}: the feed has not updated by ${finalizedText(read.finalized)}; reading it again every 30 s until Base finalizes a newer block or the wait ends`);
+      for (;;) {
+        const r = await reread(read);
+        if (!r) return null;
+        if (!r.read) continue;
+        const newer = r.read.head.block > read.head.block;
+        line(r.k, `${finalizedText(r.read.finalized)}; ${fromOpen(r.read.head.ts)}${newer ? ": newer, measuring again" : ""}`);
+        if (newer) return r.read;
+      }
+    },
+  };
 }
 
 /** Asks MarketCalendar at each instant of calendarChecks, and throws at the first answer the window does not allow. */
@@ -220,89 +263,102 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
   // A window is measured only once its open is at or before a finalized block, so no reorg can change its figures.
   let read = await readHead(reader, opts.head);
   if (deps.calendar) for (const w of windows) await checkCalendar(reader, deps.calendar, w, log);
-  if (opts.complete && opts.waitMinutes) read = await waitForOpen(deps, read, windows, opts.waitMinutes);
-  logHead(log, read, opts.head !== undefined);
-  const { head } = read;
-  const notYet = windows.filter((w) => w.openTs > head.ts);
-  if (opts.complete && notYet.length) {
-    const which = notYet.map((w) => `window ${w.id} ends ${w.openLabel}`).join(", ");
-    const [them, their] = notYet.length === 1 ? ["it is", "its open"] : ["they are", "the last of their opens"];
-    throw new Error(
-      `${which}, after block ${head.block}, the latest finalized one (${utcIso(head.ts)}): ${them} not measured yet, so nothing is written; run again once Base has finalized a block at or after ${their}`,
-    );
-  }
-  const source = deps.source(head.block);
+  const wait = opts.complete && opts.waitMinutes ? createWait(deps, opts.waitMinutes, windows) : null;
+  if (wait) read = await wait.forOpen(read);
   const aggregatorsOf = new Map<string, string[]>();
-  const owner = def.decisions && windows.some((w) => w.openTs <= head.ts) ? await readOwner(reader, deps.vault!) : null;
 
-  const out: EditionFile["windows"] = [];
-  // Live feeds with no update after the window: every token is measured first, then one error names them all.
-  const waiting: string[] = [];
-  for (const w of windows) {
-    const base = { id: w.id, closeTs: w.closeTs, openTs: w.openTs, closeLabel: w.closeLabel, openLabel: w.openLabel };
-    if (w.openTs > head.ts) {
-      log(`window ${w.id}: pending, it ends ${w.openLabel}, after block ${head.block} (${utcIso(head.ts)}), the block this run reads through`);
-      out.push({ status: "pending", ...base });
-      continue;
-    }
-    const blocks = await endedBlocks(reader, w, head);
-    const { fromBlock, toBlock } = blocks;
-    let decisions: Extract<EditionFile["windows"][number], { status: "complete" }>["decisions"];
-    if (owner !== null) {
-      const list = await readDecisions(reader, { vault: deps.vault!, owner, from: fromBlock, to: toBlock });
-      decisions = { vault: deps.vault!.toLowerCase(), topic: DECISION_TOPIC, ...decisionCounts(list), list };
-      log(`window ${w.id}: ${decisions.count} Decisions, ${decisions.marketClosed} refused with MARKET_CLOSED`);
-    }
-    const span = { closeTs: w.closeTs, openTs: w.openTs, fromBlock, toBlock };
+  /** Every window through the head: the windows of the file, and the live feeds with no update after their window by it. */
+  async function measureThrough(head: Head): Promise<{ out: EditionFile["windows"]; waiting: string[] }> {
+    const source = deps.source(head.block);
+    const owner = def.decisions && windows.some((w) => w.openTs <= head.ts) ? await readOwner(reader, deps.vault!) : null;
 
-    const tokens: TokenRow[] = [];
-    for (const nav of navs) {
-      const started = Date.now();
-      const tally = { calls: 0 };
-      const aggregators = await aggregatorsFor(reader, nav, aggregatorsOf, tally);
-      const { before, inside, after } = await readFeed(reader, source, aggregators, w, blocks, tally);
-      const updates = [...(before ? [before] : []), ...inside, ...(after ? [after] : [])];
-
-      // The aggregator and phase a row records are those of the logs it used: the update before, the updates inside and
-      // the update after. A range that mixes two aggregators is not handled.
-      const used = [...new Set(updates.map((u) => u.address.toLowerCase()))];
-      if (used.length > 1) throw new Error(`${nav.symbol} ${w.id}: phase changed inside a measured range (${used.join(", ")})`);
-      // Only a token whose ranges hold no update at all falls back to the latest phase, so only that row depends on the
-      // time the aggregators were read.
-      const aggregator = used[0] ?? aggregators.at(-1)!;
-      const phase = aggregators.indexOf(aggregator) + 1;
-      if (phase === 0) throw new Error(`${nav.symbol} ${w.id}: ${aggregator} is not one of the proxy's phase aggregators`);
-
-      const live = feedLiveIn(updates, w);
-      if (live && !after) {
-        waiting.push(`${nav.symbol} ${w.id}`);
+    const out: EditionFile["windows"] = [];
+    // Live feeds with no update after the window: every token is measured first, then one error names them all.
+    const waiting: string[] = [];
+    for (const w of windows) {
+      const base = { id: w.id, closeTs: w.closeTs, openTs: w.openTs, closeLabel: w.closeLabel, openLabel: w.openLabel };
+      if (w.openTs > head.ts) {
+        log(`window ${w.id}: pending, it ends ${w.openLabel}, after block ${head.block} (${utcIso(head.ts)}), the block this run reads through`);
+        out.push({ status: "pending", ...base });
         continue;
       }
+      const blocks = await endedBlocks(reader, w, head);
+      const { fromBlock, toBlock } = blocks;
+      let decisions: Extract<EditionFile["windows"][number], { status: "complete" }>["decisions"];
+      if (owner !== null) {
+        const list = await readDecisions(reader, { vault: deps.vault!, owner, from: fromBlock, to: toBlock });
+        decisions = { vault: deps.vault!.toLowerCase(), topic: DECISION_TOPIC, ...decisionCounts(list), list };
+        log(`window ${w.id}: ${decisions.count} Decisions, ${decisions.marketClosed} refused with MARKET_CLOSED`);
+      }
+      const span = { closeTs: w.closeTs, openTs: w.openTs, fromBlock, toBlock };
 
-      const freeze = live ? findFreeze(updates, w) : null;
-      const swapsRead = swapsRange(freeze, blocks);
-      tally.calls++;
-      const swaps = await source.swaps(nav.pool, swapsRead.from, swapsRead.to);
+      const tokens: TokenRow[] = [];
+      for (const nav of navs) {
+        const started = Date.now();
+        const tally = { calls: 0 };
+        const aggregators = await aggregatorsFor(reader, nav, aggregatorsOf, tally);
+        const { before, inside, after } = await readFeed(reader, source, aggregators, w, blocks, tally);
+        const updates = [...(before ? [before] : []), ...inside, ...(after ? [after] : [])];
 
-      const figures = measureToken({ window: span, updates, swaps });
-      tokens.push(toTokenRow(nav, { aggregator, phase }, figures, freeze ? swapsRead : null));
-      log(`${nav.symbol} ${w.id}: ${tally.calls} reads, ${((Date.now() - started) / 1000).toFixed(1)} s`);
+        // The aggregator and phase a row records are those of the logs it used: the update before, the updates inside and
+        // the update after. A range that mixes two aggregators is not handled.
+        const used = [...new Set(updates.map((u) => u.address.toLowerCase()))];
+        if (used.length > 1) throw new Error(`${nav.symbol} ${w.id}: phase changed inside a measured range (${used.join(", ")})`);
+        // Only a token whose ranges hold no update at all falls back to the latest phase, so only that row depends on the
+        // time the aggregators were read.
+        const aggregator = used[0] ?? aggregators.at(-1)!;
+        const phase = aggregators.indexOf(aggregator) + 1;
+        if (phase === 0) throw new Error(`${nav.symbol} ${w.id}: ${aggregator} is not one of the proxy's phase aggregators`);
+
+        const live = feedLiveIn(updates, w);
+        if (live && !after) {
+          waiting.push(`${nav.symbol} ${w.id}`);
+          continue;
+        }
+
+        const freeze = live ? findFreeze(updates, w) : null;
+        const swapsRead = swapsRange(freeze, blocks);
+        tally.calls++;
+        const swaps = await source.swaps(nav.pool, swapsRead.from, swapsRead.to);
+
+        const figures = measureToken({ window: span, updates, swaps });
+        tokens.push(toTokenRow(nav, { aggregator, phase }, figures, freeze ? swapsRead : null));
+        log(`${nav.symbol} ${w.id}: ${tally.calls} reads, ${((Date.now() - started) / 1000).toFixed(1)} s`);
+      }
+      out.push({ status: "complete", ...base, blocks: { from: fromBlock, to: toBlock }, ...(decisions ? { decisions } : {}), tokens });
     }
-    out.push({ status: "complete", ...base, blocks: { from: fromBlock, to: toBlock }, ...(decisions ? { decisions } : {}), tokens });
+    return { out, waiting };
   }
 
-  if (waiting.length) throw new Error(`${waiting.join(", ")}: the feed has not updated since the window; run again later`);
-
-  return {
-    edition: def.edition,
-    title: def.title,
-    from: def.from,
-    to: def.to,
-    rpc: GAP_RPC,
-    topics: { answerUpdated: ANSWER_UPDATED_TOPIC, swap: SWAP_TOPIC },
-    head,
-    windows: out,
-  };
+  // With --wait, a live feed that has not updated by the head is read again through a newer finalized block.
+  for (;;) {
+    logHead(log, read, opts.head !== undefined);
+    const { head } = read;
+    const notYet = windows.filter((w) => w.openTs > head.ts);
+    if (opts.complete && notYet.length) {
+      const which = notYet.map((w) => `window ${w.id} ends ${w.openLabel}`).join(", ");
+      const [them, their] = notYet.length === 1 ? ["it is", "its open"] : ["they are", "the last of their opens"];
+      throw new Error(
+        `${which}, after block ${head.block}, the latest finalized one (${utcIso(head.ts)}): ${them} not measured yet, so nothing is written; run again once Base has finalized a block at or after ${their}`,
+      );
+    }
+    const { out, waiting } = await measureThrough(head);
+    if (!waiting.length) {
+      return {
+        edition: def.edition,
+        title: def.title,
+        from: def.from,
+        to: def.to,
+        rpc: GAP_RPC,
+        topics: { answerUpdated: ANSWER_UPDATED_TOPIC, swap: SWAP_TOPIC },
+        head,
+        windows: out,
+      };
+    }
+    const newer = wait && (await wait.forNewer(read, waiting));
+    if (!newer) throw new Error(`${waiting.join(", ")}: the feed has not updated since the window; run again later`);
+    read = newer;
+  }
 }
 
 export interface WarmDeps {

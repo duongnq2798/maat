@@ -303,17 +303,29 @@ describe("the newest finalized block across two RPCs", () => {
     expect(await createLogReader({ fetch: f, sleep: noSleep }).finalized()).toEqual({ block: 41, ts: 1_000_041, rpc: BASE, answers: 2, reads: 6 });
   });
 
-  it("throws RpcRefused, naming both RPCs and a reason, only when no read answers a block", async () => {
+  it("asks all six again 1 s later when a short drop fails every read at once, as the other single reads retry", async () => {
+    const drop = () => new TypeError("fetch failed");
     const { f, calls } = twoRpcs({
-      [GAP_RPC]: [new Error("busy"), null, new Response("x", { status: 503 })],
-      [BASE]: [new TypeError("fetch failed"), { number: "0x1" }, new Error("over rate limit")],
+      [GAP_RPC]: [drop(), drop(), drop(), blk(60), blk(61), blk(59)],
+      [BASE]: [drop(), drop(), drop(), blk(62), blk(58), blk(60)],
+    });
+    const sleeps: number[] = [];
+    expect(await createLogReader({ fetch: f, sleep: async (ms) => void sleeps.push(ms) }).finalized()).toEqual({ block: 62, ts: 1_000_062, rpc: BASE, answers: 6, reads: 6 });
+    expect(sleeps).toEqual([1000]);
+    expect(finalizedCalls(calls)).toHaveLength(12);
+  });
+
+  it("throws RpcRefused, naming both RPCs and the last try's first reason, only when no read of three tries answers a block", async () => {
+    const { f, calls } = twoRpcs({
+      [GAP_RPC]: [new Error("busy"), null, new Response("x", { status: 503 }), new Error("busy"), null, null, new Error("still busy"), null, null],
+      [BASE]: [new TypeError("fetch failed"), { number: "0x1" }, new Error("over rate limit"), null, null, null, null, null, null],
     });
     const sleeps: number[] = [];
     const run = createLogReader({ fetch: f, sleep: async (ms) => void sleeps.push(ms) }).finalized();
     await expect(run).rejects.toMatchObject({ name: "RpcRefused" });
-    await expect(run).rejects.toThrow(`eth_getBlockByNumber refused: no finalized block in 6 reads of ${GAP_RPC} and ${BASE}: busy`);
-    expect(finalizedCalls(calls)).toHaveLength(6);
-    expect(sleeps).toEqual([]);
+    await expect(run).rejects.toThrow(`eth_getBlockByNumber refused: no finalized block in 3 tries of 6 reads of ${GAP_RPC} and ${BASE}: still busy`);
+    expect(finalizedCalls(calls)).toHaveLength(18);
+    expect(sleeps).toEqual([1000, 2000]);
   });
 
   it("sends logs, headers, calls and transactions to publicnode only: mainnet.base.org is asked only for the finalized block", async () => {

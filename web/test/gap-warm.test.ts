@@ -531,9 +531,9 @@ describe("npm run gap-index -- --complete --wait MINUTES", HEAVY, () => {
   });
 
   it.each([
-    [["--wait", "5"], "--wait needs --complete: without it a run writes a window that has not ended as pending, so it has nothing to wait for"],
-    [["--warm", "--wait", "5"], "--warm refuses --wait: --wait holds a --complete run until every window has ended, and --warm measures nothing; run --warm on its own"],
-    [["--complete", "--wait", "5", "--head", "62000000"], "--wait refuses --head: a pinned head never moves, so waiting cannot bring it past an open"],
+    [["--wait", "5"], "--wait needs --complete: it holds the run that must measure every window, and a run without --complete writes a window that has not ended as pending instead"],
+    [["--warm", "--wait", "5"], "--warm refuses --wait: --wait holds a --complete run until it can measure every window, and --warm measures nothing; run --warm on its own"],
+    [["--complete", "--wait", "5", "--head", "62000000"], "--wait refuses --head: a pinned head never moves, so waiting cannot change what the run reads"],
     [["--complete", "--wait", "0"], "--wait takes a whole number of minutes, 1 or more"],
     [["--complete", "--wait", "1.5"], "--wait takes a whole number of minutes, 1 or more"],
     [["--complete", "--wait", "soon"], "--wait takes a whole number of minutes, 1 or more"],

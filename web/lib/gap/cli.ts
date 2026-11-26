@@ -15,7 +15,7 @@ const NOT_WITH_WARM = [
   ["complete", "--complete measures every window and writes the edition file, and --warm measures nothing; run --warm first, then --complete on its own"],
   ["stdout", "--warm measures nothing and writes no edition, so it has nothing to print"],
   ["no-cache", "--warm only fills the log cache, and --no-cache would keep nothing it reads"],
-  ["wait", "--wait holds a --complete run until every window has ended, and --warm measures nothing; run --warm on its own"],
+  ["wait", "--wait holds a --complete run until it can measure every window, and --warm measures nothing; run --warm on its own"],
 ] as const;
 
 /** A command line refused before anything is read: the script prints its message and the usage line. */
@@ -74,8 +74,8 @@ export async function runGapIndex(argv: readonly string[], deps: GapCliDeps): Pr
   if (values.head !== undefined && !/^\d+$/.test(values.head)) throw new UsageError("--head takes a block number");
   if (values.wait !== undefined) {
     if (!/^[1-9]\d*$/.test(values.wait)) throw new UsageError("--wait takes a whole number of minutes, 1 or more");
-    if (!values.complete) throw new UsageError("--wait needs --complete: without it a run writes a window that has not ended as pending, so it has nothing to wait for");
-    if (values.head !== undefined) throw new UsageError("--wait refuses --head: a pinned head never moves, so waiting cannot bring it past an open");
+    if (!values.complete) throw new UsageError("--wait needs --complete: it holds the run that must measure every window, and a run without --complete writes a window that has not ended as pending instead");
+    if (values.head !== undefined) throw new UsageError("--wait refuses --head: a pinned head never moves, so waiting cannot change what the run reads");
   }
   if (deps.calendar === null) throw new UsageError("deployments/README.md names no MarketCalendar on Base mainnet");
 
