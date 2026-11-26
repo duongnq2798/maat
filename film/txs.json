@@ -1,0 +1,30 @@
+{
+  "rule": "The transactions beats 5 to 7 show. Set hash to the tx hash once it is on Base mainnet and render again; while hash is null the film shows a card labelled PLACEHOLDER. Before it shows a tx, the render reads its receipt and stops unless it matches expect: the event, the contract of deployments/README.md that emitted it, the vault's reason, the New York date, and for the early-close pair the side of the early close (etBefore: before that New York time; etFrom: at or after it).",
+  "txs": {
+    "thanksgiving": {
+      "label": "The agent's intent on Thanksgiving",
+      "hash": null,
+      "expect": { "event": "Decision", "contract": "MandateVault", "reason": "MARKET_CLOSED", "etDate": "2026-11-26" }
+    },
+    "earlyCloseAllowed": {
+      "label": "Before the early close",
+      "hash": null,
+      "expect": { "event": "Decision", "contract": "MandateVault", "reason": "OK", "etDate": "2026-11-27", "etBefore": "13:00" }
+    },
+    "earlyCloseRefused": {
+      "label": "After the early close",
+      "hash": null,
+      "expect": { "event": "Decision", "contract": "MandateVault", "reason": "MARKET_CLOSED", "etDate": "2026-11-27", "etFrom": "13:00" }
+    },
+    "strangerBrief": {
+      "label": "An outside wallet's brief",
+      "hash": null,
+      "expect": { "event": "Brief", "contract": "MaatInbox" }
+    },
+    "vaultAnswer": {
+      "label": "The vault's Decision on the agent's answer",
+      "hash": null,
+      "expect": { "event": "Decision", "contract": "MandateVault" }
+    }
+  }
+}
