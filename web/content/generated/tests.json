@@ -352,14 +352,29 @@
     "fails a local row that was tampered with, removed, or written without a hash after the chain started": 209
   },
   "agent/test/lock.test.ts": {
-    "acquireLock": 8,
-    "holds and releases": 9,
-    "takes over a lock left by a dead process": 18,
-    "treats a fresh lock file with unreadable content as held": 24,
-    "takes over an unreadable lock file older than 60 s": 30,
-    "RoundLock": 41,
-    "runs one holder at a time, first come first served, and counts who waits": 42,
-    "is released when its holder throws": 58
+    "acquireLock": 10,
+    "holds and releases": 11,
+    "takes over a lock left by a dead process": 20,
+    "takes over a lock left by a dead process on this host": 26,
+    "takes over a lock that names this process's pid but is not held by it": 32,
+    "takes over a lock that names this process's pid on this host": 44,
+    "treats a lock that names this process's pid on another host as held": 51,
+    "treats a lock that names another pid on another host as held": 59,
+    "rejects a second acquire through another path to the same dir": 69,
+    "respects a lock held by another live process": 80,
+    "treats a fresh lock file with unreadable content as held": 94,
+    "takes over an unreadable lock file older than 60 s": 100,
+    "RoundLock": 111,
+    "runs one holder at a time, first come first served, and counts who waits": 112,
+    "is released when its holder throws": 128
+  },
+  "agent/test/lockRestart.test.ts": {
+    "the lock a restarted agent finds": 82,
+    "is taken over when it names this pid, then rounds and probes take turns under it and a second start is refused": 83,
+    "the lock across restarts by the restart loop": 138,
+    "is taken over by the next start after the agent was killed holding it": 139,
+    "is refused at a start while the last agent still runs, and taken over at the first start after it has gone": 164,
+    "is refused at every start when another host wrote it, and the loop says FAILING after three": 201
   },
   "agent/test/logWindows.test.ts": {
     "firstInLogWindows": 27,
