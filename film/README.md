@@ -22,11 +22,17 @@ ffmpeg nor the network, and one Playwright spec that lays the cards out in Chrom
 | 4 | The sourced proposal and its hash tick | `/ledger`, the decision trail with its hash tick; the owner's Basescan input clip, or `/ledger`'s verify-by-hand commands without it | |
 | 5 | Thanksgiving: `MARKET_CLOSED` from the agent | the simulator on Thanksgiving; the tx card | placeholder card |
 | 6 | The early-close pair | the simulator after the early close; the two tx cards | placeholder cards |
-| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line; one card: the brief, Maat's agent's reply from the published journal, then the vault's verdict | the two tx cards labelled PLACEHOLDER; `/ask`'s caption says the inbox opens once it is on Base |
+| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line; one card: an outside wallet's brief, Maat's agent's reply from the published journal, then the vault's verdict on the intent that adopted the brief | the two tx cards labelled PLACEHOLDER; `/ask`'s caption says the inbox opens once it is on Base |
 | 8 | Receipts | the deployed contracts; the README's CI figures; `/proof`; the end card: the mark, the sign-off, the short myth line, the builder line | |
 
 `lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues. The end card holds 6 s, so
-its lines can be read.
+its lines can be read, and beat 7's card 11.5 s, since no card has more to read; How it works, the decision trail, the
+two simulator shots and both clip slots are kept short for it, so the cut lasts 100 s. No caption reads faster than 25
+characters a second (`READ_PACE` in `lib/cards.mjs`, about the pace of the CI caption):
+`web/test/film-identity.test.ts` checks each one, and the capture warns when a caption with the numbers it read, or
+beat 7's card with its brief, reply, verdict and caption, would go faster. A page shot's scroll stops before the site's
+footer enters the frame, so its display line never sits behind a caption (`scrollGoal` in `lib/beats.mjs`), and the
+capture warns if a shot still ends with the footer in the frame.
 
 ## The title and end cards
 
@@ -39,7 +45,8 @@ for word:
 | End | The mark and "maat"; "Every trade is weighed."; "Named for Ma'at, whose feather every heart was weighed against. Here the feather is the mandate."; "Built by one developer with Claude Code."; `maatonbase.xyz`, the repository and @maatonbase; the footer "Own treasury only. No investment advice. Not offered to US persons." |
 
 The capture reads the mark from `web/brand/src/mark.svg` and draws it as it is; a card asked to draw without it stops
-the render. The cards use the site's colours and its Geist type only. `web/test/film-identity.test.ts` checks the
+the render. The cards use the site's colours and its Geist type only, and balance the lines of each text, and of each
+caption, so none ends on one word alone (`web/e2e/film-cards.spec.ts` measures it in both cuts). `web/test/film-identity.test.ts` checks the
 lines, the mark, the first and last shots and the silent track, and that every caption that says who proposes and who
 decides says the mechanism line word for word.
 
@@ -88,8 +95,9 @@ cd web && npx playwright test e2e/film-cards.spec.ts --project=chromium
 
 The Playwright spec opens no site: it writes the cards to local files and checks, in both cuts, that no caption the
 shot can show covers a row of its card, with the longest content each card can hold (beat 7's card with the longest
-brief the inbox takes and the longest reply the journal keeps), and that the title and end cards fit the frame with
-the mark drawn.
+brief the inbox takes and the longest reply the journal keeps), that the title and end cards fit the frame with the
+mark drawn and no text on them ending on one word alone, and that no caption in `film/captions.json` ends on one word
+alone either.
 
 ## Captions and their numbers
 
@@ -130,7 +138,7 @@ and stops the render if a caption box would come within 16 px of the card's cont
 1. **ffmpeg.** Install it if `ffmpeg -version` fails, for example with `winget install ffmpeg`, and open a new
    terminal. The v0 draft was rendered with ffmpeg 5.1.2.
 2. **Two Basescan clips, by hand** (Basescan may block automated browsers). Record each as a 16:9 desktop screen
-   recording of about 8 seconds; the film uses its first 6 seconds. Save them in `film/input/` under these names (any
+   recording of about 8 seconds; the film uses its first 5 seconds. Save them in `film/input/` under these names (any
    of `.mp4`, `.mov`, `.webm`, `.mkv`):
    - `basescan-decision-log`: a `Decision` event in the `MandateVault`'s Events tab, with its reason. Beat 2.
    - `basescan-input-utf8`: an agent Decision's input data viewed as UTF-8, showing the rationale. Beat 4. Record it
@@ -141,8 +149,10 @@ and stops the render if a caption box would come within 16 px of the card's cont
    - `earlyCloseAllowed` and `earlyCloseRefused`: the agent's Decisions on Fri 27 Nov, allowed before the 13:00 ET
      early close and refused with `MARKET_CLOSED` at or after it (not a refusal before the open);
    - `strangerBrief`: an outside wallet's `Brief` transaction to the inbox, once `deployments/README.md` records the
-     `MaatInbox`; `vaultAnswer`: the vault's Decision on Maat's agent's answer to it. Beat 7 shows Maat's agent's
-     reply between the two, from the published journal (below).
+     `MaatInbox`. Pick a brief that `/proof` counts as an outside brief, and one that an intent adopted: Claude was
+     persuaded, so the vault weighed it. `vaultAnswer`: the vault's Decision on that intent, the Decision `/ask` lists
+     under the brief. Beat 7 shows Maat's agent's reply between the two, from the published journal (below). A brief
+     Claude did not adopt has no verdict to show.
 4. **Render, review, upload.** Refresh the root README's "Tested, in numbers" table from a current CI run on `main`,
    run `node film/render.mjs`, watch both cuts, then upload the 16:9 cut to Loom (a free account) on Wed 9 Dec.
    Uploads are the owner's: nothing in this folder posts anything.
@@ -162,7 +172,28 @@ and stops the render if a caption box would come within 16 px of the card's cont
 Once both of beat 7's hashes are set, the capture also reads the public `agent-journal` branch
 (`https://raw.githubusercontent.com/duongnq2798/maat/agent-journal/journal/`, the files the site's `/ledger` reads),
 checks every line's hash chain as the browser verifier does, and takes the `brief` row that names the brief by its id,
-tx hash and log index. Its sanitized reply shows between the brief and the verdict, with its day file, line, row hash
-and commit, and with "Claude persuaded: yes" or "no" from its `adopted` flag. While the branch does not exist or has no
-row for the brief, the card says the reply is not in the journal yet, labelled NOT IN THE JOURNAL YET, and the render
-warns. A branch it cannot read, or a line that does not verify, stops the render.
+tx hash and log index. Its sanitized reply shows between the brief and the verdict, with its day file, line and row
+hash, the git commit of the agent code that wrote the row ("agent commit", as `/ledger` labels it; it is not a commit
+of the `agent-journal` branch), and "Claude persuaded: yes, adopted into an intent" from its `adopted` flag. While the
+branch does not exist or has no row for the brief, the card says the reply is not in the journal yet, labelled NOT IN
+THE JOURNAL YET, and the render warns. A branch it cannot read, or a line that does not verify, stops the render.
+
+The card shows the brief, and the reply, as `/ask` does (`plainBriefText` in `web/lib/chain/inbox.ts`): every control,
+format and other invisible code point as U+FFFD, so a brief cannot hide text, smuggle text in tag characters or
+reorder what the viewer reads.
+
+Before it shows the verdict as the vault's verdict on Maat's agent's answer, the capture checks the pair, and stops,
+naming each problem, unless all of these hold (`persuasionProblems` in `lib/tx.mjs`, the rules of `/ledger`'s sender
+label and `/ask`'s brief-to-Decision map):
+
+- `vaultAnswer` is a direct `execute` call to the vault, which only the vault's executor can make, and its sender is
+  not the vault's `owner()`, read with `eth_call`: an owner Decision is "owner, by hand", never Maat's agent's;
+- its calldata, read with `eth_getTransactionByHash`, ends with a maat:v1 blob whose keccak256 is the Decision's
+  `rationaleHash` and whose `q` names the brief's id: the intent adopted that brief ("brief-driven" on `/ledger`);
+- it is in a later block than the brief;
+- the brief's sender is not a team wallet: not in `web/content/proof-team.ts`, not the vault's owner and not the
+  executor that sent the Decision. The film does not run `/proof`'s trace of the wallets those funded, so check on
+  `/proof` that the brief counts as an outside brief before setting its hash;
+- when the journal has the brief's row, its `adopted` flag is `true`.
+
+The verdict step then says what ties it to the brief: "brief-driven, adopts brief #N", and "sent by" the executor.

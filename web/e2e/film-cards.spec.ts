@@ -17,13 +17,15 @@ import {
 import { FORMATS } from "../../film/lib/formats.mjs";
 import { ciFigures, deploymentRows, fileSources } from "../../film/lib/sources.mjs";
 import { BRIEF_TOPIC, persuasionCardHtml, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
+import { BRIEF_TX, CONTRACTS, OWNER, briefData as strangerBrief, verdict } from "../test/helpers/film-persuasion";
 
 // The film's cards are stills that film/capture.mjs renders in Chromium, with a caption burned in near the bottom. This
 // lays them out here with the longest content each can hold and fails when a caption would cover a row, or a card runs
 // past the frame: the tx cards of beats 5 to 7 with real transactions (the vault's first mainnet Decision, and a Brief
-// of the inbox's longest text), beat 7's persuasion card with the longest reply the journal keeps, the receipts cards,
-// and the title and end cards with the mark. No network: the pages are local files, with the Geist fonts from
-// node_modules.
+// of the inbox's longest text), beat 7's persuasion card with the longest reply the journal keeps and the vault's
+// Decision on the intent that adopted the brief, the receipts cards, and the title and end cards with the mark and no
+// line of their words left with one word. It also lays out every caption and fails when one ends on a word alone. No
+// network: the pages are local files, with the Geist fonts from node_modules.
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const read = (rel: string) => readFileSync(`${ROOT}${rel}`, "utf8").replace(/\r\n/g, "\n");
@@ -67,9 +69,43 @@ const replyWords = "No. NYSE is closed, so the vault would refuse it with MARKET
 /** The replies a persuasion card can show: the longest the journal keeps, unbroken, and none yet. */
 const REPLIES = {
   words: { kind: "reply", outcome: "replied", text: replyWords.repeat(5).slice(0, MAX_REPLY_CHARS).trimEnd(), adopted: true, file: "journal/2026-12-01.jsonl", line: 1234, hash: `0x${"ef".repeat(32)}`, commit: `${"0a".repeat(20)}-dirty` },
-  unbroken: { kind: "reply", outcome: "replied", text: "y".repeat(MAX_REPLY_CHARS), adopted: false, file: "journal/2026-12-01.jsonl", line: 1, hash: `0x${"ef".repeat(32)}` },
+  unbroken: { kind: "reply", outcome: "replied", text: "y".repeat(MAX_REPLY_CHARS), adopted: true, file: "journal/2026-12-01.jsonl", line: 1, hash: `0x${"ef".repeat(32)}` },
   missing: { kind: "missing", why: "the published journal has no row for brief #1 yet" },
 };
+
+/** Beat 7's verdict: the vault's Decision on the intent that adopted brief 7, sent by the executor after the brief. */
+const ANSWER = verdict();
+const answerModel = txCardModel("vaultAnswer", { label: "The vault's verdict on Maat's agent's answer", hash: ANSWER.data.receipt.transactionHash }, ANSWER.data, { tokens: {}, contracts: CONTRACTS });
+
+/**
+ * In a page: each element matching `selector` whose last line holds a single word. Words whose tops are less than half
+ * the element's font size apart share a line, so a smaller raised tag (the caption's PLACEHOLDER) stays on its line.
+ * Runs in the browser.
+ */
+function lonelyLastWords(selector: string) {
+  const out: string[] = [];
+  for (const el of document.querySelectorAll(selector)) {
+    const tops: number[] = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      for (const m of (node.textContent ?? "").matchAll(/\S+/g)) {
+        const range = document.createRange();
+        range.setStart(node, m.index ?? 0);
+        range.setEnd(node, (m.index ?? 0) + m[0].length);
+        tops.push(range.getBoundingClientRect().top);
+      }
+    }
+    const near = parseFloat(getComputedStyle(el).fontSize) / 2;
+    const lines: number[][] = [];
+    for (const top of tops.sort((a, b) => a - b)) {
+      const line = lines[lines.length - 1];
+      if (line && top - line[0]! < near) line.push(top);
+      else lines.push([top]);
+    }
+    if (lines.length > 1 && lines[lines.length - 1]!.length === 1) out.push(el.textContent ?? "");
+  }
+  return out;
+}
 
 /** The lowest edge of a card's content, and the top of each caption the shot can show, in CSS px. */
 async function measure(page: Page, dir: string, name: string, html: string, captionIds: string[], format: string) {
@@ -109,8 +145,10 @@ for (const format of ["wide", "tall"] as const) {
             const ids = [shot.caption, shot.placeholderCaption, shot.partialCaption].filter(Boolean);
             problems.push(...(await measure(page, dir, `${beat.id}-${kind}`, txCardHtml(models, { format, title: beat.title, fontsDir }), ids, format)));
             if (shot.layout !== "persuasion") continue;
+            // The persuasion card: the same brief as brief 7, then the Decision on the intent that adopted it.
+            const pair = [txCardModel("strangerBrief", { label: "An outside wallet's brief", hash: BRIEF_TX }, strangerBrief(text), { tokens: {}, contracts: CONTRACTS }), answerModel];
             for (const [replyKind, reply] of Object.entries(REPLIES)) {
-              const html = persuasionCardHtml(models, { format, title: beat.title, fontsDir, reply });
+              const html = persuasionCardHtml(pair, { format, title: beat.title, fontsDir, reply, answer: { input: ANSWER.input, owner: OWNER, team: [] } });
               problems.push(...(await measure(page, dir, `${beat.id}-${kind}-${replyKind}`, html, [shot.caption], format)));
             }
           }
@@ -130,8 +168,26 @@ for (const format of ["wide", "tall"] as const) {
         const box = await page.locator(".lockup svg").boundingBox();
         expect(box?.width, name).toBeGreaterThanOrEqual(format === "wide" ? 60 : 30);
         expect(box?.y, name).toBeGreaterThanOrEqual(0);
+        expect(await page.evaluate(lonelyLastWords, ".frame > h1, .frame > p"), name).toEqual([]);
       }
       expect(problems).toEqual([]);
+    });
+
+    test("leave no caption with one word alone on its last line", async ({ page }, info) => {
+      const dir = info.outputPath();
+      mkdirSync(dir, { recursive: true });
+      const lonely: string[] = [];
+      for (const [id, entry] of Object.entries(captions)) {
+        // Each entry's own text, whether or not its `when` holds here: an `else` caption is an entry of its own.
+        const text = renderCaption(typeof entry === "string" ? entry : (entry as { text: string }).text, values).text;
+        const file = `${dir}/${id}.html`;
+        writeFileSync(file, captionHtml({ format, text, fontsDir }));
+        await page.goto(pathToFileURL(file).href);
+        await page.evaluate(() => document.fonts.ready);
+        for (const words of await page.evaluate(lonelyLastWords, ".cap")) lonely.push(`${id}: ${words}`);
+      }
+      expect(Object.keys(captions).length).toBeGreaterThan(0);
+      expect(lonely).toEqual([]);
     });
 
     test("keep the receipts cards above their captions, with one more contract than the table holds", async ({ page }, info) => {

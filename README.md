@@ -565,7 +565,7 @@ it has not been re-timed.
 
    ```text
     Test Files  146 passed (146)
-         Tests  3247 passed (3247)
+         Tests  3255 passed (3255)
    ...
    out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and 53 docs pages checked)
    search index: … bytes gzipped, budget 935000
@@ -614,9 +614,10 @@ Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` an
 `npm test` in `ops/journal/` runs the journal publisher's tests, which need git and no network and run by hand;
 CI's web unit tests check the chain it writes, on its fixtures.
 `node film/render.mjs` renders the demo film from the live site; it needs ffmpeg and the network and runs by hand
-([`film/README.md`](film/README.md)). It opens and closes on the mark. Its persuasion beat shows a brief, Maat's agent's
-reply from the published journal and the vault's verdict once those exist, and a labelled placeholder until then. CI's
-web unit tests check its beat plan, caption sources, cards and ffmpeg arguments.
+([`film/README.md`](film/README.md)). It opens and closes on the mark. Its persuasion beat shows an outside wallet's
+brief, Maat's agent's reply from the published journal and the vault's verdict on the intent that adopted the brief once
+those exist, and a labelled placeholder until then. CI's web unit tests check its beat plan, caption sources, cards and
+ffmpeg arguments.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.

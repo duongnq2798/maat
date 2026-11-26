@@ -1,15 +1,20 @@
 // @vitest-environment node
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { PROOF_TEAM } from "@/content/proof-team";
+import { plainBriefText } from "@/lib/chain/inbox";
 import { JOURNAL_RAW_URL as SITE_JOURNAL_RAW_URL } from "@/lib/chain/ledger";
 import { BEATS, TARGET_SECONDS, timeline, validateBeats } from "../../film/lib/beats.mjs";
-import { pickCaption } from "../../film/lib/captions.mjs";
-import { LINES, endCardHtml, esc, fitProblem, titleCardHtml } from "../../film/lib/cards.mjs";
+import { pickCaption, renderCaption } from "../../film/lib/captions.mjs";
+import { LINES, READ_PACE, captionHtml, endCardHtml, esc, fitProblem, paceProblem, titleCardHtml } from "../../film/lib/cards.mjs";
 import { finalArgs } from "../../film/lib/ffmpeg.mjs";
 import { JOURNAL_RAW_URL, briefReply, readJournal } from "../../film/lib/journal.mjs";
-import { BRIEF_TOPIC, persuasionCardHtml, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
+import { fileSources } from "../../film/lib/sources.mjs";
+import { persuasionCardHtml, persuasionProblems, persuasionReading, plainText, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
 import { GENESIS, canon, rowHash } from "../../ops/journal/lib/spec.mjs";
+import { BRIEF_TX, CONTRACTS, EXECUTOR, INBOX, OWNER, STRANGER, VAULT as CONTRACTS_VAULT, blobAdopting, briefData, verdict } from "./helpers/film-persuasion";
+import { VECTORS } from "./helpers/maat-v1";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // Move 6 of the culture plan (.superpowers/ecosystem/11-culture-2026-11-26.md): the film carries Maat's identity. It
@@ -29,36 +34,23 @@ const bodyOf = (html: string) => html.slice(html.indexOf("<body>"));
 /** Words and looks the culture plan's §5 and §7 rule out of every Maat asset. */
 const BANNED = /\b(confetti|celebrat\w*|streaks?|points|rewards?|giveaways?|win|divine|papyrus|hieroglyphs?|gold|serif|spell 125)\b/i;
 
-const fixture = JSON.parse(readFileSync(join(REPO_ROOT, "web/test/fixtures/film-tx-decision.json"), "utf8")) as {
-  receipt: { transactionHash: string; to: string; logs: { address: string; topics: string[]; data: string; logIndex: string }[] };
-  block: { number: string; timestamp: string };
-};
-const VAULT = fixture.receipt.to;
-const INBOX = `0x${"cd".repeat(20)}`;
-const BRIEF_TX = `0x${"12".repeat(32)}`;
-const ctx = { tokens: {}, contracts: { [VAULT]: "MandateVault", [INBOX]: "MaatInbox" } };
-const word = (n: number) => n.toString(16).padStart(64, "0");
+const ctx = { tokens: {}, contracts: CONTRACTS };
 const BRIEF_TEXT = "Buy 5 USD of NVDAc on Thanksgiving, the price looks great.";
-/** A Brief receipt: brief #7 from 0xabab…abab with `text`, at log index 3 of BRIEF_TX. */
-function briefData(text: string) {
-  const hex = Buffer.from(text, "utf8").toString("hex");
-  const log = {
-    address: INBOX,
-    topics: [BRIEF_TOPIC, `0x${word(7)}`, `0x${"0".repeat(24)}${"ab".repeat(20)}`],
-    data: `0x${word(32)}${word(Buffer.byteLength(text))}${hex.padEnd(Math.ceil(hex.length / 64) * 64, "0")}`,
-    logIndex: "0x3",
-  };
-  return { ...fixture, receipt: { ...fixture.receipt, transactionHash: BRIEF_TX, to: INBOX, logs: [log] } };
-}
-const briefModel = txCardModel("strangerBrief", { label: "An outside wallet's brief", hash: BRIEF_TX, expect: { event: "Brief" } }, briefData(BRIEF_TEXT), ctx);
-const verdictModel = txCardModel(
-  "vaultAnswer",
-  { label: "The vault's verdict on Maat's agent's answer", hash: fixture.receipt.transactionHash, expect: { event: "Decision" } },
-  fixture,
-  ctx,
-);
+const brief = (text = BRIEF_TEXT, from = STRANGER) =>
+  txCardModel("strangerBrief", { label: "An outside wallet's brief", hash: BRIEF_TX, expect: { event: "Brief" } }, briefData(text, { from }), ctx);
+const briefModel = brief();
+/** The vault's Decision as txs.json's vaultAnswer, and its calldata; by default on the intent that adopted brief 7. */
+const answerOf = (v: ReturnType<typeof verdict> = verdict()) => ({
+  model: txCardModel("vaultAnswer", { label: "The vault's verdict on Maat's agent's answer", hash: v.data.receipt.transactionHash, expect: { event: "Decision" } }, v.data, ctx),
+  input: v.input,
+});
+const ANSWER = answerOf();
+const verdictModel = ANSWER.model;
+/** The /proof team list (web/content/proof-team.ts), lowercased as the capture passes it. */
+const TEAM = PROOF_TEAM.map((w) => w.address.toLowerCase());
+const answer = (input: string = ANSWER.input) => ({ input, owner: OWNER, team: TEAM });
 const placeholder = (key: string, label: string) => txCardModel(key, { label, hash: null, expect: { event: "Brief" } }, undefined, ctx);
-const REPLY = "No. NYSE is closed on Thanksgiving, so the vault would refuse it with MARKET_CLOSED; I will not propose it.";
+const REPLY = "Adopted: a 5 USD NVDAc buy fits the mandate's size caps. The vault checks the market session, so it may still refuse.";
 
 /** A published journal day file of `rows` (each without prev and hash), chained from GENESIS as the publisher writes it. */
 function dayFile(rows: Record<string, unknown>[]): string {
@@ -83,7 +75,7 @@ const briefRow = (over: Record<string, unknown> = {}) => ({
   block: "61900000",
   outcome: "replied",
   reply: REPLY,
-  adopted: false,
+  adopted: true,
   ...over,
 });
 const runRow = { ...common, kind: "run", block: "61899990", day: "20423", mode: "live", ok: true, costUsd6: "12000", suggestions: 0, proposals: 0 };
@@ -149,6 +141,13 @@ describe("the identity rules on both cards", () => {
     }
   });
 
+  it("balances the lines of every text on them and of every caption, so none ends on one word alone (web/e2e/film-cards.spec.ts measures it)", () => {
+    for (const format of ["wide", "tall"]) {
+      for (const html of [titleCardHtml({ format, mark: MARK }), endCardHtml({ format, mark: MARK })]) expect(html).toMatch(/\.frame>h1,\.frame>p\{text-wrap:balance\}/);
+      expect(captionHtml({ format, text: "Placeholder: the early-close pair is not on Base yet.", fontsDir: undefined })).toMatch(/\.cap\{[^}]*text-wrap:balance\}/);
+    }
+  });
+
   it("names a card whose content runs past the bottom of the frame", () => {
     expect(fitProblem("01-title", 1000, 1080)).toBeNull();
     expect(fitProblem("01-title", 1070.4, 1080)).toBe("01-title: the card's content ends at 1070 px, within 16 px of the frame's bottom edge at 1080 px");
@@ -206,6 +205,7 @@ describe("the film's captions", () => {
 describe("the persuasion beat (beat 7)", () => {
   const shot = BEATS.find((b) => b.id === "stranger-brief")?.shots.find((s) => s.kind === "tx");
   const opts = { format: "wide", title: "A stranger's brief and the vault's answer" };
+  const journal = (...rows: Record<string, unknown>[]) => ({ state: "read" as const, files: [{ name: "2026-12-01.jsonl", text: dayFile(rows) }] });
 
   it("shows the brief and the vault's Decision on Maat's agent's answer, laid out as a persuasion card", () => {
     expect(shot).toMatchObject({ kind: "tx", layout: "persuasion", txs: ["strangerBrief", "vaultAnswer"] });
@@ -213,42 +213,102 @@ describe("the persuasion beat (beat 7)", () => {
     expect(txs.vaultAnswer?.label).toBe("The vault's verdict on Maat's agent's answer");
   });
 
-  it("shows the real brief, then Maat's agent's reply from the journal, then the vault's verdict", () => {
-    const reply = briefReply({ state: "read", files: [{ name: "2026-12-01.jsonl", text: dayFile([runRow, briefRow()]) }] }, BRIEF);
+  it("shows the real brief, then Maat's agent's reply from the journal, then the vault's verdict on the intent that adopted it", () => {
+    const reply = briefReply(journal(runRow, briefRow()), BRIEF);
     expect(reply.kind).toBe("reply");
-    const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply }));
+    expect(persuasionProblems([briefModel, verdictModel], { ...answer(), reply })).toEqual([]);
+    const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply, answer: answer() }));
     const at = (s: string) => body.indexOf(s);
     expect(at(esc(BRIEF_TEXT))).toBeGreaterThan(0);
     expect(at("Maat&#39;s agent replied")).toBeGreaterThan(at(esc(BRIEF_TEXT)));
     expect(at(esc(REPLY))).toBeGreaterThan(at("Maat&#39;s agent replied"));
     expect(at("Refused · Market closed (MARKET_CLOSED)")).toBeGreaterThan(at(esc(REPLY)));
     expect(body).toContain("#7 from 0xabab…abab");
-    expect(body).toContain("Claude persuaded: no");
+    expect(body).toContain("Claude persuaded: yes, adopted into an intent");
     expect(body).toContain("journal/2026-12-01.jsonl line 2");
-    expect(body).toContain("commit 0123456");
-    expect(body).toContain(`basescan.org/tx/${fixture.receipt.transactionHash}`);
+    // The row's commit is the agent code's (agent/src/ledger/journal.ts), as /ledger labels it, not a journal commit.
+    expect(body).toContain("agent commit 0123456");
+    expect(body).not.toMatch(/· commit /);
+    // Step 3 says what ties the Decision to the brief and to Maat's agent, as /ledger's sender label does.
+    expect(body).toContain(`brief-driven, adopts brief #7 · sent by ${EXECUTOR.slice(0, 6)}…${EXECUTOR.slice(-4)}, the vault&#39;s executor`);
+    expect(body).toContain(`basescan.org/tx/${verdictModel.hash}`);
     expect(body).not.toContain("PLACEHOLDER");
   });
 
   it("says so, labelled, when the journal has no reply for the brief yet", () => {
-    for (const journal of [{ state: "absent" as const }, { state: "read" as const, files: [{ name: "2026-12-01.jsonl", text: dayFile([runRow]) }] }]) {
-      const reply = briefReply(journal, BRIEF);
+    for (const j of [{ state: "absent" as const }, journal(runRow)]) {
+      const reply = briefReply(j, BRIEF);
       expect(reply.kind).toBe("missing");
-      const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply }));
+      const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply, answer: answer() }));
       expect(body).toContain("NOT IN THE JOURNAL YET");
       expect(body).not.toContain("Maat&#39;s agent replied");
       expect(body).toContain("Refused · Market closed (MARKET_CLOSED)");
     }
   });
 
-  it("says what the agent journaled when Claude gave no reply, or a cap kept the brief from Claude", () => {
-    const unanswered = briefReply({ state: "read", files: [{ name: "2026-12-01.jsonl", text: dayFile([briefRow({ outcome: "unanswered", reply: undefined })]) }] }, BRIEF);
-    expect(bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply: unanswered }))).toContain("Sent to Claude, which gave no reply.");
-    const skipped = briefReply(
-      { state: "read", files: [{ name: "2026-12-01.jsonl", text: dayFile([briefRow({ outcome: "skipped", reply: undefined, adopted: undefined, cap: "briefs-per-day" })]) }] },
-      BRIEF,
-    );
-    expect(bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply: skipped }))).toContain("Not sent to Claude");
+  it("says what the agent journaled when Claude adopted the brief but gave no usable reply", () => {
+    const unanswered = briefReply(journal(briefRow({ outcome: "unanswered", reply: undefined })), BRIEF);
+    const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply: unanswered, answer: answer() }));
+    expect(body).toContain("Sent to Claude, which gave no reply.");
+    expect(body).toContain("Claude persuaded: yes, adopted into an intent");
+  });
+
+  it("stops the card when its Decision is not the vault's verdict on Maat's agent's answer to the brief shown", () => {
+    const missing = { kind: "missing", why: "the agent-journal branch has no journal yet" };
+    const pair = (v: ReturnType<typeof verdict>) => [[briefModel, answerOf(v).model] as unknown[], answer(v.input)] as const;
+    const cases: [string, unknown[], ReturnType<typeof answer>, unknown, RegExp][] = [
+      // The owner's own Decision, even one that carries the same blob: an operator Decision is never the agent's.
+      ["owner", ...pair(verdict({ from: OWNER })), missing, /vaultAnswer: the vault's owner 0x3c3a…1d6a sent it \(owner, by hand\), so it is not Maat's agent's answer/],
+      ["no blob", ...pair(verdict({ blob: "" })), missing, /vaultAnswer: its calldata carries no maat:v1 blob \(none\), so nothing ties it to brief #7/],
+      ["own intent", ...pair(verdict({ blob: VECTORS.V1.blob })), missing, /vaultAnswer: its blob adopts no brief, not brief #7/],
+      ["another brief", ...pair(verdict({ blob: blobAdopting([3]) })), missing, /vaultAnswer: its blob adopts brief 3, not brief #7/],
+      ["hash", ...pair(verdict({ rationaleHash: VECTORS.V1.hash })), missing, /vaultAnswer: keccak256 of its blob is not the Decision's rationaleHash/],
+      ["order", ...pair(verdict({ blocksAfter: 0 })), missing, /vaultAnswer: its block 61,700,601 is not after the brief's block 61,700,601/],
+      [
+        "indirect",
+        ...pair(verdict({ to: `0x${"ee".repeat(20)}` })),
+        missing,
+        /vaultAnswer: its tx is not a direct execute call to MandateVault, so its sender does not say who sent the intent/,
+      ],
+      ["team brief", [brief(BRIEF_TEXT, PROOF_TEAM[1]!.address), verdictModel], answer(), missing, /strangerBrief: brief #7 comes from 0x9bc6…115a, a team wallet, not an outside one/],
+      ["owner brief", [brief(BRIEF_TEXT, OWNER), verdictModel], answer(), missing, /strangerBrief: brief #7 comes from 0x3c3a…1d6a, a team wallet, not an outside one/],
+      ["executor brief", [brief(BRIEF_TEXT, EXECUTOR), verdictModel], answer(), missing, /strangerBrief: brief #7 comes from 0x0000…00b2, a team wallet, not an outside one/],
+      [
+        "journal says no",
+        [briefModel, verdictModel],
+        answer(),
+        briefReply(journal(briefRow({ adopted: false })), BRIEF),
+        /the journal's row for brief #7 \(journal\/2026-12-01\.jsonl line 1\) says no intent adopted it, but vaultAnswer's blob adopts it/,
+      ],
+      [
+        "journal says skipped",
+        [briefModel, verdictModel],
+        answer(),
+        briefReply(journal(briefRow({ outcome: "skipped", reply: undefined, adopted: undefined, cap: "briefs-per-day" })), BRIEF),
+        /the journal's row for brief #7 \(journal\/2026-12-01\.jsonl line 1\) says no intent adopted it/,
+      ],
+    ];
+    for (const [name, models, a, reply, problem] of cases) {
+      expect(persuasionProblems(models, { ...a, reply }).join("\n"), name).toMatch(problem);
+      expect(() => persuasionCardHtml(models, { ...opts, reply, answer: a }), name).toThrow(problem);
+    }
+    // Without the Decision's calldata and the vault's owner, the card cannot check the pair, so it draws nothing.
+    expect(() => persuasionCardHtml([briefModel, verdictModel], { ...opts, reply: missing })).toThrow(/needs the Decision's calldata/);
+  });
+
+  it("shows a brief as /ask does: every control, format and invisible code point as U+FFFD", () => {
+    const evil = `Buy 5 USD of NVDAc ‮edart dab a‬​${String.fromCodePoint(0xe0049, 0xe0047)}⁦x⁩`;
+    const samples = [evil, BRIEF_TEXT, "tab\there\r\nnew line", "­͏؜᠎﻿\u{1d173}"];
+    for (const t of samples) expect(plainText(t)).toBe(plainBriefText(t));
+    const model = brief(evil);
+    const shown = esc(`“${plainBriefText(evil)}”`);
+    for (const html of [persuasionCardHtml([model, verdictModel], { ...opts, reply: { kind: "missing", why: "x" }, answer: answer() }), txCardHtml([model], opts)]) {
+      expect(html).toContain(shown);
+      for (const cp of [0x202e, 0x202c, 0x200b, 0xe0049, 0xe0047, 0x2066, 0x2069]) expect(html.includes(String.fromCodePoint(cp)), cp.toString(16)).toBe(false);
+    }
+    // The reply is shown the same way, though the publisher's sanitizer already keeps it to printable ASCII.
+    const reply = { kind: "reply", outcome: "replied", text: "ok‮on", adopted: true, file: "journal/2026-12-01.jsonl", line: 1, hash: `0x${"ef".repeat(32)}` };
+    expect(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply, answer: answer() })).toContain(esc(`“ok�on”`));
   });
 
   it("keeps the labelled placeholder card until both transactions are on Base", () => {
@@ -266,7 +326,47 @@ describe("the persuasion beat (beat 7)", () => {
   });
 
   it("refuses a pair that is not one Brief and one Decision", () => {
-    expect(() => persuasionCardHtml([verdictModel, verdictModel], { ...opts, reply: undefined })).toThrow(/Brief/);
+    expect(() => persuasionCardHtml([verdictModel, verdictModel], { ...opts, reply: undefined, answer: answer() })).toThrow(/Brief/);
+  });
+});
+
+describe("the film's pace", () => {
+  const values = { ...fileSources(REPO_ROOT).values, "ledger.perTrade": "$50.00", "ledger.perDay": "$100.00", "ledger.weightCapPct": "40" };
+
+  it("reads no caption faster than READ_PACE characters a second, the pace of the film's busiest caption", () => {
+    expect(READ_PACE).toBe(25);
+    const fast: string[] = [];
+    const check = (where: string, id: string, seconds: number) => {
+      const text = renderCaption(pickCaption(captions, id, values).text, values).text;
+      const problem = paceProblem(`${where} ${id}`, text.length, seconds);
+      if (problem) fast.push(problem);
+    };
+    for (const beat of BEATS) {
+      for (const planned of beat.shots) {
+        for (const shot of [planned, ...(planned.fallback ? [planned.fallback] : [])]) {
+          if (shot.kind === "tx") for (const id of [shot.caption, shot.placeholderCaption, shot.partialCaption].filter(Boolean)) check(`${beat.id}/${shot.id}`, id, shot.duration);
+          const cues: { id: string; at: number }[] = shot.captions ?? [];
+          cues.forEach((cue, i) => {
+            const seconds = (cues[i + 1]?.at ?? shot.duration) - cue.at;
+            const c = captions[cue.id];
+            // A caption with `when` shows its else caption otherwise: both must read in the cue's time.
+            for (const id of [cue.id, ...(typeof c === "object" ? [c.else] : [])]) check(`${beat.id}/${shot.id}`, id, seconds);
+          });
+        }
+      }
+    }
+    expect(fast).toEqual([]);
+  });
+
+  it("gives beat 7's card the time its brief, reply, verdict and caption take, and says so when a pick needs more", () => {
+    const tx = BEATS.find((b) => b.id === "stranger-brief")?.shots.find((s) => s.kind === "tx");
+    expect(tx?.duration).toBeGreaterThanOrEqual(11.5);
+    expect(timeline(BEATS).total).toBe(TARGET_SECONDS);
+    const reply = briefReply({ state: "read", files: [{ name: "2026-12-01.jsonl", text: dayFile([briefRow()]) }] }, BRIEF);
+    expect(persuasionReading([briefModel, verdictModel], reply)).toEqual([BRIEF_TEXT, REPLY, "Refused · Market closed (MARKET_CLOSED)"]);
+    expect(persuasionReading([briefModel, verdictModel], { kind: "missing", why: "x" })).toEqual([BRIEF_TEXT, "Refused · Market closed (MARKET_CLOSED)"]);
+    expect(paceProblem("beat 7", 287, 11.5)).toBeNull();
+    expect(paceProblem("beat 7", 609, 11.5)).toBe("beat 7: 609 characters to read in 11.5 s is 53 a second; the film reads at most 25 a second, so it needs 24.4 s");
   });
 });
 
@@ -281,7 +381,7 @@ describe("Maat's agent's reply, from the published journal", () => {
       kind: "reply",
       outcome: "replied",
       text: REPLY,
-      adopted: false,
+      adopted: true,
       file: "journal/2026-12-01.jsonl",
       line: 3,
     });
@@ -311,10 +411,43 @@ describe("Maat's agent's reply, from the published journal", () => {
       state: "read",
       files: [{ name: "2026-12-01.jsonl", text: good }],
     });
-    await expect(readJournal(site({ "index.json": index, "2026-12-01.jsonl": good.replace("No. NYSE", "Yes. NYSE") }))).rejects.toThrow(
+    await expect(readJournal(site({ "index.json": index, "2026-12-01.jsonl": good.replace("Adopted: a 5 USD", "Adopted: a 9 USD") }))).rejects.toThrow(
       /the published journal does not verify/,
     );
     await expect(readJournal(site({ "index.json": index }))).rejects.toThrow(/HTTP 404 for journal\/2026-12-01\.jsonl, which index\.json lists/);
     await expect(readJournal(site({ "index.json": 500 }))).rejects.toThrow(/HTTP 500 for journal\/index\.json/);
+  });
+});
+
+describe("what the capture reads from Base for beat 7's verdict", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  /** A JSON-RPC endpoint that answers `results` by method and records each call. */
+  const rpc = (results: Record<string, unknown>) => {
+    const calls: { method: string; params: unknown[] }[] = [];
+    vi.stubGlobal("fetch", async (_url: string, init: { body: string }) => {
+      const { method, params } = JSON.parse(init.body) as { method: string; params: unknown[] };
+      calls.push({ method, params });
+      return { ok: true, status: 200, json: async () => ({ jsonrpc: "2.0", id: 1, result: results[method] ?? null }) };
+    });
+    return calls;
+  };
+
+  it("reads the Decision's calldata, which a receipt does not hold, and the vault's owner(), read-only", async () => {
+    const { fetchInput, fetchOwner } = await import("../../film/lib/rpc.mjs");
+    const calls = rpc({ eth_getTransactionByHash: { hash: verdictModel.hash, input: ANSWER.input }, eth_call: `0x${"0".repeat(24)}${OWNER.slice(2)}` });
+    expect(await fetchInput(verdictModel.hash, ["https://rpc.example"])).toBe(ANSWER.input);
+    expect(await fetchOwner(CONTRACTS_VAULT, ["https://rpc.example"])).toBe(OWNER.toLowerCase());
+    expect(calls).toEqual([
+      { method: "eth_getTransactionByHash", params: [verdictModel.hash] },
+      { method: "eth_call", params: [{ to: CONTRACTS_VAULT, data: "0x8da5cb5b" }, "latest"] },
+    ]);
+  });
+
+  it("stops when the tx is not on Base, or a node answers another tx", async () => {
+    const { fetchInput } = await import("../../film/lib/rpc.mjs");
+    rpc({});
+    await expect(fetchInput(verdictModel.hash, ["https://rpc.example"])).rejects.toThrow(/no transaction/);
+    rpc({ eth_getTransactionByHash: { hash: BRIEF_TX, input: "0x" } });
+    await expect(fetchInput(verdictModel.hash, ["https://rpc.example"])).rejects.toThrow(/another transaction/);
   });
 });

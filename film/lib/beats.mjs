@@ -64,7 +64,7 @@ export const BEATS = Object.freeze([
         id: "how",
         kind: "page",
         path: "/",
-        duration: 5,
+        duration: 4.5,
         steps: [{ wait: "#how" }, { scroll: "#how-title", over: 1.5, top: TOP }],
         captions: [{ id: "decides-how", at: 0 }],
       },
@@ -72,13 +72,13 @@ export const BEATS = Object.freeze([
         id: "decision-log",
         kind: "clip",
         clip: CLIPS.decisionLog,
-        duration: 6,
+        duration: 5,
         captions: [{ id: "decides-clip", at: 0 }],
         fallback: {
           id: "reasons",
           kind: "page",
           path: "/",
-          duration: 6,
+          duration: 5,
           steps: [{ wait: "#reasons" }, { scroll: "#reasons-title", over: 1.5, top: TOP }],
           captions: [{ id: "decides-log", at: 0 }],
         },
@@ -122,7 +122,7 @@ export const BEATS = Object.freeze([
         id: "trail",
         kind: "page",
         path: "/ledger",
-        duration: 7,
+        duration: 6,
         steps: [
           { wait: '[aria-label="Mainnet decisions"]' },
           { scroll: "#trail-panel-decisions", over: 2, top: TOP },
@@ -133,13 +133,13 @@ export const BEATS = Object.freeze([
         id: "input-utf8",
         kind: "clip",
         clip: CLIPS.inputUtf8,
-        duration: 6,
+        duration: 5,
         captions: [{ id: "proposal-clip", at: 0 }],
         fallback: {
           id: "verify",
           kind: "page",
           path: "/ledger",
-          duration: 6,
+          duration: 5,
           steps: [{ wait: "#verify" }, { scroll: "#verify-title", over: 1.5, top: TOP }],
           captions: [{ id: "proposal-verify", at: 0 }],
         },
@@ -154,7 +154,7 @@ export const BEATS = Object.freeze([
         id: "sim",
         kind: "page",
         path: "/",
-        duration: 4,
+        duration: 3.5,
         steps: [
           { wait: "#try" },
           { click: { within: '[aria-label="Moment presets"]', button: "Thanksgiving" }, settle: 2.5 },
@@ -173,7 +173,7 @@ export const BEATS = Object.freeze([
         id: "sim",
         kind: "page",
         path: "/",
-        duration: 4,
+        duration: 3.5,
         steps: [
           { wait: "#try" },
           { click: { within: '[aria-label="Moment presets"]', button: "Fri 27 Nov · 13:30" }, settle: 2.5 },
@@ -208,9 +208,11 @@ export const BEATS = Object.freeze([
         id: "tx",
         kind: "tx",
         // Once both are on Base: the brief, Maat's agent's reply from the published journal, then the vault's verdict.
+        // No card has more to read, so How it works, the decision trail, the two simulator shots and both clip slots
+        // are kept short for it: the cut lasts 100 s, and no caption reads faster than READ_PACE (lib/cards.mjs).
         layout: "persuasion",
         txs: ["strangerBrief", "vaultAnswer"],
-        duration: 7,
+        duration: 11.5,
         caption: "brief-tx",
         placeholderCaption: "brief-placeholder",
         partialCaption: "pair-partial",
@@ -231,8 +233,7 @@ export const BEATS = Object.freeze([
         steps: [{ wait: "#counts-title" }, { scroll: "#counts-title", over: 1.5, top: TOP }],
         captions: [{ id: "receipts-proof", at: 0 }],
       },
-      // The sign-off, the myth line and the builder line take time to read: four shots gave it a second each (the
-      // gap index, How it works, the decision trail and the Thanksgiving tx), so the cut still lasts 100 s.
+      // The end card holds the sign-off, the myth line, the builder line and where to find Maat: 6 s to read them.
       { id: "end", kind: "card", card: "end", duration: 6, captions: [] },
     ],
   },
@@ -255,6 +256,18 @@ export function shotCues(shot, state = "none") {
 export function effectiveShot(shot, clipsPresent) {
   if (shot.kind !== "clip") return shot;
   return clipsPresent.has(shot.clip) ? shot : shot.fallback;
+}
+
+/**
+ * Where a page shot's scroll stops, in CSS px from the top of the page: the target element `offset` px below the top of
+ * the frame, inside the page (`max` is the page's height less the viewport's), and never so far that the site's footer
+ * enters the frame, where its display line would sit behind the caption. `target` and `footer` are the element's and
+ * the footer's tops in the page (footer null when it has none), `height` the viewport's height.
+ * @param {{ target: number, offset: number, max: number, footer: number | null, height: number }} at
+ */
+export function scrollGoal({ target, offset, max, footer, height }) {
+  const y = Math.min(max, target - offset, footer === null ? Number.POSITIVE_INFINITY : footer - height);
+  return Math.max(0, Math.round(y));
 }
 
 /** Seconds of a page shot that its steps animate or hold; the rest holds the last frame. */

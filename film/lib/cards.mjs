@@ -124,7 +124,23 @@ export function fitProblem(where, contentBottom, frameHeight) {
   return `${where}: the card's content ends at ${Math.round(contentBottom)} px, within ${CAPTION_CLEARANCE} px of the frame's bottom edge at ${Math.round(frameHeight)} px`;
 }
 
-/** The caption overlay: a clear frame with the caption in a dark box near the bottom. */
+/**
+ * The most characters a second a caption asks anyone to read: about the pace of the film's busiest caption (the CI
+ * figures, 98 characters in 4 s). web/test/film-identity.test.ts holds every caption to it, and the capture warns when
+ * a caption with the numbers it read, or beat 7's card with its caption, would go faster.
+ */
+export const READ_PACE = 25;
+
+/** Why `chars` characters cannot be read in `seconds` at READ_PACE, in one line; null when they can. */
+export function paceProblem(where, chars, seconds) {
+  if (chars <= READ_PACE * seconds) return null;
+  return `${where}: ${chars} characters to read in ${seconds} s is ${Math.round(chars / seconds)} a second; the film reads at most ${READ_PACE} a second, so it needs ${(chars / READ_PACE).toFixed(1)} s`;
+}
+
+/**
+ * The caption overlay: a clear frame with the caption in a dark box near the bottom. Its lines are balanced, so a
+ * caption that wraps never leaves one word alone on its last line.
+ */
 export function captionHtml({ format, text, fontsDir }) {
   const wide = format === "wide";
   const placeholder = /^Placeholder:/.test(text);
@@ -132,7 +148,7 @@ export function captionHtml({ format, text, fontsDir }) {
   const css = `
 .cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${CAPTION_BOTTOM[format]}px;max-width:${wide ? 1560 : 500}px;width:max-content;
 background:rgba(11,13,18,.9);color:#fff;border-radius:${wide ? 18 : 12}px;padding:${wide ? "22px 34px" : "13px 18px"};
-font-size:${wide ? 40 : 21}px;line-height:1.3;font-weight:500;text-align:center;letter-spacing:-.005em}
+font-size:${wide ? 40 : 21}px;line-height:1.3;font-weight:500;text-align:center;letter-spacing:-.005em;text-wrap:balance}
 .cap .tag{font-size:${wide ? 22 : 12}px;padding:${wide ? "4px 10px" : "2px 6px"};margin-right:${wide ? 14 : 8}px;vertical-align:${wide ? "6px" : "3px"}}`;
   return documentHtml({
     format,
@@ -153,6 +169,8 @@ function lockupCss(format) {
 .lockup svg{display:block;flex:none;width:${MARK_PX[format]}px;height:${MARK_PX[format]}px}`;
 }
 const lockupHtml = (mark) => `<div class="lockup">${markSvg(mark)}<span>maat</span></div>`;
+/** Each text of the title and end cards breaks into lines of even length, so none ends on one word alone. */
+const BALANCED = ".frame>h1,.frame>p{text-wrap:balance}";
 
 /**
  * The film's first frame: the mark, the positioning line and the mechanism line. `mark` is web/brand/src/mark.svg.
@@ -164,7 +182,8 @@ export function titleCardHtml({ format, fontsDir, mark }) {
 ${lockupCss(format)}
 h1{font-size:${s.h1}px;line-height:1.02;letter-spacing:-.03em;font-weight:600;max-width:${format === "wide" ? 1300 : 480}px}
 .mech{font-size:${Math.round(s.body * 1.35)}px;font-weight:500;letter-spacing:-.01em}
-p{font-size:${s.body}px;color:var(--ink2)}`;
+p{font-size:${s.body}px;color:var(--ink2)}
+${BALANCED}`;
   return documentHtml({
     format,
     fontsDir,
@@ -235,7 +254,8 @@ h1{font-size:${s.h1}px;line-height:1.02;letter-spacing:-.03em;font-weight:600}
 .builder{font-size:${s.body}px;font-weight:500}
 .foot{align-self:stretch;display:flex;flex-direction:column;gap:${Math.round(s.gap / 3)}px;margin-top:${Math.round(s.gap / 2)}px;padding-top:${s.gap}px;border-top:1px solid var(--line)}
 .foot p{font-size:${s.small}px;color:var(--ink2)}
-small{font-size:${s.small}px;color:var(--ink3)}`;
+small{font-size:${s.small}px;color:var(--ink3)}
+${BALANCED}`;
   return documentHtml({
     format,
     fontsDir,
