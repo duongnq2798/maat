@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
+import { DECISION_TOPIC, decisionCounts } from "@/lib/gap/decisions";
 import { EditionFileSchema, type EditionFile } from "@/lib/gap/schema";
+import type { ClosedWindow } from "@/lib/gap/windows";
 
 type Win = EditionFile["windows"][number];
 type Complete = Extract<Win, { status: "complete" }>;
@@ -51,6 +53,74 @@ export function withPendingWindowsMeasured(real: EditionFile): EditionFile {
   }
   const last = real.windows.at(-1)!;
   return EditionFileSchema.parse({ ...real, head: { block: real.head.block + 14 * BLOCKS_PER_DAY, ts: last.openTs + 3600 }, windows: out });
+}
+
+/** Base's 5 blocks a second, as every edition 0 window's blocks run (65.5 h × 3,600 × 5 + 1 blocks each). */
+const BLOCKS_PER_SECOND = 5;
+
+/**
+ * A copy of the complete window `template` moved onto window `w`, which may be shorter or longer: every block and time
+ * shifts by the difference of their closes, the blocks end at `w`'s open, and series points outside `w` are dropped.
+ */
+export function measuredLike(template: Complete, w: ClosedWindow): Complete {
+  const dTs = w.closeTs - template.closeTs;
+  const dBlocks = dTs * BLOCKS_PER_SECOND;
+  const blocks = { from: template.blocks.from + dBlocks, to: template.blocks.from + dBlocks + (w.openTs - w.closeTs) * BLOCKS_PER_SECOND - 1 };
+  const update = <U extends { block: number; ts: number }>(u: U): U => ({ ...u, block: u.block + dBlocks, ts: u.ts + dTs });
+  const inside = <T,>(points: [number, T][]) => points.map(([ts, p]): [number, T] => [ts + dTs, p]).filter(([ts]) => ts >= w.closeTs && ts < w.openTs);
+  return {
+    status: "complete",
+    ...w,
+    blocks,
+    tokens: template.tokens.map((t) => ({
+      ...t,
+      freeze: t.freeze && {
+        ...t.freeze,
+        from: update(t.freeze.from),
+        to: update(t.freeze.to),
+        swapsRead: { from: t.freeze.swapsRead.from + dBlocks, to: Math.max(t.freeze.swapsRead.to + dBlocks, blocks.to) },
+      },
+      largestGap: t.largestGap && { ...t.largestGap, block: t.largestGap.block + dBlocks, ts: t.largestGap.ts + dTs },
+      series: { pool: inside(t.series.pool), feed: inside(t.series.feed) },
+    })),
+  };
+}
+
+/**
+ * What the Monday data PR commits, made up from edition 0 so the page can be tested before it exists: edition 1 with
+ * both windows measured, each a copy of edition 0's last window, and made-up Decisions (no Decision in the Thanksgiving
+ * window; a probe and two agent intents refused in the weekend window). Never written to disk.
+ */
+export function syntheticEdition1(e0: EditionFile): EditionFile {
+  const def = EDITIONS.find((e) => e.edition === 1)!;
+  const template = [...e0.windows].reverse().find((w): w is Complete => w.status === "complete");
+  if (!template) throw new Error("edition 0 has no complete window to copy");
+  const vault = `0x${"5a".repeat(20)}`;
+  const tx = (n: number) => `0x${n.toString(16).padStart(64, "0")}`;
+  const windows = editionWindows(def).map((w, i): Complete => {
+    const m = measuredLike(template, w);
+    const at = (dSec: number, sender: "agent" | "probe", n: number) => ({
+      block: m.blocks.from + dSec * BLOCKS_PER_SECOND,
+      logIndex: 0,
+      ts: w.closeTs + dSec,
+      tx: tx(n),
+      sender,
+      allowed: false,
+      reason: "MARKET_CLOSED" as const,
+    });
+    const list = i === 0 ? [] : [at(60, "probe", 1), at(1800, "agent", 2), at(90_000, "agent", 3)];
+    return { ...m, decisions: { vault, topic: DECISION_TOPIC, ...decisionCounts(list), list } };
+  });
+  const last = windows.at(-1)!;
+  return EditionFileSchema.parse({
+    ...e0,
+    edition: def.edition,
+    title: def.title,
+    from: def.from,
+    to: def.to,
+    head: { block: last.blocks.to + 3600 * BLOCKS_PER_SECOND, ts: last.openTs + 3600 },
+    windows,
+  });
 }
 
 /** The checks every edition file must pass, named after the file. */

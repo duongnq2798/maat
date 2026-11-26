@@ -24,7 +24,7 @@ describe("the committed edition with every pending window measured", () => {
   });
 
   it("leaves a file with nothing pending as it is", () => {
-    const real = PUBLISHED[0]!;
+    const real = PUBLISHED.find((e) => e.edition === 0)!;
     expect(withPendingWindowsMeasured(real)).toBe(real);
   });
 
@@ -42,7 +42,8 @@ describe("the committed edition with every pending window measured", () => {
 });
 
 // The same checks as the committed files get.
-editionFileChecks("edition-0.json", PUBLISHED[0]);
+// Edition 0 by number: once a later edition is published it comes first.
+editionFileChecks("edition-0.json", PUBLISHED.find((e) => e.edition === 0));
 
 // And every test of the page, run again against the synthetic copy.
 await import("./gap-page.test");
