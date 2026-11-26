@@ -134,15 +134,19 @@ function toBrief(log: { blockNumber: bigint | null; transactionHash: Hash | null
 
 /**
  * Every Brief the inbox emitted, from its deploy block (or SCAN_FLOOR_BLOCK when the deploy tx is unknown) to `head`,
- * the head block when it is not given.
+ * the head block when it is not given, `concurrency` chunks at a time (scanLogs' default when it is not given).
  */
-export async function readBriefs(client: LedgerClient, opts: { inbox: Address; deployTx: Hash | null; head?: bigint; signal?: AbortSignal }): Promise<BriefRead> {
+export async function readBriefs(
+  client: LedgerClient,
+  opts: { inbox: Address; deployTx: Hash | null; head?: bigint; signal?: AbortSignal; concurrency?: number },
+): Promise<BriefRead> {
   const head = opts.head ?? (await client.getBlockNumber());
   const from = await deployBlock(client, opts.deployTx);
   const result = await scanLogs({
     from,
     to: head,
     signal: opts.signal,
+    concurrency: opts.concurrency,
     maxFailed: 3,
     getLogs: async (r) => (await client.getLogs({ address: opts.inbox, event: briefEvent, fromBlock: r.from, toBlock: r.to })).flatMap((l) => toBrief(l as never) ?? []),
   });

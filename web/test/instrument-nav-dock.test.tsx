@@ -145,7 +145,7 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
   });
 
   it("wraps the nav in the bar, keeps PR #15's links with the phone menu's, and docks the reading on the landing only", () => {
-    render(<Nav />);
+    render(<Nav askOpen={false} />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(nav.parentElement).toHaveAttribute("data-nav-bar");
     expect(within(nav).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([

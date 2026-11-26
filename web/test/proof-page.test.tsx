@@ -13,9 +13,10 @@ import { PROOF_BOUNTY } from "@/content/proof-bounty";
 import { PROOF_SENDS } from "@/content/proof-sends";
 import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
+import { memoryStorage, saveCache } from "@/lib/chain/cache";
 import { inboxDeployment } from "@/lib/chain/inbox";
 import { docsData } from "@/lib/docs/generated";
-import { answer, decisionLog, executorSetLog, newRpcLog, plainSends, proofChainClient, type ProofChain } from "./helpers/fake-proof-chain";
+import { answer, decisionLog, executorSetLog, newRpcLog, plainSends, proofChainClient, vaultSnapshot, type ProofChain } from "./helpers/fake-proof-chain";
 
 const INBOX: Address = "0x00000000000000000000000000000000000B0001";
 const DEPLOY_TX: Hash = `0x${"d1".repeat(32)}`;
@@ -218,6 +219,36 @@ describe("/proof with a MaatInbox recorded", () => {
     expect(proof.count.outsideBriefs).toBe(3);
   }, 20_000);
 
+  it("reads the Brief logs and the vault's logs 16 windows at a time each, both at once", async () => {
+    // 40 windows of the inbox and more of the vault; each eth_getLogs answer is held a little, so the reads overlap.
+    const chain: ProofChain = { ...CHAIN, head: DEPLOY + 40n * 50_000n - 1n };
+    const now: Record<string, number> = {};
+    const most: Record<string, number> = {};
+    const seen = newRpcLog();
+    const client = createPublicClient({
+      chain: base,
+      transport: custom(
+        {
+          request: async ({ method, params }: { method: string; params?: unknown }) => {
+            const p = (params as unknown[] | undefined) ?? [];
+            if (method !== "eth_getLogs") return answer(chain, seen, method, p);
+            const address = String((p[0] as { address?: unknown }).address).toLowerCase();
+            now[address] = (now[address] ?? 0) + 1;
+            most[address] = Math.max(most[address] ?? 0, now[address]);
+            await new Promise((r) => setTimeout(r, 5));
+            now[address] -= 1;
+            return answer(chain, seen, method, p);
+          },
+        },
+        { retryCount: 0 },
+      ),
+    }) as unknown as ProofClient;
+    const proof = await readProof(client, { inbox: { inbox: INBOX, deployTx: DEPLOY_TX }, deployments: ROWS(true) }, LISTS);
+    expect(proof.problems).toEqual([]);
+    expect(most[INBOX.toLowerCase()]).toBe(16);
+    expect(most[VAULT.toLowerCase()]).toBe(16);
+  }, 20_000);
+
   it("counts with today's committed lists while the executor sends Decisions and the owner sent setExecutor", async () => {
     // The owner's brief (id 2) is its tenth send; setExecutor its eleventh. The executor's three Decisions follow.
     const chain: ProofChain = {
@@ -258,6 +289,93 @@ describe("/proof with a MaatInbox recorded", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText(/Counted to block/)).toBeNull();
+  });
+
+  describe("with the vault's logs from the committed snapshot or the ledger's cache", () => {
+    // The owner hands the executor the role and the executor sends three Decisions, all below the snapshot's block.
+    const chain: ProofChain = {
+      ...CHAIN,
+      vault: { ...CHAIN.vault!, executor: EXECUTOR },
+      txs: [
+        ...CHAIN.txs!,
+        { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: 10, to: VAULT, block: DEPLOY + 10n, logs: [executorSetLog(VAULT, EXECUTOR)] },
+        ...[0, 1, 2].map((i) => ({ hash: `0x${(0xe2 + i).toString(16).repeat(32)}` as Hash, from: EXECUTOR, nonce: i, to: VAULT, block: DEPLOY + 20n + BigInt(i), logs: [decisionLog(VAULT, i + 1)] })),
+      ],
+    };
+    const N = DEPLOY + 900n;
+    const snapshot = vaultSnapshot(chain, VAULT, DEPLOY - 100n, N);
+    const vaultScans = (seen: { logRanges: { from: bigint; address: string }[] }) => seen.logRanges.filter((r) => r.address === VAULT.toLowerCase());
+
+    it("takes the vault's logs from the snapshot it fetches once Base holds each one, scans above it, and says so", async () => {
+      const client = proofChainClient(chain);
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(value("outside-briefs")).toBe("3");
+      expect(screen.getByText(/Counted to block 62,001,000/)).toBeInTheDocument();
+      expect(
+        screen.getByText(
+          "The vault's logs to block 62,000,749 are from the committed snapshot of block 62,000,900: Base gave that block the same hash, and each log's transaction receipt holds it. The rest were read from Base.",
+        ),
+      ).toBeInTheDocument();
+      expect(vaultScans(client.seen).map((r) => r.from)).toEqual([N - 150n]);
+    });
+
+    it("reads the vault's logs from its deploy block, and says nothing of a snapshot, when the fetch fails", async () => {
+      const client = proofChainClient(chain);
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchSnapshot: async () => Promise.reject(new Error("offline")), storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(screen.queryByText(/^The vault's logs to block/)).toBeNull();
+      expect(vaultScans(client.seen).map((r) => r.from)).toEqual([DEPLOY - 6n]);
+    });
+
+    it("takes them from the ledger's cache in this browser when it reaches higher, checked the same way", async () => {
+      const storage = memoryStorage();
+      saveCache({ v: 1, vault: VAULT, from: String(DEPLOY - 6n), to: String(DEPLOY + 950n), logs: vaultSnapshot(chain, VAULT, DEPLOY - 6n, DEPLOY + 950n).logs, blockTimes: {}, gasUsed: {} }, storage);
+      const client = proofChainClient(chain);
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchSnapshot: async () => snapshot, storage }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(
+        screen.getByText("The vault's logs to block 62,000,950 are from this browser's ledger cache, and each log's transaction receipt on Base holds it. The rest were read from Base."),
+      ).toBeInTheDocument();
+      expect(vaultScans(client.seen).map((r) => r.from)).toEqual([DEPLOY + 951n]);
+    });
+
+    it("reads the snapshot's blocks from Base, and counts, when the snapshot leaves out a team send's vault log", async () => {
+      const omitted = { ...snapshot, logs: snapshot.logs.filter((l) => l.transactionHash !== `0x${"e1".repeat(32)}`) };
+      const client = proofChainClient(chain);
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchSnapshot: async () => omitted, storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(value("outside-briefs")).toBe("3");
+      expect(screen.queryByText(/^The vault's logs to block/)).toBeNull();
+      expect(screen.queryByText(/is missing/)).toBeNull();
+      expect(vaultScans(client.seen).map((r) => r.from)).toEqual([N - 150n, DEPLOY - 6n]);
+    });
+
+    it("gives no brief number when a team send is in no log and no committed list, with the snapshot in use", async () => {
+      const lists = { ...LISTS, sends: PROOF_SENDS.map((s) => ({ ...s, txs: s.txs.slice(0, -1) })) };
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(chain), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null, lists }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
+      for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
+      expect(screen.getByText(/0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 11 transactions by block 62,001,000, and 1 is missing/)).toBeInTheDocument();
+    });
+
+    it("gives no brief number when a window of the Brief logs cannot be read, with the snapshot in use", async () => {
+      const failing: ProofChain = { ...chain, failLogs: [{ from: DEPLOY, to: DEPLOY + 49_999n, address: INBOX }] };
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(failing), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
+      for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
+      expect(screen.getByText("Some blocks of the Brief logs could not be read, so briefs may be missing.")).toBeInTheDocument();
+      // The owner's brief in that window is a send the trace cannot see, so it reads the snapshot's blocks from Base too.
+      expect(screen.getByText(/0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a sent 11 transactions by block 62,001,000, and 1 is missing/)).toBeInTheDocument();
+      expect(screen.queryByText(/^The vault's logs to block/)).toBeNull();
+    });
+
+    it("says the briefs could not be read, and shows no number, when a window of the vault's logs above the snapshot cannot be read", async () => {
+      const failing: ProofChain = { ...chain, failLogs: [{ from: N - 150n, to: chain.head, address: VAULT }] };
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(failing), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null }} />);
+      await waitFor(() => expect(screen.getByText(/The briefs could not be read/)).toBeInTheDocument(), { timeout: 15_000 });
+      for (const key of BRIEF_LINES) expect(value(key)).not.toMatch(/^\d/);
+    });
   });
 
   it("switches to the table /data/deployments.json serves at runtime", async () => {

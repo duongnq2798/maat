@@ -329,6 +329,52 @@ describe("the sends the trace finds from the vault's logs and the inbox's briefs
     ]);
   });
 
+  it("reads the vault's logs 16 windows of 50,000 blocks at a time", async () => {
+    // 40 windows from the vault's deploy block; each answer is held a little, so the windows in flight overlap.
+    const c = { ...withTxs(...HANDOVER), head: 62_000_000n + 40n * 50_000n - 1n };
+    const base = proofChainRpc(c);
+    let now = 0;
+    let most = 0;
+    const rpc = async (method: string, params: unknown[]) => {
+      if (method !== "eth_getLogs") return base(method, params);
+      most = Math.max(most, ++now);
+      await new Promise((r) => setTimeout(r, 5));
+      now -= 1;
+      return base(method, params);
+    };
+    const t = await traceTeam(rpc, INPUTS, c.head);
+    expect(t.gaps).toEqual([]);
+    expect(team.LOG_WORKERS).toBe(16);
+    expect(most).toBe(16);
+  });
+
+  it("reads the vault's transactions 25 at a time, so 50 calls fill one batch of the page's client", async () => {
+    // The executor sends 100 Decisions; each transaction and receipt answer is held a little, so the reads overlap.
+    const decisions = Array.from({ length: 100 }, (_, i) => ({
+      hash: txHash(3000 + i),
+      from: EXECUTOR,
+      nonce: i,
+      to: VAULT,
+      block: 62_000_100n + BigInt(i),
+      logs: [decisionLog(VAULT, i + 1, USDC)],
+    }));
+    const c = { ...withTxs(HANDOVER[0]!, ...decisions) };
+    const base = proofChainRpc(c);
+    let now = 0;
+    let most = 0;
+    const rpc = async (method: string, params: unknown[]) => {
+      if (method !== "eth_getTransactionByHash") return base(method, params);
+      most = Math.max(most, ++now);
+      await new Promise((r) => setTimeout(r, 5));
+      now -= 1;
+      return base(method, params);
+    };
+    const t = await traceTeam(rpc, INPUTS, c.head);
+    expect(t.gaps).toEqual([]);
+    expect(team.READ_WORKERS).toBe(25);
+    expect(most).toBe(25);
+  });
+
   it("stops on a chunk of the vault's logs it cannot read", async () => {
     const chain = { ...withTxs(...HANDOVER), failLogs: [{ from: 62_000_000n, to: 62_000_200n, address: VAULT }] };
     await expect(trace(chain)).rejects.toThrow("upstream request timed out");
