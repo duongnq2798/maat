@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Surface } from "@/components/instrument/types";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { type RefusalCode, reasonText } from "@/content/reasons";
-import { type Headline, headlineText, VAULT_NOT_RUN } from "@/lib/live/verdict";
+import { type Headline, headlineText, LEAD, VAULT_NOT_RUN } from "@/lib/live/verdict";
 
 export type VerdictTone = "ink" | "muted";
 
@@ -39,7 +39,9 @@ function codes(h: Headline): RefusalCode[] {
  * one sentence keeps the strip, /now and the announcement in the same words. The tags are two flex boxes, so a screen
  * reader reads "Market closed MARKET_CLOSED" as part of the sentence; no aria-label is needed. When nothing is refused,
  * the closing "vault checks not run" links `methodHref`, the method that says which checks need a vault. `palette`
- * picks TONE (the faceplate, the default) or CHASSIS_TONE; data-tone says the tone on either.
+ * picks TONE (the faceplate, the default) or CHASSIS_TONE; data-tone says the tone on either. With `lead`, the
+ * headline's first words (LEAD) are their own span, data-verdict-lead, so a stylesheet can set them apart from the
+ * verdict; the text stays the same sentence.
  */
 export function VerdictLine({
   headline: h,
@@ -47,15 +49,25 @@ export function VerdictLine({
   className,
   methodHref,
   palette = "faceplate",
+  lead = false,
 }: {
   headline: Headline;
   tone?: VerdictTone;
   className?: string;
   methodHref?: string;
   palette?: Surface;
+  lead?: boolean;
 }) {
   let rest = headlineText(h);
   const parts: ReactNode[] = [];
+  if (lead && rest.startsWith(LEAD)) {
+    parts.push(
+      <span key="lead" data-verdict-lead="">
+        {LEAD}
+      </span>,
+    );
+    rest = rest.slice(LEAD.length);
+  }
   codes(h).forEach((code, i) => {
     const text = reasonText(code);
     const at = rest.indexOf(text);

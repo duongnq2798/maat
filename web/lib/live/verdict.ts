@@ -200,7 +200,8 @@ export function headline(verdicts: readonly TokenVerdict[]): Headline {
   return { kind: "mixed", refused, passed };
 }
 
-const LEAD = "An agent under Maat's default mandate would";
+/** Every headline's first words; the landing's Readout sets them apart, above the verdict (components/live/VerdictLine.tsx). */
+export const LEAD = "An agent under Maat's default mandate would";
 /** Ends the headline when nothing is refused; the strip and /now link these words to the method (spec 4). */
 export const VAULT_NOT_RUN = "vault checks not run";
 

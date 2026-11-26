@@ -220,6 +220,9 @@ describe("the live strip", () => {
     expect(screen.getByRole("link", { name: "60,013,066" })).toHaveAttribute("href", "https://basescan.org/block/60013066");
     expect(verdictSentence()).toBe(headlineText(expected(SAT).headline));
     expect(strip().querySelector("[data-verdict-line]")).toHaveAttribute("data-tone", "muted");
+    // An old verdict never shouts: only a live one is set at the verdict size, above the block number.
+    expect(strip().querySelector("[data-verdict-line]")!.className.split(" ")).not.toContain("readout-verdict");
+    expect(strip().querySelector("[data-verdict-lead]")).toBeNull();
     expect(screen.getByRole("status").textContent).toBe(`Not live. ${headlineText(expected(SAT).headline)}`);
     // The next good answer makes it live again.
     fake.set({ timestamp: SAT + 30 });

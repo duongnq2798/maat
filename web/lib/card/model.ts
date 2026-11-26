@@ -1,5 +1,6 @@
 import { decodeFunctionData, getAddress, type Address, type Hash, type Hex } from "viem";
 import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
+import { billLine } from "@/content/bill";
 import { holidayName, isoOfDay, localTime, regularSession, sessionWindow } from "@/content/calendar";
 import type { ActionName } from "@/content/decisions";
 import { CHECK_LABELS, type CheckMark } from "@/content/engine";
@@ -350,10 +351,9 @@ function billOf(read: CardRead, d: MainnetDecision, event: DecisionEvent, ration
   const isBill = rationale.state === "verified" && blob?.status === "v1" && blob.fields.k === "bill";
   const name = isBill ? "Compute bill" : "Expense";
   const payee = payeeOf(read, event);
-  const amount = formatUsd6(d.amount);
-  if (!d.allowed) return { line: `${name} not paid · ${amount}`, payee: payee ? shortAddress(payee) : null };
-  const to = payee === null ? "payee not read" : read.owner !== null && same(payee, read.owner) ? "to the owner's allowlisted address" : `to the allowlisted address ${shortAddress(payee)}`;
-  return { line: `${name} paid · ${amount} · ${to}`, payee: payee ? shortAddress(payee) : null };
+  // The landing reads a bill in the same words (content/bill.ts).
+  const line = billLine({ name, amount: formatUsd6(d.amount), allowed: d.allowed, payee, owner: read.owner });
+  return { line, payee: payee ? shortAddress(payee) : null };
 }
 
 /**
