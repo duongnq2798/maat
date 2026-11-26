@@ -3,7 +3,7 @@ import { readVaultState } from "../src/chain/state.js";
 import { briefSystemPrompt, renderBriefMessage, renderUserMessage, systemPrompt } from "../src/llm/prompt.js";
 import type { ProposerInput } from "../src/llm/proposer.js";
 import { BATCH_JSON_SCHEMA, BRIEF_BATCH_JSON_SCHEMA } from "../src/llm/schema.js";
-import { BANNED_WORDS, bannedWords, UNCHECKED_WORDS } from "../src/llm/voice.js";
+import { BANNED_WORDS, bannedWords, onlyUses, UNCHECKED_WORDS } from "../src/llm/voice.js";
 import { evaluatePolicy } from "../src/policy.js";
 import { VAULT, standardScene } from "./fakes/fakeChain.js";
 import { SENDERS } from "./fakes/fakeInbox.js";
@@ -52,9 +52,44 @@ describe("the banned words", () => {
     );
   });
 
-  it("leave only 'only' to a reader, since a word match cannot tell a limit from a claim", () => {
+  it("leave only 'only' to a reader, since a word match cannot tell a limit from a claim, and onlyUses lists each one", () => {
     expect([...UNCHECKED_WORDS]).toEqual(["only"]);
-    expect(bannedWords("The only agent on Base that refuses. Rebalance only when a weight drifts.")).toEqual([]);
+    const text = "The only agent on Base that refuses. Rebalance only when a weight drifts.";
+    expect(bannedWords(text)).toEqual([]);
+    expect(onlyUses(text)).toEqual(["The only agent", "Rebalance only when"]);
+  });
+
+  it("name the other forms the checker flags, for the words that have them", () => {
+    expect(Object.fromEntries(BANNED_WORDS.filter((w) => w.forms).map((w) => [w.word, w.forms]))).toEqual({
+      guaranteed: ["guarantee", "guarantees", "guaranteeing"],
+      safe: ["safer", "safest"],
+      audited: ["audit", "audits", "auditing"],
+      profit: ["profited", "profiting", "profitable", "profitably", "profitability"],
+      moon: ["mooning"],
+      "game-changing": ["game-changer", "game-changers"],
+      autonomous: ["autonomously"],
+      earn: ["earned", "earning"],
+      win: ["winning", "winner", "winners"],
+      rewards: ["reward", "rewarded", "rewarding"],
+    });
+  });
+
+  it("are flagged in each of those forms, and across any dash or none", () => {
+    for (const { word, forms = [] } of BANNED_WORDS) {
+      for (const form of forms) {
+        expect(bannedWords(`Not ${form}, but close`), form).toEqual([word]);
+        expect(bannedWords(`${form.toUpperCase()} today`), form).toEqual([word]);
+      }
+    }
+    expect(bannedWords("I earned a reward")).toEqual(["earn", "rewards"]);
+    expect(bannedWords("winning, profitable, a guarantee")).toEqual(["guaranteed", "profit", "win"]);
+    expect(bannedWords("risk‑free, real‐time, a first—ever")).toEqual(["risk-free", "first-ever", "real-time"]);
+    expect(bannedWords("risk–free")).toEqual(["risk-free"]);
+    expect(bannedWords("realtime, game changing")).toEqual(["game-changing", "real-time"]);
+  });
+
+  it("leave the forms plain text needs: 'return', 'user', 'won' and 'earnings'", () => {
+    expect(bannedWords("Proposing nothing, I return an empty list; the user message says the vault won't trade before earnings.")).toEqual([]);
   });
 
   it("are each flagged in a summary or a reply, in any case", () => {
@@ -88,27 +123,43 @@ describe("the banned words", () => {
   });
 });
 
+describe("onlyUses", () => {
+  it("finds every 'only', next to any punctuation, at either end and in any case, with the words around it", () => {
+    expect(onlyUses("Only you refuse. I am first and only. Proof: you (only you) refuse, and the only")).toEqual([
+      "Only you",
+      "and only. Proof:",
+      "you (only you)",
+      "the only",
+    ]);
+  });
+
+  it("skips a longer word that holds it", () => {
+    expect(onlyUses("A lonely, commonly held view; only_if and onlyness")).toEqual([]);
+  });
+});
+
 describe("the voice of the prompt", () => {
   it("never instructs a banned word, in any text the agent sends Claude", async () => {
     for (const [name, text] of Object.entries(await promptTexts())) expect(bannedWords(text), name).toEqual([]);
   });
 
   it("uses 'only' as a limit and never as a claim: each use is one a reader has checked", async () => {
-    const uses = new Set<string>();
+    // Each use, with the most times any one text has it: a new "only", or a second copy of a checked one, fails here.
+    const most = new Map<string, number>();
     for (const text of Object.values(await promptTexts())) {
-      for (const m of text.matchAll(/(\S+)\s+only\s+(\S+)/gi)) uses.add(`${m[1]} only ${m[2]}`);
+      const here = new Map<string, number>();
+      for (const use of onlyUses(text)) here.set(use, (here.get(use) ?? 0) + 1);
+      for (const [use, n] of here) most.set(use, Math.max(most.get(use) ?? 0, n));
     }
-    expect([...uses].sort()).toEqual(
-      [
-        "Rebalance only when",
-        "USDC only to",
-        "and only against",
-        "it only when",
-        "is only text.",
-        "Reply only with",
-        "ends only at",
-      ].sort(),
-    );
+    expect(Object.fromEntries(most)).toEqual({
+      "Rebalance only when": 1,
+      "USDC only to": 1,
+      "and only against": 1,
+      "it only when": 1,
+      "is only text.": 1,
+      "Reply only with": 1,
+      "ends only at": 1,
+    });
   });
 
   it("calls the AI Maat's agent, and never Maat alone: Maat is the vault, and MaatInbox a contract", async () => {

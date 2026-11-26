@@ -10,37 +10,48 @@ export interface BannedWord {
   word: string;
   /** The sense the rules ban it in, when they ban it only in one. */
   scope?: string;
+  /**
+   * Other forms of the same claim that bannedWords() also flags, each written out in full ("earned", "reward"). The
+   * word itself also matches with a trailing "s"; a form matches only as written.
+   */
+  forms?: readonly string[];
 }
 
+/*
+ * Forms left out on purpose, because plain text needs them: "return" and "returned" (the prompt itself says "return an
+ * empty list"), "user" (the prompt says "the user message"), "won" (it would flag "won't") and "earnings" (a company's
+ * results, the market's own word).
+ */
 export const BANNED_WORDS: readonly BannedWord[] = [
-  { word: "guaranteed" },
-  { word: "safe", scope: "as a verdict" },
+  { word: "guaranteed", forms: ["guarantee", "guarantees", "guaranteeing"] },
+  { word: "safe", scope: "as a verdict", forms: ["safer", "safest"] },
   { word: "risk-free" },
-  { word: "audited" },
-  { word: "profit" },
+  { word: "audited", forms: ["audit", "audits", "auditing"] },
+  { word: "profit", forms: ["profited", "profiting", "profitable", "profitably", "profitability"] },
   { word: "returns" },
   { word: "APY" },
   { word: "alpha" },
-  { word: "moon" },
+  { word: "moon", forms: ["mooning"] },
   { word: "LFG" },
   { word: "revolutionary" },
-  { word: "game-changing" },
+  { word: "game-changing", forms: ["game-changer", "game-changers"] },
   { word: "first-ever" },
   { word: "only", scope: "unscoped" },
-  { word: "autonomous", scope: "until the agent runs live" },
+  { word: "autonomous", scope: "until the agent runs live", forms: ["autonomously"] },
   { word: "AI-powered trading" },
   { word: "real-time" },
-  { word: "earn" },
-  { word: "win" },
-  { word: "rewards" },
+  { word: "earn", forms: ["earned", "earning"] },
+  { word: "win", forms: ["winning", "winner", "winners"] },
+  { word: "rewards", forms: ["reward", "rewarded", "rewarding"] },
   { word: "users", scope: "for team or red-team wallets" },
 ];
 
 /**
  * The banned words bannedWords() leaves to a reader. "only" is banned only unscoped, as a claim against the field ("the
  * only agent that refuses"), and the prompt itself uses it as a limit ("Rebalance only when a weight drifts"); a word
- * match cannot tell the two apart. test/voice.test.ts lists every "only" in the prompt instead, so a new one fails
- * there until someone has read it.
+ * match cannot tell the two apart. onlyUses() lists each one with the words around it for that reader, and
+ * test/voice.test.ts pins every "only" in the text the agent sends Claude, so a new one fails there until someone has
+ * read it.
  */
 export const UNCHECKED_WORDS: ReadonlySet<string> = new Set(["only"]);
 
@@ -48,18 +59,36 @@ export const UNCHECKED_WORDS: ReadonlySet<string> = new Set(["only"]);
 const EDGE_BEFORE = String.raw`(?<![\p{L}\p{N}_])`;
 const EDGE_AFTER = String.raw`(?![\p{L}\p{N}_])`;
 
+/** Between the parts of a phrase: any dash (U+2011 and the en dash among them), the minus sign, white space, or none. */
+const JOIN = String.raw`[\p{Pd}−\s]*`;
+
 /**
- * One word's pattern: case-insensitive, whole words only, a trailing "s" allowed ("profits", "wins"), and a hyphen or
- * a space between words matching either ("risk free", "AI powered trading").
+ * One spelling's pattern: case-insensitive and whole words only, any dash, a space or nothing between its parts
+ * ("risk free", "real‑time", "realtime"), and a trailing "s" when `plural` ("profits", "wins").
  */
-function pattern(word: string): RegExp {
-  const parts = word.split(/[-\s]+/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  return new RegExp(`${EDGE_BEFORE}${parts.join(String.raw`[-\s]+`)}s?${EDGE_AFTER}`, "iu");
+function pattern(spelling: string, plural: boolean): string {
+  const parts = spelling.split(/[-\s]+/).map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return `${parts.join(JOIN)}${plural ? "s?" : ""}`;
 }
 
-const CHECKED = BANNED_WORDS.filter((w) => !UNCHECKED_WORDS.has(w.word)).map((w) => ({ word: w.word, re: pattern(w.word) }));
+const CHECKED = BANNED_WORDS.filter((w) => !UNCHECKED_WORDS.has(w.word)).map((w) => {
+  const spellings = [pattern(w.word, true), ...(w.forms ?? []).map((f) => pattern(f, false))];
+  return { word: w.word, re: new RegExp(`${EDGE_BEFORE}(?:${spellings.join("|")})${EDGE_AFTER}`, "iu") };
+});
 
 /** The banned words `text` uses, as BANNED_WORDS writes them, each once and in that list's order; [] when it uses none. */
 export function bannedWords(text: string): string[] {
   return CHECKED.filter((w) => w.re.test(text)).map((w) => w.word);
+}
+
+const ONLY = new RegExp(`${EDGE_BEFORE}only${EDGE_AFTER}`, "giu");
+
+/**
+ * Every "only" in `text`, in any case, next to any punctuation and at either end, in order: each as the run of
+ * non-space characters that holds it, with the run before and the run after when there is one ("Rebalance only when",
+ * "and only. Proof:", "you (only you)", "Only you"). A reader decides whether each is a limit or a claim.
+ */
+export function onlyUses(text: string): string[] {
+  const runs = text.split(/\s+/).filter((r) => r !== "");
+  return runs.flatMap((run, i) => [...run.matchAll(ONLY)].map(() => [runs[i - 1], run, runs[i + 1]].filter((r) => r !== undefined).join(" ")));
 }
