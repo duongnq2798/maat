@@ -12,6 +12,8 @@ import {
   type TransactionReceipt,
 } from "viem";
 import { mandateVaultAbi } from "../abi/index.js";
+import { MAX_BRIEF_TX_PER_DAY } from "../briefs/caps.js";
+import { adoption, openBriefRound, type BriefRound, type BriefSource } from "../briefs/round.js";
 import { firstInLogWindows } from "../chain/logWindows.js";
 import { previewIntent, type PreviewClient, type PreviewResult } from "../chain/preview.js";
 import { readVaultState, StateUnavailable, type StateClient, type VaultState } from "../chain/state.js";
@@ -24,7 +26,7 @@ import type { Proposer } from "../llm/proposer.js";
 import { DEFAULT_POLICY, evaluatePolicy, type PolicyParams } from "../policy.js";
 import { encodeBlob, type EncodedBlob } from "../rationale/blob.js";
 import { oneLine } from "../redact.js";
-import { closedNote, gate, LOGGABLE_REASONS, refusalKey, type Gate, type RefusalKey } from "../refusals.js";
+import { briefRefusalKey, closedNote, gate, LOGGABLE_REASONS, refusalKey, type Gate, type RefusalKey } from "../refusals.js";
 import { CREDIT_ACTIONS, REASONS } from "../types.js";
 import { usdc6ToUsd } from "../units.js";
 
@@ -57,12 +59,14 @@ export interface RunDeps {
   /** Required in live mode. Only a GuardedSender: the vault-only, gas-bounded, Builder-Code path. */
   sender: GuardedSender | null;
   store: Store;
-  journal: Pick<Journal, "append" | "head">;
+  journal: Pick<Journal, "append" | "head" | "briefOutcome">;
   /** The blob's c: gitCommit(), the same value the journal stamps on each row. */
   commit: string;
   /** DEFAULT_POLICY when unset. Its creditActions also decides the prompt and whether a credit proposal is dropped. */
   policy?: PolicyParams;
   runId?: string;
+  /** The MaatInbox deployments/README.md records (briefs/round.ts). Absent: no inbox log is read, no brief sent. */
+  briefs?: BriefSource;
 }
 
 export interface RunReport {
@@ -111,6 +115,13 @@ export interface Handled {
   why?: string;
 }
 
+/**
+ * Who wrote a proposal, for its blob: k for a line the agent's code wrote, m for the model that answered, with q for
+ * the briefs it adopts. `read`, on a Claude intent of a round that sent briefs, holds their ids: the blob text is then
+ * a template (intent.ts buildIntent).
+ */
+export type Author = Pick<BlobContext, "k" | "m" | "q"> & { read?: readonly number[] };
+
 /** The steps runOnce and a probe round (loop/probeRound.ts) share once the round has read the vault. */
 export interface RoundKit {
   /** The state the next step works from: the round's first read, read again after a transaction. */
@@ -125,7 +136,7 @@ export interface RoundKit {
    * A credit proposal is dropped before the preview while credit actions are off. `beforeSend` is asked once more just
    * before the pending entry is stored, after the gas estimate; a reason it returns stops the send.
    */
-  handle(index: number, p: Proposal, by: Pick<BlobContext, "k" | "m">, o?: { gating?: Gating; beforeSend?: () => string | null | Promise<string | null> }): Promise<Handled>;
+  handle(index: number, p: Proposal, by: Author, o?: { gating?: Gating; beforeSend?: () => string | null | Promise<string | null> }): Promise<Handled>;
 }
 
 /** The kit for a round that read the vault at `first`. A failed step throws; the caller journals a halted round. */
@@ -289,7 +300,8 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
       dirty = false;
     }
     // j is the journal head when this blob is built: the last row written before it, this round's or an earlier one's.
-    const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...by } });
+    const { read, ...author } = by;
+    const b = buildIntent(p, s, { runId, index, expensePayee: d.expensePayee, blob: { c: d.commit, j: await j.head(), ...author }, ...(read ? { read } : {}) });
     if (!b.ok) {
       await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error: b.error });
       report.skipped++;
@@ -297,7 +309,9 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
     }
     const pv = await previewIntent(d.previewClient, d.vault, d.executor, b.intent);
     const preview = pv.result;
-    const key = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview) ? refusalKey(preview, s) : null;
+    // A brief-driven intent's refusal is keyed by its brief ids, so each adopted brief's refusal is its own attempt.
+    const loggable = preview !== "OK" && preview !== "UNKNOWN" && LOGGABLE_REASONS.has(preview);
+    const key = loggable ? (by.q ? briefRefusalKey(by.q, preview) : refusalKey(preview, s)) : null;
     const g = (o.gating ?? gate)(preview, key, key !== null && d.store.hasLoggedRefusal(key));
     // A MARKET_CLOSED log names the closed phase: the blob is rebuilt with the note (every other field kept, j
     // included) and the intent hashes the final blob. The vault's checks never read rationaleHash, so the preview stands.
@@ -318,7 +332,7 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
       blob: blob.blob,
       preview,
       ...(pv.error === undefined ? {} : { previewError: pv.error }),
-      ...(key && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
+      ...(key && !by.q && s.calendar === null ? { note: `calendar unreadable: the refusal is keyed by UTC day ${s.day}` } : {}),
     };
     const notSent = async (why: string, outcome: "dry-run" | "skipped" = "skipped"): Promise<Handled> => {
       await j.append({ ...row, gate: why });
@@ -333,6 +347,9 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
 
     // Persist the intent as pending before it can leave the process, so a crash, a receipt timeout or a send that
     // fails after broadcast is reconciled next round instead of being billed or logged twice.
+    if (by.q && d.store.briefDay(day).txs >= MAX_BRIEF_TX_PER_DAY) {
+      return notSent(`brief budget: ${MAX_BRIEF_TX_PER_DAY} brief-driven transactions sent on UTC day ${day}`);
+    }
     checkCap();
     const data = encodeExecute(intent);
     // Gas is estimated on the bytes the sender will broadcast: the call, the blob and the Builder Code. A refusal
@@ -353,6 +370,7 @@ export function roundKit(d: RunDeps, runId: string, report: RunReport, first: Va
     };
     d.store.addPending(entry);
     d.store.recordTx(day);
+    if (by.q) d.store.recordBriefTx(day);
     await d.store.save();
     let hash: Hex;
     try {
@@ -419,10 +437,14 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     // The cap is checked before each call, so the call that crosses it is the day's last; bills and housekeeping go on.
     const spent = d.store.computeOn(day);
     const capped = spent >= d.maxLlmUsd6PerDay;
+    const br: BriefRound | null = d.briefs ? await openBriefRound({ source: d.briefs, store: d.store, journal: j, runId, day, llmCapped: capped }) : null;
+    const briefs = br?.send.map((b) => ({ id: b.id, from: b.from, text: b.text })) ?? [];
     const out = capped
       ? { ok: false as const, error: `llm cap: ${dollars(spent)} of ${dollars(d.maxLlmUsd6PerDay)} spent on UTC day ${day}; Claude not called`, costUsd6: 0n }
-      : await d.proposer.propose({ state: s, policy, billUsd6: unpaid, creditActions: params.creditActions });
+      : await d.proposer.propose({ state: s, policy, billUsd6: unpaid, creditActions: params.creditActions, ...(briefs.length > 0 ? { briefs } : {}) });
     if (!capped) d.store.recordCompute(day, out.costUsd6);
+    // The brief budget's Claude spend: the whole cost of every round that carried a brief.
+    if (briefs.length > 0) d.store.recordBriefLlm(day, out.costUsd6);
     await j.append({
       kind: "run",
       runId,
@@ -439,16 +461,41 @@ export async function runOnce(d: RunDeps): Promise<RunReport> {
     if (!out.ok) report.error = out.error;
 
     // Each proposal carries its author for the blob: k = bill for the line this code writes, m for the model that answered.
-    const queue: { p: Proposal; by: Pick<BlobContext, "k" | "m"> }[] = [];
+    const queue: { p: Proposal; by: Author; error?: string }[] = [];
     if (unpaid >= d.billMinUsd6) {
       const usd = usdc6ToUsd(unpaid);
       const rationale = `Compute bill: $${usd.toFixed(6)} of Claude API usage unpaid as of UTC day ${day}`;
       queue.push({ p: { action: "PAY_EXPENSE", symbol: "USDC", amountUsd: usd, rationale }, by: { k: "bill" } });
     }
-    if (out.ok) queue.push(...out.proposals.map((p) => ({ p, by: { m: out.model } })));
+    // In a round that sent briefs, no Claude text reaches a blob: an intent that adopts briefs adds q and its text is
+    // briefText; one of Claude's own carries the ids it read and its text is ownText (intent.ts).
+    const sentIds = new Set(briefs.map((b) => b.id));
+    const read = briefs.length > 0 ? briefs.map((b) => b.id) : null;
+    const cited = new Set<number>();
+    if (out.ok) {
+      for (const p of out.proposals) {
+        const a = adoption(p, sentIds, cited);
+        queue.push({ p, by: { m: out.model, ...(a.q ? { q: a.q } : read ? { read } : {}) }, ...(a.error ? { error: a.error } : {}) });
+      }
+    }
     report.proposals = queue.length;
 
-    for (const [index, { p, by }] of queue.entries()) await k.handle(index, p, by);
+    // A brief is journaled as adopted only once an intent that cites it reached the vault: sent, or previewed by a
+    // dry-run that would send it. Its row is written after the queue, and still when a step halts the round.
+    const reached = new Set<number>();
+    try {
+      for (const [index, { p, by, error }] of queue.entries()) {
+        if (error) {
+          await j.append({ kind: "skip", runId, index, symbol: p.symbol, action: p.action, error });
+          report.skipped++;
+          continue;
+        }
+        const h = await k.handle(index, p, by);
+        if (by.q && (h.outcome === "sent" || h.outcome === "dry-run")) for (const id of by.q) reached.add(id);
+      }
+    } finally {
+      await br?.answer(out, reached);
+    }
   } catch (e) {
     report.status = "halted";
     // The first line only, redacted: viem lists the RPC URL, which may carry a key, on the lines below it.

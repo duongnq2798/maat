@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import type { JournalRead } from "@/lib/chain/ledger";
 import type { LedgerClient } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
 import { BriefForm, type BriefFormDeps } from "./BriefForm";
@@ -15,6 +16,8 @@ export const ASK_NOTICE =
 export interface AskDeps extends BriefFormDeps {
   client?: LedgerClient;
   fetchConfig?: () => Promise<AskConfig>;
+  /** Reads the published agent journal, for the agent's answers in the feed; readJournal when unset. */
+  journal?: () => Promise<JournalRead>;
 }
 
 function Section({ id, title, lead, children }: { id: string; title: string; lead: string; children: ReactNode }) {
@@ -105,7 +108,7 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
 
       {open ? (
         <Section id="feed-title" title="Briefs" lead="Every brief sent to the inbox, newest first, read from its logs on Base. Shown as plain text, with no links.">
-          <BriefsPanel inbox={config.inbox} client={client} reloadKey={reloadKey} />
+          <BriefsPanel inbox={config.inbox} client={client} reloadKey={reloadKey} {...(deps.journal ? { journal: deps.journal } : {})} />
         </Section>
       ) : null}
     </div>

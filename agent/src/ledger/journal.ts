@@ -1,6 +1,8 @@
 import { appendFile, mkdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { keccak256, toBytes, type Address, type Hex } from "viem";
+import { MAX_REPLY_CHARS, type BriefCap } from "../briefs/caps.js";
+import { briefKey } from "../briefs/inbox.js";
 import type { PreviewResult } from "../chain/preview.js";
 import type { ProbeExpectation, ProbeOutcome } from "../probes.js";
 import { GENESIS, MAX_TEXT_CHARS } from "../rationale/blob.js";
@@ -22,7 +24,12 @@ export type JournalEntry =
   | { kind: "skip"; runId: string; index: number; symbol: string; action: string; error: string }
   | { kind: "error"; runId: string; message: string }
   /** One MAAT_PROBES instant: what the calendar there led it to expect and what became of it; `note` says why. */
-  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string };
+  | { kind: "probe"; runId: string; at: string; expected?: ProbeExpectation; outcome: ProbeOutcome; note?: string }
+  /** A MaatInbox brief a round decided, under its identity, never its text: `reply` is sanitized, `cap` names a skip. */
+  | { kind: "brief"; runId: string; briefId: number; from: Address; txHash: Hex; logIndex: number; block: bigint; outcome: BriefOutcome; cap?: BriefCap; reply?: string; adopted?: boolean; note?: string };
+
+/** What became of a brief: Claude replied, Claude was sent it but gave no usable reply, or a cap kept it from Claude. */
+export type BriefOutcome = "replied" | "unanswered" | "skipped";
 
 type Stringified<T> = {
   [K in keyof T]: T[K] extends bigint ? string : T[K] extends bigint | undefined ? string | undefined : T[K];
@@ -50,6 +57,7 @@ const BY_KIND: Readonly<Record<string, readonly string[]>> = {
   housekeeping: ["call", "token", "txHash", "gas", "gasUsed"],
   skip: ["index", "symbol", "action"],
   probe: ["at", "expected", "outcome"],
+  brief: ["briefId", "from", "txHash", "logIndex", "block", "outcome", "cap", "adopted"],
 };
 /** How a `run` row's error starts when the daily LLM cap stopped the round before Claude was called (runOnce.ts). */
 const LLM_CAP_ERROR = "llm cap: ";
@@ -67,6 +75,8 @@ export function project(row: Readonly<Record<string, unknown>>): Record<string, 
     if (typeof row.summary === "string" && clean(row.summary) !== "") p.summary = sanitize(row.summary, MAX_TEXT_CHARS);
     if (typeof row.error === "string" && row.error.startsWith(LLM_CAP_ERROR)) p.capped = true;
   }
+  // A brief's reply is sanitized like a summary, to MAX_REPLY_CHARS, and left out when nothing of it is left.
+  if (kind === "brief" && typeof row.reply === "string" && clean(row.reply) !== "") p.reply = sanitize(row.reply, MAX_REPLY_CHARS);
   return p;
 }
 
@@ -246,7 +256,24 @@ export class Journal {
     return this.firstRow(isLiveRow);
   }
 
-  private async firstRow(match: (r: Record<string, unknown>) => boolean): Promise<{ ts?: unknown; runId?: unknown } | null> {
+  /**
+   * The outcome of the first brief row on disk for the brief under `key` (briefs/inbox.ts briefKey), or null when there
+   * is none; a line cut short is passed over, as in firstDryRunRow.
+   */
+  async briefOutcome(key: string): Promise<string | null> {
+    const row = await this.firstRow(
+      (r) =>
+        r.kind === "brief" &&
+        typeof r.briefId === "number" &&
+        typeof r.txHash === "string" &&
+        typeof r.logIndex === "number" &&
+        typeof r.outcome === "string" &&
+        briefKey({ id: r.briefId, txHash: r.txHash as Hex, logIndex: r.logIndex }) === key,
+    );
+    return row === null ? null : (row.outcome as string);
+  }
+
+  private async firstRow(match: (r: Record<string, unknown>) => boolean): Promise<Record<string, unknown> | null> {
     let text: string;
     try {
       text = await readFile(this.file, "utf8");
@@ -262,7 +289,7 @@ export class Journal {
       } catch {
         continue;
       }
-      if (row !== null && typeof row === "object" && match(row as Record<string, unknown>)) return row as { ts?: unknown; runId?: unknown };
+      if (row !== null && typeof row === "object" && match(row as Record<string, unknown>)) return row as Record<string, unknown>;
     }
     return null;
   }

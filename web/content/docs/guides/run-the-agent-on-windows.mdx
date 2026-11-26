@@ -4,7 +4,7 @@ description: "Keep the agent running on a Windows PC: power, updates and clock, 
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-25
+lastReviewed: 2026-11-26
 sources:
   - agent/package.json
   - agent/scripts/restart-loop.ts
@@ -12,6 +12,7 @@ sources:
   - agent/src/main.ts
   - agent/src/config.ts
   - agent/src/runtime.ts
+  - agent/src/briefs/inbox.ts
   - agent/src/llm/proposer.ts
   - agent/src/loop/scheduler.ts
   - agent/src/loop/heartbeat.ts
@@ -156,7 +157,7 @@ Three settings guard the agent's first live runs. Their defaults apply when `age
 | `MAAT_MAX_LLM_USD_PER_DAY` | `0.75` | A cap, in dollars, on the Claude cost the agent records for one UTC day. A round that finds the day's recorded cost at or above it does not call Claude. The check comes before each call, so the call that crosses the cap is the day's last. `0` means Claude is never called. |
 | `MAAT_BILL_MIN_USD` | `1.00` in live mode, `0.10` in dry-run mode | The smallest unpaid compute bill a round pays back to `MAAT_EXPENSE_PAYEE`. Dry-run mode includes a start with `--dry-run`. |
 
-With the defaults, the agent's first line ends with `credit=off llm-cap=$0.75/day bill-min=$1.00` in live mode, and with `bill-min=$0.10` in dry-run mode. Check them in that line each time you start the loop.
+With the defaults, the agent's first line holds `credit=off llm-cap=$0.75/day bill-min=$1.00` in live mode, and `bill-min=$0.10` in dry-run mode, followed by `briefs=off`, or `briefs=on` once `deployments/README.md` records the MaatInbox. Check them in that line each time you start the loop.
 
 ## Schedule probes
 
@@ -195,7 +196,8 @@ These are the lines the loop and the agent print in the tab, with placeholders f
 | `restart-loop: agent started (pid <PID>), start <N>` | Each time the loop starts the agent. `<PID>` is the process the loop started, `npm run agent`, not the agent's own pid that the heartbeat and the lock file give. |
 | `maat agent: ignoring <NAMES>: Claude is called only at https://api.anthropic.com, with ANTHROPIC_API_KEY` | Before the agent's first line, only when `ANTHROPIC_BASE_URL` or `ANTHROPIC_AUTH_TOKEN` is set, in the terminal or in `agent/.env`. `<NAMES>` names the one that is set, or both. The agent does not stop for it. |
 | `maat agent: ignoring ANTHROPIC_API_KEY from the environment: Claude is called with the one in agent/.env` | Before the agent's first line, only when the terminal has an `ANTHROPIC_API_KEY` that differs from the one in `agent/.env`. The agent calls Claude with the key in `agent/.env` and prints neither key. It does not stop for it. |
-| `maat agent: mode=<MODE> vault=<VAULT> executor=<EXECUTOR> data=<DIR> credit=off llm-cap=$0.75/day bill-min=$1.00` | The agent's first line once its settings load, here with the live defaults. |
+| `maat agent: mode=<MODE> vault=<VAULT> executor=<EXECUTOR> data=<DIR> credit=off llm-cap=$0.75/day bill-min=$1.00 briefs=off` | The agent's first line once its settings load, here with the live defaults and no MaatInbox recorded. |
+| `maat agent: briefs=off: <WHY>, so no inbox log is read` | Right after the first line while briefs are off. With an inbox recorded it reads `maat agent: briefs=on:`, the inbox address and the caps ([Briefs](/docs/guides/run-the-agent#briefs)). |
 | `round <RUN_ID>: <STATUS>, sent <N>, skipped <M>` | After each round. A halted round adds its reason in parentheses. A round whose journal `run` line has an error adds `; error: <ERROR>`, in the one-line form of `round failed:` below: Claude's call failed, for example on a key that Anthropic rejects, or the daily Claude cap stopped it. Such a round can still read `done`. |
 | `round failed: <ERROR>` | A round threw. The error is one line, with URLs, keys and other secret values replaced. The next round runs after <Fact name="offSessionMinutes" />. |
 | `maat agent stopped: <ERROR>` | The agent could not start. The same one-line form. |

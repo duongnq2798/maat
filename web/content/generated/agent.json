@@ -213,10 +213,15 @@
     {
       "name": "verify",
       "command": "node --import tsx scripts/verify-decision.ts"
+    },
+    {
+      "name": "eval:briefs",
+      "command": "node --env-file-if-exists=.env --import tsx scripts/eval-briefs.ts"
     }
   ],
   "scriptFiles": [
     "cdp-setup.ts",
+    "eval-briefs.ts",
     "first-decision.ts",
     "gen-abis.ts",
     "heartbeat.ts",

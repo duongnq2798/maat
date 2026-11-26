@@ -14,7 +14,8 @@
     "agent": "node --env-file-if-exists=.env --import tsx src/main.ts",
     "agent:loop": "node --import tsx scripts/restart-loop.ts",
     "agent:heartbeat": "node --import tsx scripts/heartbeat.ts",
-    "verify": "node --import tsx scripts/verify-decision.ts"
+    "verify": "node --import tsx scripts/verify-decision.ts",
+    "eval:briefs": "node --env-file-if-exists=.env --import tsx scripts/eval-briefs.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.6.0",
