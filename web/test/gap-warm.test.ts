@@ -169,7 +169,13 @@ const measure = (base: Base, cacheDir: string | null, opts: { edition?: number; 
 /** The spans that are settled at `head`: they end SETTLED or more blocks below it, so a run at that head keeps them. */
 const settledAt = (head: number) => (q: { to: number }) => q.to <= head - SETTLED;
 
-describe("warmEdition", () => {
+/**
+ * Each test runs whole editions against the fake Base and writes real cache files: about 1 s alone, and more than 5 s,
+ * vitest's default, on a loaded machine.
+ */
+const HEAVY = { timeout: 30_000 };
+
+describe("warmEdition", HEAVY, () => {
   it("leaves Monday's --complete run only the spans that were not settled below Sunday's head, and the same file", async () => {
     const cold = thanksgivingWeek();
     cold.finalizedBlock = MONDAY;
@@ -388,7 +394,7 @@ describe("warmEdition", () => {
   });
 });
 
-describe("npm run gap-index -- --warm", () => {
+describe("npm run gap-index -- --warm", HEAVY, () => {
   const cli = (base: Base, over: Partial<GapCliDeps> = {}) => {
     const printed: string[] = [];
     const lines: string[] = [];
