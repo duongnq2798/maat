@@ -61,7 +61,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "get-started/what-is-maat",
         "What is Maat",
-        "The problem with agents that trade tokenized stocks around the clock, and how a mandate onchain decides every trade they propose.",
+        "The problem with agents that trade tokenized stocks around the clock, and how a vault onchain weighs every trade they propose against a written mandate.",
       ),
       page(
         "get-started/how-a-decision-is-made",

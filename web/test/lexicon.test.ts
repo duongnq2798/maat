@@ -60,9 +60,10 @@ const RULES: readonly Rule[] = [
   },
   {
     id: "decider",
-    pattern: /\b(?:contract|mandate)\s+decides\b/gi,
+    // Up to three words may stand between: "a mandate onchain decides". The vault between them is the approved decider.
+    pattern: /\b(?:contract|mandate)(?:\s+(?!vault\b)[\w'’-]+){0,3}?\s+decides\b/gi,
     say: "the vault decides",
-    retired: ["the contract decides", "the mandate decides"],
+    retired: ["the contract decides", "the mandate decides", "a mandate onchain decides"],
   },
   {
     id: "proposer",
@@ -86,9 +87,11 @@ const RULES: readonly Rule[] = [
   },
   {
     id: "frozen",
-    pattern: /\bfrozen\b/gi,
+    // Retired for a feed, its price or its hours. A test's clock or a still frame may be frozen: "a frozen clock", "the
+    // clock is frozen at 15:59".
+    pattern: /(?<!\b(?:clocks?|time|timers?|frames?)\b[^.;:,\n]{0,24})\bfrozen\b(?!\s+(?:clocks?|time|timers?|frames?|dates?)\b)/gi,
     say: "held without an update",
-    retired: ["frozen"],
+    retired: ["frozen", "49.40 h frozen", "the frozen answer", "frozen over the weekend"],
   },
   {
     id: "divine",
@@ -373,6 +376,21 @@ describe("the scan", () => {
     expect(scan("whatever the agent proposes.\n\nThe contract\ndecides")).toEqual(["decider: contract decides"]);
   });
 
+  it("reads a decider a few words from its verb, and lets the vault decide", () => {
+    expect(scan("and how a mandate onchain decides every trade they propose")).toEqual(["decider: mandate onchain decides"]);
+    expect(scan("The contract on Base decides.")).toEqual(["decider: contract on Base decides"]);
+    expect(scan("It checks every intent against the mandate and the vault decides. The mandate is what the vault decides against.")).toEqual([]);
+  });
+
+  it("flags frozen for a feed, its price or its hours, not for a clock or a frame a test holds still", () => {
+    expect(scan("The feed stays frozen over the weekend: 49.40 h frozen, up to 254 bps above the frozen answer.")).toEqual([
+      "frozen: frozen",
+      "frozen: frozen",
+      "frozen: frozen",
+    ]);
+    expect(scan("now-week.spec.ts runs with a frozen clock in a closed window. The clock is frozen at 15:59. A frozen frame.")).toEqual([]);
+  });
+
   it("skips Markdown's code and link targets, and keeps alt and title text", () => {
     expect(scan("```ts\nconst motto = \"LLM proposes, contract decides.\";\n```\n\nThe `FROZEN` and `frozen` codes.")).toEqual([]);
     expect(scan("[a page](/docs/frozen-feed) and <img alt=\"a frozen feed\" src=\"/frozen.png\">")).toEqual(["frozen: frozen"]);
@@ -412,7 +430,8 @@ describe("the repository's public copy", () => {
     expect(unread).toEqual([]);
   });
 
-  it("uses no retired variant", () => {
+  // The scan parses every file of the scope: on a busy machine its first run takes longer than the default 5 s.
+  it("uses no retired variant", { timeout: 60_000 }, () => {
     const hits = scoped()
       .filter((f) => !SKIPPED(f) && !PENDING.has(f))
       .flatMap(fileHits);

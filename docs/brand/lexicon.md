@@ -38,11 +38,11 @@ a line for another reason code waits until that code has fired on Base mainnet.
 
 - **"held without an update"** instead of "frozen", for a feed or its price in public copy, as the Gap Index's charts
   print a window's hours: "<hours> h held without an update". Where a label has little room, "held" alone: "the held
-  answer", "feed held".
+  answer", "feed held". The word stays free for what is not a feed: a test runs with "a frozen clock".
 - **"Maat's agent replied"** instead of "Maat replied", for a reply to a brief.
 - **"Claude proposes"** instead of "the LLM proposes", "the AI proposes" or "the model proposes".
-- **"the vault decides"** instead of "the contract decides" or "the mandate decides". The mandate is what the vault
-  checks against; the vault is what decides.
+- **"the vault decides"** instead of "the contract decides", "the mandate decides" or "a mandate onchain decides". The
+  mandate is what the vault checks against; the vault is what decides.
 
 ## The name
 
@@ -75,12 +75,12 @@ The test fails on each of these in public copy. Each has one replacement.
 | "The agent proposes. The mandate decides." | "Claude proposes. The vault decides." |
 | "the agent proposes, the contract decides" | "Claude proposes. The vault decides." |
 | "Claude proposes every trade and an onchain mandate decides" | "Claude proposes. The vault decides." |
-| "the contract decides", "the mandate decides" | "the vault decides" |
+| "the contract decides", "the mandate decides", "a mandate onchain decides" | "the vault decides" |
 | "the LLM proposes", "the AI proposes", "the model proposes" | "Claude proposes" |
 | "Maat is an AI agent", "Maat is a treasury agent", "Maat, the treasury agent", "Maat's AI" | "Maat's agent", with Maat as the project and the vault |
 | "You are Maat," in the agent's prompt | "You are Maat's agent," |
 | "Maat replied" | "Maat's agent replied" |
-| "frozen", for a feed or its price | "held without an update" |
+| "frozen", for a feed or its price: "49.40 h frozen", "the frozen answer", "frozen over the weekend" | "held without an update" |
 | "divine", for Ma'at | "what is right" |
 
 ## What the test reads
