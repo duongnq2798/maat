@@ -4,14 +4,16 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import { keccak256, toBytes, toFunctionSelector, type Address, type Hash, type Hex } from "viem";
+import { encodeFunctionResult, keccak256, toBytes, toFunctionSelector, type Address, type Hash, type Hex } from "viem";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { countBriefs, reportLines, type ProofLists } from "@/app/(site)/proof/count";
 import { readProof } from "@/app/(site)/proof/load";
 import { DECISION_NOTE, TEAM_SET_NOTE } from "@/app/(site)/proof/team";
 import { COINBASE_INDEXER, EAS_ADDRESS, easAbi, indexerAbi, VERIFIED_ACCOUNT_SCHEMA, type Attestation } from "@/app/(site)/proof/verified";
 import type { TeamWallet } from "@/content/proof-team";
+import { memoryStorage, saveCache } from "@/lib/chain/cache";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
+import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
 import { parseDeployments } from "@/lib/docs/docs-data";
 import * as recount from "../../scripts/recount.mjs";
 import {
@@ -23,8 +25,10 @@ import {
   serveProofChain,
   transferLog,
   txReads,
+  vaultSnapshot,
   type FakeTx,
   type ProofChain,
+  type ProofRpcLog,
 } from "./helpers/fake-proof-chain";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
@@ -150,8 +154,8 @@ const CONFIG = { inbox: { inbox: INBOX, deployTx: DEPLOY_TX }, deployments: ROWS
 
 const TABLE_HEAD = "| Network | Contract | Address | Tx | Date |\n|---|---|---|---|---|\n";
 
-/** A checkout with only the files the script reads: the deployments table and the five lists. */
-function fixtureRoot(inboxRow: boolean, lists: ProofLists = LISTS): string {
+/** A checkout with only the files the script reads: the deployments table, the five lists and, if given, a snapshot. */
+function fixtureRoot(inboxRow: boolean, lists: ProofLists = LISTS, snapshot?: unknown): string {
   const root = mkdtempSync(join(tmpdir(), "maat-recount-"));
   mkdirSync(join(root, "deployments"));
   mkdirSync(join(root, "web", "content"), { recursive: true });
@@ -165,6 +169,10 @@ function fixtureRoot(inboxRow: boolean, lists: ProofLists = LISTS): string {
   writeFileSync(join(root, "web", "content", "proof-bounty.ts"), ts("PROOF_BOUNTY", lists.bounty));
   writeFileSync(join(root, "web", "content", "proof-sends.ts"), ts("PROOF_SENDS", lists.sends));
   writeFileSync(join(root, "web", "content", "proof-stops.ts"), ts("PROOF_STOPS", lists.stops));
+  if (snapshot !== undefined) {
+    mkdirSync(join(root, "web", "content", "generated"));
+    writeFileSync(join(root, "web", "content", "generated", "decisions-snapshot.json"), JSON.stringify(snapshot));
+  }
   roots.push(root);
   return root;
 }
@@ -255,6 +263,31 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     expect(new Set(rpc.seen.calls.slice(before).map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
   });
 
+  it("asks the indexer and EAS about 25 wallets at a time, as the trace reads transactions, and keeps the wallets' order", async () => {
+    const wallets = Array.from({ length: 60 }, (_, i) => `0x${(0xa000 + i).toString(16).padStart(40, "0")}`);
+    const uidOf = (i: number): Hex => `0x${(i + 1).toString(16).padStart(64, "0")}`;
+    const most = { getAttestationUid: 0, getAttestation: 0 };
+    let inFlight = 0;
+    const call = async (_method: string, params: unknown[]) => {
+      const { to, data } = params[0] as { to: string; data: Hex };
+      const fn = to === lower(COINBASE_INDEXER) ? "getAttestationUid" : "getAttestation";
+      inFlight += 1;
+      most[fn] = Math.max(most[fn], inFlight);
+      await new Promise((r) => setTimeout(r, 5));
+      inFlight -= 1;
+      if (fn === "getAttestationUid") {
+        const i = wallets.indexOf(`0x${data.slice(34, 74)}`);
+        return i % 2 === 0 ? uidOf(i) : ZERO32;
+      }
+      const i = Number(BigInt(`0x${data.slice(10, 74)}`)) - 1;
+      return encodeFunctionResult({ abi: easAbi, functionName: "getAttestation", result: attestation(uidOf(i), wallets[i] as Address) });
+    };
+    const out = await recount.verifiedAccounts(call, wallets, "0x1", 1_800_000_000n);
+    expect([...out.keys()]).toEqual(wallets);
+    expect([...out.values()]).toEqual(wallets.map((_, i) => (i % 2 === 0 ? uidOf(i) : null)));
+    expect(most).toEqual({ getAttestationUid: 25, getAttestation: 25 });
+  });
+
   it("reads no transaction of an outsider's notifyRevenue, on the page or in the recount, and still gives the same report", async () => {
     // 40 outsiders each make the vault emit RevenueReceived, as anyone may for a unit of USDC and the gas.
     const spam: FakeTx[] = Array.from({ length: 40 }, (_, i) => ({
@@ -284,6 +317,22 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
       expect(txReads(loud.seen)).toBe(txReads(quiet.seen));
     } finally {
       await Promise.all([quiet.close(), loud.close()]);
+    }
+  });
+
+  it("reads the Brief logs and the vault's logs 16 windows at a time each, as the page does", async () => {
+    // Each answer waits long enough that all 16 requests of a round arrive first, even on a busy machine.
+    const long: ProofChain = { ...CHAIN, head: DEPLOY + 40n * 50_000n - 1n, logDelayMs: 150 };
+    const server = await serveProofChain(long);
+    try {
+      const out = await recountRun(["--rpc", server.url, "--root", root]);
+      expect(out.code).toBe(0);
+      const page = await readProof(proofChainClient(long), CONFIG, LISTS);
+      expect(reportOf(out.stdout)).toEqual(reportLines(page.count, page.verified!, "counted", page.team));
+      expect(server.seen.logsInFlight[lower(INBOX)]).toBe(16);
+      expect(server.seen.logsInFlight[lower(VAULT)]).toBe(16);
+    } finally {
+      await server.close();
     }
   });
 
@@ -376,6 +425,156 @@ describe("the recount when a team wallet sent a transaction that no vault or inb
   });
 });
 
+/** The snapshot `npm run snapshot` would write for CHAIN at block N: every vault log from the vault's deploy block. */
+const N = DEPLOY + 100_000n;
+const SNAPSHOT = vaultSnapshot(CHAIN, VAULT, DEPLOY - 10n, N);
+const SNAPSHOT_FILE = "web/content/generated/decisions-snapshot.json";
+/** The lowest block of an eth_getLogs of the vault. */
+const lowestVault = (seen: ProofRpcLog) => seen.logRanges.filter((r) => r.address === lower(VAULT)).reduce((m, r) => (r.from < m ? r.from : m), HEAD + 1n);
+const pageLines = (p: Awaited<ReturnType<typeof readProof>>) => reportLines(p.count, p.verified, p.complete ? "counted" : "incomplete", p.team);
+
+describe("the page and the recount, with the vault's logs from the committed snapshot and without it", () => {
+  it("print the same lines either way; --snapshot reads the vault's logs only above the file's reorg window and says so", async () => {
+    const root = fixtureRoot(true, LISTS, SNAPSHOT);
+    const [plain, seeded] = [await serveProofChain(CHAIN), await serveProofChain(CHAIN)];
+    try {
+      const page = await readProof(proofChainClient(CHAIN), CONFIG, LISTS);
+      const pageSeeded = await readProof(proofChainClient(CHAIN), CONFIG, LISTS, undefined, { snapshot: SNAPSHOT, storage: null });
+      const expected = pageLines(page);
+      expect(page.complete).toBe(true);
+      expect(page.team.seed).toBeNull();
+      expect(pageSeeded.team.seed).toEqual({ source: "snapshot", from: DEPLOY - 10n, to: N - 151n, anchor: N });
+      expect(pageLines(pageSeeded)).toEqual(expected);
+      const a = await recountRun(["--rpc", plain.url, "--root", root]);
+      const b = await recountRun(["--rpc", seeded.url, "--root", root, "--snapshot"]);
+      expect([a.code, b.code, a.stderr, b.stderr]).toEqual([0, 0, "", ""]);
+      expect(reportOf(a.stdout)).toEqual(expected);
+      expect(reportOf(b.stdout)).toEqual(expected);
+      expect(lowestVault(plain.seen)).toBe(DEPLOY - 10n);
+      expect(lowestVault(seeded.seen)).toBe(N - 150n);
+      expect(a.stdout).not.toContain(SNAPSHOT_FILE);
+      expect(preambleOf(b.stdout)).toContain(
+        `Vault logs to block 62,099,849 from ${SNAPSHOT_FILE}, the snapshot of block 62,100,000: the RPC gives that block the same hash, and each log's transaction receipt holds it. The vault's other blocks, to block 62,120,000, are read from the RPC.`,
+      );
+      expect(preambleOf(b.stdout).slice(-2)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
+    } finally {
+      await Promise.all([plain.close(), seeded.close()]);
+    }
+  });
+
+  it("drop a file with an invented log, say why, read the vault's logs from its deploy block and print the same lines", async () => {
+    // A Decision the vault never emitted, in the owner's plain ETH send.
+    const forged = decisionLog(VAULT, 9);
+    const invented = { ...SNAPSHOT, logs: [...SNAPSHOT.logs, { blockNumber: String(DEPLOY + 5n), logIndex: 0, transactionHash: FUND_TX, topics: forged.topics.map(lower), data: forged.data! }] };
+    const why = `the receipt of ${FUND_TX} has no log of the vault at index 0 as the snapshot has it in block 62,000,005`;
+    const rpc = await serveProofChain(CHAIN);
+    try {
+      const expected = pageLines(await readProof(proofChainClient(CHAIN), CONFIG, LISTS));
+      const page = await readProof(proofChainClient(CHAIN), CONFIG, LISTS, undefined, { snapshot: invented, storage: null });
+      expect(page.team.seed).toBeNull();
+      expect(page.team.seedRejected).toBe(why);
+      expect(pageLines(page)).toEqual(expected);
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, LISTS, invented), "--snapshot"]);
+      expect(out.code).toBe(0);
+      expect(reportOf(out.stdout)).toEqual(expected);
+      expect(preambleOf(out.stdout)).toContain(`${SNAPSHOT_FILE} was not used (${why}), so the vault's logs are read from its deploy block.`);
+      expect(lowestVault(rpc.seen)).toBe(DEPLOY - 10n);
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("read the file's blocks from the RPC when it omits a team send's vault log, say why, and print the lines of a scan from the deploy block", async () => {
+    const omitted = { ...SNAPSHOT, logs: SNAPSHOT.logs.filter((l) => l.transactionHash !== SET_EXECUTOR_TX) };
+    const why = `with its logs, ${lower(OWNER)} sent 7 transactions by block 62,120,000 and 1 is missing`;
+    const rpc = await serveProofChain(CHAIN);
+    try {
+      const expected = pageLines(await readProof(proofChainClient(CHAIN), CONFIG, LISTS));
+      const page = await readProof(proofChainClient(CHAIN), CONFIG, LISTS, undefined, { snapshot: omitted, storage: null });
+      expect([page.complete, page.team.seed, page.team.seedRejected]).toEqual([true, null, why]);
+      expect(pageLines(page)).toEqual(expected);
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, LISTS, omitted), "--snapshot"]);
+      expect([out.code, out.stderr]).toEqual([0, ""]);
+      expect(reportOf(out.stdout)).toEqual(expected);
+      expect(preambleOf(out.stdout)).toContain(`${SNAPSHOT_FILE} was not used (${why}), so the vault's logs are read from its deploy block.`);
+      expect(lowestVault(rpc.seen)).toBe(DEPLOY - 10n);
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("leave the count incomplete, with the same lines on the page and in the recount, with the file or without it, when a team send is in no log and no list", async () => {
+    const short: ProofLists = { ...LISTS, sends: [{ wallet: OWNER, txs: [VAULT_TX, DEPLOY_TX] }] };
+    const root = fixtureRoot(true, short, SNAPSHOT);
+    const rpc = await serveProofChain(CHAIN);
+    try {
+      const page = await readProof(proofChainClient(CHAIN), CONFIG, short);
+      const pageSeeded = await readProof(proofChainClient(CHAIN), CONFIG, short, undefined, { snapshot: SNAPSHOT, storage: null });
+      expect([page.complete, pageSeeded.complete]).toEqual([false, false]);
+      expect(pageSeeded.problems).toEqual([ONE_MISSING]);
+      expect(pageLines(pageSeeded)).toEqual(pageLines(page));
+      const a = await recountRun(["--rpc", rpc.url, "--root", root]);
+      const b = await recountRun(["--rpc", rpc.url, "--root", root, "--snapshot"]);
+      expect([a.code, b.code]).toEqual([1, 1]);
+      expect(reportOf(a.stdout)).toEqual(pageLines(page));
+      expect(reportOf(b.stdout)).toEqual(pageLines(page));
+      expect(reportOf(b.stdout).slice(0, 1)).toEqual(["Outside briefs: incomplete"]);
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("skip a ledger cache that took its logs from a file the site no longer serves, as the ledger does, and use one of the file served", async () => {
+    // The cache reaches higher than the file, and lacks the owner's setExecutor log.
+    const cacheOf = (logs: typeof SNAPSHOT.logs, snapshot?: Hash) => {
+      const storage = memoryStorage();
+      saveCache({ v: 1, vault: VAULT, from: String(DEPLOY - 10n), to: String(HEAD - 150n), logs, blockTimes: {}, gasUsed: {}, ...(snapshot ? { snapshot } : {}) }, storage);
+      return storage;
+    };
+    const all = vaultSnapshot(CHAIN, VAULT, DEPLOY - 10n, HEAD - 150n).logs;
+    const stale = cacheOf(
+      all.filter((l) => l.transactionHash !== SET_EXECUTOR_TX),
+      `0x${"ab".repeat(32)}`,
+    );
+    const expected = pageLines(await readProof(proofChainClient(CHAIN), CONFIG, LISTS));
+    const other = await readProof(proofChainClient(CHAIN), CONFIG, LISTS, undefined, { snapshot: SNAPSHOT, storage: stale });
+    expect([other.complete, other.team.seed?.source]).toEqual([true, "snapshot"]);
+    expect(pageLines(other)).toEqual(expected);
+    const served = snapshotId(parseSnapshot(SNAPSHOT, VAULT)!);
+    const same = await readProof(proofChainClient(CHAIN), CONFIG, LISTS, undefined, { snapshot: SNAPSHOT, storage: cacheOf(all, served) });
+    expect([same.complete, same.team.seed?.source]).toEqual([true, "cache"]);
+    expect(pageLines(same)).toEqual(expected);
+    // With no file served, a cache that took its logs from one is not used either.
+    const none = await readProof(proofChainClient(CHAIN), CONFIG, LISTS, undefined, { snapshot: null, storage: cacheOf(all, served) });
+    expect(none.team.seed).toBeNull();
+    expect(pageLines(none)).toEqual(expected);
+  });
+
+  it("say --snapshot was not used when the trace reads no block of the vault by the block counted to", async () => {
+    const rpc = await serveProofChain(CHAIN);
+    try {
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, LISTS, SNAPSHOT), "--snapshot", "--to-block", String(DEPLOY - 20n)]);
+      expect(out.code).toBe(0);
+      expect(preambleOf(out.stdout)).toContain(`${SNAPSHOT_FILE} was not used: the trace reads no block of the vault by block 61,999,980, the block counted to.`);
+      expect(out.stdout).not.toContain("(null)");
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("say when --snapshot finds no committed file, and read the vault's logs from its deploy block", async () => {
+    const rpc = await serveProofChain(CHAIN);
+    try {
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true), "--snapshot"]);
+      expect(out.code).toBe(0);
+      expect(preambleOf(out.stdout)).toContain(`${SNAPSHOT_FILE} was not used (it could not be read as JSON), so the vault's logs are read from its deploy block.`);
+      expect(lowestVault(rpc.seen)).toBe(DEPLOY - 10n);
+    } finally {
+      await rpc.close();
+    }
+  });
+});
+
 describe("node scripts/recount.mjs --sends", () => {
   it("prints only the sends a wallet's committed list needs: the ones no vault or inbox log gives, in nonce order", async () => {
     const rpc = await serveProofChain(CHAIN);
@@ -448,6 +647,80 @@ describe("the recount on an RPC that caps eth_getLogs at 200 blocks and rate-lim
     } finally {
       await capped.close();
     }
+  });
+});
+
+describe("the recount's RPC client on a keyless RPC that rate-limits by the request", () => {
+  /**
+   * fetch of an RPC that answers in `latencyMs` and takes a request from a bucket of `capacity` that refills at
+   * `perSecond`; on an empty bucket it answers HTTP 429, with Retry-After when given. Time is vi's fake clock.
+   */
+  function limitedRpc(opts: { capacity: number; perSecond: number; latencyMs: number; retryAfter?: string }) {
+    let tokens = opts.capacity;
+    let last = Date.now();
+    const seen = { ok: 0, limited: 0, inFlight: 0, mostInFlightOnceLimited: 0, sentAt: [] as number[] };
+    const fetchImpl = async (_url: string, init: { body: string }) => {
+      const now = Date.now();
+      tokens = Math.min(opts.capacity, tokens + ((now - last) / 1000) * opts.perSecond);
+      last = now;
+      seen.sentAt.push(now);
+      seen.inFlight += 1;
+      if (seen.limited > 0) seen.mostInFlightOnceLimited = Math.max(seen.mostInFlightOnceLimited, seen.inFlight);
+      const allowed = tokens >= 1;
+      if (allowed) tokens -= 1;
+      await new Promise((r) => setTimeout(r, opts.latencyMs));
+      seen.inFlight -= 1;
+      if (!allowed) {
+        seen.limited += 1;
+        return new Response("Too Many Requests", { status: 429, headers: opts.retryAfter ? { "retry-after": opts.retryAfter } : {} });
+      }
+      seen.ok += 1;
+      const { id, method } = JSON.parse(init.body) as { id: number; method: string };
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id, result: method }), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    vi.stubGlobal("fetch", fetchImpl);
+    return seen;
+  }
+  /** `p`, with the fake clock moved on until it settles. */
+  async function settle<T>(p: Promise<T>): Promise<T> {
+    let done = false;
+    p.then(
+      () => (done = true),
+      () => (done = true),
+    );
+    while (!done) await vi.advanceTimersByTimeAsync(100);
+    return p;
+  }
+  beforeAll(() => vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] }));
+  afterAll(() => vi.useRealTimers());
+
+  it("reads 680 transactions and their receipts 25 at a time past a limit of 20 requests a second, sending fewer at once once limited", async () => {
+    const seen = limitedRpc({ capacity: 50, perSecond: 20, latencyMs: 300 });
+    const call = recount.rpcClient("https://rpc.test");
+    const hashes = Array.from({ length: 680 }, (_, i) => `0x${i.toString(16).padStart(64, "0")}`);
+    const { mapLimit } = await import("@/app/(site)/proof/team");
+    const out = await settle(mapLimit(hashes, 25, (h) => Promise.all([call("eth_getTransactionByHash", [h]), call("eth_getTransactionReceipt", [h])])));
+    expect(out.flat()).toHaveLength(1_360);
+    expect(seen.ok).toBe(1_360);
+    expect(seen.limited).toBeGreaterThan(0);
+    expect(seen.mostInFlightOnceLimited).toBeLessThan(50);
+  });
+
+  it("waits as long as Retry-After says before it tries again", async () => {
+    const seen = limitedRpc({ capacity: 1, perSecond: 1 / 3, latencyMs: 300, retryAfter: "3" });
+    const call = recount.rpcClient("https://rpc.test");
+    await settle(call("eth_blockNumber", []));
+    expect(await settle(call("eth_chainId", []))).toBe("eth_chainId");
+    expect(seen.limited).toBe(1);
+    expect(seen.sentAt[2]! - seen.sentAt[1]!).toBeGreaterThanOrEqual(3_300);
+  });
+
+  it("gives up on an RPC that never stops rate-limiting, and says how long it waited", async () => {
+    limitedRpc({ capacity: 0, perSecond: 0, latencyMs: 300 });
+    const call = recount.rpcClient("https://rpc.test");
+    const start = Date.now();
+    await expect(settle(call("eth_blockNumber", []))).rejects.toThrow(/^eth_blockNumber: HTTP 429, \d+ times in \d+ s$/);
+    expect(Date.now() - start).toBeGreaterThanOrEqual(120_000);
   });
 });
 

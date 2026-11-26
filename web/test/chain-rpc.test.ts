@@ -17,9 +17,12 @@ const baseOrg = (rpc: Rpc): Answer =>
 
 function fakeRpcs(answer: Record<string, (rpc: Rpc) => Answer>) {
   const seen: { url: string; method: string }[] = [];
+  /** Each HTTP request: its URL and the methods of the JSON-RPC calls it carried. */
+  const requests: { url: string; methods: string[] }[] = [];
   vi.stubGlobal("fetch", async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input instanceof Request ? input.url : input).replace(/\/$/, "");
     const body = JSON.parse(String(init?.body)) as Rpc | Rpc[];
+    requests.push({ url, methods: (Array.isArray(body) ? body : [body]).map((r) => r.method) });
     const reply = (rpc: Rpc) => {
       seen.push({ url, method: rpc.method });
       return { jsonrpc: "2.0", id: rpc.id, ...answer[url]!(rpc) };
@@ -28,7 +31,7 @@ function fakeRpcs(answer: Record<string, (rpc: Rpc) => Answer>) {
     return new Response(JSON.stringify(out), { status: 200, headers: { "content-type": "application/json" } });
   });
   const calls = (url: string, method: string) => seen.filter((s) => s.url === url && s.method === method).length;
-  return { calls };
+  return { calls, requests };
 }
 
 const span = (rpc: Rpc) => {
@@ -80,6 +83,23 @@ describe("createLedgerClient", () => {
     expect(result.scanned).toEqual({ from: 1n, to: 100_000n });
     expect(result.failed).toEqual([]);
     expect(rpc.calls(BASE_ORG, "eth_getLogs")).toBe(0);
+  }, 20_000);
+
+  it("sends each eth_getLogs in an HTTP request of its own, and still batches every other read", async () => {
+    // base-rpc.publicnode.com serves the eth_getLogs of one batch one after another, and separate requests at once.
+    const rpc = fakeRpcs({ [PUBLICNODE]: (r) => (r.method === "eth_getLogs" ? { result: [] } : { result: "0x10" }), [BASE_ORG]: baseOrg });
+    const client = createLedgerClient([...DEFAULT_RPCS]);
+    const windows = Array.from({ length: 8 }, (_, i) => ({ fromBlock: BigInt(i * 50_000 + 1), toBlock: BigInt((i + 1) * 50_000) }));
+    await Promise.all([
+      ...windows.map((w) => client.getLogs({ address: FAKE_VAULT, ...w })),
+      ...Array.from({ length: 6 }, (_, i) => client.getBytecode({ address: `0x${(i + 1).toString(16).padStart(40, "0")}` })),
+    ]);
+    const logs = rpc.requests.filter((r) => r.methods.includes("eth_getLogs"));
+    expect(logs).toHaveLength(8);
+    expect(logs.every((r) => r.url === PUBLICNODE && r.methods.length === 1)).toBe(true);
+    const others = rpc.requests.filter((r) => !r.methods.includes("eth_getLogs"));
+    expect(others).toHaveLength(1);
+    expect(others[0]!.methods.length).toBeGreaterThan(1);
   }, 20_000);
 
   it("still falls back to mainnet.base.org for the other reads", async () => {
