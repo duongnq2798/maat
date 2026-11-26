@@ -235,7 +235,11 @@ describe("the /now page", () => {
     const link = within(method()).getByRole("link", { name: CAL });
     expect(link).toHaveAttribute("href", `https://basescan.org/address/${CAL}`);
     expect(link).toHaveAttribute("target", "_blank");
-    expect(method()).not.toHaveTextContent("web/content/calendar.ts");
+    // The session part no longer names the repo calendar; the week's part still does, since the week is always drawn
+    // from it.
+    const part = (name: string) => within(method()).getByRole("heading", { name }).parentElement!;
+    expect(part("The NYSE session")).not.toHaveTextContent("web/content/calendar.ts");
+    expect(part("The week and the agent's note")).toHaveTextContent("web/content/calendar.ts");
     neverSafe();
   });
 
