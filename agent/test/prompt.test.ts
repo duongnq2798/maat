@@ -7,7 +7,9 @@ import { VAULT, standardScene } from "./fakes/fakeChain.js";
 
 describe("prompt", () => {
   it("system prompt carries the mandate rules and stays free of volatile data", () => {
-    expect(SYSTEM_PROMPT).toMatch(/LLM proposes, contract decides/);
+    expect(SYSTEM_PROMPT.startsWith("You are Maat's agent, the treasury agent of Maat, an onchain vault on Base.")).toBe(true);
+    expect(SYSTEM_PROMPT).toContain('Motto: "Claude proposes. The vault decides."');
+    expect(SYSTEM_PROMPT).not.toMatch(/LLM proposes|contract decides/);
     expect(SYSTEM_PROMPT).toMatch(/empty list/i);
     expect(SYSTEM_PROMPT).toMatch(/30%/);
     expect(SYSTEM_PROMPT).not.toMatch(/\d{4}-\d{2}-\d{2}T/); // no timestamps: keeps the cache prefix stable
