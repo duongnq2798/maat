@@ -15,10 +15,16 @@ export function Ledger() {
             </div>
           }
         />
-        <a href={SITE.forkEvidenceUrl} className="-mt-4 self-start text-sm font-medium">
-          How to rerun this fork yourself
-          <span aria-hidden="true"> ↗</span>
-        </a>
+        <div className="-mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm font-medium">
+          <a href="/ledger">
+            Open the mainnet ledger
+            <span aria-hidden="true"> →</span>
+          </a>
+          <a href={SITE.forkEvidenceUrl}>
+            How to rerun this fork yourself
+            <span aria-hidden="true"> ↗</span>
+          </a>
+        </div>
       </div>
     </section>
   );

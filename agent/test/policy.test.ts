@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { USDC } from "../src/addresses.js";
 import type { TokenState, VaultState } from "../src/chain/state.js";
 import { DEFAULT_POLICY, evaluatePolicy } from "../src/policy.js";
+import { CREDIT_ACTIONS } from "../src/types.js";
 import { MANDATE } from "./fakes/fakeChain.js";
 
 const P = [18667486580n, 28000000000n, 27000000000n];
@@ -18,6 +19,9 @@ function tok(i: number, walletUsd6: bigint, suppliedUsd6 = 0n): TokenState {
     supplied: (suppliedUsd6 * 10n ** 10n) / P[i]!,
     price8: P[i]!,
     feedAge: 30n,
+    roundId: 1n,
+    updatedAt: 1_794_000_000n,
+    twap8: P[i]!,
     uiMultiplier: 10n ** 18n,
     lastMultiplier: 10n ** 18n,
     valueUsd6: walletUsd6 + suppliedUsd6,
@@ -42,6 +46,7 @@ function state(over: Partial<VaultState> & { tokens?: TokenState[] }): VaultStat
     spentToday: 0n,
     mandate: MANDATE,
     marketOpen: true,
+    calendar: null,
     credit: { readable: true, debt: 0n, healthFactor: 2n ** 256n - 1n },
     ...over,
     tokens,
@@ -50,6 +55,7 @@ function state(over: Partial<VaultState> & { tokens?: TokenState[] }): VaultStat
 }
 
 const noBills = { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n }; // $0.50/day -> $3.50 runway
+const CREDIT_ON = { ...DEFAULT_POLICY, creditActions: true };
 
 describe("evaluatePolicy", () => {
   it("all cash: buys each token toward 23.33%, capped by spendable cash", () => {
@@ -79,7 +85,7 @@ describe("evaluatePolicy", () => {
   });
 
   it("supplies wallet stock as collateral when not overweight", () => {
-    const v = evaluatePolicy(state({ tokens: [tok(0, 20_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 80_000_000n }), noBills);
+    const v = evaluatePolicy(state({ tokens: [tok(0, 20_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 80_000_000n }), noBills, CREDIT_ON);
     expect(v.suggestions.find((s) => s.action === "SUPPLY")).toMatchObject({ symbol: "NVDAc", amountUsd6: 20_000_000n });
   });
 
@@ -87,19 +93,20 @@ describe("evaluatePolicy", () => {
     const v = evaluatePolicy(
       state({ tokens: [tok(0, 20_000_000n), tok(1, 0n), tok(2, 0n)], credit: { readable: false, debt: 0n, healthFactor: 0n } }),
       noBills,
+      CREDIT_ON,
     );
     expect(v.suggestions.some((s) => ["SUPPLY", "BORROW", "REPAY", "WITHDRAW_COLLATERAL"].includes(s.action))).toBe(false);
   });
 
   it("sells an overweight wallet holding", () => {
     // NVDAc $60 of $100 equity = 60% vs 23.33% -> excess 36.67, capped at 50 -> 36.67
-    const v = evaluatePolicy(state({ tokens: [tok(0, 60_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 40_000_000n }), noBills);
+    const v = evaluatePolicy(state({ tokens: [tok(0, 60_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 40_000_000n }), noBills, CREDIT_ON);
     expect(v.suggestions.find((s) => s.action === "SELL")).toMatchObject({ symbol: "NVDAc", amountUsd6: 36_670_000n });
     expect(v.suggestions.some((s) => s.action === "SUPPLY" && s.symbol === "NVDAc")).toBe(false);
   });
 
   it("withdraws collateral first when the overweight holding is supplied", () => {
-    const v = evaluatePolicy(state({ tokens: [tok(0, 0n, 60_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 40_000_000n }), noBills);
+    const v = evaluatePolicy(state({ tokens: [tok(0, 0n, 60_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 40_000_000n }), noBills, CREDIT_ON);
     expect(v.suggestions.find((s) => s.action === "WITHDRAW_COLLATERAL")).toMatchObject({ symbol: "NVDAc", amountUsd6: 36_670_000n });
     expect(v.suggestions.some((s) => s.action === "SELL")).toBe(false);
   });
@@ -108,13 +115,14 @@ describe("evaluatePolicy", () => {
     const v = evaluatePolicy(
       state({ tokens: [tok(0, 0n, 20_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 1_000_000n }),
       { dailyComputeUsd6: 500_000n, unpaidUsd6: 200_000n },
+      CREDIT_ON,
     );
     // need 3.5 + 0.2 - 1.0 = 2.7
     expect(v.suggestions.find((s) => s.action === "BORROW")).toMatchObject({ symbol: "USDC", amountUsd6: 2_700_000n });
   });
 
   it("does not borrow without supplied collateral", () => {
-    const v = evaluatePolicy(state({ usdcBalance: 1_000_000n }), noBills);
+    const v = evaluatePolicy(state({ usdcBalance: 1_000_000n }), noBills, CREDIT_ON);
     expect(v.suggestions.some((s) => s.action === "BORROW")).toBe(false);
   });
 
@@ -122,6 +130,7 @@ describe("evaluatePolicy", () => {
     const v = evaluatePolicy(
       state({ usdcBalance: 13_500_000n, newRevenue: 10_000_000n, credit: { readable: true, debt: 5_000_001n, healthFactor: 3n * 10n ** 18n }, tokens: [tok(0, 0n, 20_000_000n), tok(1, 0n), tok(2, 0n)] }),
       noBills,
+      CREDIT_ON,
     );
     // spendable = 13.5 - 3.5 = 10 -> repay min(5.000001, 10)
     expect(v.suggestions[0]).toMatchObject({ action: "REPAY", symbol: "USDC", amountUsd6: 5_000_001n });
@@ -131,6 +140,7 @@ describe("evaluatePolicy", () => {
     const v = evaluatePolicy(
       state({ paused: true, usdcBalance: 50_000_000n, newRevenue: 10_000_000n, credit: { readable: true, debt: 5_000_000n, healthFactor: 3n * 10n ** 18n } }),
       noBills,
+      CREDIT_ON,
     );
     expect(v.suggestions.map((s) => s.action)).toEqual(["REPAY"]);
   });
@@ -145,7 +155,7 @@ describe("evaluatePolicy", () => {
   it("does not supply an exit-only token (config.allowed false)", () => {
     const t = tok(0, 20_000_000n);
     t.config = { ...t.config, allowed: false };
-    const v = evaluatePolicy(state({ tokens: [t, tok(1, 0n), tok(2, 0n)], usdcBalance: 80_000_000n }), noBills);
+    const v = evaluatePolicy(state({ tokens: [t, tok(1, 0n), tok(2, 0n)], usdcBalance: 80_000_000n }), noBills, CREDIT_ON);
     expect(v.suggestions.some((s) => s.action === "SUPPLY")).toBe(false);
   });
 
@@ -165,8 +175,37 @@ describe("evaluatePolicy", () => {
 
   it("orders suggestions REPAY, SUPPLY, WITHDRAW/SELL, BUY, BORROW", () => {
     const order = ["REPAY", "SUPPLY", "WITHDRAW_COLLATERAL", "SELL", "BUY", "BORROW"];
-    const v = evaluatePolicy(state({ tokens: [tok(0, 10_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 90_000_000n }), noBills);
+    const v = evaluatePolicy(state({ tokens: [tok(0, 10_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 90_000_000n }), noBills, CREDIT_ON);
     const idx = v.suggestions.map((s) => order.indexOf(s.action));
     expect([...idx].sort((a, b) => a - b)).toEqual(idx);
+  });
+
+  describe("with credit actions off (DEFAULT_POLICY)", () => {
+    const debt = { readable: true, debt: 5_000_000n, healthFactor: 3n * 10n ** 18n };
+    // Each state makes the policy suggest one credit action when credit is on.
+    const scenes = [
+      ["SUPPLY", state({ tokens: [tok(0, 20_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 80_000_000n }), noBills],
+      ["WITHDRAW_COLLATERAL", state({ tokens: [tok(0, 0n, 60_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 40_000_000n }), noBills],
+      ["BORROW", state({ tokens: [tok(0, 0n, 20_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 1_000_000n }), { dailyComputeUsd6: 500_000n, unpaidUsd6: 200_000n }],
+      ["REPAY", state({ usdcBalance: 13_500_000n, newRevenue: 10_000_000n, credit: debt, tokens: [tok(0, 0n, 20_000_000n), tok(1, 0n), tok(2, 0n)] }), noBills],
+      ["REPAY", state({ paused: true, usdcBalance: 50_000_000n, newRevenue: 10_000_000n, credit: debt }), noBills],
+    ] as const;
+
+    it("is the default", () => {
+      expect(DEFAULT_POLICY.creditActions).toBe(false);
+    });
+
+    it.each(scenes.map((s, i) => [i, ...s] as const))("scene %i: suggests no %s, which credit on would", (_i, action, s, bills) => {
+      expect(evaluatePolicy(s, bills, CREDIT_ON).suggestions.map((x) => x.action)).toContain(action);
+      const off = evaluatePolicy(s, bills).suggestions;
+      expect(off.filter((x) => CREDIT_ACTIONS.has(x.action))).toEqual([]);
+      expect(evaluatePolicy(s, bills, DEFAULT_POLICY).suggestions).toEqual(off);
+    });
+
+    it("still buys and sells", () => {
+      expect(evaluatePolicy(state({}), noBills).suggestions.map((s) => s.action)).toEqual(["BUY", "BUY", "BUY"]);
+      const sell = evaluatePolicy(state({ tokens: [tok(0, 60_000_000n), tok(1, 0n), tok(2, 0n)], usdcBalance: 40_000_000n }), noBills).suggestions;
+      expect(sell.find((s) => s.action === "SELL")).toMatchObject({ symbol: "NVDAc", amountUsd6: 36_670_000n });
+    });
   });
 });

@@ -4,7 +4,7 @@ description: "Deploy a vault with the default mandate: dry-run it on a fork firs
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-21
 sources:
   - deployments/README.md
   - contracts/script/Deploy.s.sol
@@ -13,6 +13,7 @@ sources:
   - contracts/src/MandateVault.sol
   - contracts/src/MarketCalendar.sol
   - contracts/src/GuardLib.sol
+  - contracts/test/GuardLib.t.sol
   - contracts/src/Types.sol
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/adapters/AaveV4CreditAdapter.sol
@@ -28,27 +29,32 @@ sources:
   - agent/src/chain/preview.ts
   - agent/src/exec/calls.ts
   - agent/src/abi/generated.ts
+  - agent/scripts/gen-abis.ts
   - agent/scripts/cdp-setup.ts
   - agent/src/policy.ts
   - agent/src/chain/state.ts
   - agent/test/integration/deploy.ts
   - agent/test/integration/agent.fork.test.ts
+  - contracts/test/Deploy.t.sol
+  - agent/src/main.ts
+  - deployments/go-live.md
+  - agent/scripts/first-decision.ts
 next: [guides/run-the-agent, guides/change-a-rule, guides/pause-withdraw-recover]
 ---
 
 This guide takes you from a clone of the repository to a `MandateVault` with the default [mandate](/docs/help/glossary#mandate) on [Base](/docs/help/glossary#base) mainnet: a dry run on a fork that needs no key, a checklist, the broadcast from your own wallet, funding, and the smoke tests. It is written for a builder who will own the [vault](/docs/help/glossary#vault). Every transaction is signed by you, and no script in this repository holds a key.
 
-<Callout type="fork" title="Not deployed yet">
+<Callout type="note" title="What has run">
 
-The Maat team has not broadcast this deploy. The address table in `deployments/README.md` is empty today, and no page in these docs is labeled live. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the smoke tests come from the runbook, the smoke tests with a gas limit or a [preview](/docs/help/glossary#preview) added here. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. The Maat team has run none of the commands on this page, so none is proven on mainnet. The contracts are unaudited.
+The owner deployed the four Maat contracts to Base mainnet with the default mandate, and the table in `deployments/README.md` holds their addresses and deploy transactions. The deploy script is simulated on a fork by the contract test `test_deployWiresEverything`. The vault's `execute` runs on a fork in the contract [fork tests](/docs/help/glossary#fork-test) and in the agent's fork test, and `fund` runs in the agent's fork test (the contract fork tests fund the vault with a [cheat code](/docs/help/glossary#cheat-code) instead). The dry run, the wallet import, the simulation with your real `.env`, the broadcast, the verification, the funding and the credit smoke test come from the runbook, the credit smoke test with a gas limit and a [preview](/docs/help/glossary#preview) before each send added here. The BUY smoke-test lines were written for this page: `deployments/README.md` no longer carries them, and sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, as `deployments/go-live.md` steps 7 and 8 say. The commands that create `.env`, read the [`Decision`](/docs/help/glossary#decision) with `cast logs`, read the adapter's position and read `owner()` are not in the runbook: they were written for these docs. These docs record no run of the commands on this page on Base mainnet: the deploy appears in them only as the addresses and transactions in `deployments/README.md`. The contracts are unaudited.
 
 </Callout>
 
 ## The whole path
 
-<Callout type="fork" title="Not run on mainnet">
+<Callout type="note" title="On mainnet, the deploy and two smoke-test buys are recorded">
 
-Nobody has followed this path on Base mainnet. Each step links the section that has its commands, and this list does not repeat them.
+Nobody has followed this whole path on Base mainnet. The owner deployed the four Maat contracts there, which is step 2 below. After it, these docs record only the vault's first two `Decision` events, on [Status and roadmap](/docs/get-started/status#next-mainnet): a `BUY` the vault refused with `MARKET_CLOSED`, and a `BUY` in a US market session that it allowed. Each step links the sections that explain it.
 
 </Callout>
 
@@ -74,7 +80,7 @@ What each step needs, and where it goes:
 | What | Where it goes | Needed for |
 | --- | --- | --- |
 | `BASE_RPC_URL` | `contracts/.env` and `agent/.env` | Every command that reads the chain or sends to it |
-| `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` | `contracts/.env` | The simulations and the broadcast |
+| `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE`, and the optional `MAAT_EXPENSE_PAYEE_2` | `contracts/.env` | The simulations and the broadcast |
 | `ETHERSCAN_API_KEY` | `contracts/.env` | `--verify` at the broadcast |
 | The `maat-owner` wallet, with ETH on Base for gas | A Foundry keystore, made with `cast wallet import` | Every command marked **Owner only** |
 | USDC on Base | The owner's wallet | Funding the vault |
@@ -92,28 +98,31 @@ You need the pieces below. Your wallet is the owner of the vault, so the steps t
 
 | Need | Detail |
 | --- | --- |
-| [Foundry](https://getfoundry.sh) | 1.8.4 or newer. It provides `forge script` and `cast`. |
+| [Foundry](https://getfoundry.sh) | 1.8.4 or newer, run in `contracts/`. It provides `forge script` and `cast`. The script must run on a Foundry that executes the [B20](/docs/help/glossary#b20) precompile, because the vault's constructor reads each stock's [uiMultiplier](/docs/help/glossary#uimultiplier). `contracts/foundry.toml` sets `hardfork = "base:Cobalt"` for that, and the contract fork test `test_deployWiresEverything` runs the script this way on a Base fork. |
 | bash | Linux, macOS, or Git Bash on Windows. The commands are written for bash, as in the [Quickstart](/docs/get-started/quickstart#prerequisites). They do not run in PowerShell or cmd. |
 | A Base mainnet RPC | Written `<BASE_RPC_URL>` here, in `contracts/.env`. The dry run forks it. |
 | A deployer wallet | A Foundry keystore account, named `maat-owner` in the runbook. It needs enough ETH on Base to pay gas for the deploy. |
-| Four addresses | `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE`, read by the deploy script. |
+| Four addresses, and an optional fifth | `MAAT_DEPLOYER`, `MAAT_OWNER`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE`, read by the deploy script, and an optional second payee, `MAAT_EXPENSE_PAYEE_2`. |
 | An Etherscan v2 API key | `ETHERSCAN_API_KEY` in `contracts/.env`, for `--verify`. A v2 key works for Basescan. |
 | USDC on Base | What you fund the vault with. |
 
-`contracts/.env.example` lists `BASE_RPC_URL` and the four addresses; add `ETHERSCAN_API_KEY` yourself. Git ignores `contracts/.env`, so a fresh clone has none: [the first step](#create-contractsenv) creates it. The deploy script reads the four addresses like this:
+`contracts/.env.example` lists `BASE_RPC_URL`, the five addresses, the optional one at the zero address, and an empty `ETHERSCAN_API_KEY` that you fill in yourself. Git ignores `contracts/.env`, so a fresh clone has none: [the first step](#create-contractsenv) creates it. The deploy script reads the addresses like this:
 
-```solidity title="contracts/script/Deploy.s.sol#L23-L26"
+```solidity title="contracts/script/Deploy.s.sol#L23-L27"
         address deployer = vm.envAddress("MAAT_DEPLOYER");
         address owner = vm.envAddress("MAAT_OWNER");
         address executor = vm.envAddress("MAAT_EXECUTOR");
         address payee = vm.envAddress("MAAT_EXPENSE_PAYEE");
+        address payee2 = optionalAddress("MAAT_EXPENSE_PAYEE_2"); // optional: unset or zero adds none
 ```
 
 In the runbook the owner is your wallet, the executor is temporarily your wallet until the CDP Server Wallet takes over, and the payee is the compute-expense wallet, the address the vault's `PAY_EXPENSE` [action](/docs/help/glossary#action) may pay. Its `.env` step sets all three to your wallet address. The deploy uses [`MaatConfig.defaultMandate`](/docs/concepts/mandate#the-default-mandate) with the `REGULAR` session and the three-stock basket. To change a limit, a token or the payee, read [Configure a mandate](/docs/guides/configure-a-mandate) before you deploy.
 
-**The owner does not have to be the deployer.** The script reads the four addresses separately, and the deploy fork test `test_deployWiresEverything` deploys with four different addresses and checks the owner of both the vault and the calendar. The deployer signs only the deploy. After it, the owner signs `fund` (which pulls the USDC from the owner), `setExecutor`, `setPaused`, `withdraw`, every [timelocked](/docs/help/glossary#timelock) change, and the calendar's `addHoliday` and `setEarlyClose`. The executor signs the smoke-test `execute` calls. The commands on this page sign every role with one keystore wallet, `maat-owner`. The owner is fixed at the deploy, so this is when to choose a better-protected owner address. A multisig owner is compatible with the contract and is not set up, and a multisig cannot sign the `--account` commands on these pages. [The owner key](/docs/security/threat-model#the-owner-key) says what a leaked owner key allows.
+`MAAT_EXPENSE_PAYEE_2` is optional. Set it when you already know a second address the vault should be able to pay, for example an agent's Bankr wallet: the deploy puts it on the list at once, while adding it later takes `queuePayee` and a wait of <Fact name="timelockHours" />. The agent pays one address only: its own [`MAAT_EXPENSE_PAYEE`](/docs/reference/agent-configuration#maat_expense_payee) setting, which it reads at startup and puts in the `payee` field of every `PAY_EXPENSE` intent. It never reads the vault's list, so with two payees on it you choose in the agent's settings which one it pays, and moving it to the other takes a restart, not a timelock.
 
-Time: not measured. No mainnet deploy has been run, and the runbook gives no durations. The smoke tests need a weekday session and a weekend day.
+**The owner does not have to be the deployer.** The script reads each address separately, and the deploy fork test `test_deployWiresEverything` deploys with four different addresses and checks the owner of both the vault and the calendar. The deployer signs only the deploy. After it, the owner signs `fund` (which pulls the USDC from the owner), `setExecutor`, `setPaused`, `withdraw`, every [timelocked](/docs/help/glossary#timelock) change, and the calendar's `addHoliday` and `setEarlyClose`. The executor signs the smoke-test `execute` calls. The commands on this page sign every role with one keystore wallet, `maat-owner`. The owner is fixed at the deploy, so this is when to choose a better-protected owner address. A multisig owner is compatible with the contract and is not set up, and a multisig cannot sign the `--account` commands on these pages. [The owner key](/docs/security/threat-model#the-owner-key) says what a leaked owner key allows.
+
+Time: not measured. These docs record no duration for Maat's own deploy, and the runbook gives none. The smoke tests need a weekday session and a weekend day.
 
 ## Deploy and fund
 
@@ -130,7 +139,7 @@ cd contracts
 cp .env.example .env
 ```
 
-The template sets `BASE_RPC_URL` to the public Base endpoint. Its comment says that endpoint had archive state when it was tested on 2026-11-06. If it answers with HTTP 429, put your own URL there. Its four `MAAT_*` lines are zero addresses: the dry run in the next step overrides them on its command line, and [Import your wallet and fill `.env`](#import-your-wallet-and-fill-env) replaces them before the real simulation. Every `forge script` command below runs in `contracts/`.
+The template sets `BASE_RPC_URL` to the public Base endpoint. Its comment says that endpoint had archive state when it was tested on 2026-11-06. If it answers with HTTP 429, put your own URL there. Its five `MAAT_*` lines are zero addresses. The dry run in the next step overrides the four required ones on its command line, and [Import your wallet and fill `.env`](#import-your-wallet-and-fill-env) replaces them before the real simulation. `MAAT_EXPENSE_PAYEE_2` can stay at zero, which means no second payee. Every `forge script` command below runs in `contracts/`.
 
 </Step>
 
@@ -151,19 +160,20 @@ forge script script/Deploy.s.sol --fork-url "$BASE_RPC_URL"
 
 deployments/README.md prints no output for the dry run, so none is shown. It has worked when the script finishes without an error. The script ends by logging these lines:
 
-```solidity title="contracts/script/Deploy.s.sol#L55-L63"
+```solidity title="contracts/script/Deploy.s.sol#L55-L64"
         // Check these before broadcasting: owner is immutable on the vault and the calendar.
         console2.log("deployer            ", deployer);
         console2.log("owner (immutable)   ", owner);
         console2.log("executor            ", executor);
         console2.log("expense payee       ", payee);
+        console2.log("expense payee 2     ", payee2 == address(0) ? "none" : vm.toString(payee2));
         console2.log("MarketCalendar      ", address(calendar));
         console2.log("AerodromeSwapAdapter", address(swapAdapter));
         console2.log("AaveV4CreditAdapter ", address(creditAdapter));
         console2.log("MandateVault        ", address(vault));
 ```
 
-The first four logged lines show the placeholders you passed, not real addresses, and the contract addresses will be different on mainnet. The runbook says to read the total estimated gas at the end of the output when you decide how much ETH the deployer needs. Foundry writes the dry-run files under `contracts/broadcast/*/*/dry-run/`, which Git ignores.
+The first four logged lines show the placeholders you passed, not real addresses. The `expense payee 2` line comes from your `.env`, and reads `none` when it is unset or zero. The contract addresses will be different on mainnet. The runbook says to read the total estimated gas at the end of the output when you decide how much ETH the deployer needs. Foundry writes the dry-run files under `contracts/broadcast/*/*/dry-run/`, which Git ignores.
 
 </Step>
 
@@ -181,7 +191,7 @@ Go through this list before you [broadcast](#broadcast).
 
 - **Gas.** The deployer wallet has enough ETH on Base to deploy the calendar, the swap adapter, the credit adapter and the vault. Fund extra, because gas prices change.
 - **The deployer.** `MAAT_DEPLOYER` is exactly the address of the `--account` wallet that you broadcast with. The next paragraph says why.
-- **The other addresses.** `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` are correct. They can be changed later: the executor at once with `setExecutor`, and the payee only through the timelock, which is <Fact name="timelockHours" /> long.
+- **The other addresses.** `MAAT_EXECUTOR`, `MAAT_EXPENSE_PAYEE` and, if you set it, `MAAT_EXPENSE_PAYEE_2` are correct. They can be changed later: the executor at once with `setExecutor`, and a payee only through the timelock, which is <Fact name="timelockHours" /> long.
 - **Verification.** `--verify` needs `ETHERSCAN_API_KEY` in `contracts/.env`. If the deploy finishes but verification fails, do not redeploy. The resume command is in [Broadcast](#broadcast).
 - **Funding.** Fund the vault with `approve` and then `fund(amount)` ([Fund the vault](#fund-the-vault)), never with a plain USDC transfer.
 - **Later changes.** After the deploy, every change to the configuration is queued with `queueMandate`, `queueTokenConfig` or `queuePayee`, which publishes all parameters in an event. You wait <Fact name="timelockHours" />, then apply it within <Fact name="gracePeriodDays" /> after that. Past that deadline the change expires (`ChangeExpired`) and must be queued again. See [The timelock](/docs/concepts/timelock-and-roles#the-timelock).
@@ -204,7 +214,7 @@ If the wallet is wrong, or it sends another transaction between the simulation a
 
 <Callout type="warning" title="Owner only">
 
-The owner runs and signs the commands in this section of the runbook from their own wallet. `cast wallet import` adds your key to a Foundry keystore under the name `maat-owner`, which the later commands pass as `--account`. The commands are copied from deployments/README.md, and the Maat team has not run them.
+The owner runs and signs the commands in this section of the runbook from their own wallet. `cast wallet import` adds your key to a Foundry keystore under the name `maat-owner`, which the later commands pass as `--account`. The commands are copied from deployments/README.md, and these docs record no run of them.
 
 ```bash
 cast wallet import maat-owner --interactive
@@ -217,7 +227,8 @@ The second command only prints the wallet's address. It signs nothing and sends 
 
 - Set `MAAT_DEPLOYER` to the address just printed.
 - Set `MAAT_OWNER`, `MAAT_EXECUTOR` (temporarily your own wallet) and `MAAT_EXPENSE_PAYEE` all to your wallet address. `MAAT_OWNER` can be a separate address instead, as [Before you start](#before-you-start) explains.
-- Add `ETHERSCAN_API_KEY`.
+- Leave `MAAT_EXPENSE_PAYEE_2` at the zero address, unless you want a second payee.
+- Set `ETHERSCAN_API_KEY`, which the template leaves empty.
 
 This file is for the commands you run in `contracts/`. The agent reads its own `agent/.env`, which repeats `BASE_RPC_URL`, `MAAT_EXECUTOR` and `MAAT_EXPENSE_PAYEE` with the rules in [The whole path](#the-whole-path).
 
@@ -236,7 +247,7 @@ forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL"
 
 Read the output yourself. It has worked only when both conditions hold:
 
-- The `deployer`, `owner (immutable)`, `executor` and `expense payee` lines match the addresses you set, character for character. In the runbook all four are your wallet address.
+- The `deployer`, `owner (immutable)`, `executor` and `expense payee` lines match the addresses you set, character for character. In the runbook all four are your wallet address. The `expense payee 2` line reads `none`, or the second payee you set.
 - The simulation finishes, with no `vault address mismatch`.
 
 If the simulation stops at `vault address mismatch` or a nonce error, fix the cause (use the right wallet, send no other transaction from the deployer wallet) and simulate again. No transaction has been sent at this step. deployments/README.md prints no output for this command, so none is shown.
@@ -255,13 +266,13 @@ This signs and sends the deploy transactions from your wallet and costs gas. The
 
 ```bash title="contracts/"
 set -a; source .env; set +a
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --broadcast --verify --slow
 ```
 
-If the deploy finishes but verification fails, do not redeploy. Run this instead:
+`--slow` sends the four deploy transactions one at a time, each only after the previous one is confirmed and succeeded. If the deploy finishes but verification fails, do not redeploy. Run this instead:
 
 ```bash title="contracts/"
-forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify
+forge script script/Deploy.s.sol --rpc-url "$BASE_RPC_URL" --account maat-owner --resume --verify --slow
 ```
 
 </Callout>
@@ -297,7 +308,7 @@ deployments/README.md prints no output for these commands, so none is shown. The
 
 ### Run the smoke test
 
-Send one small BUY of NVDAc, then one on a weekend. Do the first only during US market hours, which the calendar sets at <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, on a day that is not a market holiday. New York is <Fact name="etOffsetHours.dst" /> behind UTC during US daylight saving time and <Fact name="etOffsetHours.standard" /> behind otherwise. In UTC the session is 14:30 to 21:00 under US standard time (until 2027-03-14) and 13:30 to 20:00 under daylight saving time. On an early-close day the session ends earlier, and an `execute` outside it is refused with `MARKET_CLOSED`.
+Send one small BUY of NVDAc, then one on a weekend. Do the first only during US market hours, which the calendar sets at <Fact name="nyseOpen" /> to <Fact name="nyseClose" />, on a day that is not a market holiday. New York is <Fact name="etOffsetHours.dst" /> behind UTC during US daylight saving time and <Fact name="etOffsetHours.standard" /> behind otherwise. In UTC the session is 14:30 to 21:00 under US standard time (until 2027-03-14) and 13:30 to 20:00 under daylight saving time. On an early-close day the session ends earlier, and an `execute` outside it is [refused](/docs/help/glossary#refusal) with `MARKET_CLOSED`.
 
 The owner's wallet is the executor at this stage, so it can send `execute` itself. Run the smoke tests before you hand the executor role to the CDP Server Wallet, because after the handover the owner's own `execute` calls revert with `NotExecutor`. The BUY amount in the commands is `5000000` ($5), in USDC units too.
 
@@ -305,7 +316,7 @@ The smoke tests need a weekday session (this BUY and the [credit smoke test](#ru
 
 <Callout type="warning" title="Owner only">
 
-The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. The lines are adapted from deployments/README.md: the `--gas-limit` flag is added here. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
+The `execute` transaction is signed by your wallet, as the executor. The `cast call` line only reads. Use the shell from the funding step, which set `VAULT`. These lines carry no Builder Code. deployments/README.md sends the BUY smoke intents of Maat's own vault only through `agent/scripts/first-decision.ts`, which appends one. Set `--gas-limit` to at least <Fact name="executeGasFloor" />. A plain gas estimate can record a false failure and use up the intent id; [Gas estimation](/docs/security/not-claimed#gas-estimation) explains why.
 
 ```bash
 cast call "$VAULT" "previewIntent((bytes32,uint8,address,uint256,uint256,address,bytes32))(uint8)" "($(cast keccak maat-smoke-1),0,0xb20000000000000000000078ee7ce2fE4908108C,5000000,0,0x0000000000000000000000000000000000000000,$(cast keccak smoke))" --rpc-url "$BASE_RPC_URL"
@@ -332,11 +343,11 @@ cast logs --rpc-url "$BASE_RPC_URL" --address "$VAULT" --from-block <DEPLOY_BLOC
   "Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)" "$(cast keccak maat-smoke-1)"
 ```
 
-For `maat-smoke-1`, `allowed` must be `true` and `reason` must be `0`. For `maat-smoke-2`, `allowed` must be `false` and `reason` must be `6`. If your `cast` prints the log raw instead, `allowed` is data word 3 and `reason` is data word 4 ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)). No vault is deployed, so this command has not been run against one.
+For `maat-smoke-1`, `allowed` must be `true` and `reason` must be `0`. For `maat-smoke-2`, `allowed` must be `false` and `reason` must be `6`. If your `cast` prints the log raw instead, `allowed` is data word 3 and `reason` is data word 4 ([Turn the numbers into names](/docs/guides/watch-decisions-onchain#turn-the-numbers-into-names)). No output of this command from a vault is recorded, so none is shown.
 
 <Callout type="note" title="Preview from the executor">
 
-The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The runbook's `cast call` sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
+The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-policy)) reads `tx.origin`, which in a `cast call` is the `--from` address, or whatever address the node uses when none is given. For a BUY or a SELL, `previewIntent` therefore matches `execute` only if that address passes the stock's executor policy, as the executor's address does. The `cast call` above sets no sender. If it returns `5`, which is `POLICY_BLOCKED`, repeat it with `--from <EXECUTOR_ADDRESS>`: your wallet is the executor at this stage.
 
 </Callout>
 
@@ -348,7 +359,7 @@ The transfer-policy check ([check 3](/docs/concepts/nine-checks#3-transfer-polic
 
 **Adapted from the runbook, not run.** This step tests the [Aave V4](/docs/help/glossary#aave-v4) path on your vault: it supplies the NVDAc from the BUY, borrows USDC against it, repays, and takes the collateral back. Run it in a US market session, after the BUY smoke test, while your wallet is still the executor. The action codes are `SUPPLY` = 2, `WITHDRAW_COLLATERAL` = 3, `BORROW` = 4 and `REPAY` = 5. The credit [reasons](/docs/help/glossary#reason) are `CREDIT_FAILED` = 17, `HEALTH_FACTOR_LOW` = 18 and `DERISK_WINDOW` = 19 ([Refusal codes](/docs/concepts/refusal-codes#credit)).
 
-The `BORROW` needs an open market and healthy collateral: every stock the vault has supplied must be unpaused and not [exit-only](/docs/help/glossary#exit-only), with a readable, fresh oracle price and a stable [multiplier](/docs/help/glossary#uimultiplier). The projected [health factor](/docs/help/glossary#health-factor) after the borrow must then be at least <Fact name="mandate.minHealthFactor" />, or at least <Fact name="mandate.targetHealthFactor" /> inside the [de-risk window](/docs/help/glossary#de-risk-window). By default that window is the last <Fact name="mandate.deriskWindowSec" /> before <Fact name="feedEdge" /> on a Friday, and on a Monday to Thursday before a holiday ([The de-risk window](/docs/concepts/credit-and-health-factor#the-de-risk-window) has the rules). A closed market refuses the borrow with `MARKET_CLOSED`. A supplied stock that fails returns `TOKEN_NOT_ALLOWED`, `TOKEN_PAUSED`, `BAD_PRICE`, `FEED_STALE` or `MULTIPLIER_COOLDOWN`. A health factor under the floor returns `HEALTH_FACTOR_LOW`, and one under the target inside the window `DERISK_WINDOW`. An adapter read that fails returns `CREDIT_FAILED`. [Other actions](/docs/concepts/nine-checks#other-actions) lists these checks in the order the vault runs them.
+The `BORROW` needs an open market and healthy collateral: every stock the vault has supplied must still be [allowed](/docs/concepts/mandate#allowed) (an [exit-only](/docs/help/glossary#exit-only) stock is not) and unpaused, with a readable, fresh oracle price and a stable [multiplier](/docs/help/glossary#uimultiplier). The projected [health factor](/docs/help/glossary#health-factor) after the borrow must then be at least <Fact name="mandate.minHealthFactor" />, or at least <Fact name="mandate.targetHealthFactor" /> inside the [de-risk window](/docs/help/glossary#de-risk-window). By default that window is the last <Fact name="mandate.deriskWindowSec" /> before <Fact name="feedEdge" /> on a Friday, and on a Monday to Thursday before a holiday ([The de-risk window](/docs/concepts/credit-and-health-factor#the-de-risk-window) has the rules). A closed market refuses the borrow with `MARKET_CLOSED`. A supplied stock that fails returns `TOKEN_NOT_ALLOWED`, `TOKEN_PAUSED`, `BAD_PRICE`, `FEED_STALE` or `MULTIPLIER_COOLDOWN`. A health factor under the floor returns `HEALTH_FACTOR_LOW`, and one under the target inside the window `DERISK_WINDOW`. An adapter read that fails returns `CREDIT_FAILED`. [Other actions](/docs/concepts/nine-checks#other-actions) lists these checks in the order the vault runs them.
 
 First set the variables. These lines only read. The `PREVIEW` and `EXECUTOR` lines are added here, and the others are the runbook's. `STOCK` is the vault's [raw](/docs/help/glossary#raw-amount) NVDAc balance from the BUY, and `cut` keeps only the first field of what `cast` prints. `VAULT` and `USDC` come from the funding step.
 
@@ -394,7 +405,7 @@ cast call "$ADAPTER" "debt()(uint256)" --rpc-url "$BASE_RPC_URL"
 cast call "$ADAPTER" "hasPosition()(bool)" --rpc-url "$BASE_RPC_URL"
 ```
 
-`debt()` must print `0` and `hasPosition()` must print `false`. The fork test `test_creditLoopInSession` asserts both after a similar round trip, with other amounts, on a Base fork. On mainnet none of this has been run.
+`debt()` must print `0` and `hasPosition()` must print `false`. The fork test `test_creditLoopInSession` asserts both after a similar round trip, with other amounts, on a Base fork. These docs record no run of it on Base mainnet.
 
 </Step>
 
@@ -404,7 +415,7 @@ cast call "$ADAPTER" "hasPosition()(bool)" --rpc-url "$BASE_RPC_URL"
 
 deployments/README.md has a table with one row per contract: `MarketCalendar`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `MandateVault`. Its columns are the network, the contract, the address, the transaction and the date. Fill in the addresses and the transaction hashes from the broadcast and the smoke tests. The addresses are in the script output. The transactions are in `contracts/broadcast/Deploy.s.sol/8453/run-*.json`, which holds the transactions and the deployer address but no key. Whether to commit that file is the owner's decision.
 
-The Maat team's table is empty because nothing has been broadcast. If you deploy from your own copy of the repository, fill in your copy of the table, and keep the vault address for the agent's `MAAT_VAULT` setting.
+The Maat team's table holds the addresses of the four Maat contracts that the owner deployed. If you deploy from your own copy of the repository, put your addresses in place of those in your copy of the table, and keep the vault address for the agent's `MAAT_VAULT` setting.
 
 </Step>
 
@@ -413,11 +424,11 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 ## Check it worked
 
 - The simulation with your real `.env` printed the addresses you set on the `owner (immutable)`, `executor` and `expense payee` lines, and no `vault address mismatch`.
-- After the broadcast, a read-only call returns your addresses from the vault: `cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"` prints the owner, and `cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"` prints the executor.
+- After the broadcast, a read-only call returns your addresses from the vault: `cast call "$VAULT" "owner()(address)" --rpc-url "$BASE_RPC_URL"` prints the owner, `cast call "$VAULT" "executor()(address)" --rpc-url "$BASE_RPC_URL"` prints the executor, and `cast call "$VAULT" "payees()(address[])" --rpc-url "$BASE_RPC_URL"` prints the payee list, with one address or two.
 - `previewIntent` returned `0`, and `cast logs` shows the BUY's `Decision` with `allowed=true` and `reason=0`.
-- The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A [refusal](/docs/help/glossary#refusal) moves no funds.
+- The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A refusal moves no funds.
 - The four credit intents emitted a `Decision` with `allowed=true` each, and the adapter reads `debt()` as `0` and `hasPosition()` as `false`.
-- The table in deployments/README.md has your four addresses.
+- Your copy of the table in deployments/README.md has your four addresses, in place of Maat's.
 
 ## Common mistakes
 
@@ -427,10 +438,43 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - **A plain USDC transfer instead of `fund`.** It is counted as revenue the next time `notifyRevenue` runs. Approve, then `fund`.
 - **An `execute` sent with cast's own gas estimate.** It can record `SWAP_FAILED` or `CREDIT_FAILED` for an intent the vault would allow, and the id is spent. Send every `execute` by hand with `--gas-limit`, and retry with a new id.
 - **A smoke test out of session.** A BUY on a weekend or a holiday, or after the close, is refused with `MARKET_CLOSED` instead of returning `OK`. That is the vault working, but it is not the first smoke test. The refused intent still uses its id, so retry with a new one, such as `maat-smoke-3`.
+- **A second payee equal to the first.** The script stops with `MAAT_EXPENSE_PAYEE_2 equals MAAT_EXPENSE_PAYEE` in the simulation, before anything is sent. For one payee, leave `MAAT_EXPENSE_PAYEE_2` at the zero address.
 - **Previewing the credit intents all at once.** Each one changes the position, so a later preview run early can show a refusal that the real send would not get. Preview each only after the previous one is mined.
 - **Redeploying because verification failed.** Run the resume command instead.
 - **Handing the executor role over too early.** After `setExecutor` points at the CDP Server Wallet, your wallet's `execute` calls revert with `NotExecutor`. Take the role back with `setExecutor` to finish a smoke test.
+- **A local upstream Anvil as the RPC.** Upstream Anvil 1.9 reverts on `uiMultiplier()`, so the vault's constructor fails on it. Fork Base through your RPC URL, as the commands do. A local node must be Base's build, `base-anvil`, which [Reproduce the fork run](/docs/guides/reproduce-the-fork-run#install-the-base-build-of-anvil) installs.
 - **Treating the dry-run addresses as yours.** The contract addresses in the dry run differ from mainnet, and the four address lines are placeholders.
+
+## Send intents from your own code
+
+<Callout type="fork" title="Only this repository's agent has done this">
+
+No agent other than the one in this repository has driven a vault, and that agent has run in live mode only in its fork test, on a local Base fork.
+
+</Callout>
+
+The vault does not know the Maat agent exists. Any code that holds the executor key of a vault can send it intents. The steps, mostly as links:
+
+1. **Be the executor.** `execute` takes calls only from the vault's executor and reverts with `NotExecutor` for anyone else. The executor is the address in `MAAT_EXECUTOR` at the deploy, or the one the owner sets later with `setExecutor`. The deploy script builds the default mandate and the three-stock basket from `MaatConfig` unless you edit it first ([Configure a mandate](/docs/guides/configure-a-mandate)).
+2. **Build an `Intent`.** [Types](/docs/reference/types#intent) has its fields and their units. Each id works once, whether the vault allows the intent or refuses it. `minOut` can be `0`, because for a swap the vault uses the higher of `minOut` and its own [slippage floor](/docs/help/glossary#slippage-floor). The vault does not check `rationaleHash`: it only logs it in the `Decision`. The agent makes the id and the hash of its [rationale blob](/docs/help/glossary#rationale-blob) like this. The excerpt uses the agent's own types, so it is not a standalone client.
+
+```typescript title="agent/src/intent.ts#L43-L50"
+export function intentId(runId: string, index: number): Hex {
+  return keccak256(encodePacked(["string", "uint256"], [runId, BigInt(index)]));
+}
+
+/** keccak256 of the text's UTF-8 bytes: an intent's rationaleHash is this of its maat:v1 blob. */
+export function rationaleHash(text: string): Hex {
+  return keccak256(toBytes(text));
+}
+```
+
+3. **Preview from the executor's address.** Call [`previewIntent`](/docs/reference/mandate-vault#previewintent) with `eth_call`, sent from the executor, as the agent does in `agent/src/chain/preview.ts`. [Check 3](/docs/concepts/nine-checks#3-transfer-policy) reads `tx.origin` (the callout in [Run the smoke test](#run-the-smoke-test) says why). If your transactions start from another address, such as a relayer or an ERC-4337 bundler, check 3 checks that address instead, and it can get `POLICY_BLOCKED`. No test sends an intent through a relayer or a bundler. The `GuardLib` unit tests `test_buyExecutorTxOrigin` and `test_sellExecutorTxOrigin` only check that the market checks return `POLICY_BLOCKED` for a `tx.origin` the stock's executor policy does not allow, and `OK` once it does. `test_transferableChecksTxOrigin` only checks that `GuardLib.transferable`, the policy check of a `SUPPLY` and a `WITHDRAW_COLLATERAL`, returns false for such a `tx.origin`.
+4. **Send `execute` with an explicit gas limit**, never a plain estimate. The Maat agent uses at least <Fact name="executeGasFloor" />. That is its own floor, sized from gas measured on a fork, not a vault rule ([Troubleshooting](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit)).
+5. **Read the verdict from the `Decision` event** in the receipt ([Events](/docs/reference/events#decision)). A receipt does not carry the call's return values, so `allowed` and `reason` come from the log. If a send leaves you unsure, read `usedIntent(id)` and then the `Decision` for that id ([Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent)). An `execute` that reverts emits nothing and leaves the id unused.
+6. **The ABI** is `mandateVaultAbi` in [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts. The same ABI is published as <a href="/data/abi/MandateVault.json">ABI (JSON)</a>.
+
+Not offered: no hosted API, no SDK, no factory. Anything not built yet is listed on [Status and roadmap](/docs/get-started/status#planned-not-built).
 
 ## Next steps
 
@@ -438,34 +482,4 @@ The Maat team's table is empty because nothing has been broadcast. If you deploy
 - [Change a rule](/docs/guides/change-a-rule) queues a change to the mandate, a stock or a payee through the timelock. [Keep the calendar current](/docs/guides/change-a-rule#keep-the-calendar-current) adds the holidays and early closes that the calendar does not ship with.
 - [Pause, withdraw and recover](/docs/guides/pause-withdraw-recover) is the guide for the emergency steps, including [unwinding a credit position](/docs/guides/pause-withdraw-recover#unwind-the-credit-position).
 - [Configure a mandate](/docs/guides/configure-a-mandate) shows where each default lives and which values the vault rejects, before you change one.
-- [Send intents from your own code](#send-intents-from-your-own-code), below, is for an executor that is not the Maat agent.
-
-## Send intents from your own code
-
-<Callout type="fork" title="Only this repository's agent has done this">
-
-No agent other than the one in this repository has driven a vault, and nothing is deployed. These steps have run only inside the agent's fork test, on a local Base fork.
-
-</Callout>
-
-The vault does not know the Maat agent exists. Any code that holds the executor key of a vault can send it intents. The steps, mostly as links:
-
-1. **Be the executor.** `execute` takes calls only from the vault's executor and reverts with `NotExecutor` for anyone else. The executor is the address in `MAAT_EXECUTOR` at the deploy, or the one the owner sets later with `setExecutor`. The deploy script builds the default mandate and the three-stock basket from `MaatConfig` unless you edit it first ([Configure a mandate](/docs/guides/configure-a-mandate)).
-2. **Build an `Intent`.** [Types](/docs/reference/types#intent) has its fields and their units. Each id works once, whether the vault allows the intent or refuses it. `minOut` can be `0`, because for a swap the vault uses the higher of `minOut` and its own [slippage floor](/docs/help/glossary#slippage-floor). The vault does not check `rationaleHash`: it only logs it in the `Decision`. The agent makes the id and the [rationale](/docs/help/glossary#rationale) hash like this. The excerpt uses the agent's own types, so it is not a standalone client.
-
-```typescript title="agent/src/intent.ts#L20-L26"
-export function intentId(runId: string, index: number): Hex {
-  return keccak256(encodePacked(["string", "uint256"], [runId, BigInt(index)]));
-}
-
-export function rationaleHash(text: string): Hex {
-  return keccak256(toBytes(text));
-}
-```
-
-3. **Preview from the executor's address.** Call [`previewIntent`](/docs/reference/mandate-vault#previewintent) with `eth_call`, sent from the executor, as the agent does in `agent/src/chain/preview.ts`. [Check 3](/docs/concepts/nine-checks#3-transfer-policy) reads `tx.origin` (the callout in [Run the smoke test](#run-the-smoke-test) says why). If your transactions start from another address, such as a relayer or an ERC-4337 bundler, check 3 checks that address instead, and it can get `POLICY_BLOCKED`. No test sends an intent through a relayer or a bundler. The `GuardLib` unit tests `test_buyExecutorTxOrigin` and `test_sellExecutorTxOrigin` only check that the market checks return `POLICY_BLOCKED` for a `tx.origin` the stock's executor policy does not allow, and `OK` once it does.
-4. **Send `execute` with an explicit gas limit**, never a plain estimate. The Maat agent uses at least <Fact name="executeGasFloor" />. That is its own floor, sized from gas measured on a fork, not a vault rule ([Troubleshooting](/docs/help/troubleshooting#a-swap-is-recorded-as-swap_failed-on-a-low-gas-limit)).
-5. **Read the verdict from the `Decision` event** in the receipt ([Events](/docs/reference/events#decision)). A receipt does not carry the call's return values, so `allowed` and `reason` come from the log. If a send leaves you unsure, read `usedIntent(id)` and then the `Decision` for that id ([Follow one intent](/docs/guides/watch-decisions-onchain#follow-one-intent)). An `execute` that reverts emits nothing and leaves the id unused.
-6. **The ABI** is `mandateVaultAbi` in [`agent/src/abi/generated.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which [`gen:abi`](/docs/reference/agent-scripts#genabi) writes from the compiled contracts.
-
-Not offered: no hosted API, no SDK, no factory. Anything not built yet is listed on [Status and roadmap](/docs/get-started/status#planned-not-built).
+- [Send intents from your own code](#send-intents-from-your-own-code), above, is for an executor that is not the Maat agent.

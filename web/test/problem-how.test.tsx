@@ -6,6 +6,7 @@ import { HowItWorks } from "@/components/sections/HowItWorks";
 import { Problem } from "@/components/sections/Problem";
 import { CodePanel } from "@/components/ui/CodePanel";
 import { FACTS } from "@/content/facts";
+import { PUBLISHED } from "@/content/gap-index";
 
 const width = (el: Element | null | undefined) => Number(el?.getAttribute("width"));
 
@@ -40,21 +41,36 @@ describe("PremiumChart", () => {
 });
 
 describe("Problem", () => {
-  it("shows the three traps with their refusal codes and fact-backed numbers", () => {
-    render(<Problem />);
+  it("shows the three traps, each named in plain words over its refusal code, with fact-backed numbers", () => {
+    const { container } = render(<Problem />);
     expect(screen.getByRole("heading", { level: 2 })).toHaveTextContent("Tokenized stocks trade 24/7. Their prices don't.");
     expect(screen.getAllByRole("heading", { level: 3 }).map((h) => h.textContent)).toEqual([
       "The price feed sleeps every weekend.",
       "The pool can drift from fair value.",
       "A split quietly changes the math.",
     ]);
-    for (const code of ["MARKET_CLOSED", "PREMIUM_TOO_HIGH", "MULTIPLIER_COOLDOWN"]) {
-      expect(screen.getByText(code)).toBeInTheDocument();
+    // Each card's badge: the plain label over the code, both in the refuse colour.
+    const badges = [...container.querySelectorAll("article [data-reason-tag]")];
+    expect(badges.map((b) => [b.firstElementChild?.textContent, b.lastElementChild?.textContent])).toEqual([
+      ["Market closed", "MARKET_CLOSED"],
+      ["Pool price too far from oracle", "PREMIUM_TOO_HIGH"],
+      ["Corporate action cooldown", "MULTIPLIER_COOLDOWN"],
+    ]);
+    for (const b of badges) {
+      expect(b.firstElementChild).toHaveClass("text-refuse");
+      expect(b.lastElementChild).toHaveClass("text-refuse");
     }
     expect(screen.getByText("1.000537939576369481")).toBeInTheDocument();
     expect(screen.getByText("24h pause")).toBeInTheDocument();
     expect(screen.getByText(/compares a 30-minute Aerodrome TWAP/)).toBeInTheDocument();
     expect(screen.getByText(/pauses that token for 24 hours/)).toBeInTheDocument();
+  });
+
+  it("links the Weekend Gap Index by its latest edition's title", () => {
+    render(<Problem />);
+    const latest = [...PUBLISHED].sort((a, b) => b.edition - a.edition)[0]!;
+    const link = screen.getByRole("link", { name: `Weekend Gap Index · ${latest.title}` });
+    expect(link).toHaveAttribute("href", "/gap-index");
   });
 });
 
@@ -98,9 +114,11 @@ describe("HowItWorks", () => {
       ["token", "GOOGLc"],
       ["amount", "10.00 USDC"],
       ["allowed", "false"],
-      ["reason", "MARKET_CLOSED"],
+      ["reason", "MARKET_CLOSED // Market closed"],
       ["rationaleHash", "[from mainnet tx]"],
     ]);
+    // The value stays the decoded code; its plain label follows as a muted comment.
+    expect(within(decoded).getByText("// Market closed")).toHaveClass("text-ink-2");
     expect(within(decoded).getByText(/Base Builder Code \(ERC-8021\)/)).toBeInTheDocument();
   });
 });

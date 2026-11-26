@@ -1,3 +1,5 @@
+import type { Address } from "viem";
+import type { PreviewRequest } from "@/lib/chain/preview";
 import {
   DAY_SECONDS,
   etToTimestamp,
@@ -16,8 +18,9 @@ import {
 import { getDecisions } from "./decisions";
 import { CHECK_LABELS, type EngineCheck } from "./engine";
 import { FACTS } from "./facts";
-import { clockLabel, dayLabel, minuteOfClock, numberWord } from "./format";
-import type { ReasonCode, RefusalCode } from "./reasons";
+import { clockLabel, dayLabel, formatInt, minuteOfClock, numberWord } from "./format";
+import addresses from "./generated/base-addresses.json" with { type: "json" };
+import { type ReasonCode, type RefusalCode, reasonText } from "./reasons";
 
 /**
  * BUY intents against the default mandate, one ET day at a time (spec 2026-11-08 §3). Only what can be decided
@@ -397,7 +400,7 @@ export function decodeScenario(search: string): Scenario {
 export function postText(s: Scenario, r: Pick<SimResult, "allowed" | "reason">): string {
   const what = `${formatUsd(s.intent.usd6)} of ${s.intent.token === "OTHER" ? "a token outside the mandate" : s.intent.token}`;
   const when = `${dayLabel(isoOfDay(s.etDay))} at ${clockLabel(s.intent.minute)} ET`;
-  if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat's simulator said no: ${r.reason}.`;
+  if (!r.allowed) return `I tried to buy ${what} on ${when}. Maat's simulator said no: ${reasonText(r.reason)}.`;
   const nine = numberWord(FACTS.checksPerTrade.value).toLowerCase();
   return `I asked Maat's simulator to buy ${what} on ${when}. All ${nine} checks passed. Can you make it say no?`;
 }
@@ -406,4 +409,56 @@ export function postText(s: Scenario, r: Pick<SimResult, "allowed" | "reason">):
 export function postUrl(text: string, link: string): string {
   const url = /^https?:\/\//.test(link) ? `&url=${encodeURIComponent(link)}` : "";
   return `https://x.com/intent/post?text=${encodeURIComponent(text)}${url}`;
+}
+
+/**
+ * What the real vault is asked about for "Other token": USDC, a real token the mandate does not list for BUY. Unless the
+ * vault is paused, MandateVault._check refuses it as TOKEN_NOT_ALLOWED, as the simulation's check 1 does.
+ */
+export const OTHER_TOKEN_STAND_IN = "USDC";
+
+/** The token the vault is asked about, in the site's spelling (NVDAc; content/generated/base-addresses.json has NVDAC). */
+const askedSymbol = (t: SimToken): string => (t === "OTHER" ? OTHER_TOKEN_STAND_IN : t);
+
+function tokenAddress(symbol: string): Address {
+  const row = addresses.find((a) => a.name === symbol.toUpperCase());
+  if (!row) throw new Error(`content/generated/base-addresses.json has no ${symbol.toUpperCase()}`);
+  return row.value as Address;
+}
+
+/**
+ * The previewIntent call an intent becomes (lib/chain/preview.ts): a BUY of the token with the USDC in, 6 decimals, and
+ * no payee. The moment and the day's tape stay behind: the vault answers at the head block, by its own clock, prices
+ * and holdings.
+ */
+export function vaultRequest(i: SimIntent): PreviewRequest {
+  return { action: "BUY", token: tokenAddress(askedSymbol(i.token)), amount: BigInt(i.usd6) };
+}
+
+/** "BUY NVDAc · $20", or "BUY USDC · $20" for the other token. */
+export function vaultRequestLabel(i: SimIntent): string {
+  return `BUY ${askedSymbol(i.token)} · ${formatUsd(i.usd6)}`;
+}
+
+export interface VaultComparison {
+  readonly same: boolean;
+  readonly text: string;
+}
+
+/** The simulation's answer beside the vault's: the same reason, or not, and why the two can differ. */
+export function vaultComparison(a: {
+  sim: ReasonCode;
+  vault: ReasonCode;
+  etDay: number;
+  minute: number;
+  blockNumber: bigint;
+}): VaultComparison {
+  const block = formatInt(Number(a.blockNumber));
+  if (a.sim === a.vault) {
+    return { same: true, text: `Same answer as the simulation. The vault gave it at block ${block}, from its live prices, calendar and holdings.` };
+  }
+  return {
+    same: false,
+    text: `They differ. The simulation is a model: it answers for ${momentLabel(a.etDay, a.minute)}, with the fork's values and a day that starts with ${formatUsd(START6)} USDC. The vault answered at block ${block}, at that block's time, from its live prices, calendar, holdings and mandate.`,
+  };
 }

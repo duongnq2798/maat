@@ -1,1 +1,1 @@
-Maat: the AI agent that knows when not to trade. A Saturday trade refused with MARKET_CLOSED.
+Maat: the AI agent that knows when not to trade. The market session check fails, and the vault refuses: Market closed (MARKET_CLOSED).

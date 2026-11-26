@@ -44,6 +44,21 @@ export interface EventParam {
   name: string;
 }
 
+/** One Decision log of the Base mainnet vault as an RPC returned it, with its block's time and its tx's gas. */
+export interface RecordedLog {
+  /** The emitting contract, the MandateVault. */
+  address: `0x${string}`;
+  blockNumber: string;
+  logIndex: number;
+  transactionHash: `0x${string}`;
+  topics: readonly `0x${string}`[];
+  data: `0x${string}`;
+  /** Unix seconds of the block. */
+  blockTime: number;
+  /** The tx's gasUsed, decimal. */
+  gasUsed: string;
+}
+
 const SPEC = "docs/superpowers/specs/2026-11-06-mandate-treasury-design.md";
 const FORK_TEST = "agent/test/integration/agent.fork.test.ts";
 
@@ -66,9 +81,9 @@ export const FACTS = {
   mandate: fact<MandateFacts>(
     {
       sessionMode: "REGULAR",
-      maxStalenessSec: 3600,
+      maxStalenessSec: 90_000,
       maxPremiumBps: 100,
-      maxSlippageBps: 100,
+      maxSlippageBps: 150,
       twapWindowSec: 1800,
       multiplierCooldownSec: 86_400,
       perTradeCapUsd: 50,
@@ -85,6 +100,10 @@ export const FACTS = {
     `gasUsed per tx in agent/test/integration/fork-gas.json, written by MAAT_GAS_LOG from ${FORK_TEST} at BLOCK_SESSION (BUY varies a little between runs, the other three do not)`,
   ),
   feedAgeSec: fact(14, "age of the NVDAc Chainlink answer at BLOCK_SESSION, measured on the fork: contracts/script/BaseAddresses.sol BLOCK_SESSION comment (age 14 s)"),
+  forkRunMaxStalenessSec: fact(
+    3600,
+    "maxStaleness of the vault in the recorded fork run (fork-gas.json): agent/test/integration/deploy.ts at 4492eed (git show 4492eed:agent/test/integration/deploy.ts); the helper now deploys the default mandate's value",
+  ),
   loopMinutes: fact(15, "agent/src/loop/scheduler.ts IN_SESSION_MS, agent loop cadence in session"),
   rebalanceDriftPct: fact(5, "agent/src/policy.ts DEFAULT_POLICY.driftBps, rebalance past a 5-point drift"),
   targetWeightPct: fact(
@@ -111,7 +130,7 @@ export const FACTS = {
   ),
   feedEdgeMin: fact(
     1200,
-    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET",
+    "contracts/src/MarketCalendar.sol FEED_EDGE_MIN: assumes Chainlink equity feeds stop Fri 20:00 ET and resume Sun 20:00 ET (not measured in the repository)",
   ),
   calendar: fact<{ holidays: readonly Holiday[]; earlyCloses: readonly EarlyClose[] }>(
     {
@@ -119,10 +138,20 @@ export const FACTS = {
         { date: "2026-11-26", name: "Thanksgiving" },
         { date: "2026-12-25", name: "Christmas" },
         { date: "2027-01-01", name: "New Year" },
+        { date: "2027-01-18", name: "Martin Luther King Jr. Day" },
+        { date: "2027-02-15", name: "Washington's Birthday" },
+        { date: "2027-03-26", name: "Good Friday" },
+        { date: "2027-05-31", name: "Memorial Day" },
+        { date: "2027-06-18", name: "Juneteenth (observed)" },
+        { date: "2027-07-05", name: "Independence Day (observed)" },
+        { date: "2027-09-06", name: "Labor Day" },
+        { date: "2027-11-25", name: "Thanksgiving" },
+        { date: "2027-12-24", name: "Christmas (observed)" },
       ],
       earlyCloses: [
         { date: "2026-11-27", closeMin: 780 },
         { date: "2026-12-24", closeMin: 780 },
+        { date: "2027-11-26", closeMin: 780 },
       ],
     },
     "contracts/src/MarketCalendar.sol constructor: _addHoliday (names from its comments) and _setEarlyClose",
@@ -131,5 +160,38 @@ export const FACTS = {
   forkVaultUsd: fact(
     200,
     "agent/test/integration/deploy.ts: owner.fund(200_000_000n), the USDC the fork vault starts with",
+  ),
+  mainnetDecisions: fact<readonly RecordedLog[]>(
+    [
+      {
+        address: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
+        blockNumber: "61700601",
+        logIndex: 24,
+        transactionHash: "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
+        topics: [
+          "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322",
+          "0xdc06ec8e29767044d325cc10445a942d26a463a4ed08487b013c5fed2a59243c",
+          "0x000000000000000000000000b20000000000000000000078ee7ce2fe4908108c",
+        ],
+        data: "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+        blockTime: 1795530495,
+        gasUsed: "113352",
+      },
+      {
+        address: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
+        blockNumber: "61745836",
+        logIndex: 46,
+        transactionHash: "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8",
+        topics: [
+          "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322",
+          "0x475efb77a4242345466f42fc844ac578b99716db50eca20d0ffe27549a68ee3d",
+          "0x000000000000000000000000b20000000000000000000078ee7ce2fe4908108c",
+        ],
+        data: "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+        blockTime: 1795539542,
+        gasUsed: "702443",
+      },
+    ],
+    "the vault's Decision log in each tx's receipt (eth_getTransactionReceipt), its block's timestamp (eth_getBlockByNumber) and the tx's gasUsed, read with cast from base-rpc.publicnode.com on 2026-11-25; an eth_getLogs scan of the vault from its deploy block 61,698,517 through block 61,983,761 found these two Decision logs and no other. web/content/docs/get-started/status.mdx records both txs",
   ),
 } as const;

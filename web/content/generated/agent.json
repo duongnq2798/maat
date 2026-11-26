@@ -10,6 +10,15 @@
       "requiredInLive": false
     },
     {
+      "name": "BASE_RPC_URL_FALLBACK",
+      "example": "",
+      "note": "Optional second Base RPC, best from another provider: a request that fails on BASE_RPC_URL is sent here.",
+      "readBy": "agent",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
       "name": "MAAT_VAULT",
       "example": "0x0000000000000000000000000000000000000000",
       "note": "From the deploy logs (deployments/README.md).",
@@ -91,9 +100,45 @@
       "requiredInLive": false
     },
     {
+      "name": "MAAT_CREDIT_ACTIONS",
+      "example": "off",
+      "note": "off (default): never suggest, ask Claude for or send SUPPLY, WITHDRAW_COLLATERAL, BORROW or REPAY. on: allow them.",
+      "readBy": "agent",
+      "default": "off",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_MAX_LLM_USD_PER_DAY",
+      "example": "0.75",
+      "note": "US dollars of Claude usage per UTC day; once reached, the day's later rounds do not call Claude.",
+      "readBy": "agent",
+      "default": "0.75",
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_BILL_MIN_USD",
+      "example": "",
+      "note": "Smallest unpaid compute bill a round pays, in US dollars. Unset: 1.00 in live mode, 0.10 in dry-run.",
+      "readBy": "agent",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
+      "name": "MAAT_PROBES",
+      "example": "",
+      "note": "Probe instants, comma-separated UTC times as YYYY-MM-DDTHH:MM:SSZ (or YYYY-MM-DDTHH:MMZ), at most 3 per UTC day. At each one the running loop sends one $1 probe intent, with no Claude call, under every round guardrail. A bad, repeated or fourth-of-the-day entry is left out with a warning at start; a past one is journaled as missed.",
+      "readBy": "agent",
+      "default": null,
+      "required": false,
+      "requiredInLive": false
+    },
+    {
       "name": "ANTHROPIC_API_KEY",
       "example": "",
-      "note": "Anthropic API key (the SDK reads it).",
+      "note": "Anthropic API key. The agent calls Claude only at https://api.anthropic.com, with this key.",
       "readBy": "sdk",
       "default": null,
       "required": false,
@@ -156,11 +201,33 @@
     {
       "name": "agent",
       "command": "node --env-file-if-exists=.env --import tsx src/main.ts"
+    },
+    {
+      "name": "agent:loop",
+      "command": "node --import tsx scripts/restart-loop.ts"
+    },
+    {
+      "name": "agent:heartbeat",
+      "command": "node --import tsx scripts/heartbeat.ts"
+    },
+    {
+      "name": "verify",
+      "command": "node --import tsx scripts/verify-decision.ts"
+    },
+    {
+      "name": "eval:briefs",
+      "command": "node --env-file-if-exists=.env --import tsx scripts/eval-briefs.ts"
     }
   ],
   "scriptFiles": [
     "cdp-setup.ts",
+    "eval-briefs.ts",
+    "first-decision.ts",
     "gen-abis.ts",
-    "smoke-claude.ts"
+    "heartbeat.ts",
+    "probe-fork.ts",
+    "restart-loop.ts",
+    "smoke-claude.ts",
+    "verify-decision.ts"
   ]
 }

@@ -18,7 +18,7 @@ export const DOCS_FACTS = {
   ),
   earlyCloseMin: fact(780, "contracts/src/MarketCalendar.sol constructor: _setEarlyClose(..., 780), a 13:00 ET close"),
   calendarPreload: fact(
-    { holidays: 3, earlyCloses: 2 },
+    { holidays: 12, earlyCloses: 3 },
     "contracts/src/MarketCalendar.sol constructor: _addHoliday and _setEarlyClose calls",
   ),
   etOffsetHours: fact(
@@ -40,6 +40,10 @@ export const DOCS_FACTS = {
   ),
   maxTxPerDay: fact(40, "agent/src/config.ts MAAT_MAX_TX_PER_DAY default"),
   dailyComputeUsd: fact(0.5, "agent/src/config.ts MAAT_DEFAULT_DAILY_COMPUTE_USD default"),
+  maxLlmUsdPerDay: fact(
+    0.75,
+    "agent/src/config.ts MAAT_MAX_LLM_USD_PER_DAY default, the Claude spend of one UTC day after which a round skips Claude",
+  ),
   maxIntents: fact(6, "agent/src/llm/schema.ts MAX_INTENTS, intents per Claude proposal"),
   maxRationaleChars: fact(600, "agent/src/llm/schema.ts MAX_RATIONALE_CHARS, characters per intent rationale"),
   maxSummaryChars: fact(1200, "agent/src/llm/schema.ts MAX_SUMMARY_CHARS, characters in the summary of a Claude proposal"),
@@ -54,9 +58,9 @@ export const DOCS_FACTS = {
     120,
     "agent/src/loop/runOnce.ts RECEIPT_TIMEOUT_MS = 120_000, how long a round waits for the receipt of a transaction it sent",
   ),
-  pendingWindowBlocks: fact(
-    300,
-    "agent/src/loop/runOnce.ts PENDING_WINDOW_BLOCKS = 300n, the blocks after which a send with no onchain trace is recorded as dropped",
+  pendingWindowMinutes: fact(
+    10,
+    "agent/src/loop/runOnce.ts PENDING_WINDOW_SECONDS = 600n, the chain time after which a send with no onchain trace is recorded as dropped",
   ),
   lockStaleSec: fact(
     60,
@@ -81,7 +85,11 @@ export const DOCS_FACTS = {
     "agent/src/policy.ts DEFAULT_POLICY.minTradeUsd6 = 1_000_000n, the smallest suggestion the policy keeps",
   ),
   offSessionMinutes: fact(60, "agent/src/loop/scheduler.ts OFF_SESSION_MS, agent loop cadence outside the session"),
-  billMinUsd: fact(0.1, "agent/src/loop/runOnce.ts BILL_MIN_USD6 = 100_000n, the smallest compute bill the agent pays"),
+  billMinUsd: fact(0.1, "agent/src/loop/runOnce.ts BILL_MIN_USD6 = 100_000n, the smallest compute bill a dry-run round pays"),
+  liveBillMinUsd: fact(
+    1,
+    "agent/src/loop/runOnce.ts LIVE_BILL_MIN_USD6 = 1_000_000n, the smallest compute bill a live round pays",
+  ),
   treasuryUsd: fact({ min: 20, max: 200 }, `${SPEC} §1 Constraints: small mainnet amounts, $20 to $200`),
   addressesVerifiedOn: fact(
     "2026-11-06",

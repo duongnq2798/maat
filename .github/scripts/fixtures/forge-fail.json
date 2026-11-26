@@ -1,0 +1,34 @@
+{
+  "test/MandateVault.t.sol:MandateVaultTest": {
+    "duration": "9ms 530µs 100ns",
+    "test_results": {
+      "test_buyInSessionIsAllowed()": {
+        "status": "Success",
+        "reason": null,
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 265296 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "3ms 378µs 600ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      },
+      "test_refusesStaleFeed()": {
+        "status": "Failure",
+        "reason": "assertion failed: 0 != 1",
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 187421 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "2ms 18µs 700ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      }
+    },
+    "warnings": []
+  }
+}

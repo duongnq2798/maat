@@ -4,6 +4,9 @@
  * forge-fmt formatted sources, and cross-checked against the agent's compiled ABI by test/docs-gen.test.ts.
  */
 
+import { keccak_256 } from "@noble/hashes/sha3.js";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
+
 export interface SolParam {
   readonly type: string;
   readonly name: string;
@@ -24,18 +27,24 @@ export interface SolFunction {
   /** Who may call it: "anyone", or the role a modifier or first-line check enforces ("owner", "executor", "vault"). */
   readonly access: string;
   readonly notice: string;
+  /** The first four bytes of the keccak-256 of the canonical signature, as 0x and 8 hex digits: what a call starts with. */
+  readonly selector: string;
 }
 
 export interface SolEvent {
   readonly name: string;
   readonly params: readonly SolParam[];
   readonly notice: string;
+  /** The keccak-256 of the canonical signature, as 0x and 64 hex digits: the first topic of every log of the event. */
+  readonly topic0: string;
 }
 
 export interface SolError {
   readonly name: string;
   readonly params: readonly SolParam[];
   readonly notice: string;
+  /** The first four bytes of the keccak-256 of the canonical signature: what a revert with the error starts with. */
+  readonly selector: string;
 }
 
 export interface SolEnum {
@@ -73,6 +82,9 @@ export interface SolSource {
   readonly file: string;
   readonly text: string;
 }
+
+/** An item as its declaration reads, before the hashes, which need every struct, enum and contract of the sources. */
+type Parsed<T> = Omit<T, "selector" | "topic0">;
 
 /** Same length as the input, comments replaced by spaces, so offsets still line up with the original. */
 function blankComments(src: string): string {
@@ -186,7 +198,7 @@ function accessOf(modifiers: readonly string[], body: string | undefined): strin
   return first?.[1]?.replace(/^_/, "") ?? "anyone";
 }
 
-function parseFunction(d: Decl, notice: string): SolFunction | undefined {
+function parseFunction(d: Decl, notice: string): Parsed<SolFunction> | undefined {
   const m = /^function (\w+)\s*\(/.exec(d.head);
   if (!m?.[1]) return undefined;
   const open = d.head.indexOf("(");
@@ -231,7 +243,7 @@ function unwrapMapping(type: string): { keys: SolParam[]; value: string } {
   return { keys, value: t };
 }
 
-function parseGetter(d: Decl, notice: string): SolFunction | undefined {
+function parseGetter(d: Decl, notice: string): Parsed<SolFunction> | undefined {
   if (d.body !== undefined || !/\bpublic\b/.test(d.head)) return undefined;
   if (/^(function|event|error|modifier|constructor|using|struct|enum)\b/.test(d.head)) return undefined;
   // The initializer's `=`, not the `=>` of a mapping type.
@@ -258,14 +270,17 @@ function parseGetter(d: Decl, notice: string): SolFunction | undefined {
   };
 }
 
-function parseSignature(d: Decl, keyword: "event" | "error", notice: string) {
+function parseSignature(d: Decl, keyword: "event" | "error", notice: string): Parsed<SolEvent> | undefined {
   const m = new RegExp(`^${keyword} (\\w+)\\s*\\(`).exec(d.head);
   if (!m?.[1]) return undefined;
   const open = d.head.indexOf("(");
   return { name: m[1], params: params(d.head.slice(open + 1, matching(d.head, open, "()"))), notice };
 }
 
-interface RawContract extends SolContract {
+interface RawContract extends Omit<SolContract, "functions" | "events" | "errors"> {
+  readonly functions: readonly Parsed<SolFunction>[];
+  readonly events: readonly Parsed<SolEvent>[];
+  readonly errors: readonly Parsed<SolError>[];
   readonly bases: readonly string[];
   readonly libraries: readonly string[];
 }
@@ -297,14 +312,16 @@ function parseFile(src: SolSource, enums: SolEnum[], structs: SolStruct[]): RawC
     const decls = declarations(code, bodyStart, bodyStart + d.body.length);
     if (m[1] !== "library") collectTypes(decls);
     const notice = (d2: Decl) => natspecAbove(src.text, d2.offset);
-    const functions: SolFunction[] = [];
-    const events: SolEvent[] = [];
-    const errors: SolError[] = [];
+    const functions: Parsed<SolFunction>[] = [];
+    const events: Parsed<SolEvent>[] = [];
+    const errors: Parsed<SolError>[] = [];
     const libraries: string[] = [];
     for (const x of decls) {
       const fn = parseFunction(x, notice(x)) ?? parseGetter(x, notice(x));
       if (fn) functions.push(fn);
       const ev = parseSignature(x, "event", notice(x));
+      // Its logs do not carry the hash of the signature, so there is no topic 0 to give.
+      if (ev && /\)\s*anonymous$/.test(x.head)) throw new Error(`${m[2]}.${ev.name}: an anonymous event has no topic 0`);
       if (ev) events.push(ev);
       const er = parseSignature(x, "error", notice(x));
       if (er) errors.push(er);
@@ -328,10 +345,15 @@ function parseFile(src: SolSource, enums: SolEnum[], structs: SolStruct[]): RawC
 
 const byName = <T extends { name: string }>(a: T, b: T) => a.name.localeCompare(b.name, "en");
 
+const ELEMENTARY = /^(address|bool|string|bytes\d*|u?int\d*)$/;
+
+const keccak = (text: string) => `0x${bytesToHex(keccak_256(utf8ToBytes(text)))}`;
+
 /**
  * Parse every source, then give each contract what the ABI would show: the events, errors and functions of
  * the interfaces it inherits, and the errors of the libraries it attaches with `using`. Library internals and
  * internal functions are left out. Output is sorted by name so it is stable across edits that only reorder.
+ * Each function and error gets its selector and each event its topic 0, hashed from the canonical signature.
  */
 export function buildSurface(sources: readonly SolSource[]): SolSurface {
   const enums: SolEnum[] = [];
@@ -339,7 +361,25 @@ export function buildSurface(sources: readonly SolSource[]): SolSurface {
   const raw = sources.flatMap((s) => parseFile(s, enums, structs));
   const find = (name: string) => raw.find((c) => c.name === name);
 
-  const resolve = (c: RawContract, seen = new Set<string>()): Omit<SolContract, "name" | "kind" | "file" | "notice"> => {
+  /**
+   * A type as the ABI writes it in a signature: an enum is a uint8, a contract or an interface an address, a struct the
+   * tuple of its fields, and uint and int have their size. Any other name fails, so a wrong signature is never hashed.
+   */
+  const canonical = (type: string, where: string): string => {
+    const [, base = "", dims = ""] = /^(\w+)((?:\[\d*\])*)$/.exec(type) ?? [];
+    const struct = structs.filter((s) => s.name === base);
+    if (struct.length > 1) throw new Error(`${where}: more than one struct is named ${base}`);
+    if (struct[0]) return `(${struct[0].fields.map((f) => canonical(f.type, where)).join(",")})${dims}`;
+    if (enums.some((e) => e.name === base)) return `uint8${dims}`;
+    if (raw.some((c) => c.name === base && c.kind !== "library")) return `address${dims}`;
+    if (ELEMENTARY.test(base)) return `${base === "uint" ? "uint256" : base === "int" ? "int256" : base}${dims}`;
+    throw new Error(`${where}: cannot encode the type ${type}`);
+  };
+  const hashOf = (contract: string, item: { name: string; params: readonly SolParam[] }) =>
+    keccak(`${item.name}(${item.params.map((p) => canonical(p.type, `${contract}.${item.name}`)).join(",")})`);
+
+  type Resolved = Pick<RawContract, "functions" | "events" | "errors">;
+  const resolve = (c: RawContract, seen = new Set<string>()): Resolved => {
     const functions = new Map(c.functions.map((f) => [f.name, f]));
     const events = new Map(c.events.map((e) => [e.name, e]));
     const errors = new Map(c.errors.map((e) => [e.name, e]));
@@ -365,7 +405,7 @@ export function buildSurface(sources: readonly SolSource[]): SolSurface {
   // Solidity's getter for a struct-valued variable returns the struct's members, not the struct, and leaves out
   // the members that are arrays or mappings. A declared function that returns a struct keeps returning the struct.
   const isOmitted = (p: SolParam) => p.type.includes("[") || p.type.startsWith("mapping");
-  const expandGetter = (f: SolFunction): SolFunction => {
+  const expandGetter = (f: Parsed<SolFunction>): Parsed<SolFunction> => {
     const only = f.returns.length === 1 ? f.returns[0] : undefined;
     const struct = f.kind === "getter" && only ? structs.find((s) => s.name === only.type) : undefined;
     return struct ? { ...f, returns: struct.fields.filter((p) => !isOmitted(p)) } : f;
@@ -373,9 +413,17 @@ export function buildSurface(sources: readonly SolSource[]): SolSurface {
 
   const contracts = raw
     .filter((c) => c.kind !== "library")
-    .map((c) => {
+    .map((c): SolContract => {
       const r = resolve(c);
-      return { name: c.name, kind: c.kind, file: c.file, notice: c.notice, ...r, functions: r.functions.map(expandGetter) };
+      return {
+        name: c.name,
+        kind: c.kind,
+        file: c.file,
+        notice: c.notice,
+        functions: r.functions.map(expandGetter).map((f) => ({ ...f, selector: hashOf(c.name, f).slice(0, 10) })),
+        events: r.events.map((e) => ({ ...e, topic0: hashOf(c.name, e) })),
+        errors: r.errors.map((e) => ({ ...e, selector: hashOf(c.name, e).slice(0, 10) })),
+      };
     })
     .sort(byName);
   return { contracts, enums: enums.sort(byName), structs: structs.sort(byName) };

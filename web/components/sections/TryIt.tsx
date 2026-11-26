@@ -1,5 +1,6 @@
 import { Simulator } from "@/components/Simulator";
 import { SectionHeading } from "@/components/ui/SectionHeading";
+import { isoOfDay, WINDOW } from "@/content/calendar";
 import { FACTS } from "@/content/facts";
 import { andList, clockLabel, dayLabel, formatInt } from "@/content/format";
 import { FEED_AGE_TOKEN } from "@/content/simulator";
@@ -7,15 +8,15 @@ import { repoFileUrl } from "@/lib/site";
 
 export function TryIt() {
   const { holidays, earlyCloses } = FACTS.calendar.value;
+  const lastListed = isoOfDay(WINDOW.last);
   const session = FACTS.nyseSessionMin.value;
   const premiums = FACTS.premiumsBps.value;
   const unmeasured = andList(FACTS.basket.value.filter((t) => t !== FEED_AGE_TOKEN));
   const notes = [
     {
       title: "Simulated",
-      body: `The market session (NYSE ${clockLabel(session.open)}–${clockLabel(session.close)} ET, weekends, and the holidays the calendar lists: ${andList(
-        holidays.map((h) => `${h.name} on ${dayLabel(h.date)}`),
-      )}; early closes at ${andList(earlyCloses.map((e) => `${clockLabel(e.closeMin)} on ${dayLabel(e.date)}`))}), the token list, the per-trade and daily caps, the weight and the vault's USDC balance.`,
+      // A count and an end date: the full list repeats day labels across two years ("Thanksgiving on Thu 26 Nov").
+      body: `The market session (NYSE ${clockLabel(session.open)}–${clockLabel(session.close)} ET, weekends, and the ${holidays.length} holidays and ${earlyCloses.length} early closes the calendar lists, up to ${dayLabel(lastListed)} ${lastListed.slice(0, 4)}), the token list, the per-trade and daily caps, the weight and the vault's USDC balance.`,
     },
     {
       title: "Fixed at fork values",
@@ -46,10 +47,11 @@ export function TryIt() {
               <strong className="font-medium text-ink">{n.title}.</strong> {n.body}
             </p>
           ))}
+          {/* Medium weight: inside ink-2 text the accent colour alone does not set a link apart (axe link-in-text-block). */}
           <p className="m-0">
             <strong className="font-medium text-ink">Source of truth.</strong> The contracts decide, not this page. Read{" "}
-            <a href={repoFileUrl("contracts/src/MarketCalendar.sol")}>MarketCalendar.sol</a> and{" "}
-            <a href={repoFileUrl("contracts/src/MandateVault.sol")}>MandateVault.sol</a>.
+            <a className="font-medium" href={repoFileUrl("contracts/src/MarketCalendar.sol")}>MarketCalendar.sol</a> and{" "}
+            <a className="font-medium" href={repoFileUrl("contracts/src/MandateVault.sol")}>MandateVault.sol</a>.
           </p>
         </div>
       </div>

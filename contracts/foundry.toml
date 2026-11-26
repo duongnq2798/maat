@@ -8,9 +8,23 @@ hardfork = "base:Cobalt"
 via_ir = true
 optimizer = true
 optimizer_runs = 200
+# MarketCalendarVectors.t.sol reads the committed JSON vectors
+fs_permissions = [{ access = "read", path = "./test/vectors" }]
 
 [rpc_endpoints]
 base = "${BASE_RPC_URL}"
 
 [fmt]
 line_length = 110
+
+# test/invariant: 32 runs of 512 calls, about 30 to 40 s on the machine it was measured on. The handlers never revert, so a revert is a
+# handler bug and fails the run. For a longer search: FOUNDRY_PROFILE=deep forge test --match-path "test/invariant/*"
+[invariant]
+runs = 32
+depth = 512
+fail_on_revert = true
+
+[profile.deep.invariant]
+runs = 256
+depth = 1024
+fail_on_revert = true

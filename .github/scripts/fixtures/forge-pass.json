@@ -1,0 +1,53 @@
+{
+  "test/GuardLib.t.sol:GuardLibTest": {
+    "duration": "3ms 112µs 400ns",
+    "test_results": {
+      "test_okReturnsOraclePrice()": {
+        "status": "Success",
+        "reason": null,
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 31207 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "1ms 204µs 100ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      },
+      "test_paused()": {
+        "status": "Success",
+        "reason": null,
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 28433 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "611µs 900ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      }
+    },
+    "warnings": []
+  },
+  "test/PriceLib.t.sol:PriceLibTest": {
+    "duration": "1ms 87µs 200ns",
+    "test_results": {
+      "test_premiumBps()": {
+        "status": "Success",
+        "reason": null,
+        "counterexample": null,
+        "logs": [],
+        "decoded_logs": [],
+        "kind": { "Unit": { "gas": 353 } },
+        "traces": [],
+        "labeled_addresses": {},
+        "duration": "402µs 300ns",
+        "breakpoints": {},
+        "gas_snapshots": {}
+      }
+    },
+    "warnings": []
+  }
+}

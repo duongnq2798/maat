@@ -1,3 +1,6 @@
+import { ThumbBar } from "@/components/instrument/ThumbBar";
+import { LiveSnapshotProvider } from "@/components/live/LiveSnapshotProvider";
+import { AgentBuilders } from "@/components/sections/AgentBuilders";
 import { AnnouncementBar } from "@/components/sections/AnnouncementBar";
 import { BuiltOn } from "@/components/sections/BuiltOn";
 import { Footer } from "@/components/sections/Footer";
@@ -10,27 +13,35 @@ import { Problem } from "@/components/sections/Problem";
 import { Refusals } from "@/components/sections/Refusals";
 import { TreasuryLoop } from "@/components/sections/TreasuryLoop";
 import { TryIt } from "@/components/sections/TryIt";
+import { VaultDecisionsProvider } from "@/components/sections/VaultDecisions";
 
+// The landing reads Base twice, each once for the whole page. LiveSnapshotProvider reads the market (spec 2026-11-23
+// section 3.8): the strip, HOLD and the ThumbBar's lamp read it. VaultDecisionsProvider reads the mainnet vault's
+// Decisions with /ledger's loader once the page has hydrated: the bar, the hero plate and the engine card read it.
 export default function Page() {
   return (
-    <>
-      <a href="#main" className="skip-link">
-        Skip to content
-      </a>
-      <AnnouncementBar />
-      <Nav />
-      <main id="main" tabIndex={-1} className="outline-none">
-        <Hero />
-        <BuiltOn />
-        <Problem />
-        <HowItWorks />
-        <Refusals />
-        <TryIt />
-        <Ledger />
-        <Mandate />
-        <TreasuryLoop />
-      </main>
-      <Footer />
-    </>
+    <LiveSnapshotProvider>
+      <VaultDecisionsProvider>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
+        <AnnouncementBar />
+        <Nav />
+        <main id="main" tabIndex={-1} className="outline-none">
+          <Hero />
+          <BuiltOn />
+          <Problem />
+          <HowItWorks />
+          <Refusals />
+          <TryIt />
+          <Ledger />
+          <Mandate />
+          <TreasuryLoop />
+          <AgentBuilders />
+        </main>
+        <Footer />
+        <ThumbBar />
+      </VaultDecisionsProvider>
+    </LiveSnapshotProvider>
   );
 }

@@ -1,10 +1,10 @@
 ---
 title: Events
-description: Every event the vault, the calendar and the adapters emit, with each parameter and when the event is emitted.
+description: Every event the vault and the calendar emit, with each parameter and when the event is emitted.
 type: reference
 audience: [developer, watcher]
 status: fork-tested
-lastReviewed: 2026-11-07
+lastReviewed: 2026-11-18
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/MarketCalendar.sol
@@ -12,27 +12,27 @@ sources:
 next: [guides/watch-decisions-onchain, get-started/read-a-decision]
 ---
 
-The [vault](/docs/help/glossary#vault) and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested, they have not been audited, and nothing is deployed yet ([What Maat does not claim](/docs/security/not-claimed#unaudited)).
+The [vault](/docs/help/glossary#vault) and the calendar are built to write their history to the chain as events, and a watcher can follow a vault by reading these logs. This page lists every event with its parameters and the function that emits it. Each entry also gives the event's topic 0, the keccak-256 hash of its canonical ABI signature (the name and the parameter types, with a struct as a tuple and an enum as `uint8`): every log of the event carries it as its first topic, so a log filter can match on it. The vault declares its events in `IMandateVaultEvents` and inherits them, so all of them appear under `MandateVault`. The two adapters, `AerodromeSwapAdapter` and `AaveV4CreditAdapter`, declare no events. The contracts are built and fork-tested and have not been audited ([What Maat does not claim](/docs/security/not-claimed#unaudited)). The owner deployed the four Maat contracts on Base mainnet, and [Base addresses](/docs/reference/base-addresses) gives their addresses.
 
 | Event | Emitted by |
 | --- | --- |
-| [`Decision`](#decision) | `execute` |
-| [`ChangeCancelled`](#changecancelled) | `cancelChange` |
-| [`ExecutorSet`](#executorset) | `setExecutor` |
-| [`Funded`](#funded) | `fund` |
-| [`MandateApplied`](#mandateapplied) | the constructor, `applyMandate` |
-| [`MandateChangeQueued`](#mandatechangequeued) | `queueMandate` |
-| [`MultiplierChangeDetected`](#multiplierchangedetected) | `execute`, `syncMultiplier`, `applyTokenConfig` |
-| [`PausedSet`](#pausedset) | `setPaused` |
-| [`PayeeApplied`](#payeeapplied) | the constructor, `applyPayee` |
-| [`PayeeChangeQueued`](#payeechangequeued) | `queuePayee` |
-| [`PolicyHashUpdated`](#policyhashupdated) | the constructor, `applyMandate`, `applyTokenConfig`, `applyPayee` |
-| [`RevenueReceived`](#revenuereceived) | `notifyRevenue`, which `execute` and `withdraw` also call |
-| [`TokenConfigApplied`](#tokenconfigapplied) | the constructor, `applyTokenConfig` |
-| [`TokenConfigChangeQueued`](#tokenconfigchangequeued) | `queueTokenConfig` |
-| [`Withdrawn`](#withdrawn) | `withdraw` |
-| [`HolidayAdded`](#holidayadded) | the `MarketCalendar` constructor, `addHoliday` |
-| [`EarlyCloseSet`](#earlycloseset) | the `MarketCalendar` constructor, `setEarlyClose` |
+| [`Decision`](#decision) | [`execute`](/docs/reference/mandate-vault#execute) |
+| [`ChangeCancelled`](#changecancelled) | [`cancelChange`](/docs/reference/mandate-vault#cancelchange) |
+| [`ExecutorSet`](#executorset) | [`setExecutor`](/docs/reference/mandate-vault#setexecutor) |
+| [`Funded`](#funded) | [`fund`](/docs/reference/mandate-vault#fund) |
+| [`MandateApplied`](#mandateapplied) | the constructor, [`applyMandate`](/docs/reference/mandate-vault#applymandate) |
+| [`MandateChangeQueued`](#mandatechangequeued) | [`queueMandate`](/docs/reference/mandate-vault#queuemandate) |
+| [`MultiplierChangeDetected`](#multiplierchangedetected) | [`execute`](/docs/reference/mandate-vault#execute), [`syncMultiplier`](/docs/reference/mandate-vault#syncmultiplier), [`applyTokenConfig`](/docs/reference/mandate-vault#applytokenconfig) |
+| [`PausedSet`](#pausedset) | [`setPaused`](/docs/reference/mandate-vault#setpaused) |
+| [`PayeeApplied`](#payeeapplied) | the constructor, [`applyPayee`](/docs/reference/mandate-vault#applypayee) |
+| [`PayeeChangeQueued`](#payeechangequeued) | [`queuePayee`](/docs/reference/mandate-vault#queuepayee) |
+| [`PolicyHashUpdated`](#policyhashupdated) | the constructor, [`applyMandate`](/docs/reference/mandate-vault#applymandate), [`applyTokenConfig`](/docs/reference/mandate-vault#applytokenconfig), [`applyPayee`](/docs/reference/mandate-vault#applypayee) |
+| [`RevenueReceived`](#revenuereceived) | [`notifyRevenue`](/docs/reference/mandate-vault#notifyrevenue), which [`execute`](/docs/reference/mandate-vault#execute) and [`withdraw`](/docs/reference/mandate-vault#withdraw) also call |
+| [`TokenConfigApplied`](#tokenconfigapplied) | the constructor, [`applyTokenConfig`](/docs/reference/mandate-vault#applytokenconfig) |
+| [`TokenConfigChangeQueued`](#tokenconfigchangequeued) | [`queueTokenConfig`](/docs/reference/mandate-vault#queuetokenconfig) |
+| [`Withdrawn`](#withdrawn) | [`withdraw`](/docs/reference/mandate-vault#withdraw) |
+| [`HolidayAdded`](#holidayadded) | the `MarketCalendar` constructor, [`addHoliday`](/docs/reference/market-calendar#addholiday) |
+| [`EarlyCloseSet`](#earlycloseset) | the `MarketCalendar` constructor, [`setEarlyClose`](/docs/reference/market-calendar#setearlyclose) |
 
 ## MandateVault
 
@@ -40,7 +40,7 @@ The [vault](/docs/help/glossary#vault) and the calendar are built to write their
 
 <EventEntry contract="MandateVault" name="Decision" />
 
-Emitted once by every `execute` call that does not [revert](/docs/help/glossary#revert), whether the [intent](/docs/help/glossary#intent) was allowed or refused, so it is the vault's ledger of verdicts. `allowed` is true only when `reason` is `OK`, and otherwise `reason` names the check that refused or the kind of failure. `intentId` and `token` are indexed, so a log filter can follow one intent or one token. For a `PAY_EXPENSE`, `token` is whatever the intent carried and the vault does not check it, so read `action` too when you follow one token. `rationaleHash` is the hash the intent carried: the vault records it without checking it. In an `execute` receipt, `MultiplierChangeDetected` (from the sync, when the multiplier changed) and `RevenueReceived` (when the intent passed the checks and new USDC had arrived) come before `Decision`, and `Decision` is the last log the vault emits in that call. [Read a decision](/docs/get-started/read-a-decision#the-decision-event) explains every field and how to match a row to its transaction.
+Emitted once by every `execute` call that does not [revert](/docs/help/glossary#revert), whether the [intent](/docs/help/glossary#intent) was allowed or refused, so it is the vault's ledger of verdicts. `allowed` is true only when `reason` is `OK`, and otherwise `reason` names the check that refused or the kind of failure. `intentId` and `token` are indexed, so a log filter can follow one intent or one token. For a `PAY_EXPENSE`, `token` is whatever the intent carried and the vault does not check it, so read `action` too when you follow one token. `rationaleHash` is the hash the intent carried: the vault records it without checking it. In an `execute` receipt, `MultiplierChangeDetected` (from the sync, when the [multiplier](/docs/help/glossary#uimultiplier) changed) and `RevenueReceived` (when the intent passed the checks and new USDC had arrived) come before `Decision`, and `Decision` is the last log the vault emits in that call. [Read a decision](/docs/get-started/read-a-decision#the-decision-event) explains every field and how to match a row to its transaction.
 
 ### ChangeCancelled
 
@@ -52,7 +52,7 @@ Emitted by `cancelChange` with the hash of the change the owner cancelled. The v
 
 <EventEntry contract="MandateVault" name="ExecutorSet" />
 
-Emitted by `setExecutor` with the new executor address. The constructor does not emit it, so the first executor is readable from `executor()` and not from this log.
+Emitted by `setExecutor` with the new executor address. The constructor does not emit it, so read the first executor from the deploy's constructor arguments, or from `executor()` while no `ExecutorSet` has followed.
 
 ### Funded
 
@@ -76,7 +76,7 @@ Emitted by `queueMandate`. `changeHash` is the key of the queued change, `eta` i
 
 <EventEntry contract="MandateVault" name="MultiplierChangeDetected" />
 
-Emitted when the vault records a new [uiMultiplier](/docs/help/glossary#uimultiplier) for a token. It comes from `syncMultiplier`, from `execute` (which syncs the intent's token before it checks anything, so a refused intent can still emit it), and from `applyTokenConfig` when a re-applied token's live value differs from the vault's snapshot. Each emission starts the cooldown, as [Splits and the multiplier](/docs/concepts/splits-and-multiplier#how-the-vault-notices) explains. The first snapshot of a token is taken without an event.
+Emitted when the vault records a new uiMultiplier for a token. It comes from `syncMultiplier`, from `execute` (which syncs the intent's token before it checks anything, so a refused intent can still emit it), and from `applyTokenConfig` when a re-applied token's current value differs from the vault's snapshot. Each emission starts the cooldown, as [Splits and the multiplier](/docs/concepts/splits-and-multiplier#how-the-vault-notices) explains. The first snapshot of a token is taken without an event.
 
 ### PausedSet
 
@@ -124,7 +124,7 @@ Emitted by `queueTokenConfig` with the change hash, the earliest apply time, the
 
 <EventEntry contract="MandateVault" name="Withdrawn" />
 
-Emitted by `withdraw` after its transfer call to the owner returns without reverting. `amount` is in the token's own raw units. The vault does not check that `token` is a contract, so for an address without code the event is emitted although nothing moved.
+Emitted by `withdraw` after its transfer call to the owner returns without reverting. `amount` is in the token's own raw units. The vault does not check that `token` is a contract, so for a `token` that is a plain account with no code the event is emitted although nothing moved.
 
 ## MarketCalendar
 
@@ -144,6 +144,7 @@ Emitted by `setEarlyClose`, and by the constructor once for each of the <Fact na
 
 ## Related
 
+- [Watch decisions onchain](/docs/guides/watch-decisions-onchain): read a vault's `Decision` events with `cast`, decode them with viem, and watch the owner's actions.
 - [Read a decision](/docs/get-started/read-a-decision): how to read a `Decision` and match it to a transaction.
 - [Refusal codes](/docs/concepts/refusal-codes): every `reason` a `Decision` can carry.
 - [Timelock and roles](/docs/concepts/timelock-and-roles): the queue events and the apply window.
