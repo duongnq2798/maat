@@ -5,10 +5,12 @@ import type { Hash, Hex } from "viem";
 import { formatInt } from "@/content/format";
 import type { RefusalCode } from "@/content/reasons";
 import { basescanTx } from "@/lib/chain/basescan";
-import { anchorState, type DecisionTrail, type MainnetDecision } from "@/lib/chain/ledger";
+import { anchorState, etLabel, type DecisionTrail, type MainnetDecision } from "@/lib/chain/ledger";
 import type { LedgerSnapshot } from "@/lib/chain/load";
 import { verifyRationale, type RationaleCheck } from "@/lib/chain/rationale";
 import { reasonDisplay } from "@/lib/chain/reason";
+import type { Since } from "@/lib/chain/since";
+import { Tape, TapeRow } from "@/components/instrument/Tape";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { BlobView, BuilderCodeLine, SenderLine, UndecodedBlob, type AnchorView } from "./AgentTrail";
 import type { JournalView } from "./useJournal";
@@ -98,14 +100,57 @@ interface RowProps {
   journal: JournalView;
 }
 
-function Row(props: RowProps) {
-  const { d, trail, txState } = props;
+/** The quiet mark of a Decision that is new since the viewer's last look. */
+function NewMark() {
+  return (
+    <span data-since-new="" className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.08em] text-label">
+      <span aria-hidden="true" className="size-1.5 rounded-full bg-accent" />
+      New<span className="sr-only"> since your last look</span>
+    </span>
+  );
+}
+
+/**
+ * "N new since your last look · <when>", or "Nothing new since your last look · <when>". The paragraph is there from
+ * the first row on, empty until the count is exact, so a screen reader hears the line politely once it fills; a first
+ * visit leaves it empty.
+ */
+function SinceLine({ since }: { since: Since | null }) {
+  const count = since?.count ?? null;
+  return (
+    <p data-since-line="" aria-live="polite" className={`m-0 flex flex-wrap items-center gap-x-2 text-sm text-ink-2 ${count === null ? "" : "mb-3"}`}>
+      {since && count !== null ? (
+        <>
+          {count > 0 ? <span aria-hidden="true" className="size-1.5 rounded-full bg-accent" /> : null}
+          <span>
+            {count === 0 ? "Nothing new" : `${formatInt(count)} new`} since your last look ·{" "}
+            <time dateTime={new Date(since.at).toISOString()} className="font-mono text-[13px]">
+              {etLabel(Math.floor(since.at / 1000))} ET
+            </time>
+          </span>
+        </>
+      ) : null}
+    </p>
+  );
+}
+
+function Row(props: RowProps & { isNew: boolean; fresh: boolean; onPrinted: (key: string) => void }) {
+  const { d, trail, txState, isNew, fresh, onPrinted } = props;
   const reason = reasonDisplay(d.reason);
   return (
-    <li className="grid gap-x-6 gap-y-2 border-b border-line-soft px-5 py-4 md:grid-cols-[150px_minmax(0,1fr)_auto]">
-      <div className="font-mono text-[13px] text-ink-2">
-        {d.timeLabel}
-        {d.timestamp !== null ? " ET" : ""}
+    <TapeRow
+      verdict={d.allowed ? "allowed" : "refused"}
+      fresh={fresh}
+      onPrinted={fresh ? () => onPrinted(d.key) : undefined}
+      // border-l-0: the row keeps its look inside the card, without the tape's verdict rule; TapeRow brings the print-in.
+      className="grid gap-x-6 gap-y-2 border-b border-l-0 border-line-soft px-5 py-4 md:grid-cols-[150px_minmax(0,1fr)_auto]"
+    >
+      <div className="flex flex-wrap content-start items-center gap-x-3 gap-y-1.5 font-mono text-[13px] text-ink-2">
+        <span>
+          {d.timeLabel}
+          {d.timestamp !== null ? " ET" : ""}
+        </span>
+        {isNew ? <NewMark /> : null}
       </div>
       <div className="flex min-w-0 flex-col gap-2">
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -132,11 +177,14 @@ function Row(props: RowProps) {
           Basescan<span aria-hidden="true"> ↗</span>
         </a>
       </div>
-    </li>
+    </TapeRow>
   );
 }
 
-/** Every Decision event, newest first, filterable by verdict and by the refusal reason picked in the chart. */
+/**
+ * Every Decision event, newest first, filterable by verdict and by the refusal reason picked in the chart. With `since`,
+ * the Decisions after the viewer's last look carry a mark and print in once, under a line that counts them.
+ */
 export function DecisionTimeline({
   decisions,
   rationales,
@@ -147,6 +195,7 @@ export function DecisionTimeline({
   reason,
   onReason,
   scanning,
+  since = null,
 }: {
   decisions: readonly MainnetDecision[];
   rationales: ReadonlyMap<Hex, string>;
@@ -159,9 +208,14 @@ export function DecisionTimeline({
   reason: RefusalCode | null;
   onReason: (code: RefusalCode | null) => void;
   scanning: boolean;
+  /** The Decisions after the viewer's last look (lib/chain/since.ts); null on a first visit. */
+  since?: Since | null;
 }) {
   const [verdict, setVerdict] = useState<Verdict>("all");
   const [shown, setShown] = useState(PAGE);
+  // New rows whose print-in has ended: a filter or a tab that shows them again never prints them twice.
+  const [printed, setPrinted] = useState<ReadonlySet<string>>(() => new Set());
+  const onPrinted = (key: string) => setPrinted((s) => (s.has(key) ? s : new Set(s).add(key)));
   const rows = decisions.filter(
     (d) => (reason ? !d.allowed && d.reason === reason : verdict === "all" || d.allowed === (verdict === "allowed")),
   );
@@ -172,46 +226,55 @@ export function DecisionTimeline({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter mainnet decisions">
-        {(["all", "allowed", "refused"] as const).map((v) => (
-          <button
-            key={v}
-            type="button"
-            aria-pressed={!reason && verdict === v}
-            onClick={() => {
-              onReason(null);
-              setVerdict(v);
-            }}
-            className={chip(!reason && verdict === v)}
-          >
-            {v === "all" ? "All" : v === "allowed" ? "Allowed" : "Refused"}
-          </button>
-        ))}
-        {reason ? (
-          <button type="button" aria-pressed onClick={() => onReason(null)} className={chip(true)}>
-            <ReasonTag code={reason} tone="verdict" layout="inline" />
-            <span aria-hidden="true"> ×</span>
-            <span className="sr-only"> (clear the reason filter)</span>
-          </button>
-        ) : null}
+      <div>
+        <SinceLine since={since} />
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filter mainnet decisions">
+          {(["all", "allowed", "refused"] as const).map((v) => (
+            <button
+              key={v}
+              type="button"
+              aria-pressed={!reason && verdict === v}
+              onClick={() => {
+                onReason(null);
+                setVerdict(v);
+              }}
+              className={chip(!reason && verdict === v)}
+            >
+              {v === "all" ? "All" : v === "allowed" ? "Allowed" : "Refused"}
+            </button>
+          ))}
+          {reason ? (
+            <button type="button" aria-pressed onClick={() => onReason(null)} className={chip(true)}>
+              <ReasonTag code={reason} tone="verdict" layout="inline" />
+              <span aria-hidden="true"> ×</span>
+              <span className="sr-only"> (clear the reason filter)</span>
+            </button>
+          ) : null}
+        </div>
       </div>
       <div className="card overflow-hidden">
         {rows.length === 0 ? (
           <p className="px-5 py-5 text-sm text-ink-2">{decisions.length === 0 ? "The vault has recorded no decision yet." : "No decision matches this filter."}</p>
         ) : (
-          <ol aria-label="Mainnet decisions" className="m-0 list-none p-0">
-            {rows.slice(0, shown).map((d) => (
-              <Row
-                key={d.key}
-                d={d}
-                text={rationales.get(d.intentId)}
-                rationaleState={rationaleState}
-                trail={trails.get(d.key)}
-                txState={txState}
-                journal={journal}
-              />
-            ))}
-          </ol>
+          <Tape label="Mainnet decisions">
+            {rows.slice(0, shown).map((d) => {
+              const isNew = since?.fresh.has(d.key) ?? false;
+              return (
+                <Row
+                  key={d.key}
+                  d={d}
+                  text={rationales.get(d.intentId)}
+                  rationaleState={rationaleState}
+                  trail={trails.get(d.key)}
+                  txState={txState}
+                  journal={journal}
+                  isNew={isNew}
+                  fresh={isNew && !printed.has(d.key)}
+                  onPrinted={onPrinted}
+                />
+              );
+            })}
+          </Tape>
         )}
         {rows.length > shown ? (
           <button type="button" onClick={() => setShown((n) => n + PAGE)} className="w-full border-t border-line px-5 py-3 text-sm font-medium text-ink hover:bg-surface-soft">
