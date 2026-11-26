@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { BEATS, CLIPS, FPS, TARGET_SECONDS, TOLERANCE_SECONDS, effectiveShot, shotCues, timeline, txKeys, txState, validateBeats } from "../../film/lib/beats.mjs";
+import { BEATS, CLIPS, FPS, TARGET_SECONDS, TOLERANCE_SECONDS, effectiveShot, scrollGoal, shotCues, timeline, txKeys, txState, validateBeats } from "../../film/lib/beats.mjs";
 
 // film/ renders the demo film from the live site with ffmpeg, on the owner's PC only. CI has no ffmpeg and no network,
 // so these tests check the plan itself: the beats, their order and the arithmetic of the timeline.
@@ -114,6 +114,8 @@ describe("the film's beat plan", () => {
           },
           { id: "odd", kind: "card", card: "end", duration: 1.01, captions: [] },
           { id: "pair", kind: "tx", txs: ["a", "b"], duration: 1, caption: "c", placeholderCaption: "p" },
+          { id: "poster", kind: "tx", txs: ["a"], duration: 1, caption: "c", placeholderCaption: "p", layout: "poster" },
+          { id: "lone", kind: "tx", txs: ["a"], duration: 1, caption: "c", placeholderCaption: "p", layout: "persuasion" },
         ],
       },
     ];
@@ -123,6 +125,21 @@ describe("the film's beat plan", () => {
     expect(problems).toMatch(/b\/late: cue c at 1.5 s is outside the shot/);
     expect(problems).toMatch(/b\/clip: its fallback lasts 3 s, not 4 s/);
     expect(problems).toMatch(/b\/odd: duration 1.01 is not a positive whole number of frames/);
+    expect(problems).toMatch(/b\/poster: unknown layout poster/);
+    expect(problems).toMatch(/b\/lone: the persuasion layout needs two txs, a brief and the vault's Decision/);
     expect(problems).toMatch(/the cut lasts .* s, not 100 ± 2 s/);
+  });
+});
+
+describe("where a page shot scrolls to", () => {
+  // The /ask shot scrolled to its send form until the site footer's display line sat behind the caption (1920x1080:
+  // the footer's top at 821 px). A scroll now stops where the footer's top meets the frame's bottom edge.
+  it("puts the target at its offset, inside the page, and never brings the site footer into the frame", () => {
+    expect(scrollGoal({ target: 476, offset: 112, max: 783, footer: null, height: 1080 })).toBe(364);
+    expect(scrollGoal({ target: 476, offset: 112, max: 783, footer: 1185, height: 1080 })).toBe(105);
+    expect(scrollGoal({ target: 2000, offset: 112, max: 783, footer: 99999, height: 1080 })).toBe(783);
+    expect(scrollGoal({ target: 50, offset: 112, max: 783, footer: 99999, height: 1080 })).toBe(0);
+    // A page whose footer is in the first frame cannot keep it out: the shot stays at the top.
+    expect(scrollGoal({ target: 476, offset: 112, max: 300, footer: 900, height: 1080 })).toBe(0);
   });
 });

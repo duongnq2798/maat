@@ -7,6 +7,9 @@ export const FPS = 30;
 export const TARGET_SECONDS = 100;
 export const TOLERANCE_SECONDS = 2;
 
+/** The layouts a tx shot may ask for besides the default one card per tx. */
+export const LAYOUTS = Object.freeze(["persuasion"]);
+
 /** The two Basescan clips the owner records by hand, by the base name they drop into film/input/. */
 export const CLIPS = Object.freeze({ decisionLog: "basescan-decision-log", inputUtf8: "basescan-input-utf8" });
 
@@ -19,7 +22,9 @@ const TOP = { wide: 112, tall: 88 };
  *   the end of `duration`;
  * - card: a still the capture renders from repository files (`card` names it), held for `duration`;
  * - tx: one card per key of film/txs.json in `txs`; `caption` when every hash is set, `placeholderCaption` when none
- *   is, and `partialCaption` (needed for two or more txs) when only some are;
+ *   is, and `partialCaption` (needed for two or more txs) when only some are. `layout: "persuasion"` (a brief and the
+ *   vault's Decision) lays the pair out as brief, Maat's agent's reply from the published journal, then the verdict,
+ *   once both hashes are set; until then it is the same placeholder card as any tx shot;
  * - clip: an owner clip from film/input/, used when present; otherwise `fallback`, a shot of the same `duration`.
  * `captions` are cues: each caption id from film/captions.json shows from `at` seconds until the next cue or the end.
  * @typedef {{ id: string, kind: string, duration: number, [field: string]: any }} Shot
@@ -36,7 +41,7 @@ export const BEATS = Object.freeze([
         id: "gap",
         kind: "page",
         path: "/gap-index",
-        duration: 11,
+        duration: 10,
         steps: [
           { wait: "#gap-panel-2026-11-06-NVDAc" },
           { hold: 1 },
@@ -53,13 +58,13 @@ export const BEATS = Object.freeze([
   },
   {
     id: "proposes-decides",
-    title: "Claude proposes, the vault decides",
+    title: "Claude proposes. The vault decides.",
     shots: [
       {
         id: "how",
         kind: "page",
         path: "/",
-        duration: 6,
+        duration: 4.5,
         steps: [{ wait: "#how" }, { scroll: "#how-title", over: 1.5, top: TOP }],
         captions: [{ id: "decides-how", at: 0 }],
       },
@@ -67,13 +72,13 @@ export const BEATS = Object.freeze([
         id: "decision-log",
         kind: "clip",
         clip: CLIPS.decisionLog,
-        duration: 6,
+        duration: 5,
         captions: [{ id: "decides-clip", at: 0 }],
         fallback: {
           id: "reasons",
           kind: "page",
           path: "/",
-          duration: 6,
+          duration: 5,
           steps: [{ wait: "#reasons" }, { scroll: "#reasons-title", over: 1.5, top: TOP }],
           captions: [{ id: "decides-log", at: 0 }],
         },
@@ -117,7 +122,7 @@ export const BEATS = Object.freeze([
         id: "trail",
         kind: "page",
         path: "/ledger",
-        duration: 8,
+        duration: 6,
         steps: [
           { wait: '[aria-label="Mainnet decisions"]' },
           { scroll: "#trail-panel-decisions", over: 2, top: TOP },
@@ -128,13 +133,13 @@ export const BEATS = Object.freeze([
         id: "input-utf8",
         kind: "clip",
         clip: CLIPS.inputUtf8,
-        duration: 6,
+        duration: 5,
         captions: [{ id: "proposal-clip", at: 0 }],
         fallback: {
           id: "verify",
           kind: "page",
           path: "/ledger",
-          duration: 6,
+          duration: 5,
           steps: [{ wait: "#verify" }, { scroll: "#verify-title", over: 1.5, top: TOP }],
           captions: [{ id: "proposal-verify", at: 0 }],
         },
@@ -149,7 +154,7 @@ export const BEATS = Object.freeze([
         id: "sim",
         kind: "page",
         path: "/",
-        duration: 4,
+        duration: 3.5,
         steps: [
           { wait: "#try" },
           { click: { within: '[aria-label="Moment presets"]', button: "Thanksgiving" }, settle: 2.5 },
@@ -157,7 +162,7 @@ export const BEATS = Object.freeze([
         ],
         captions: [{ id: "thanksgiving-sim", at: 0 }],
       },
-      { id: "tx", kind: "tx", txs: ["thanksgiving"], duration: 6, caption: "thanksgiving-tx", placeholderCaption: "thanksgiving-placeholder" },
+      { id: "tx", kind: "tx", txs: ["thanksgiving"], duration: 5, caption: "thanksgiving-tx", placeholderCaption: "thanksgiving-placeholder" },
     ],
   },
   {
@@ -168,7 +173,7 @@ export const BEATS = Object.freeze([
         id: "sim",
         kind: "page",
         path: "/",
-        duration: 4,
+        duration: 3.5,
         steps: [
           { wait: "#try" },
           { click: { within: '[aria-label="Moment presets"]', button: "Fri 27 Nov · 13:30" }, settle: 2.5 },
@@ -202,8 +207,12 @@ export const BEATS = Object.freeze([
       {
         id: "tx",
         kind: "tx",
+        // Once both are on Base: the brief, Maat's agent's reply from the published journal, then the vault's verdict.
+        // No card has more to read, so How it works, the decision trail, the two simulator shots and both clip slots
+        // are kept short for it: the cut lasts 100 s, and no caption reads faster than READ_PACE (lib/cards.mjs).
+        layout: "persuasion",
         txs: ["strangerBrief", "vaultAnswer"],
-        duration: 7,
+        duration: 11.5,
         caption: "brief-tx",
         placeholderCaption: "brief-placeholder",
         partialCaption: "pair-partial",
@@ -224,7 +233,8 @@ export const BEATS = Object.freeze([
         steps: [{ wait: "#counts-title" }, { scroll: "#counts-title", over: 1.5, top: TOP }],
         captions: [{ id: "receipts-proof", at: 0 }],
       },
-      { id: "end", kind: "card", card: "end", duration: 2, captions: [] },
+      // The end card holds the sign-off, the myth line, the builder line and where to find Maat: 6 s to read them.
+      { id: "end", kind: "card", card: "end", duration: 6, captions: [] },
     ],
   },
 ]);
@@ -246,6 +256,18 @@ export function shotCues(shot, state = "none") {
 export function effectiveShot(shot, clipsPresent) {
   if (shot.kind !== "clip") return shot;
   return clipsPresent.has(shot.clip) ? shot : shot.fallback;
+}
+
+/**
+ * Where a page shot's scroll stops, in CSS px from the top of the page: the target element `offset` px below the top of
+ * the frame, inside the page (`max` is the page's height less the viewport's), and never so far that the site's footer
+ * enters the frame, where its display line would sit behind the caption. `target` and `footer` are the element's and
+ * the footer's tops in the page (footer null when it has none), `height` the viewport's height.
+ * @param {{ target: number, offset: number, max: number, footer: number | null, height: number }} at
+ */
+export function scrollGoal({ target, offset, max, footer, height }) {
+  const y = Math.min(max, target - offset, footer === null ? Number.POSITIVE_INFINITY : footer - height);
+  return Math.max(0, Math.round(y));
 }
 
 /** Seconds of a page shot that its steps animate or hold; the rest holds the last frame. */
@@ -286,6 +308,10 @@ export function validateBeats(beats = BEATS) {
       problems.push(`${where}: a tx shot needs txs, a caption and a placeholder caption`);
     }
     if (shot.kind === "tx" && shot.txs?.length > 1 && !shot.partialCaption) problems.push(`${where}: a tx shot of two or more txs needs a partial caption`);
+    if (shot.layout !== undefined) {
+      if (shot.kind !== "tx" || !LAYOUTS.includes(shot.layout)) problems.push(`${where}: unknown layout ${shot.layout}`);
+      else if (shot.layout === "persuasion" && shot.txs?.length !== 2) problems.push(`${where}: the persuasion layout needs two txs, a brief and the vault's Decision`);
+    }
     if (shot.kind === "clip") {
       if (!Object.values(CLIPS).includes(shot.clip)) problems.push(`${where}: unknown clip ${shot.clip}`);
       if (!shot.fallback) problems.push(`${where}: a clip shot needs a fallback for when the clip is missing`);

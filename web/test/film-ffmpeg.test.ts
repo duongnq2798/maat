@@ -144,7 +144,7 @@ describe("the cut", () => {
     );
   });
 
-  it("plans one segment per shot in timeline order, fading in and out at each beat's edges", () => {
+  it("plans one segment per shot in timeline order, fading at each beat's edges but not on the film's first and last frames", () => {
     const { shots } = timeline(BEATS, new Set());
     const segs = planSegments({
       shots,
@@ -155,9 +155,13 @@ describe("the cut", () => {
     expect(segs).toHaveLength(shots.length);
     expect(segs.map((s: { out: string }) => s.out)).toEqual(shots.map((_, i) => `seg/${String(i + 1).padStart(2, "0")}.mp4`));
     const fades = segs.map((s: { args: string[] }) => [/fade=t=in/.test(s.args.join(" ")), /fade=t=out/.test(s.args.join(" "))]);
+    // The first frame and the last frame show the mark (the title and end cards), so the cut neither opens nor ends on black.
     shots.forEach((s, i) => {
-      expect(fades[i]).toEqual([shots[i - 1]?.beat !== s.beat, shots[i + 1]?.beat !== s.beat]);
+      expect(fades[i]).toEqual([i > 0 && shots[i - 1]?.beat !== s.beat, i < shots.length - 1 && shots[i + 1]?.beat !== s.beat]);
     });
+    expect(fades[0]?.[0]).toBe(false);
+    expect(fades.at(-1)?.[1]).toBe(false);
+    expect(fades.filter((f: boolean[]) => f[0])).toHaveLength(BEATS.length - 1);
     expect(segs.reduce((t: number, s: { duration: number }) => t + s.duration, 0)).toBe(timeline(BEATS, new Set()).total);
   });
 

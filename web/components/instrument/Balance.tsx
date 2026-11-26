@@ -4,7 +4,7 @@ import { FACTS } from "@/content/facts";
 import type { Verdict } from "./types";
 
 /** Where MARK.feather starts: its first point, "M9 11.5", the top of the feather. */
-const FEATHER_TOP = { x: 9, y: 11.5 } as const;
+export const FEATHER_TOP = { x: 9, y: 11.5 } as const;
 
 /**
  * The Balance's geometry on MARK's 30-unit grid (spec 2026-11-23 section 5.1). MARK.beam splits into the fixed post and
