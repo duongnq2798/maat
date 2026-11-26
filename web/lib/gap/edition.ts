@@ -3,8 +3,8 @@ import { EDITIONS, editionWindows, type EditionDef } from "@/content/gap-index/e
 import { encodeCall } from "@/lib/live/abi";
 import { DECISION_TOPIC, decisionCounts } from "./decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, byPosition, type FeedUpdate } from "./decode";
-import type { LogSource } from "./logs";
-import { feedLiveIn, findFreeze, LOOKBACK_SEC, measureToken } from "./measure";
+import { createLogSource, SETTLED, type LogSource, type SpanRead } from "./logs";
+import { feedLiveIn, findFreeze, LOOKBACK_SEC, measureToken, type Freeze } from "./measure";
 import { GAP_RPC, SPAN, type LogReader } from "./rpc";
 import { toTokenRow, type EditionFile, type TokenRow } from "./schema";
 import { readDecisions, readOwner } from "./vault";
@@ -79,15 +79,95 @@ async function readAggregators(reader: LogReader, nav: NavToken): Promise<string
   return aggregators;
 }
 
-export async function measureEdition(deps: EditionDeps, opts: EditionOptions): Promise<EditionFile> {
-  const def = (deps.editions ?? EDITIONS).find((e) => e.edition === opts.edition);
+/** A token's aggregators, read once a run: `tally.calls` counts the reads when they are read. */
+async function aggregatorsFor(reader: LogReader, nav: NavToken, known: Map<string, string[]>, tally: { calls: number }): Promise<string[]> {
+  let aggregators = known.get(nav.symbol);
+  if (!aggregators) {
+    aggregators = await readAggregators(reader, nav);
+    tally.calls += 1 + aggregators.length;
+    known.set(nav.symbol, aggregators);
+  }
+  return aggregators;
+}
+
+/** The edition, and the windows and tokens a run takes from it: all of them, or those --window and --token name. */
+function selectRun(editions: readonly EditionDef[] | undefined, opts: Pick<EditionOptions, "edition" | "windows" | "tokens">) {
+  const def = (editions ?? EDITIONS).find((e) => e.edition === opts.edition);
   if (!def) throw new Error(`unknown edition ${opts.edition}`);
   const all = editionWindows(def);
   for (const id of opts.windows ?? []) if (!all.some((w) => w.id === id)) throw new Error(`edition ${def.edition} has no window ${id}`);
   for (const sym of opts.tokens ?? []) if (!NAV_TOKENS.some((t) => t.symbol === sym)) throw new Error(`unknown token ${sym}`);
-  if (def.decisions && !deps.vault) throw new Error(`edition ${def.edition} counts the vault's Decisions: it needs the MandateVault address`);
   const windows = opts.windows ? all.filter((w) => opts.windows!.includes(w.id)) : all;
   const navs = opts.tokens ? NAV_TOKENS.filter((t) => opts.tokens!.includes(t.symbol)) : NAV_TOKENS;
+  return { def, windows, navs };
+}
+
+/** The blocks a window's rows read: from the first block at or after its close, through `toBlock`, and after it up to `ahead`. */
+interface WindowBlocks {
+  fromBlock: number;
+  toBlock: number;
+  ahead: number;
+}
+
+/** An ended window's blocks: through the last block before its open, and up to the look-back after the open or the head. */
+async function endedBlocks(reader: LogReader, w: ClosedWindow, head: { block: number; ts: number }): Promise<WindowBlocks> {
+  const fromBlock = await reader.blockAt(w.closeTs);
+  const toBlock = (await reader.blockAt(w.openTs)) - 1;
+  const ahead = w.openTs + LOOKBACK_SEC > head.ts ? head.block : await reader.blockAt(w.openTs + LOOKBACK_SEC);
+  return { fromBlock, toBlock, ahead };
+}
+
+/** The feed updates a token's row uses: the last one before the window, those inside it, and the first one after it. */
+interface FeedReads {
+  before?: FeedUpdate;
+  inside: FeedUpdate[];
+  after?: FeedUpdate;
+}
+
+/**
+ * Reads a token's feed updates around one window through the log source. The measurement and the warm-up both read
+ * through here, so the warm-up asks the log source for the spans the measurement asks for. `tally.calls` counts the reads.
+ */
+async function readFeed(
+  reader: LogReader,
+  source: LogSource,
+  aggregators: readonly string[],
+  w: ClosedWindow,
+  b: WindowBlocks,
+  tally: { calls: number },
+): Promise<FeedReads> {
+  // Every phase's aggregator is read in one call; which one a row records is decided by the measurement, from the logs it uses.
+  const updatesIn = async (from: number, to: number): Promise<FeedUpdate[]> => {
+    tally.calls++;
+    return (await source.updates(aggregators, from, to)).sort(byPosition);
+  };
+
+  const inside = await updatesIn(b.fromBlock, b.toBlock);
+  // Backwards span by span: stop at the first span that holds an update (the last one wins), or once a span starts
+  // more than the look-back before the close, so no header far below the data is read.
+  let before: FeedUpdate | undefined;
+  for (let hi = b.fromBlock - 1; hi >= 0 && !before; hi -= SPAN) {
+    const lo = Math.max(0, hi - SPAN + 1);
+    before = (await updatesIn(lo, hi)).at(-1);
+    if (!before) {
+      tally.calls++;
+      if ((await reader.blockTs(lo)) < w.closeTs - LOOKBACK_SEC) break;
+    }
+  }
+  let after: FeedUpdate | undefined;
+  for (let lo = b.toBlock + 1; lo <= b.ahead && !after; lo += SPAN) {
+    after = (await updatesIn(lo, Math.min(b.ahead, lo + SPAN - 1)))[0];
+  }
+  return { before, inside, after };
+}
+
+/** The blocks of swaps a row reads: the window's, widened to the freeze when it starts before the window or ends after it. */
+const swapsRange = (freeze: Freeze | null, b: WindowBlocks) =>
+  freeze ? { from: Math.min(b.fromBlock, freeze.from.block), to: Math.max(b.toBlock, freeze.to.block) } : { from: b.fromBlock, to: b.toBlock };
+
+export async function measureEdition(deps: EditionDeps, opts: EditionOptions): Promise<EditionFile> {
+  const { def, windows, navs } = selectRun(deps.editions, opts);
+  if (def.decisions && !deps.vault) throw new Error(`edition ${def.edition} counts the vault's Decisions: it needs the MandateVault address`);
 
   const { reader, log } = deps;
   // A window is measured only once its open is at or before a finalized block, so no reorg can change its figures.
@@ -115,50 +195,22 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
       out.push({ status: "pending", ...base });
       continue;
     }
-    const fromBlock = await reader.blockAt(w.closeTs);
-    const toBlock = (await reader.blockAt(w.openTs)) - 1;
+    const blocks = await endedBlocks(reader, w, head);
+    const { fromBlock, toBlock } = blocks;
     let decisions: Extract<EditionFile["windows"][number], { status: "complete" }>["decisions"];
     if (owner !== null) {
       const list = await readDecisions(reader, { vault: deps.vault!, owner, from: fromBlock, to: toBlock });
       decisions = { vault: deps.vault!.toLowerCase(), topic: DECISION_TOPIC, ...decisionCounts(list), list };
       log(`window ${w.id}: ${decisions.count} Decisions, ${decisions.marketClosed} refused with MARKET_CLOSED`);
     }
-    const ahead = w.openTs + LOOKBACK_SEC > head.ts ? head.block : await reader.blockAt(w.openTs + LOOKBACK_SEC);
     const span = { closeTs: w.closeTs, openTs: w.openTs, fromBlock, toBlock };
 
     const tokens: TokenRow[] = [];
     for (const nav of navs) {
       const started = Date.now();
-      let calls = 0;
-      let aggregators = aggregatorsOf.get(nav.symbol);
-      if (!aggregators) {
-        aggregators = await readAggregators(reader, nav);
-        calls += 1 + aggregators.length;
-        aggregatorsOf.set(nav.symbol, aggregators);
-      }
-      // Every phase's aggregator is read in one call; which one a row records is decided below, from the logs it uses.
-      const updatesIn = async (from: number, to: number): Promise<FeedUpdate[]> => {
-        calls++;
-        return (await source.updates(aggregators, from, to)).sort(byPosition);
-      };
-
-      const inside = await updatesIn(fromBlock, toBlock);
-      // Backwards span by span: stop at the first span that holds an update (the last one wins), or once a span starts
-      // more than the look-back before the close, so no header far below the data is read.
-      let before: FeedUpdate | undefined;
-      for (let hi = fromBlock - 1; hi >= 0 && !before; hi -= SPAN) {
-        const lo = Math.max(0, hi - SPAN + 1);
-        before = (await updatesIn(lo, hi)).at(-1);
-        if (!before) {
-          calls++;
-          if ((await reader.blockTs(lo)) < w.closeTs - LOOKBACK_SEC) break;
-        }
-      }
-      let after: FeedUpdate | undefined;
-      for (let lo = toBlock + 1; lo <= ahead && !after; lo += SPAN) {
-        after = (await updatesIn(lo, Math.min(ahead, lo + SPAN - 1)))[0];
-      }
-
+      const tally = { calls: 0 };
+      const aggregators = await aggregatorsFor(reader, nav, aggregatorsOf, tally);
+      const { before, inside, after } = await readFeed(reader, source, aggregators, w, blocks, tally);
       const updates = [...(before ? [before] : []), ...inside, ...(after ? [after] : [])];
 
       // The aggregator and phase a row records are those of the logs it used: the update before, the updates inside and
@@ -178,15 +230,13 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
       }
 
       const freeze = live ? findFreeze(updates, w) : null;
-      const swapsRead = freeze
-        ? { from: Math.min(fromBlock, freeze.from.block), to: Math.max(toBlock, freeze.to.block) }
-        : { from: fromBlock, to: toBlock };
-      calls++;
+      const swapsRead = swapsRange(freeze, blocks);
+      tally.calls++;
       const swaps = await source.swaps(nav.pool, swapsRead.from, swapsRead.to);
 
       const figures = measureToken({ window: span, updates, swaps });
       tokens.push(toTokenRow(nav, { aggregator, phase }, figures, freeze ? swapsRead : null));
-      log(`${nav.symbol} ${w.id}: ${calls} reads, ${((Date.now() - started) / 1000).toFixed(1)} s`);
+      log(`${nav.symbol} ${w.id}: ${tally.calls} reads, ${((Date.now() - started) / 1000).toFixed(1)} s`);
     }
     out.push({ status: "complete", ...base, blocks: { from: fromBlock, to: toBlock }, ...(decisions ? { decisions } : {}), tokens });
   }
@@ -203,4 +253,161 @@ export async function measureEdition(deps: EditionDeps, opts: EditionOptions): P
     head,
     windows: out,
   };
+}
+
+export interface WarmDeps {
+  reader: LogReader;
+  /** The cache the measuring run reads (web/.cache/gap for the script): the warm-up writes it through createLogSource. */
+  cacheDir: string;
+  log: (line: string) => void;
+  /** MarketCalendar on Base: when given, every selected window's edges are checked first, as the measuring run checks them. */
+  calendar?: string;
+  /** Where the edition number is looked up: EDITIONS, unless a test gives its own. */
+  editions?: readonly EditionDef[];
+}
+export type WarmOptions = Omit<EditionOptions, "complete">;
+
+/**
+ * One aligned span of a window's reads: how many of its files (one per token and kind) came from Base or the cache, are
+ * kept, and were settled but could not be written to the cache.
+ */
+export interface WarmSpan {
+  from: number;
+  to: number;
+  read: number;
+  cached: number;
+  kept: number;
+  failed: number;
+}
+export interface WarmWindow {
+  id: string;
+  status: "complete" | "pending" | "not started";
+  spans: WarmSpan[];
+  /** The span files of this window that the cache now holds. */
+  kept: number;
+  /** The last block of the last span kept, or null when none is. */
+  keptThrough: number | null;
+  /** The span files of this window that were settled below the head but could not be written: a later run reads them from Base. */
+  failed: number;
+  /** The first of those writes' errors, or null when every settled file is kept. */
+  writeError: string | null;
+  /** The eth_getLogs calls the window's reads made: one per span read from Base. */
+  getLogs: number;
+}
+export interface WarmResult {
+  head: { block: number; ts: number };
+  windows: WarmWindow[];
+  /** The distinct span files of the run that were settled but could not be written, so a later run reads them from Base. */
+  failed: number;
+  /** The first of those writes' errors, or null when there is none. */
+  writeError: string | null;
+}
+
+/** One file's reads in a run or a window: read from Base if any read was, kept if any read kept it, and its first write error. */
+function mergeRead(seen: SpanRead | undefined, s: SpanRead): SpanRead {
+  if (!seen) return s;
+  const writeError = seen.writeError ?? s.writeError;
+  return { ...s, from: seen.from === "rpc" ? "rpc" : s.from, kept: seen.kept || s.kept, ...(writeError === undefined ? {} : { writeError }) };
+}
+
+/**
+ * Reads into the cache the logs that the measuring run of each window will read from spans already settled (SETTLED
+ * blocks) below the head, the latest finalized block or --head, and measures nothing. An ended window is read as the
+ * measuring run reads it. A pending window is read as if it ended at the head: its feed's updates from its close and the
+ * last one before it, and its pool's swaps from that last update, the earliest block a freeze can start at, both through
+ * the head. A window that has not closed by the head has nothing to read yet.
+ */
+export async function warmEdition(deps: WarmDeps, opts: WarmOptions): Promise<WarmResult> {
+  const { windows, navs } = selectRun(deps.editions, opts);
+  const { reader, log } = deps;
+  const head = await readHead(reader, opts.head);
+  if (deps.calendar) for (const w of windows) await checkCalendar(reader, deps.calendar, w, log);
+  let files = new Map<string, SpanRead>();
+  // Every file of the run, across windows: two windows can read the same span file.
+  const runFiles = new Map<string, SpanRead>();
+  let getLogs = 0;
+  const source = createLogSource(reader, {
+    cacheDir: deps.cacheDir,
+    headBlock: head.block,
+    onSpan: (s) => {
+      if (s.from === "rpc") getLogs++;
+      // A file this window read from Base counts as read, even when a later read of it in the window hits the cache.
+      files.set(s.name, mergeRead(files.get(s.name), s));
+      runFiles.set(s.name, mergeRead(runFiles.get(s.name), s));
+    },
+  });
+  const aggregatorsOf = new Map<string, string[]>();
+  const through = `block ${head.block} (${utcIso(head.ts)}), the block this run reads through`;
+
+  const out: WarmWindow[] = [];
+  for (const w of windows) {
+    if (w.closeTs > head.ts) {
+      log(`window ${w.id}: not started: its close, ${w.closeLabel}, is after ${through}, so there is nothing to read yet`);
+      out.push({ id: w.id, status: "not started", spans: [], kept: 0, keptThrough: null, failed: 0, writeError: null, getLogs: 0 });
+      continue;
+    }
+    const started = Date.now();
+    files = new Map();
+    getLogs = 0;
+    const ended = w.openTs <= head.ts;
+    const blocks = ended ? await endedBlocks(reader, w, head) : { fromBlock: await reader.blockAt(w.closeTs), toBlock: head.block, ahead: head.block };
+    log(
+      ended
+        ? `window ${w.id}: complete, blocks ${blocks.fromBlock}-${blocks.toBlock}, read through ${through}`
+        : `window ${w.id}: pending, from block ${blocks.fromBlock} through ${through}: it ends ${w.openLabel}`,
+    );
+    for (const nav of navs) {
+      const tokenStarted = Date.now();
+      const tally = { calls: 0 };
+      const aggregators = await aggregatorsFor(reader, nav, aggregatorsOf, tally);
+      const { before, inside, after } = await readFeed(reader, source, aggregators, w, blocks, tally);
+      const updates = [...(before ? [before] : []), ...inside, ...(after ? [after] : [])];
+      const live = feedLiveIn(updates, w);
+      // Once a window has ended, and a live feed has updated after it, the swaps are those the measuring run reads.
+      // Otherwise its freeze may still end at an update not read yet: the swaps are read from the update before the
+      // close, where the earliest freeze starts, through the head.
+      const range =
+        ended && (after || !live)
+          ? swapsRange(live ? findFreeze(updates, w) : null, blocks)
+          : { from: before ? Math.min(blocks.fromBlock, before.block) : blocks.fromBlock, to: head.block };
+      await source.swaps(nav.pool, range.from, range.to);
+      log(`${nav.symbol} ${w.id}: ${tally.calls + 1} reads, ${((Date.now() - tokenStarted) / 1000).toFixed(1)} s`);
+    }
+
+    const bySpan = new Map<number, WarmSpan>();
+    let writeError: string | null = null;
+    for (const f of files.values()) {
+      const s = bySpan.get(f.spanFrom) ?? { from: f.spanFrom, to: f.spanTo, read: 0, cached: 0, kept: 0, failed: 0 };
+      if (f.from === "rpc") s.read++;
+      else s.cached++;
+      if (f.kept) s.kept++;
+      else if (f.writeError !== undefined) {
+        s.failed++;
+        writeError ??= f.writeError;
+      }
+      bySpan.set(f.spanFrom, s);
+    }
+    const spans = [...bySpan.values()].sort((a, b) => a.from - b.from);
+    for (const s of spans) {
+      const kept =
+        s.to > head.block - SETTLED
+          ? `not kept: within ${SETTLED} blocks of the head`
+          : `${s.kept} kept${s.failed ? `, ${s.failed} could not be written to the cache` : ""}`;
+      log(`window ${w.id}: blocks ${s.from}-${s.to}: ${s.read} read from Base, ${s.cached} from the cache, ${kept}`);
+    }
+    const kept = spans.reduce((n, s) => n + s.kept, 0);
+    const failed = spans.reduce((n, s) => n + s.failed, 0);
+    const keptThrough = spans.filter((s) => s.kept > 0).at(-1)?.to ?? null;
+    const done = `${getLogs} eth_getLogs calls, ${((Date.now() - started) / 1000).toFixed(1)} s`;
+    log(
+      failed > 0
+        ? `window ${w.id}: ${failed} span files settled below the head could not be written to the cache (${writeError}), so a later run reads them from Base again; the cache holds ${kept} of this window's span files (${done})`
+        : keptThrough === null
+          ? `window ${w.id}: no span file in the cache: every span it read is within ${SETTLED} blocks of the head (${done})`
+          : `window ${w.id}: ${kept} span files in the cache, the last ending at block ${keptThrough}: a later run reads this window's feed and pool logs from Base only after it (${done})`,
+    );
+    out.push({ id: w.id, status: ended ? "complete" : "pending", spans, kept, keptThrough, failed, writeError, getLogs });
+  }
+  const notWritten = [...runFiles.values()].filter((f) => !f.kept && f.writeError !== undefined);
+  return { head, windows: out, failed: notWritten.length, writeError: notWritten[0]?.writeError ?? null };
 }
