@@ -106,7 +106,9 @@ export function decodeLog(log) {
     const offset = Number(BigInt(`0x${word(d, 0)}`)) / 32;
     const length = Number(BigInt(`0x${word(d, offset)}`));
     const hex = d.slice(2 + (offset + 1) * 64, 2 + (offset + 1) * 64 + length * 2);
-    return { event: "Brief", address, id: BigInt(log.topics[1]), from: addressOf(log.topics[2]), text: Buffer.from(hex, "hex").toString("utf8") };
+    // The log index, with the tx hash and the id, is how the agent's journal names the brief it answered.
+    const logIndex = log.logIndex === undefined ? undefined : Number(BigInt(log.logIndex));
+    return { event: "Brief", address, id: BigInt(log.topics[1]), from: addressOf(log.topics[2]), text: Buffer.from(hex, "hex").toString("utf8"), logIndex };
   }
   return null;
 }
@@ -229,5 +231,87 @@ dd.no{color:var(--refuse);font-weight:600}
     fontsDir,
     css,
     body: `<div class="frame"><div class="eyebrow">Base mainnet</div><h2>${esc(title)}</h2><div class="txs">${models.map(block).join("")}</div></div>`,
+  });
+}
+
+/**
+ * The persuasion beat's pair: the tx whose receipt holds the Brief, and the tx whose receipt holds the vault's
+ * Decision, each with that event. Throws when the pair is not one of each.
+ * @param {any[]} models
+ */
+export function persuasionParts(models) {
+  /** @param {string} event @param {string} key */
+  const find = (event, key) => {
+    for (const m of models) {
+      const e = m.kind === "tx" ? m.events.find((/** @type {any} */ x) => x.event === event) : undefined;
+      if (e) return { model: m, event: e };
+    }
+    throw new Error(`the persuasion beat needs a ${event} tx: ${key} in film/txs.json must name a tx whose receipt holds one`);
+  };
+  return { brief: find("Brief", "strangerBrief"), verdict: find("Decision", "vaultAnswer") };
+}
+
+/** "0123456789abcdef…" (a journal row's commit) as "0123456", keeping a "-dirty" suffix. */
+const shortCommit = (c) => String(c).replace(/^([0-9a-f]{7})[0-9a-f]{33}/, "$1");
+
+/** Beat 7's middle step: Maat's agent's reply as the journal holds it, or a labelled line saying it is not there yet. */
+function replyStep(reply) {
+  if (reply?.kind !== "reply") {
+    return `<li class="step"><div class="k">${esc("2 · Maat's agent's reply")}</div><div class="missing"><span class="tag ph">NOT IN THE JOURNAL YET</span><p>${esc(
+      "Maat's agent's reply to this brief is not in the published journal yet. The film shows it once the agent-journal branch holds its row.",
+    )}</p></div></li>`;
+  }
+  const at = [`${reply.file} line ${reply.line}`, `row ${shortHex(reply.hash)}`, ...(reply.commit ? [`commit ${shortCommit(reply.commit)}`] : [])];
+  const persuaded = reply.outcome === "skipped" ? [] : [`Claude persuaded: ${reply.adopted ? "yes, adopted into an intent" : "no"}`];
+  const src = `<div class="src mono">${esc([...persuaded, ...at].join(" · "))}</div>`;
+  if (reply.outcome === "replied") return `<li class="step"><div class="k">${esc("2 · Maat's agent replied")}</div><blockquote dir="auto">${esc(`“${reply.text}”`)}</blockquote>${src}</li>`;
+  const said = reply.outcome === "unanswered" ? "Sent to Claude, which gave no reply." : `Not sent to Claude: a daily cap was reached (${reply.cap}).`;
+  return `<li class="step"><div class="k">${esc("2 · Maat's agent")}</div><p class="said">${esc(said)}</p>${src}</li>`;
+}
+
+/**
+ * Beat 7 once both of its txs are on Base: the brief as the inbox recorded it, then Maat's agent's reply from the
+ * published journal (or a labelled line while the journal has none), then the vault's verdict on the agent's answer,
+ * with its Basescan link card. While either tx is a placeholder it is the beat's placeholder card (txCardHtml).
+ * `reply` is a lib/journal.mjs briefReply model.
+ * @param {any[]} models
+ * @param {{ format: string, title: string, fontsDir?: string, reply?: any }} options
+ */
+export function persuasionCardHtml(models, { format, title, fontsDir, reply }) {
+  if (models.some((m) => m.kind !== "tx")) return txCardHtml(models, { format, title, fontsDir });
+  const { brief, verdict } = persuasionParts(models);
+  const wide = format === "wide";
+  const row = (/** @type {any} */ m, /** @type {string} */ k) => m.rows.find((/** @type {any} */ r) => r.k === k)?.v ?? "";
+  const css = `.frame{padding:${wide ? 44 : 30}px ${wide ? 140 : 22}px ${CAPTION_BAND[format]}px;justify-content:safe center;gap:${wide ? 22 : 12}px}
+.eyebrow{font-size:${wide ? 22 : 12}px}
+h2{font-size:${wide ? 48 : 24}px;font-weight:600;letter-spacing:-.02em}
+.steps{list-style:none;display:flex;flex-direction:column;gap:${wide ? 16 : 8}px}
+.step{border:1px solid var(--line);border-radius:${wide ? 16 : 10}px;padding:${wide ? "16px 26px" : "9px 12px"};background:#fff;display:flex;flex-direction:column;gap:${wide ? 8 : 4}px;min-width:0}
+.k{font-family:"Geist Mono",ui-monospace,monospace;font-size:${wide ? 17 : 10}px;letter-spacing:.02em;color:var(--ink2);overflow-wrap:anywhere}
+blockquote,.said{font-size:${wide ? 24 : 13}px;line-height:1.35;overflow-wrap:anywhere}
+.src{font-size:${wide ? 15 : 9}px;color:var(--ink3);overflow-wrap:anywhere}
+.missing{display:flex;flex-direction:column;gap:${wide ? 8 : 4}px}
+.missing .tag{font-size:${wide ? 18 : 10}px;padding:${wide ? "3px 10px" : "2px 6px"};align-self:flex-start}
+.missing p{font-size:${wide ? 21 : 11}px;color:var(--ink2)}
+.step.verdict{display:grid;grid-template-columns:${wide ? "minmax(0,1fr) 440px" : "1fr"};gap:${wide ? 24 : 8}px;align-items:center}
+.verdict > div{display:flex;flex-direction:column;gap:${wide ? 8 : 4}px;min-width:0}
+.v{font-family:"Geist Mono",ui-monospace,monospace;font-size:${wide ? 30 : 16}px;font-weight:600;overflow-wrap:anywhere}
+.v.ok{color:var(--accent)}
+.v.no{color:var(--refuse)}
+.link-card{border-radius:${wide ? 14 : 10}px;background:var(--soft);border:1px solid var(--line);padding:${wide ? 20 : 10}px;display:flex;flex-direction:column;gap:${wide ? 8 : 4}px}
+.link-card b{font-size:${wide ? 22 : 13}px}
+.link-card span{font-family:"Geist Mono",ui-monospace,monospace;font-size:${wide ? 16 : 9}px;color:var(--accent);overflow-wrap:anywhere}`;
+  const e = verdict.event;
+  const verdictLine = `${e.allowed ? "Allowed" : "Refused"} · ${REASON_LABELS[e.reason] ?? e.reason} (${e.reason})`;
+  const steps = [
+    `<li class="step"><div class="k">${esc(`1 · ${brief.model.label} · #${brief.event.id} from ${shortHex(brief.event.from)}`)}</div><blockquote dir="auto">${esc(`“${brief.event.text}”`)}</blockquote><div class="src mono">${esc(`block ${row(brief.model, "Block")} · tx ${shortHex(brief.model.hash)}`)}</div></li>`,
+    replyStep(reply),
+    `<li class="step verdict"><div><div class="k">${esc(`3 · ${verdict.model.label}`)}</div><div class="v ${e.allowed ? "ok" : "no"}">${esc(verdictLine)}</div><div class="src mono">${esc(`${row(verdict.model, "Intent")} · sent by ${row(verdict.model, "From")} · block ${row(verdict.model, "Block")}`)}</div></div><div class="link-card"><b>Open on Basescan ↗</b><span>${esc(verdict.model.url.replace(/^https:\/\//, ""))}</span></div></li>`,
+  ];
+  return documentHtml({
+    format,
+    fontsDir,
+    css,
+    body: `<div class="frame"><div class="eyebrow">Base mainnet · the published journal</div><h2>${esc(title)}</h2><ol class="steps">${steps.join("")}</ol></div>`,
   });
 }

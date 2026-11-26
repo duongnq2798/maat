@@ -1,28 +1,47 @@
 # Film
 
-The demo film: about 100 seconds, no voice, captions burned in, in two cuts, 16:9 (1920x1080) and 9:16 (1080x1920).
-It is built only from the live site, [maatonbase.xyz](https://maatonbase.xyz), which Playwright opens read-only, and
-from Base mainnet transactions shown as text beside a Basescan link card. ffmpeg assembles it. Nothing here signs,
-sends or uploads anything.
+The demo film: 100 seconds, no voice and no sound (the audio track is silent), captions burned in, in two cuts, 16:9
+(1920x1080) and 9:16 (1080x1920). It is built only from the live site, [maatonbase.xyz](https://maatonbase.xyz), which
+Playwright opens read-only, from Base mainnet transactions shown as text beside a Basescan link card, and from the
+published agent journal. ffmpeg assembles it. Nothing here signs, sends or uploads anything.
+
+It opens on the title card and closes on the end card, and both draw the mark of `web/brand/src/mark.svg`, so the
+first and the last frame show it: the cut fades at the edges of each beat, but never on its first or last frame.
 
 The render runs on a PC, never in CI: it needs Chromium, ffmpeg and the network. CI runs the unit tests of the beat
-plan, the caption sources, the tx cards and the ffmpeg arguments, which need neither ffmpeg nor the network, and one
-Playwright spec that lays the cards out in Chromium from local files.
+plan, the caption sources, the cards, the tx cards, the journal reader and the ffmpeg arguments, which need neither
+ffmpeg nor the network, and one Playwright spec that lays the cards out in Chromium from local files.
 
 ## The beats
 
 | # | Beat | Shots | Until its transactions exist |
 | --- | --- | --- | --- |
-| 1 | The frozen feed | title card; `/gap-index`, the NVDAc panel of the 6 Nov window | |
-| 2 | Claude proposes, the vault decides | the landing's How it works; the owner's Basescan Decision clip, or the landing's refusal codes without it | |
+| 1 | The frozen feed | title card: the mark, the positioning line, the mechanism line; `/gap-index`, the NVDAc panel of the 6 Nov window | |
+| 2 | Claude proposes. The vault decides. | the landing's How it works; the owner's Basescan Decision clip, or the landing's refusal codes without it | |
 | 3 | The brief and the approved mandate | `/ledger`, the mandate the vault holds | shows the timelock line until the vault's cap equals the reserve cap |
 | 4 | The sourced proposal and its hash tick | `/ledger`, the decision trail with its hash tick; the owner's Basescan input clip, or `/ledger`'s verify-by-hand commands without it | |
 | 5 | Thanksgiving: `MARKET_CLOSED` from the agent | the simulator on Thanksgiving; the tx card | placeholder card |
 | 6 | The early-close pair | the simulator after the early close; the two tx cards | placeholder cards |
-| 7 | A stranger's brief and the vault's answer | `/ask`; the brief and Decision tx cards | placeholder cards; `/ask`'s caption says the inbox opens once it is on Base |
-| 8 | Receipts | the deployed contracts; the README's CI figures; `/proof`; the end card | |
+| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line; one card: the brief, Maat's agent's reply from the published journal, then the vault's verdict | the two tx cards labelled PLACEHOLDER; `/ask`'s caption says the inbox opens once it is on Base |
+| 8 | Receipts | the deployed contracts; the README's CI figures; `/proof`; the end card: the mark, the sign-off, the short myth line, the builder line | |
 
-`lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues.
+`lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues. The end card holds 6 s, so
+its lines can be read.
+
+## The title and end cards
+
+They carry Maat's identity, in the words of the culture plan's phrase table (`LINES` in `lib/cards.mjs`), each word
+for word:
+
+| Card | What it shows |
+| --- | --- |
+| Title | The mark and "maat"; "The AI agent that knows when not to trade."; "Claude proposes. The vault decides." |
+| End | The mark and "maat"; "Every trade is weighed."; "Named for Ma'at, whose feather every heart was weighed against. Here the feather is the mandate."; "Built by one developer with Claude Code."; `maatonbase.xyz`, the repository and @maatonbase; the footer "Own treasury only. No investment advice. Not offered to US persons." |
+
+The capture reads the mark from `web/brand/src/mark.svg` and draws it as it is; a card asked to draw without it stops
+the render. The cards use the site's colours and its Geist type only. `web/test/film-identity.test.ts` checks the
+lines, the mark, the first and last shots and the silent track, and that every caption that says who proposes and who
+decides says the mechanism line word for word.
 
 ## Files
 
@@ -34,7 +53,7 @@ Playwright spec that lays the cards out in Chromium from local files.
 | `captions.json` | Every caption. Each number in a caption is a `{placeholder}` |
 | `txs.json` | The transactions of beats 5 to 7, by hash, and what each receipt must show |
 | `input/` | Where the owner drops the two Basescan clips; git ignores everything in it but its README |
-| `lib/` | The beat plan, the caption sources, the cards, the tx decoder and the ffmpeg argument builder |
+| `lib/` | The beat plan, the caption sources, the cards, the tx decoder, the journal reader (`journal.mjs`, beat 7's reply) and the ffmpeg argument builder |
 
 ## Commands
 
@@ -63,12 +82,14 @@ for example to assemble again without capturing again.
 The tests run with the website's unit tests (`npm test` in `web/`) and its Playwright tests (`npm run e2e`), or alone:
 
 ```bash
-cd web && npx vitest run test/film-beats.test.ts test/film-captions.test.ts test/film-txcards.test.ts test/film-ffmpeg.test.ts
+cd web && npx vitest run test/film-beats.test.ts test/film-captions.test.ts test/film-txcards.test.ts test/film-ffmpeg.test.ts test/film-identity.test.ts
 cd web && npx playwright test e2e/film-cards.spec.ts --project=chromium
 ```
 
 The Playwright spec opens no site: it writes the cards to local files and checks, in both cuts, that no caption the
-shot can show covers a row of its card, with the longest content each card can hold.
+shot can show covers a row of its card, with the longest content each card can hold (beat 7's card with the longest
+brief the inbox takes and the longest reply the journal keeps), and that the title and end cards fit the frame with
+the mark drawn.
 
 ## Captions and their numbers
 
@@ -91,7 +112,7 @@ Some captions show only while a condition holds, and another caption otherwise (
 | Caption | Shows when | Otherwise |
 | --- | --- | --- |
 | `mandate-reserve` | the vault's weight cap, as `/ledger` reads it, equals `RESERVE_CAP_BPS` | `mandate-timelock`, and the render warns |
-| `brief-ask` | `deployments/README.md` has a Base mainnet `MaatInbox` row | `brief-ask-soon`, which says the inbox opens once it is on Base |
+| `brief-ask`, the invitation line | `deployments/README.md` has a Base mainnet `MaatInbox` row | `brief-ask-soon`, which says the inbox opens once it is on Base |
 | `receipts-contracts` | the verification note under that table counts as many contracts as the table holds | `receipts-contracts-listed`, which claims no verification; the contracts card leaves the note out, and the render warns |
 
 A tx shot of two transactions with only one hash set shows the real one and a placeholder card, under
@@ -102,7 +123,7 @@ The render also warns when the README's CI figures are more than 3 days older th
 
 Before it assembles anything, the capture measures each card against each caption burned in over it, in both cuts,
 and stops the render if a caption box would come within 16 px of the card's content (`overlapProblem` in
-`lib/cards.mjs`).
+`lib/cards.mjs`), or a card's content within 16 px of the frame's bottom edge (`fitProblem`), captioned or not.
 
 ## Owner steps
 
@@ -120,7 +141,8 @@ and stops the render if a caption box would come within 16 px of the card's cont
    - `earlyCloseAllowed` and `earlyCloseRefused`: the agent's Decisions on Fri 27 Nov, allowed before the 13:00 ET
      early close and refused with `MARKET_CLOSED` at or after it (not a refusal before the open);
    - `strangerBrief`: an outside wallet's `Brief` transaction to the inbox, once `deployments/README.md` records the
-     `MaatInbox`; `vaultAnswer`: the vault's Decision on the agent's answer to it.
+     `MaatInbox`; `vaultAnswer`: the vault's Decision on Maat's agent's answer to it. Beat 7 shows Maat's agent's
+     reply between the two, from the published journal (below).
 4. **Render, review, upload.** Refresh the root README's "Tested, in numbers" table from a current CI run on `main`,
    run `node film/render.mjs`, watch both cuts, then upload the 16:9 cut to Loom (a free account) on Wed 9 Dec.
    Uploads are the owner's: nothing in this folder posts anything.
@@ -136,3 +158,11 @@ and stops the render if a caption box would come within 16 px of the card's cont
    row it did not read.
 3. Check the printed summary: `placeholders: none` once all five hashes are set, and each placeholder caption replaced
    by the beat's own.
+
+Once both of beat 7's hashes are set, the capture also reads the public `agent-journal` branch
+(`https://raw.githubusercontent.com/duongnq2798/maat/agent-journal/journal/`, the files the site's `/ledger` reads),
+checks every line's hash chain as the browser verifier does, and takes the `brief` row that names the brief by its id,
+tx hash and log index. Its sanitized reply shows between the brief and the verdict, with its day file, line, row hash
+and commit, and with "Claude persuaded: yes" or "no" from its `adopted` flag. While the branch does not exist or has no
+row for the brief, the card says the reply is not in the journal yet, labelled NOT IN THE JOURNAL YET, and the render
+warns. A branch it cannot read, or a line that does not verify, stops the render.

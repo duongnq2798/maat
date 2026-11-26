@@ -10,6 +10,32 @@ export const esc = (s) =>
 /** "0x3c3a66f7…" as "0x3c3a…1d6a". */
 export const shortHex = (hex) => `${hex.slice(0, 6)}…${hex.slice(-4)}`;
 
+/**
+ * The fixed lines the film says, word for word, from the culture plan's approved phrase table (one line per slot) and
+ * its myth and builder lines. web/test/film-identity.test.ts holds each one to the approved wording.
+ */
+export const LINES = Object.freeze({
+  positioning: "The AI agent that knows when not to trade.",
+  mechanism: "Claude proposes. The vault decides.",
+  invitation: "Try to talk Maat's agent into a bad trade. The vault has the last word.",
+  signOff: "Every trade is weighed.",
+  mythShort: "Named for Ma'at, whose feather every heart was weighed against. Here the feather is the mandate.",
+  builder: "Built by one developer with Claude Code.",
+});
+
+/** The footer any asset that shows a stock token or a trade carries (voice.md, full form). */
+export const FOOTER = "Own treasury only. No investment advice. Not offered to US persons.";
+
+/**
+ * The mark as an inline SVG: web/brand/src/mark.svg as it is, which the capture reads and passes in. A card is never
+ * drawn with a stand-in for it.
+ */
+function markSvg(mark) {
+  const svg = String(mark ?? "").trim();
+  if (!/^<svg[\s>][^]*<\/svg>$/.test(svg)) throw new Error("a title or end card needs the mark: pass the contents of web/brand/src/mark.svg");
+  return svg;
+}
+
 /** @font-face rules for Geist from the web app's installed package, or none (the system font stands in). */
 function fontFaces(fontsDir) {
   if (!fontsDir) return "";
@@ -92,6 +118,12 @@ export function overlapProblem(where, contentBottom, captionTop) {
   return `${where}: the card's content ends at ${Math.round(contentBottom)} px and the caption box starts at ${Math.round(captionTop)} px; they need ${CAPTION_CLEARANCE} px between them`;
 }
 
+/** Why a card's content would run off the frame, in one line; null when it ends CAPTION_CLEARANCE above the bottom edge. */
+export function fitProblem(where, contentBottom, frameHeight) {
+  if (contentBottom + CAPTION_CLEARANCE <= frameHeight) return null;
+  return `${where}: the card's content ends at ${Math.round(contentBottom)} px, within ${CAPTION_CLEARANCE} px of the frame's bottom edge at ${Math.round(frameHeight)} px`;
+}
+
 /** The caption overlay: a clear frame with the caption in a dark box near the bottom. */
 export function captionHtml({ format, text, fontsDir }) {
   const wide = format === "wide";
@@ -111,18 +143,33 @@ font-size:${wide ? 40 : 21}px;line-height:1.3;font-weight:500;text-align:center;
   });
 }
 
-export function titleCardHtml({ format, fontsDir }) {
+/** The mark's side on the title and end cards, in CSS px of the format's viewport. */
+const MARK_PX = Object.freeze({ wide: 76, tall: 38 });
+
+/** The lockup as the site's header draws it: the mark, then "maat" in Geist Bold. */
+function lockupCss(format) {
   const s = SIZE[format];
-  const css = `.frame{padding:0 ${s.pad}px;gap:${s.gap}px}
-.mark{display:flex;align-items:center;gap:${s.gap / 2}px;font-weight:700;font-size:${s.h2}px}
-.mark i{display:inline-block;width:${s.h2}px;height:${s.h2}px;border-radius:${s.h2 / 5}px;background:var(--ink)}
+  return `.lockup{display:flex;align-items:center;gap:${Math.round(MARK_PX[format] / 4)}px;font-weight:700;font-size:${s.h2}px;letter-spacing:-.02em;line-height:1}
+.lockup svg{display:block;flex:none;width:${MARK_PX[format]}px;height:${MARK_PX[format]}px}`;
+}
+const lockupHtml = (mark) => `<div class="lockup">${markSvg(mark)}<span>maat</span></div>`;
+
+/**
+ * The film's first frame: the mark, the positioning line and the mechanism line. `mark` is web/brand/src/mark.svg.
+ * @param {{ format: string, fontsDir?: string, mark: string }} options
+ */
+export function titleCardHtml({ format, fontsDir, mark }) {
+  const s = SIZE[format];
+  const css = `.frame{padding:${s.gap}px ${s.pad}px;gap:${s.gap}px;justify-content:safe center}
+${lockupCss(format)}
 h1{font-size:${s.h1}px;line-height:1.02;letter-spacing:-.03em;font-weight:600;max-width:${format === "wide" ? 1300 : 480}px}
+.mech{font-size:${Math.round(s.body * 1.35)}px;font-weight:500;letter-spacing:-.01em}
 p{font-size:${s.body}px;color:var(--ink2)}`;
   return documentHtml({
     format,
     fontsDir,
     css,
-    body: `<div class="frame"><div class="mark"><i></i>maat</div><h1>The AI agent that knows when not to trade.</h1><p>An AI treasury agent for tokenized stocks on Base. Claude proposes; the onchain vault decides.</p></div>`,
+    body: `<div class="frame">${lockupHtml(mark)}<h1>${esc(LINES.positioning)}</h1><p class="mech">${esc(LINES.mechanism)}</p><p>A treasury of tokenized stocks on Base, kept to a written mandate.</p></div>`,
   });
 }
 
@@ -173,16 +220,26 @@ p{font-size:${s.small}px;color:var(--ink2)}`;
   });
 }
 
-export function endCardHtml({ format, fontsDir }) {
+/**
+ * The film's last frame: the mark, the sign-off, the short myth line, the builder line, then where to find Maat and
+ * the footer. `mark` is web/brand/src/mark.svg.
+ * @param {{ format: string, fontsDir?: string, mark: string }} options
+ */
+export function endCardHtml({ format, fontsDir, mark }) {
   const s = SIZE[format];
-  const css = `.frame{padding:0 ${s.pad}px;gap:${s.gap}px;align-items:flex-start}
-h1{font-size:${s.h1}px;letter-spacing:-.03em;font-weight:600}
-p{font-size:${s.body}px;color:var(--ink2)}
+  const wide = format === "wide";
+  const css = `.frame{padding:${s.gap}px ${s.pad}px;gap:${s.gap}px;align-items:flex-start;justify-content:safe center}
+${lockupCss(format)}
+h1{font-size:${s.h1}px;line-height:1.02;letter-spacing:-.03em;font-weight:600}
+.myth{font-size:${s.body}px;line-height:1.4;color:var(--ink2);max-width:${wide ? 1240 : 484}px}
+.builder{font-size:${s.body}px;font-weight:500}
+.foot{align-self:stretch;display:flex;flex-direction:column;gap:${Math.round(s.gap / 3)}px;margin-top:${Math.round(s.gap / 2)}px;padding-top:${s.gap}px;border-top:1px solid var(--line)}
+.foot p{font-size:${s.small}px;color:var(--ink2)}
 small{font-size:${s.small}px;color:var(--ink3)}`;
   return documentHtml({
     format,
     fontsDir,
     css,
-    body: `<div class="frame"><h1>maatonbase.xyz</h1><p class="mono">github.com/duongnq2798/maat · @maatonbase</p><small>Own treasury only. No investment advice. Not offered to US persons.</small></div>`,
+    body: `<div class="frame">${lockupHtml(mark)}<h1>${esc(LINES.signOff)}</h1><p class="myth">${esc(LINES.mythShort)}</p><p class="builder">${esc(LINES.builder)}</p><div class="foot"><p class="mono">maatonbase.xyz · github.com/duongnq2798/maat · @maatonbase</p><small>${esc(FOOTER)}</small></div></div>`,
   });
 }

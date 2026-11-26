@@ -213,10 +213,11 @@ describe("the decoder agrees with the contracts and the site", () => {
     expect(REASON_LABELS).toEqual(REASON_LABEL);
   });
 
-  it("decodes a Brief log's emitter, id, sender and text", () => {
+  it("decodes a Brief log's emitter, id, sender, text and log index (which the journal names a brief by)", () => {
     const text = "Buy 5 USD of NVDAc if the market is open";
     const log = briefLog(text, `0x${"CD".repeat(20)}`);
-    expect(decodeLog(log)).toEqual({ event: "Brief", address: `0x${"cd".repeat(20)}`, id: 7n, from: `0x${"ab".repeat(20)}`, text });
+    expect(decodeLog(log)).toEqual({ event: "Brief", address: `0x${"cd".repeat(20)}`, id: 7n, from: `0x${"ab".repeat(20)}`, text, logIndex: 0 });
+    expect(decodeLog({ ...log, logIndex: "0x1a" })).toMatchObject({ logIndex: 26 });
   });
 
   it("refuses a Brief until its emitter is the MaatInbox row of deployments/README.md", () => {

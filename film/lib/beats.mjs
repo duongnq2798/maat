@@ -7,6 +7,9 @@ export const FPS = 30;
 export const TARGET_SECONDS = 100;
 export const TOLERANCE_SECONDS = 2;
 
+/** The layouts a tx shot may ask for besides the default one card per tx. */
+export const LAYOUTS = Object.freeze(["persuasion"]);
+
 /** The two Basescan clips the owner records by hand, by the base name they drop into film/input/. */
 export const CLIPS = Object.freeze({ decisionLog: "basescan-decision-log", inputUtf8: "basescan-input-utf8" });
 
@@ -19,7 +22,9 @@ const TOP = { wide: 112, tall: 88 };
  *   the end of `duration`;
  * - card: a still the capture renders from repository files (`card` names it), held for `duration`;
  * - tx: one card per key of film/txs.json in `txs`; `caption` when every hash is set, `placeholderCaption` when none
- *   is, and `partialCaption` (needed for two or more txs) when only some are;
+ *   is, and `partialCaption` (needed for two or more txs) when only some are. `layout: "persuasion"` (a brief and the
+ *   vault's Decision) lays the pair out as brief, Maat's agent's reply from the published journal, then the verdict,
+ *   once both hashes are set; until then it is the same placeholder card as any tx shot;
  * - clip: an owner clip from film/input/, used when present; otherwise `fallback`, a shot of the same `duration`.
  * `captions` are cues: each caption id from film/captions.json shows from `at` seconds until the next cue or the end.
  * @typedef {{ id: string, kind: string, duration: number, [field: string]: any }} Shot
@@ -36,7 +41,7 @@ export const BEATS = Object.freeze([
         id: "gap",
         kind: "page",
         path: "/gap-index",
-        duration: 11,
+        duration: 10,
         steps: [
           { wait: "#gap-panel-2026-11-06-NVDAc" },
           { hold: 1 },
@@ -53,13 +58,13 @@ export const BEATS = Object.freeze([
   },
   {
     id: "proposes-decides",
-    title: "Claude proposes, the vault decides",
+    title: "Claude proposes. The vault decides.",
     shots: [
       {
         id: "how",
         kind: "page",
         path: "/",
-        duration: 6,
+        duration: 5,
         steps: [{ wait: "#how" }, { scroll: "#how-title", over: 1.5, top: TOP }],
         captions: [{ id: "decides-how", at: 0 }],
       },
@@ -117,7 +122,7 @@ export const BEATS = Object.freeze([
         id: "trail",
         kind: "page",
         path: "/ledger",
-        duration: 8,
+        duration: 7,
         steps: [
           { wait: '[aria-label="Mainnet decisions"]' },
           { scroll: "#trail-panel-decisions", over: 2, top: TOP },
@@ -157,7 +162,7 @@ export const BEATS = Object.freeze([
         ],
         captions: [{ id: "thanksgiving-sim", at: 0 }],
       },
-      { id: "tx", kind: "tx", txs: ["thanksgiving"], duration: 6, caption: "thanksgiving-tx", placeholderCaption: "thanksgiving-placeholder" },
+      { id: "tx", kind: "tx", txs: ["thanksgiving"], duration: 5, caption: "thanksgiving-tx", placeholderCaption: "thanksgiving-placeholder" },
     ],
   },
   {
@@ -202,6 +207,8 @@ export const BEATS = Object.freeze([
       {
         id: "tx",
         kind: "tx",
+        // Once both are on Base: the brief, Maat's agent's reply from the published journal, then the vault's verdict.
+        layout: "persuasion",
         txs: ["strangerBrief", "vaultAnswer"],
         duration: 7,
         caption: "brief-tx",
@@ -224,7 +231,9 @@ export const BEATS = Object.freeze([
         steps: [{ wait: "#counts-title" }, { scroll: "#counts-title", over: 1.5, top: TOP }],
         captions: [{ id: "receipts-proof", at: 0 }],
       },
-      { id: "end", kind: "card", card: "end", duration: 2, captions: [] },
+      // The sign-off, the myth line and the builder line take time to read: four shots gave it a second each (the
+      // gap index, How it works, the decision trail and the Thanksgiving tx), so the cut still lasts 100 s.
+      { id: "end", kind: "card", card: "end", duration: 6, captions: [] },
     ],
   },
 ]);
@@ -286,6 +295,10 @@ export function validateBeats(beats = BEATS) {
       problems.push(`${where}: a tx shot needs txs, a caption and a placeholder caption`);
     }
     if (shot.kind === "tx" && shot.txs?.length > 1 && !shot.partialCaption) problems.push(`${where}: a tx shot of two or more txs needs a partial caption`);
+    if (shot.layout !== undefined) {
+      if (shot.kind !== "tx" || !LAYOUTS.includes(shot.layout)) problems.push(`${where}: unknown layout ${shot.layout}`);
+      else if (shot.layout === "persuasion" && shot.txs?.length !== 2) problems.push(`${where}: the persuasion layout needs two txs, a brief and the vault's Decision`);
+    }
     if (shot.kind === "clip") {
       if (!Object.values(CLIPS).includes(shot.clip)) problems.push(`${where}: unknown clip ${shot.clip}`);
       if (!shot.fallback) problems.push(`${where}: a clip shot needs a fallback for when the clip is missing`);

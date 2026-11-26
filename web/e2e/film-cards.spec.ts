@@ -3,15 +3,27 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { expect, type Page, test } from "@playwright/test";
 import { BEATS } from "../../film/lib/beats.mjs";
 import { pickCaption, renderCaption } from "../../film/lib/captions.mjs";
-import { captionHtml, captionTopInPage, ciCardHtml, contentBottomInPage, deploymentsCardHtml, overlapProblem } from "../../film/lib/cards.mjs";
+import {
+  captionHtml,
+  captionTopInPage,
+  ciCardHtml,
+  contentBottomInPage,
+  deploymentsCardHtml,
+  endCardHtml,
+  fitProblem,
+  overlapProblem,
+  titleCardHtml,
+} from "../../film/lib/cards.mjs";
 import { FORMATS } from "../../film/lib/formats.mjs";
 import { ciFigures, deploymentRows, fileSources } from "../../film/lib/sources.mjs";
-import { BRIEF_TOPIC, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
+import { BRIEF_TOPIC, persuasionCardHtml, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
 
 // The film's cards are stills that film/capture.mjs renders in Chromium, with a caption burned in near the bottom. This
-// lays them out here with the longest content each can hold and fails when a caption would cover a row: the tx cards
-// of beats 5 to 7 with real transactions (the vault's first mainnet Decision, and a Brief of the inbox's longest text),
-// and the receipts cards. No network: the pages are local files, with the Geist fonts from node_modules.
+// lays them out here with the longest content each can hold and fails when a caption would cover a row, or a card runs
+// past the frame: the tx cards of beats 5 to 7 with real transactions (the vault's first mainnet Decision, and a Brief
+// of the inbox's longest text), beat 7's persuasion card with the longest reply the journal keeps, the receipts cards,
+// and the title and end cards with the mark. No network: the pages are local files, with the Geist fonts from
+// node_modules.
 
 const ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const read = (rel: string) => readFileSync(`${ROOT}${rel}`, "utf8").replace(/\r\n/g, "\n");
@@ -27,6 +39,9 @@ const captionText = (id: string) => renderCaption(pickCaption(captions, id, valu
 
 /** The inbox's limit on a brief, from MaatInbox.sol. */
 const MAX_BYTES = Number(/uint256 public constant MAX_BYTES = (\d+);/.exec(read("contracts/src/MaatInbox.sol"))?.[1]);
+/** The agent's limit on a reply it journals, from agent/src/briefs/caps.ts. */
+const MAX_REPLY_CHARS = Number(/export const MAX_REPLY_CHARS = (\d+);/.exec(read("agent/src/briefs/caps.ts"))?.[1]);
+const mark = read("web/brand/src/mark.svg").trim();
 const word = (n: number) => n.toString(16).padStart(64, "0");
 /** A Brief receipt from the fixture's block, with `text`: the longest a stranger can send wraps the most. */
 function briefData(text: string) {
@@ -48,6 +63,14 @@ const BRIEFS = {
   unbroken: "x".repeat(MAX_BYTES),
 };
 
+const replyWords = "No. NYSE is closed, so the vault would refuse it with MARKET_CLOSED, and I will not propose it. ";
+/** The replies a persuasion card can show: the longest the journal keeps, unbroken, and none yet. */
+const REPLIES = {
+  words: { kind: "reply", outcome: "replied", text: replyWords.repeat(5).slice(0, MAX_REPLY_CHARS).trimEnd(), adopted: true, file: "journal/2026-12-01.jsonl", line: 1234, hash: `0x${"ef".repeat(32)}`, commit: `${"0a".repeat(20)}-dirty` },
+  unbroken: { kind: "reply", outcome: "replied", text: "y".repeat(MAX_REPLY_CHARS), adopted: false, file: "journal/2026-12-01.jsonl", line: 1, hash: `0x${"ef".repeat(32)}` },
+  missing: { kind: "missing", why: "the published journal has no row for brief #1 yet" },
+};
+
 /** The lowest edge of a card's content, and the top of each caption the shot can show, in CSS px. */
 async function measure(page: Page, dir: string, name: string, html: string, captionIds: string[], format: string) {
   mkdirSync(dir, { recursive: true });
@@ -56,7 +79,8 @@ async function measure(page: Page, dir: string, name: string, html: string, capt
   await page.goto(pathToFileURL(card).href);
   await page.evaluate(() => document.fonts.ready);
   const bottom = await page.evaluate(contentBottomInPage);
-  const problems: string[] = [];
+  const fit = fitProblem(name, bottom, FORMATS[format as keyof typeof FORMATS].viewport.height);
+  const problems: string[] = fit ? [fit] : [];
   for (const id of captionIds) {
     const file = `${dir}/${name}-${id}.html`;
     writeFileSync(file, captionHtml({ format, text: captionText(id), fontsDir }));
@@ -84,8 +108,28 @@ for (const format of ["wide", "tall"] as const) {
             expect(models.every((m: { kind: string }) => m.kind === "tx")).toBe(true);
             const ids = [shot.caption, shot.placeholderCaption, shot.partialCaption].filter(Boolean);
             problems.push(...(await measure(page, dir, `${beat.id}-${kind}`, txCardHtml(models, { format, title: beat.title, fontsDir }), ids, format)));
+            if (shot.layout !== "persuasion") continue;
+            for (const [replyKind, reply] of Object.entries(REPLIES)) {
+              const html = persuasionCardHtml(models, { format, title: beat.title, fontsDir, reply });
+              problems.push(...(await measure(page, dir, `${beat.id}-${kind}-${replyKind}`, html, [shot.caption], format)));
+            }
           }
         }
+      }
+      expect(problems).toEqual([]);
+    });
+
+    test("fit the title and end cards in the frame, each with the mark drawn", async ({ page }, info) => {
+      const dir = info.outputPath();
+      const problems: string[] = [];
+      for (const [name, html] of [
+        ["title", titleCardHtml({ format, fontsDir, mark })],
+        ["end", endCardHtml({ format, fontsDir, mark })],
+      ] as const) {
+        problems.push(...(await measure(page, dir, name, html, [], format)));
+        const box = await page.locator(".lockup svg").boundingBox();
+        expect(box?.width, name).toBeGreaterThanOrEqual(format === "wide" ? 60 : 30);
+        expect(box?.y, name).toBeGreaterThanOrEqual(0);
       }
       expect(problems).toEqual([]);
     });

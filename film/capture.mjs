@@ -16,15 +16,17 @@ import {
   contentBottomInPage,
   deploymentsCardHtml,
   endCardHtml,
+  fitProblem,
   overlapProblem,
   titleCardHtml,
 } from "./lib/cards.mjs";
 import { captionProblems, pickCaption, renderCaption } from "./lib/captions.mjs";
 import { frameListText } from "./lib/ffmpeg.mjs";
 import { FORMATS } from "./lib/formats.mjs";
+import { briefReply, readJournal } from "./lib/journal.mjs";
 import { fetchTx } from "./lib/rpc.mjs";
 import { CAPTURED, OPTIONAL_KEYS, capturedValue, ciAgeWarning, ciFigures, deploymentRows, fileSources } from "./lib/sources.mjs";
-import { readTxConfig, tokenSymbols, txCardHtml, txCardModel, txProblems } from "./lib/tx.mjs";
+import { persuasionCardHtml, persuasionParts, readTxConfig, tokenSymbols, txCardHtml, txCardModel, txProblems } from "./lib/tx.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const CLIP_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv"];
@@ -128,6 +130,8 @@ export async function capture({ work, input, formats, site }) {
   const ciAge = ciAgeWarning(files.values, new Date().toISOString().slice(0, 10));
   if (ciAge) warnings.push(ciAge);
   const fontsDir = join(ROOT, "web/node_modules/geist/dist/fonts");
+  // The title and end cards draw the mark itself, so the film's first and last frames show it.
+  const mark = read("web/brand/src/mark.svg");
 
   // The txs of beats 5 to 7: read each set hash's receipt, and stop on one that does not show what txs.json expects.
   const config = readTxConfig(ROOT);
@@ -142,6 +146,21 @@ export async function capture({ work, input, formats, site }) {
     const problems = txProblems(model, entry.expect, ctx.contracts);
     if (problems.length > 0) throw new Error(`film/txs.json: ${problems.join("; ")}`);
     txModels[key] = model;
+  }
+
+  // A persuasion shot whose txs are all on Base shows Maat's agent's reply between the brief and the verdict, read from
+  // the published journal; the journal is read only then. A journal it cannot read, or one that does not verify, stops
+  // the render; no row for the brief yet shows a labelled line on the card, and a warning here.
+  const replies = {};
+  for (const [b, beat] of BEATS.entries()) {
+    for (const shot of beat.shots.filter((x) => x.kind === "tx" && x.layout === "persuasion")) {
+      const models = shot.txs.map((k) => txModels[k]);
+      if (txState(models) !== "all") continue;
+      const { brief } = persuasionParts(models);
+      const reply = briefReply(await readJournal(), { id: brief.event.id, txHash: brief.model.hash, logIndex: brief.event.logIndex });
+      if (reply.kind === "missing") warnings.push(`beat ${b + 1} shows no reply from Maat's agent: ${reply.why}. Render again once the journal publisher has pushed it`);
+      replies[`${beat.id}/${shot.id}`] = reply;
+    }
   }
 
   const clips = findClips(input);
@@ -168,19 +187,23 @@ export async function capture({ work, input, formats, site }) {
         else if (shot.kind === "card") {
           const html =
             shot.card === "title"
-              ? titleCardHtml({ format, fontsDir })
+              ? titleCardHtml({ format, fontsDir, mark })
               : shot.card === "deployments"
                 ? deploymentsCardHtml({ format, rows: deployments, verifiedNote, fontsDir })
                 : shot.card === "ci"
                   ? ciCardHtml({ format, figures: ci, fontsDir })
-                  : endCardHtml({ format, fontsDir });
+                  : endCardHtml({ format, fontsDir, mark });
           const still = await renderStill(page, join(dir, "stills"), name, html, { measure: contentBottomInPage });
           entry.input = { kind: "image", file: still.png };
           entry.contentBottom = still.measured;
         } else if (shot.kind === "tx") {
           const models = shot.txs.map((k) => txModels[k]);
           const beat = BEATS.find((b) => b.id === s.beat);
-          const still = await renderStill(page, join(dir, "stills"), name, txCardHtml(models, { format, title: beat.title, fontsDir }), { measure: contentBottomInPage });
+          const html =
+            shot.layout === "persuasion"
+              ? persuasionCardHtml(models, { format, title: beat.title, fontsDir, reply: replies[`${s.beat}/${shot.id}`] })
+              : txCardHtml(models, { format, title: beat.title, fontsDir });
+          const still = await renderStill(page, join(dir, "stills"), name, html, { measure: contentBottomInPage });
           entry.input = { kind: "image", file: still.png };
           entry.contentBottom = still.measured;
           entry.txState = txState(models);
@@ -218,6 +241,11 @@ export async function capture({ work, input, formats, site }) {
       const page = await context.newPage();
       const stills = {};
       for (const entry of manifest.formats[format].shots) {
+        // Every card, captioned or not, must fit in the frame.
+        if (entry.contentBottom !== undefined) {
+          const fit = fitProblem(`[${format}] shot ${entry.index} (${entry.beat}/${entry.slot})`, entry.contentBottom, f.viewport.height);
+          if (fit) overlaps.push(fit);
+        }
         const cues = [];
         entry.cueIds.forEach((cue, i) => {
           const next = entry.cueIds[i + 1];
@@ -239,7 +267,7 @@ export async function capture({ work, input, formats, site }) {
       }
       await context.close();
     }
-    if (overlaps.length > 0) throw new Error(`a caption would cover a card's rows:\n${overlaps.join("\n")}`);
+    if (overlaps.length > 0) throw new Error(`a card runs off the frame, or a caption would cover its rows:\n${overlaps.join("\n")}`);
   } finally {
     await browser.close();
   }

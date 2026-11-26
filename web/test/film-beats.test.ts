@@ -114,6 +114,8 @@ describe("the film's beat plan", () => {
           },
           { id: "odd", kind: "card", card: "end", duration: 1.01, captions: [] },
           { id: "pair", kind: "tx", txs: ["a", "b"], duration: 1, caption: "c", placeholderCaption: "p" },
+          { id: "poster", kind: "tx", txs: ["a"], duration: 1, caption: "c", placeholderCaption: "p", layout: "poster" },
+          { id: "lone", kind: "tx", txs: ["a"], duration: 1, caption: "c", placeholderCaption: "p", layout: "persuasion" },
         ],
       },
     ];
@@ -123,6 +125,8 @@ describe("the film's beat plan", () => {
     expect(problems).toMatch(/b\/late: cue c at 1.5 s is outside the shot/);
     expect(problems).toMatch(/b\/clip: its fallback lasts 3 s, not 4 s/);
     expect(problems).toMatch(/b\/odd: duration 1.01 is not a positive whole number of frames/);
+    expect(problems).toMatch(/b\/poster: unknown layout poster/);
+    expect(problems).toMatch(/b\/lone: the persuasion layout needs two txs, a brief and the vault's Decision/);
     expect(problems).toMatch(/the cut lasts .* s, not 100 ± 2 s/);
   });
 });
