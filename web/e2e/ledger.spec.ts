@@ -288,3 +288,170 @@ test.describe("/ledger reading the vault's two mainnet Decisions with the commit
     expect(errors).toEqual([]);
   });
 });
+
+// Two visits in one browser: the second marks the Decisions that came after the first, prints each in once and says how
+// many, from what this browser alone remembers (lib/chain/since.ts).
+test.describe("/ledger since your last look", () => {
+  const LOOK_KEY = "maat:ledger:look:v1";
+  const FIRST = Date.UTC(2026, 10, 28, 15, 0); // Sat 28 Nov 2026 10:00 ET
+  const SECOND = Date.UTC(2026, 10, 30, 14, 45); // Mon 30 Nov 2026 09:45 ET
+  const LATER = HEAD + 500n;
+  const LATER_TX = `https://basescan.org/tx/${hash32(4)}`;
+  let chain: FakeScenario;
+  let sent: { url: string; body: string; cookie: string | undefined }[];
+
+  const decisions = (page: Page) => page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem");
+  const sinceLine = (page: Page) => page.locator("[data-since-line]");
+  const prints = (page: Page) => page.evaluate(() => (window as unknown as { prints: string[] }).prints);
+
+  /** Opens /ledger at `at` and waits until the read is complete and remembered. */
+  async function visit(page: Page, at: number, rows: number) {
+    await page.clock.setFixedTime(at);
+    await page.goto("/ledger");
+    await expect(decisions(page)).toHaveCount(rows);
+    await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0);
+    await expect.poll(() => page.evaluate((k) => JSON.parse(localStorage.getItem(k) ?? "null")?.at ?? null, LOOK_KEY)).toBe(at);
+  }
+
+  /** The chain on a later visit: one more Decision, a refusal 500 blocks above the first visit's head. */
+  function later() {
+    chain.head = HEAD + 1_000n;
+    chain.headTime = T0 + 3 * 86_400 + 1000;
+    chain.logs = [...scenario.logs, decisionLog(4, LATER, { token: GOOGLC, reason: "MARKET_CLOSED", amount: 5_000_000n })];
+    chain.times = { ...scenario.times, [String(LATER)]: T0 + 3 * 86_400 };
+    chain.receipts = { ...scenario.receipts, [hash32(4)]: { block: LATER, gasUsed: 111_116n } };
+  }
+
+  async function showDecisions(page: Page, path: string) {
+    await page.getByRole("heading", { name: "Decisions and rounds" }).evaluate((el) => el.scrollIntoView({ block: "start", behavior: "instant" }));
+    await page.screenshot({ path });
+  }
+
+  test.beforeEach(async ({ page }) => {
+    chain = { ...scenario };
+    sent = [];
+    page.on("request", (r) => sent.push({ url: r.url(), body: r.postData() ?? "", cookie: r.headers()["cookie"] }));
+    // Every print-in the page plays, by the transaction its row links to.
+    await page.addInitScript(() => {
+      const w = window as unknown as { prints: string[] };
+      w.prints = [];
+      document.addEventListener("animationstart", (e) => {
+        const row = e.target as HTMLElement;
+        if (e.animationName === "print" && row.matches("[data-tape-row]")) w.prints.push(row.querySelector("a[href*='/tx/']")?.getAttribute("href") ?? "");
+      });
+    });
+    await installFakeChain(page, chain);
+  });
+
+  for (const [width, height] of [
+    [390, 844],
+    [1440, 900],
+  ] as const) {
+    test(`at ${width}px marks what came after the last visit, prints it in once and says how many`, async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.setViewportSize({ width, height });
+
+      // A first visit has nothing to compare with: no line, no mark, no print.
+      await visit(page, FIRST, 3);
+      await expect(sinceLine(page)).toHaveText("");
+      await expect(page.locator("[data-since-new]")).toHaveCount(0);
+      expect(await prints(page)).toEqual([]);
+
+      later();
+      await visit(page, SECOND, 4);
+      await expect(sinceLine(page)).toHaveText("1 new since your last look · Sat 28 Nov 10:00 ET");
+      await expect(sinceLine(page)).toHaveAttribute("aria-live", "polite");
+      // Polite text, never an alert (the only alert on the page is Next.js's route announcer, outside main).
+      await expect(page.locator("main").getByRole("alert")).toHaveCount(0);
+      const fresh = decisions(page).first();
+      await expect(fresh.getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", LATER_TX);
+      await expect(fresh.locator("[data-since-new]")).toHaveText("New since your last look");
+      await expect(page.locator("[data-since-new]")).toHaveCount(1);
+      await expect.poll(() => prints(page)).toEqual([LATER_TX]);
+      await expect(page.locator("[data-fresh]")).toHaveCount(0);
+
+      // A filter there and back shows the row again, still marked, and never prints it a second time.
+      const filters = page.getByRole("group", { name: "Filter mainnet decisions" });
+      await filters.getByRole("button", { name: "Allowed", exact: true }).click();
+      await expect(decisions(page)).toHaveCount(1);
+      await filters.getByRole("button", { name: "All", exact: true }).click();
+      await expect(decisions(page)).toHaveCount(4);
+      await expect(decisions(page).first().locator("[data-since-new]")).toHaveCount(1);
+      expect(await prints(page)).toEqual([LATER_TX]);
+
+      await page.evaluate(() => document.fonts.ready);
+      const fit = await measureFit(page);
+      expect(fit.overflow).toBeLessThanOrEqual(0);
+      expect(fit.clipped).toEqual([]);
+      // In the wide layout each row's time stays level with its action line, the mark under it, however tall the row.
+      if (width >= 768) {
+        const drift = await decisions(page).evaluateAll((rows) =>
+          rows.map((r) => {
+            const time = r.firstElementChild!.firstElementChild!.getBoundingClientRect().top;
+            return Math.abs(time - r.children[1]!.querySelector("p > span")!.getBoundingClientRect().top);
+          }),
+        );
+        expect(Math.max(...drift)).toBeLessThan(8);
+      }
+      expect(await blockingViolations(page)).toEqual([]);
+      await showDecisions(page, `test-results/screens/ledger-since-${width}.png`);
+
+      // A third visit with nothing new says so, with the time of the second.
+      await visit(page, SECOND + 3_600_000, 4);
+      await expect(sinceLine(page)).toHaveText("Nothing new since your last look · Mon 30 Nov 09:45 ET");
+      await expect(page.locator("[data-since-new]")).toHaveCount(0);
+      expect(await prints(page)).toEqual([]);
+
+      // Nothing about the look left the browser: no cookie, and no request carried it.
+      expect(await page.context().cookies()).toEqual([]);
+      expect(sent.filter((r) => r.cookie !== undefined)).toEqual([]);
+      expect(
+        sent.filter((r) => r.url.includes(LOOK_KEY) || r.body.includes(LOOK_KEY) || r.body.includes(String(FIRST)) || r.body.includes(String(SECOND))),
+      ).toEqual([]);
+      const own = new URL(page.url()).host;
+      expect(sent.map((r) => new URL(r.url).host).filter((h) => h !== own && !RPC_HOSTS.includes(h))).toEqual([]);
+      expect(errors).toEqual([]);
+    });
+
+    test(`at ${width}px with reduced motion shows the same line and mark, with no print-in`, async ({ page }) => {
+      const errors = collectErrors(page);
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await page.setViewportSize({ width, height });
+      await visit(page, FIRST, 3);
+      later();
+      await visit(page, SECOND, 4);
+      await expect(sinceLine(page)).toHaveText("1 new since your last look · Sat 28 Nov 10:00 ET");
+      const fresh = decisions(page).first();
+      await expect(fresh.locator("[data-since-new]")).toHaveText("New since your last look");
+      // The row is at its final frame: no animation runs on it and nothing clips it.
+      expect(await fresh.evaluate((el) => [getComputedStyle(el).animationName, getComputedStyle(el).clipPath, el.getAnimations().length])).toEqual([
+        "none",
+        "none",
+        0,
+      ]);
+      expect(await prints(page)).toEqual([]);
+      await showDecisions(page, `test-results/screens/ledger-since-reduced-${width}.png`);
+      expect(errors).toEqual([]);
+    });
+  }
+
+  test("shows the page as before when the browser blocks storage", async ({ page }) => {
+    await page.addInitScript(() => {
+      Object.defineProperty(window, "localStorage", {
+        configurable: true,
+        get() {
+          throw new DOMException("The operation is insecure.", "SecurityError");
+        },
+      });
+    });
+    await page.goto("/ledger");
+    await expect(decisions(page)).toHaveCount(3);
+    later();
+    await page.goto("/ledger");
+    await expect(decisions(page)).toHaveCount(4);
+    await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0);
+    await expect(sinceLine(page)).toHaveText("");
+    await expect(page.locator("[data-since-new]")).toHaveCount(0);
+    expect(await prints(page)).toEqual([]);
+  });
+});
