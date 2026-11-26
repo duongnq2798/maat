@@ -8,7 +8,8 @@ import type { LogReader } from "./rpc";
 /** MandateVault.owner(): immutable, so a read at latest names the owner of every window. */
 export const OWNER_SELECTOR = "0x8da5cb5b";
 
-const LABEL: Record<SenderLabel, Sender> = { "owner, by hand": "owner", probe: "probe", "brief-driven": "brief", agent: "agent" };
+/** The Sender of each /ledger sender label; unlabelled, a tx that is not a direct execute call, has no label. */
+export const LABEL: Record<SenderLabel, Sender> = { "owner, by hand": "owner", probe: "probe", "brief-driven": "brief", agent: "agent" };
 
 export async function readOwner(reader: Pick<LogReader, "call">, vault: string): Promise<string> {
   const word = await reader.call(vault, OWNER_SELECTOR);
