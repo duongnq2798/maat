@@ -221,7 +221,8 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     await expect(first.locator("[data-brief-text]")).toHaveText(HOSTILE_SHOWN);
     await expect(first).toContainText("0x0000");
     await expect(first.locator("[data-reply]")).toHaveText(`Maat's agent replied: ${REPLY}journal 2026-11-28.jsonl line 1 · no agent commit`);
-    await expect(first.locator("[data-verdict]")).toHaveText("Vault's verdict: not weighed yet");
+    // The row is final and not adopted, so no intent took the brief to the vault.
+    await expect(first.locator("[data-verdict]")).toHaveText("Vault's verdict: none, no intent took it to the vault");
     await expect(feed.locator("a, img")).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
     // This chain answers /ask's own reads but not /proof's team trace (executor(), each wallet's code and nonce), so

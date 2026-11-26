@@ -101,7 +101,9 @@ describe("weighings: each brief as a weighing", () => {
 
   it("says plainly when there is no reply yet, or why the journal says nothing", () => {
     expect(byId(sources()).get(4)!.reply).toEqual({ state: "none", text: "Maat's agent: no reply yet.", row: null });
-    expect(byId(sources({ journal: { state: "absent" } })).get(1)!.reply.text).toBe("Maat's agent: no reply yet.");
+    // While the journal is not published, a reply may exist in it: the line says the journal is missing, not the reply.
+    expect(byId(sources({ journal: { state: "absent" } })).get(1)!.reply).toEqual({ state: "none", text: "Maat's agent: its journal is not published yet.", row: null });
+    expect(byId(sources({ journal: { state: "absent" } })).get(4)!.reply.text).toBe("Maat's agent: its journal is not published yet.");
     expect(byId(sources({ journal: { state: "reading" } })).get(1)!.reply.text).toBe("Maat's agent: reading its journal…");
     expect(byId(sources({ journal: { state: "error", message: "HTTP 500" } })).get(1)!.reply.text).toBe("Maat's agent: its journal could not be read.");
     expect(byId(sources({ journal: { ...read.journal, complete: false } })).get(4)!.reply.text).toBe(
@@ -124,7 +126,29 @@ describe("weighings: each brief as a weighing", () => {
     expect(w.get(3)!.verdicts).toEqual([{ state: "allowed", text: "Allowed · All checks passed (OK)", decision: { txHash: hash32(3), blockNumber: 1003n } }]);
     expect(w.get(6)!.verdicts.map((v) => v.text)).toEqual(["Refused · Over the size limit (SIZE_LIMIT)", "Allowed · All checks passed (OK)"]);
     // A reply that claims a trade does not make one: #2's text is Claude's, and no Decision cites it.
-    expect(w.get(2)!.verdicts).toEqual([{ state: "none", text: "not weighed yet", decision: null }]);
+    expect(w.get(2)!.verdicts).toEqual([{ state: "none", text: "none, no intent took it to the vault", decision: null }]);
+  });
+
+  it("says no intent took a brief to the vault when its journal row is final and not adopted, and no Decision cites it", () => {
+    const w = byId(sources());
+    // #2 replied and not adopted; #5 kept from Claude by a cap: the agent never sends a recorded brief to Claude again.
+    expect(w.get(2)!.verdicts).toEqual([{ state: "none", text: "none, no intent took it to the vault", decision: null }]);
+    expect(w.get(5)!.verdicts).toEqual([{ state: "none", text: "none, no intent took it to the vault", decision: null }]);
+    const unanswered = new Map<number, BriefAnswer>([...ANSWERS, [4, { outcome: "unanswered", adopted: false, row: row(6) }]]);
+    expect(byId(sources({ journal: { ...read.journal, answers: unanswered } })).get(4)!.verdicts[0]!.text).toBe("none, no intent took it to the vault");
+    // Adopted, but no Decision cites it yet (its transaction not mined, or not read up to): still pending.
+    const noDecision = new Map([...VERDICTS].filter(([id]) => id !== 1));
+    expect(byId(sources({ verdicts: { ...read.verdicts, byBrief: noDecision } })).get(1)!.verdicts[0]!.text).toBe("not weighed yet");
+    // The chain wins: a Decision that cites a brief whose row says not adopted is shown as the verdict.
+    const cited = new Map([...VERDICTS, [2, [verdict(7, [2], "OK")]]]);
+    expect(byId(sources({ verdicts: { ...read.verdicts, byBrief: cited } })).get(2)!.verdicts[0]!.text).toBe("Allowed · All checks passed (OK)");
+    // Without the journal's row, or with a gap in the Decision scan, the journal alone does not settle it.
+    for (const journal of [{ state: "absent" }, { state: "reading" }, { state: "error", message: "x" }] as JournalSource[]) {
+      expect(byId(sources({ journal })).get(2)!.verdicts[0]!.text).toBe("not weighed yet");
+    }
+    expect(byId(sources({ verdicts: { ...read.verdicts, complete: false } })).get(2)!.verdicts[0]!.text).toBe(
+      "not found yet: some of the vault's Decisions could not be read",
+    );
   });
 
   it("says plainly when a brief is not weighed yet, or why the verdict is not known", () => {
@@ -279,6 +303,7 @@ describe("BriefFeed renders each weighing in order, as plain text", () => {
     expect(item(1).querySelector('[data-weighing="verdict"]')).toHaveAttribute("data-verdict", "refused");
     expect(item(4).querySelector('[data-weighing="reply"]')).toHaveTextContent("Maat's agent: no reply yet.");
     expect(item(4).querySelector('[data-weighing="verdict"]')).toHaveTextContent("Vault's verdict: not weighed yet");
+    expect(item(2).querySelector('[data-weighing="verdict"]')).toHaveTextContent(/^Vault's verdict: none, no intent took it to the vault$/);
     expect(item(6).querySelectorAll('[data-weighing="verdict"]')).toHaveLength(2);
     expect(list.textContent).not.toMatch(/Maat replied/);
     expect(list.querySelectorAll("a, [href]")).toHaveLength(0);

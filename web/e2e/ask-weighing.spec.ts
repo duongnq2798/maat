@@ -187,7 +187,8 @@ test.describe("/ask's feed as weighings, with a test MaatInbox, a published jour
 
       const second = feed.locator('[data-brief-id="2"]');
       await expect(second.locator('[data-weighing="persuaded"]')).toHaveText("Claude persuaded: no");
-      await expect(second.locator('[data-weighing="verdict"]')).toHaveText("Vault's verdict: not weighed yet");
+      // #2's row is final and not adopted, so no intent took it to the vault: no verdict is pending.
+      await expect(second.locator('[data-weighing="verdict"]')).toHaveText("Vault's verdict: none, no intent took it to the vault");
 
       const team = feed.locator('[data-brief-id="3"]');
       await expect(team.locator('[data-weighing="head"]')).toHaveText("#3 · 0x3c3a…1D6a · team");
@@ -238,5 +239,41 @@ test.describe("/ask's feed as weighings, with a test MaatInbox, a published jour
 
     await page.goto("/");
     await expect(page.locator('meta[property="og:image"]')).not.toHaveAttribute("content", /\/og\/ask\.png$/);
+  });
+});
+
+test.describe("/ask's feed while the agent's journal is not published", () => {
+  test.beforeEach(async ({ page }) => {
+    await serveInbox(page);
+    await page.route(`${JOURNAL}**`, (route) => route.fulfill({ status: 404, headers: { "access-control-allow-origin": "*" }, body: "404: Not Found" }));
+  });
+
+  test("says the journal is not published in each reply line, as the counters do, and claims no missing reply", async ({ page }) => {
+    // The browser itself logs the journal's 404 as a console error; every other error still fails the test.
+    const errors: string[] = [];
+    page.on("console", (m) => {
+      if (m.type() === "error" && !(m.text().includes("status of 404") && m.location().url.startsWith(JOURNAL))) errors.push(`${m.text()} ${m.location().url}`);
+    });
+    page.on("pageerror", (e) => errors.push(e.message));
+    await installChain(page, chain());
+    await page.goto("/ask");
+
+    const feed = page.getByRole("list", { name: "Briefs" });
+    await expect(feed.locator("[data-brief-id]")).toHaveCount(4, { timeout: 15_000 });
+    await expect(feed.locator('[data-verdict="refused"]')).toHaveCount(1, { timeout: 15_000 });
+    for (const id of ["1", "2", "3", "4"]) {
+      const item = feed.locator(`[data-brief-id="${id}"]`);
+      await expect(item.locator('[data-weighing="reply"]')).toHaveText("Maat's agent: its journal is not published yet.");
+      await expect(item.locator('[data-weighing="persuaded"]')).toHaveText("Claude persuaded: not known yet");
+    }
+    await expect(feed.getByText(/no reply yet/)).toHaveCount(0);
+    // Without the journal, nothing says #2 stayed out of the vault: it is not weighed yet. The chain still gives #1's.
+    await expect(feed.locator('[data-brief-id="2"] [data-weighing="verdict"]')).toHaveText("Vault's verdict: not weighed yet");
+    await expect(feed.locator('[data-brief-id="1"] [data-weighing="verdict"]')).toContainText("Refused · Market closed (MARKET_CLOSED)");
+    await expect(page.getByTestId("count-persuaded")).toHaveText("no journal yet");
+    await expect(page.getByText("The agent's journal is not published yet, so Claude persuaded has no source.")).toBeVisible();
+    await expect(page.getByTestId("count-refused")).toHaveText("1");
+    await expect(page.getByTestId("count-allowed")).toHaveText("0");
+    expect(errors).toEqual([]);
   });
 });

@@ -87,10 +87,16 @@ describe("BriefFeed shows what Maat's agent journaled for each brief, as plain t
     expect(within(list).getAllByRole("listitem")).toHaveLength(BRIEFS.length);
   });
 
-  it("says there is no reply yet while the journal has none for a brief", () => {
+  it("says the journal is not published yet, not that there is no reply, while the journal branch does not exist", () => {
     render(<BriefFeed items={weighings(sources({ state: "absent" }))} />);
     const replies = [...screen.getByRole("list", { name: "Briefs" }).querySelectorAll('[data-weighing="reply"]')];
-    expect(replies.map((r) => r.textContent)).toEqual(Array(BRIEFS.length).fill("Maat's agent: no reply yet."));
+    expect(replies.map((r) => r.textContent)).toEqual(Array(BRIEFS.length).fill("Maat's agent: its journal is not published yet."));
     expect(document.querySelectorAll("[data-journal-row]")).toHaveLength(0);
+  });
+
+  it("says there is no reply yet while the published journal has none for a brief", () => {
+    render(<BriefFeed items={weighings(sources({ state: "read", answers: new Map(), complete: true }))} />);
+    const replies = [...screen.getByRole("list", { name: "Briefs" }).querySelectorAll('[data-weighing="reply"]')];
+    expect(replies.map((r) => r.textContent)).toEqual(Array(BRIEFS.length).fill("Maat's agent: no reply yet."));
   });
 });

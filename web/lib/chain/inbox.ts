@@ -408,16 +408,27 @@ function replyOf(answer: BriefAnswer | undefined, journal: JournalSource): Weigh
   if (answer?.outcome === "skipped") {
     return { state: "skipped", text: `Maat's agent did not send it to Claude: ${CAP_TEXT[answer.cap] ?? "a daily cap was reached"}.`, row: answer.row };
   }
+  // While the journal is not published, a reply may already be in it: say the journal is missing, not the reply.
   const why =
     journal.state === "reading"
       ? "reading its journal…"
       : journal.state === "error"
         ? "its journal could not be read."
-        : journal.state === "read" && !journal.complete
-          ? "no reply in the part of its journal that verified."
-          : "no reply yet.";
+        : journal.state === "absent"
+          ? "its journal is not published yet."
+          : !journal.complete
+            ? "no reply in the part of its journal that verified."
+            : "no reply yet.";
   return { state: "none", text: `Maat's agent: ${why}`, row: null };
 }
+
+/**
+ * Whether the brief's journal row is final and no intent took it to the vault: a skip by a cap, or a brief sent to
+ * Claude that no intent adopted. The agent sends Claude only briefs it has recorded no outcome for (agent/src/briefs/
+ * round.ts: only those are fresh), and an intent adopts only briefs sent in its own round, so no later
+ * intent of the agent's cites it. A Decision found that cites it still wins (verdictsOf).
+ */
+const notSent = (answer: BriefAnswer | undefined): boolean => answer !== undefined && (answer.outcome === "skipped" || !answer.adopted);
 
 function persuadedOf(answer: BriefAnswer | undefined): Weighing["persuaded"] {
   if (!answer) return { state: "none", text: "Claude persuaded: not known yet" };
@@ -426,7 +437,12 @@ function persuadedOf(answer: BriefAnswer | undefined): Weighing["persuaded"] {
     : { state: "no", text: "Claude persuaded: no" };
 }
 
-function verdictsOf(id: number, verdicts: VerdictSource): VerdictLine[] {
+/**
+ * The vault's verdicts on brief `id`: every brief-driven Decision that cites it, which always wins over the journal.
+ * With none found in a complete read, a brief whose journal row is final and not adopted says no intent took it to the
+ * vault; any other brief is not weighed yet.
+ */
+function verdictsOf(id: number, verdicts: VerdictSource, answer: BriefAnswer | undefined): VerdictLine[] {
   const found = verdicts.state === "read" ? (verdicts.byBrief.get(id) ?? []) : [];
   if (found.length > 0) {
     return found.map((v) => ({
@@ -440,9 +456,11 @@ function verdictsOf(id: number, verdicts: VerdictSource): VerdictLine[] {
       ? "reading the vault's Decisions…"
       : verdicts.state === "error"
         ? "the vault's Decisions could not be read"
-        : verdicts.complete
-          ? "not weighed yet"
-          : "not found yet: some of the vault's Decisions could not be read";
+        : !verdicts.complete
+          ? "not found yet: some of the vault's Decisions could not be read"
+          : notSent(answer)
+            ? "none, no intent took it to the vault"
+            : "not weighed yet";
   return [{ state: "none", text, decision: null }];
 }
 
@@ -464,7 +482,7 @@ export function weighings(s: WeighingSources): Weighing[] {
         team: isTeam(s.team, b.from),
         reply: replyOf(answer, s.journal),
         persuaded: persuadedOf(answer),
-        verdicts: verdictsOf(b.id, s.verdicts),
+        verdicts: verdictsOf(b.id, s.verdicts, answer),
       };
     });
 }
