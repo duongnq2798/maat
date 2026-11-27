@@ -208,7 +208,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "guides/brief-the-agent",
         "Brief the agent",
-        "Once /ask opens, send Maat's agent a public brief through MaatInbox from a browser wallet or a Base Account. Until then, ask the live vault for free.",
+        "Send Maat's agent a public brief through MaatInbox, from Basescan or a terminal now and from /ask once it opens, and ask the live vault for free.",
       ),
     ],
   },
