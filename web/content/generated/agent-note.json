@@ -1,0 +1,13 @@
+{
+  "head": "0x2291cf068ced3bcdad3b78a1e714fba8ba54c4841cc1d54029afc85b3b61021a",
+  "rows": 19,
+  "note": {
+    "summary": "Market is closed and the GOOGLc and AAPLc price feeds are stale (AAPLc is about 11.7 hours old), so the contract would refuse these buys. The drift is real, but nothing is worth recording by forcing a refused trade, so I proposed nothing this round.",
+    "ts": 1795788934.097,
+    "when": "Fri 27 Nov 09:15 ET",
+    "commit": "b8c914a722a8e96b91fb67dae1ef2ff6b101275f",
+    "mode": "live",
+    "file": "2026-11-27.jsonl",
+    "line": 19
+  }
+}

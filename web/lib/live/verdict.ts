@@ -220,3 +220,51 @@ export function headlineText(h: Headline): string {
     }
   }
 }
+
+/**
+ * The landing hero's live line (spec 2026-11-27, landing "explain in 10 seconds", section 1): a label, then the verdict a
+ * buy of each basket token would get, in the vault's own grammar, "Refused · Market closed (MARKET_CLOSED)". A reading
+ * that is not live says so in its label, never "Right now".
+ */
+export const BUY_LEAD = "Right now, a buy would be:";
+export const BUY_LEAD_NOT_LIVE = "At the last read, a buy would be:";
+/** The verdict's word when a basket token is refused; the hero sets it at the verdict size. */
+export const REFUSED = "Refused";
+/** Says what passed without claiming Allowed: checks 3, 8 and 9 need a vault, and the line runs none. */
+export const MARKET_CHECKS_PASS = "Market checks pass";
+
+/** A premium, labelled (spec section 4): "pool vs Chainlink 143 bps · limit 100". */
+export function premiumText(bps: bigint, limit: number): string {
+  return `pool vs Chainlink ${bps} bps · limit ${limit}`;
+}
+
+/**
+ * The hero's live line as one sentence: the label, then "Refused · <reason>" when every basket token is refused for one
+ * reason, "Refused for <token>: <reason>; ..." with the passing tokens after when only some are, and the market checks
+ * that pass otherwise. A premium refusal gives its premium against the limit. components/live/VerdictLine.tsx shows it
+ * with each "Label (CODE)" as its ReasonTag; the strip's live region reads it as it is.
+ */
+export function buyLineText(
+  h: Headline,
+  verdicts: readonly TokenVerdict[],
+  { live = true, limit = DEFAULT_LIMITS.maxPremiumBps }: { live?: boolean; limit?: number } = {},
+): string {
+  const lead = live ? BUY_LEAD : BUY_LEAD_NOT_LIVE;
+  switch (h.kind) {
+    case "refuse-all":
+      return `${lead} ${REFUSED} · ${reasonText(h.reason)}`;
+    case "pass-all":
+      return `${lead} ${MARKET_CHECKS_PASS} for ${andList(h.passed)}; ${VAULT_NOT_RUN}.`;
+    case "mixed": {
+      const refused = h.refused
+        .map((x) => {
+          const bps = verdicts.find((v) => v.symbol === x.symbol)?.premiumBps ?? null;
+          const premium = x.reason === "PREMIUM_TOO_HIGH" && bps !== null ? ` · ${premiumText(bps, limit)}` : "";
+          return `${x.symbol}: ${reasonText(x.reason)}${premium}`;
+        })
+        .join("; ");
+      const tail = h.passed.length > 0 ? ` ${MARKET_CHECKS_PASS} for ${andList(h.passed)}.` : "";
+      return `${lead} ${REFUSED} for ${refused}.${tail}`;
+    }
+  }
+}

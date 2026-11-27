@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { PremiumChart } from "@/components/charts/PremiumChart";
 import { WeekChart } from "@/components/charts/WeekChart";
 import { HowItWorks } from "@/components/sections/HowItWorks";
-import { Problem } from "@/components/sections/Problem";
+import { Problem, splitMultiplierText } from "@/components/sections/Problem";
 import { CodePanel } from "@/components/ui/CodePanel";
 import { FACTS } from "@/content/facts";
 import { PUBLISHED } from "@/content/gap-index";
@@ -63,7 +63,16 @@ describe("Problem", () => {
       expect(b.firstElementChild).toHaveClass("text-refuse");
       expect(b.lastElementChild).toHaveClass("text-refuse");
     }
-    expect(screen.getByText("1.000537939576369481")).toBeInTheDocument();
+    // In plain words (spec 2026-11-27 section 4): the split multiplier to four places and its change, the fact's full
+    // value in the title; the premiums' unit and what they compare, over the chart.
+    expect(screen.getByText("NVDAc · split multiplier")).toBeInTheDocument();
+    expect(screen.getByText("1.0005 (+0.05%)")).toHaveAttribute("title", `uiMultiplier ${FACTS.nvdaUiMultiplier.value}`);
+    expect(FACTS.nvdaUiMultiplier.value).toBe("1.000537939576369481");
+    expect(splitMultiplierText("0.999")).toBe("0.9990 (-0.10%)");
+    expect(container.textContent).not.toContain("uiMultiplier");
+    expect(container.querySelector("[data-chart-label]")).toHaveTextContent(
+      `pool vs Chainlink, in bps · limit ${FACTS.mandate.value.maxPremiumBps}`,
+    );
     expect(screen.getByText("24h pause")).toBeInTheDocument();
     expect(screen.getByText(/compares a 30-minute Aerodrome TWAP/)).toBeInTheDocument();
     expect(screen.getByText(/pauses that token for 24 hours/)).toBeInTheDocument();

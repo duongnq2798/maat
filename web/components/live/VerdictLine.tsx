@@ -42,7 +42,8 @@ function codes(h: Headline): RefusalCode[] {
  * picks TONE (the faceplate, the default) or CHASSIS_TONE; data-tone says the tone on either. With `lead`, the
  * headline's first words (LEAD) are their own span, data-verdict-lead, so a stylesheet can set them apart from the
  * verdict; in a mixed headline, its verb (REFUSE) right after them is its own span too, data-verdict-word, so the verb
- * can be set at the verdict size while the reasons keep a smaller one. The text stays the same sentence.
+ * can be set at the verdict size while the reasons keep a smaller one. The text stays the same sentence. `grammar`
+ * gives another sentence for the same headline, with its own first words and verb: the landing hero's live line.
  */
 export function VerdictLine({
   headline: h,
@@ -51,6 +52,7 @@ export function VerdictLine({
   methodHref,
   palette = "faceplate",
   lead = false,
+  grammar,
 }: {
   headline: Headline;
   tone?: VerdictTone;
@@ -58,22 +60,26 @@ export function VerdictLine({
   methodHref?: string;
   palette?: Surface;
   lead?: boolean;
+  /** The sentence (buyLineText), its first words and its verb; headlineText, LEAD and REFUSE when left out. */
+  grammar?: { text: string; lead: string; verb: string };
 }) {
-  let rest = headlineText(h);
+  let rest = grammar?.text ?? headlineText(h);
+  const leadWords = grammar?.lead ?? LEAD;
+  const verbWord = grammar?.verb ?? REFUSE;
   const parts: ReactNode[] = [];
-  if (lead && rest.startsWith(LEAD)) {
+  if (lead && rest.startsWith(leadWords)) {
     parts.push(
       <span key="lead" data-verdict-lead="">
-        {LEAD}
+        {leadWords}
       </span>,
     );
-    rest = rest.slice(LEAD.length);
-    const verb = ` ${REFUSE} `;
+    rest = rest.slice(leadWords.length);
+    const verb = ` ${verbWord} `;
     if (h.kind === "mixed" && rest.startsWith(verb)) {
       parts.push(
         " ",
         <span key="verb" data-verdict-word="">
-          {REFUSE}
+          {verbWord}
         </span>,
       );
       rest = rest.slice(verb.length - 1);
