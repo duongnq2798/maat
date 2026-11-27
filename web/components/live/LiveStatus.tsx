@@ -79,8 +79,8 @@ export function Sep({ mark = "·" }: { mark?: "·" | "—" }) {
 }
 
 const BLOCK_LINK: Readonly<Record<Surface, string>> = {
-  faceplate: "whitespace-nowrap font-mono text-[12px]",
-  chassis: "whitespace-nowrap font-mono text-[12px] text-pass-lit",
+  faceplate: "tap whitespace-nowrap font-mono text-[12px]",
+  chassis: "tap whitespace-nowrap font-mono text-[12px] text-pass-lit",
 };
 
 /**

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { NavBar, NavDock } from "@/components/live/NavDock";
 import { Mark } from "@/components/ui/Mark";
 import { ASK_OPEN } from "@/content/ask-open";
@@ -27,9 +28,9 @@ const DOCS = { href: SITE.docsUrl, label: "Docs" } as const;
  * of the page and the bar docks the page's live reading once the hero has scrolled away; elsewhere the home link goes
  * to the landing. Up to 720 px the links give way to a Menu disclosure, a <details>, so it opens without JavaScript; it
  * lists the same pages. `askOpen` is the owner's switch, content/ask-open.ts: while it is off, the nav links neither
- * /ask nor /proof.
+ * /ask nor /proof. `plate` goes before the first link: /gap-index, which reads no chain, puts its unlit docked plate there.
  */
-export function Nav({ onLanding = true, askOpen = ASK_OPEN }: { onLanding?: boolean; askOpen?: boolean }) {
+export function Nav({ onLanding = true, askOpen = ASK_OPEN, plate }: { onLanding?: boolean; askOpen?: boolean; plate?: ReactNode }) {
   const pages = [...PAGES, ...(askOpen ? ASK_PAGES : []), DOCS];
   return (
     <NavBar>
@@ -39,13 +40,14 @@ export function Nav({ onLanding = true, askOpen = ASK_OPEN }: { onLanding?: bool
           <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
         </a>
         <div className="flex flex-wrap items-center gap-1">
+          {plate}
           {pages.map((l) => (
             <a key={l.href} href={l.href} className="navlink max-[720px]:hidden">
               {l.label}
             </a>
           ))}
           <details data-phone-menu="" className="relative min-[721px]:hidden">
-            <summary className="navlink flex cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
+            <summary className="navlink flex min-h-11 cursor-pointer list-none items-center gap-1.5 [&::-webkit-details-marker]:hidden">
               Menu
               <span aria-hidden="true" className="text-[11px] text-ink-2">
                 ▾
@@ -57,7 +59,7 @@ export function Nav({ onLanding = true, askOpen = ASK_OPEN }: { onLanding?: bool
             >
               {pages.map((l) => (
                 <li key={l.href}>
-                  <a href={l.href} className="block rounded-[10px] px-3 py-2.5 text-[15px] text-ink hover:bg-line-soft">
+                  <a href={l.href} className="flex min-h-11 items-center rounded-[10px] px-3 py-2.5 text-[15px] text-ink hover:bg-line-soft">
                     {l.label}
                   </a>
                 </li>

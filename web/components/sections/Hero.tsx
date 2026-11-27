@@ -39,8 +39,8 @@ export function Hero() {
               Try to make it say no
             </a>
           </div>
-          <a href={SITE.quickstartUrl} className="self-start text-[15px] font-medium">
-            Verify it in 5 minutes
+          <a href={SITE.quickstartUrl} className="tap self-start text-[15px] font-medium">
+            Run the tests in 5 minutes
             <span aria-hidden="true"> →</span>
           </a>
           <dl className="m-0 mt-2 grid max-w-[560px] grid-cols-3 border-t border-line">

@@ -56,3 +56,19 @@ export function contentRight(el: Locator): Promise<number> {
     return node.getBoundingClientRect().right - parseFloat(s.borderRightWidth) - parseFloat(s.paddingRight);
   });
 }
+
+/**
+ * The size a finger can hit: the element's own box, or its ::after when that is larger, as the .tap class in
+ * app/globals.css draws a 44 x 44 px target around a small link without moving anything.
+ */
+export function tapSize(el: Locator): Promise<{ width: number; height: number }> {
+  return el.evaluate((node) => {
+    const box = node.getBoundingClientRect();
+    const after = getComputedStyle(node, "::after");
+    const extra = after.content !== "none" && after.position === "absolute";
+    return {
+      width: Math.max(box.width, extra ? parseFloat(after.width) || 0 : 0),
+      height: Math.max(box.height, extra ? parseFloat(after.height) || 0 : 0),
+    };
+  });
+}

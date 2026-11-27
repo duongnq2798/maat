@@ -49,7 +49,7 @@ export const STRIP_RESERVE = "min-h-[428px] sm:min-h-[216px] min-[62.5rem]:min-h
 
 function NowLink() {
   return (
-    <a href="/now" className="whitespace-nowrap font-medium text-pass-lit">
+    <a href="/now" className="tap whitespace-nowrap font-medium text-pass-lit">
       All {NAV_TOKENS.length} B20s <span aria-hidden="true">→</span>
     </a>
   );
@@ -63,7 +63,7 @@ function NowLink() {
 function Basket({ reading }: { reading: Reading }) {
   const limit = FACTS.mandate.value.maxPremiumBps;
   return (
-    <span data-basket="" className="mt-1 grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-3">
+    <span data-basket="" className="mt-1 grid grid-cols-1 gap-x-4 gap-y-2 max-sm:flex-1 max-sm:content-evenly sm:grid-cols-3">
       {FACTS.basket.value.map((symbol) => {
         const v = reading.verdicts.find((t) => t.symbol === symbol);
         return (
@@ -122,9 +122,11 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
       // The visitor's clock as it stood at this frame: HOLD freezes the age, so it freezes the countdown too.
       const countdown = countdownText(session, snapshot.timestamp, wallAtReadSec + state.ageMs / 1000);
       // The verdict leads, set larger than the block number under its own small lead (culture plan Q5), then the block
-      // it was read at, the session, and the basket's lamps.
+      // it was read at, the session, and the basket's lamps. Below sm the basket takes the height the reserve leaves
+      // over and spreads its three rows across it, so a frame shorter than the tallest one shows no blank band above
+      // the bezel (judge rehearsal 2026-11-27, m5).
       return (
-        <p className="m-0" {...liveAttrs(snapshot)}>
+        <p className="m-0 max-sm:flex max-sm:flex-1 max-sm:flex-col" {...liveAttrs(snapshot)}>
           <span className="block">
             <VerdictLine headline={headline} tone="ink" palette="chassis" methodHref="/now#method" className="readout-verdict" lead />
             <Sep />
@@ -151,7 +153,7 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
               </>
             )}
           </span>
-          <span className="block">
+          <span className="block max-sm:flex max-sm:flex-1 max-sm:flex-col">
             <Basket reading={state.reading} />
           </span>
         </p>

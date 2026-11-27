@@ -532,6 +532,23 @@
   }
 }
 
+/* A small link's tap target (judge rehearsal 2026-11-27, m4): at least 44 x 44 px, centred on the control, from an
+   invisible ::after, so the control's own box and the page's layout stay as they are. */
+@layer components {
+  .tap {
+    position: relative;
+  }
+  .tap::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    translate: -50% -50%;
+  }
+}
+
 /* Bezel keys (components/instrument/HoldKey.tsx, KEY_CLASS): 24 px keys with a 44 px target, a 1 px press over 60 ms,
    and their colour on the 120 ms tick. */
 @layer components {

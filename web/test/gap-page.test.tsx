@@ -105,13 +105,15 @@ describe("the /gap-index page", () => {
     });
   });
 
-  it("opens with a skip link and the same small header as /now", () => {
+  it("opens with a skip link and the same site nav as /now, with its phone Menu", () => {
     const c = setup();
     expect(c.querySelector('a[href="#main"]')).toHaveClass("skip-link");
     expect(c.querySelector("main#main")).not.toBeNull();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Maat home" })).toHaveAttribute("href", "/");
-    expect(within(nav).getByRole("link", { name: "Docs" })).toHaveAttribute("href", SITE.docsUrl);
+    expect(nav.querySelector("[data-phone-menu] > summary")).toHaveTextContent("Menu");
+    expect(within(within(nav).getByRole("list", { name: "Pages" })).getByRole("link", { name: "Ledger" })).toHaveAttribute("href", "/ledger");
+    expect(within(nav).getAllByRole("link", { name: "Docs" })[0]).toHaveAttribute("href", SITE.docsUrl);
     expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
   });
 

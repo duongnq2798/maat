@@ -6,7 +6,7 @@ import deployments from "../content/generated/deployments.json" with { type: "js
 import { deploymentConfig } from "../lib/chain/config";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
 import { blockBase, installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
-import { collectErrors, measureFit } from "./helpers";
+import { collectErrors, measureFit, tapSize } from "./helpers";
 
 const addr = (name: string) => getAddress(addresses.find((a) => a.name === name)!.value);
 const USDC = addr("USDC");
@@ -196,6 +196,42 @@ test.describe("/ledger reading a fake Base mainnet", () => {
 
     expect([...hosts].every((h) => RPC_HOSTS.includes(h))).toBe(true);
     expect(errors).toEqual([]);
+  });
+
+  test("at 390 px shows each treasury row as a card with its value, weight and cap on screen, and 44 px tap targets", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/ledger");
+    await expect(page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem")).toHaveCount(3);
+    await page.evaluate(() => document.fonts.ready);
+    const table = page.getByRole("table", { name: "Treasury" });
+    const nvdac = table.getByRole("row", { name: /NVDAc/ });
+    await expect(nvdac).toContainText("0.081");
+    // Rehearsal m7: no sideways scroll inside the region, and VALUE, WEIGHT and CAP each inside the screen, named.
+    const region = page.getByRole("region", { name: "Treasury holdings" });
+    expect(await region.evaluate((el) => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    await region.screenshot({ path: "test-results/screens/ledger-treasury-390.png" });
+    for (const label of ["VALUE", "WEIGHT", "CAP"]) {
+      const cell = nvdac.locator(`[data-label="${label}"]`);
+      const box = (await cell.boundingBox())!;
+      expect(box.x + box.width, label).toBeLessThanOrEqual(390);
+      expect(await cell.evaluate((el) => getComputedStyle(el, "::before").content), label).toBe(`"${label}"`);
+    }
+    // Rehearsal m4: the vault's Basescan link, each Decision's and each "Show as table" are 44 px targets.
+    const targets = [
+      page.getByRole("link", { name: /View the vault on Basescan/ }),
+      ...(await page.getByRole("list", { name: "Mainnet decisions" }).getByRole("link", { name: /on Basescan$/ }).all()),
+      ...(await page.locator("summary", { hasText: "Show as table" }).all()),
+    ];
+    expect(targets.length).toBeGreaterThan(3);
+    for (const t of targets) {
+      const size = await tapSize(t);
+      const name = (await t.textContent()) ?? "";
+      expect(size.width, name).toBeGreaterThanOrEqual(44);
+      expect(size.height, name).toBeGreaterThanOrEqual(44);
+    }
+    const fit = await measureFit(page);
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.clipped).toEqual([]);
   });
 
   for (const width of [360, 1440] as const) {

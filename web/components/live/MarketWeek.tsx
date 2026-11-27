@@ -151,7 +151,7 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`${tag === null ? "Transaction" : `${tag}, transaction`} ${d.txHash.slice(0, 10)}… on Basescan`}
-                    className="whitespace-nowrap font-medium"
+                    className="tap whitespace-nowrap font-medium"
                   >
                     Basescan<span aria-hidden="true"> ↗</span>
                   </a>

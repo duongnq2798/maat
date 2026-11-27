@@ -184,7 +184,7 @@ export function VaultCard() {
           <span className="font-mono text-xs font-semibold">MANDATEVAULT · BASE MAINNET</span>
           <Plate view={view} />
         </div>
-        <a href="/ledger" className="text-[13px] font-medium">
+        <a href="/ledger" className="tap text-[13px] font-medium">
           Open the ledger
           <span aria-hidden="true"> →</span>
         </a>
@@ -227,7 +227,7 @@ export function VaultCard() {
                 </span>
                 <span className="flex flex-col items-end gap-1 text-right">
                   <ReasonTag code={r.reason} tone="neutral" layout="inline" className="justify-end text-[13px]" />
-                  <a href={basescanTx(r.txHash)} aria-label={`${shortHash(r.txHash)} on Basescan`} className="font-mono text-[11px] font-medium">
+                  <a href={basescanTx(r.txHash)} aria-label={`${shortHash(r.txHash)} on Basescan`} className="tap font-mono text-[11px] font-medium">
                     {shortHash(r.txHash)}
                     <span aria-hidden="true"> ↗</span>
                   </a>

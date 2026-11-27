@@ -95,7 +95,7 @@ function Row({ row }: { row: JournalRow }) {
       <span className="flex flex-row flex-wrap gap-x-3 font-mono text-[11px] text-ink-2 md:flex-col md:items-end md:text-right">
         <span title={`hash ${row.hash}`}>{shortHash(row.hash)}</span>
         {tx ? (
-          <a href={basescanTx(tx)} aria-label={`Transaction ${tx.slice(0, 10)}… on Basescan`}>
+          <a href={basescanTx(tx)} aria-label={`Transaction ${tx.slice(0, 10)}… on Basescan`} className="tap">
             Basescan<span aria-hidden="true"> ↗</span>
           </a>
         ) : null}

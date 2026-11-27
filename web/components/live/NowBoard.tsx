@@ -142,7 +142,7 @@ function Status({ state, refreshing, onRetry, onRefresh }: StatusProps) {
           Read from <span className="whitespace-nowrap font-mono text-[12px]">{snapshot.endpoint}</span>
         </span>
       </p>
-      <ReadButton refreshing={refreshing} onClick={onRefresh} idle="Refresh" busy="Refreshing…" className="h-8 shrink-0 px-3 text-[13px]" />
+      <ReadButton refreshing={refreshing} onClick={onRefresh} idle="Refresh" busy="Refreshing…" className="tap h-8 shrink-0 px-3 text-[13px]" />
     </div>
   );
 }

@@ -9,7 +9,7 @@ const LINKS = [
   { href: "/ledger", label: "Mainnet ledger" },
   { href: SITE.docsUrl, label: "Docs" },
   { href: SITE.repoUrl, label: "Source on GitHub" },
-  { href: SITE.quickstartUrl, label: "Verify in 5 minutes" },
+  { href: SITE.quickstartUrl, label: "Run the tests in 5 minutes" },
   { href: SITE.forkEvidenceUrl, label: "Fork evidence" },
   { href: SITE.licenseUrl, label: "MIT License" },
   { href: SITE.xUrl, label: SITE.xHandle },
@@ -46,10 +46,10 @@ export function Footer({ deployments = docsData.deployments }: { deployments?: r
           </div>
         </div>
         <div className="flex flex-col gap-4 border-t border-line pt-6 text-[13px] text-ink-2">
-          <ul aria-label="Project links" className="m-0 flex list-none flex-wrap gap-x-6 gap-y-2 p-0 font-medium">
+          <ul aria-label="Project links" className="m-0 flex list-none flex-wrap gap-x-6 p-0 font-medium">
             {LINKS.map((l) => (
               <li key={l.label}>
-                <a href={l.href} className="text-ink hover:text-accent">
+                <a href={l.href} className="tap inline-flex min-h-11 items-center text-ink hover:text-accent">
                   {l.label}
                 </a>
               </li>

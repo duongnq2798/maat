@@ -12,7 +12,7 @@ export function AnnouncementBar() {
         </span>
         <VaultBarStatus />
         <span>Unaudited.</span>
-        <a href={SITE.xUrl} className="font-medium">
+        <a href={SITE.xUrl} className="tap font-medium">
           Follow the build
         </a>
       </div>

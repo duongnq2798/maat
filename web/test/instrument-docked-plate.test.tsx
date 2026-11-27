@@ -25,13 +25,14 @@ describe("the docked plate, unlit (spec 2026-11-23 section 7.5, amendment A6)", 
     expect(c).not.toContain("inline-flex");
   });
 
-  it("sits in the /gap-index Header before the first nav link, unlit, in the static HTML", { timeout: 60_000 }, () => {
+  it("sits in the /gap-index nav before the first page link, unlit, in the static HTML", { timeout: 60_000 }, () => {
     const html = renderToString(<GapIndexPage />);
     const doc = new DOMParser().parseFromString(html, "text/html");
-    const nav = doc.querySelector('header nav[aria-label="Main"]')!;
+    const nav = doc.querySelector('[data-nav-bar] nav[aria-label="Main"]')!;
     const plate = nav.querySelector("[data-docked-plate]")!;
     expect(plate.getAttribute("href")).toBe("/now");
-    expect(plate.nextElementSibling?.getAttribute("href")).toBe("/#how");
+    expect(plate.nextElementSibling?.getAttribute("href")).toBe("/now");
+    expect(plate.nextElementSibling?.textContent).toBe("Now");
     expect(html.match(/data-docked-plate=/g)).toHaveLength(1);
     expect(html).not.toMatch(/data-lamp="(pass|refuse)"/);
     expect(html).not.toContain("data-live-strip");
