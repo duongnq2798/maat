@@ -76,6 +76,7 @@ const CHAIN: ProofChain = {
 const OWNER_SENDS = PROOF_SENDS.find((s) => s.wallet.toLowerCase() === OWNER.toLowerCase())!.txs.length;
 const LISTS = { team: PROOF_TEAM, hidden: HIDDEN_BRIEFS, bounty: PROOF_BOUNTY, sends: PROOF_SENDS, stops: PROOF_STOPS };
 const BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+const DECISION_LINES = ["owner-decisions", "agent-decisions", "probe-decisions", "brief-decisions"];
 
 const value = (label: string) => screen.getByTestId(`proof-${label}`).textContent;
 
@@ -88,6 +89,9 @@ describe("/proof while deployments/README.md records no MaatInbox", () => {
     for (const key of BRIEF_LINES) expect(value(key)).toBe("not deployed");
     // The bounty line comes from its committed list, which needs no inbox.
     expect(value("bounty-claimants")).toBe(String(PROOF_BOUNTY.length));
+    // No chain read runs without an inbox, so no Decision is read.
+    for (const key of DECISION_LINES) expect(value(key)).toBe("not read");
+    expect(document.querySelector('[data-testid$="-split"]')).toBeNull();
     expect(screen.queryByRole("table", { name: "Outside wallets" })).toBeNull();
     expect(screen.queryByRole("table", { name: "Team set" })).toBeNull();
     expect(screen.getByRole("heading", { name: "The counting rule" })).toBeInTheDocument();
@@ -95,12 +99,13 @@ describe("/proof while deployments/README.md records no MaatInbox", () => {
     expect(screen.getByText("node scripts/recount.mjs")).toBeInTheDocument();
   });
 
-  it("puts the team-set note and the Decision note right before the brief lines", () => {
+  it("puts the team-set note and the Decision note right before the lines, whose first is a Decision line", () => {
     render(<ProofApp initial={proofConfig(ROWS(false))} deps={{ fetchConfig: never }} />);
     const notes = document.querySelector("[data-proof-notes]");
     expect([...notes!.querySelectorAll("p")].map((p) => p.textContent)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
-    const lines = screen.getByTestId("proof-outside-briefs");
-    expect(notes!.compareDocumentPosition(lines) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const first = document.querySelector('[data-testid^="proof-"]');
+    expect(first?.getAttribute("data-testid")).toBe("proof-owner-decisions");
+    expect(notes!.compareDocumentPosition(first!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("builds its static state from the committed deployments table", () => {
@@ -181,6 +186,11 @@ describe("/proof with a MaatInbox recorded", () => {
     for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
     expect(value("bounty-claimants")).toBe("0");
     expect(screen.queryByText(/Counted to block/)).toBeNull();
+    // The Decision lines keep their number, and say the block and the vault they were counted from.
+    for (const key of DECISION_LINES) expect(value(key)).toBe("0");
+    expect(document.querySelector("[data-proof-decisions-head]")?.textContent).toBe(
+      `The Decision lines are counted to block 62,120,000 of Base mainnet, from the Decision logs of MandateVault ${VAULT.toLowerCase()}.`,
+    );
     expect(screen.getByText("Some blocks of the Brief logs could not be read, so briefs may be missing.")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Outside wallets" })).toBeNull();
     expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();
@@ -268,7 +278,7 @@ describe("/proof with a MaatInbox recorded", () => {
 
   it("counts with today's committed lists while the executor sends Decisions and the owner sent setExecutor", async () => {
     // The owner's brief (id 2) is its first send after its committed list; setExecutor the next. The executor's three
-    // Decisions follow.
+    // Decisions follow, the second refused (MARKET_CLOSED).
     const chain: ProofChain = {
       ...CHAIN,
       vault: { ...CHAIN.vault!, executor: EXECUTOR },
@@ -281,7 +291,7 @@ describe("/proof with a MaatInbox recorded", () => {
           nonce: i,
           to: VAULT,
           block: DEPLOY + 20n + BigInt(i),
-          logs: [decisionLog(VAULT, i + 1)],
+          logs: [decisionLog(VAULT, i + 1, undefined, i === 1 ? { allowed: false, reason: 6 } : {})],
         })),
       ],
     };
@@ -290,6 +300,27 @@ describe("/proof with a MaatInbox recorded", () => {
     expect(value("outside-briefs")).toBe("3");
     expect(value("team-briefs")).toBe("1");
     expect(screen.getByText(/Counted to block 62,001,000/)).toBeInTheDocument();
+    expect(screen.getByText(/Counted to block 62,001,000/).textContent).toContain(`and the Decision logs of MandateVault ${VAULT.toLowerCase()}.`);
+    // The executor's Decisions carry no blob, so each is an agent Decision; each Decision line gives its split.
+    expect(value("agent-decisions")).toBe("3");
+    expect(value("agent-decisions-split")).toBe("2 allowed, 1 refused");
+    for (const key of ["owner-decisions", "probe-decisions", "brief-decisions"]) {
+      expect(value(key)).toBe("0");
+      expect(value(`${key}-split`)).toBe("0 allowed, 0 refused");
+    }
+    // In the order of the rule's table: the three Decision lines, the outside lines, brief-driven, then the rest.
+    expect([...document.querySelectorAll("dl dt")].map((dt) => dt.textContent)).toEqual([
+      "Owner by hand Decisions",
+      "Agent Decisions",
+      "Probe Decisions",
+      "Outside briefs",
+      "Outside wallets",
+      "Outside wallets with a Verified Account",
+      "Brief-driven Decisions",
+      "Team briefs",
+      "Hidden briefs",
+      "Bounty claimants",
+    ]);
     const team = within(screen.getByRole("table", { name: "Team set" })).getAllByRole("row").slice(1);
     expect(team.map((r) => r.querySelector("td")?.textContent)).toEqual([OWNER.toLowerCase(), EXECUTOR.toLowerCase()]);
     expect(team[1]?.textContent).toContain("the vault's executor()");
@@ -300,6 +331,8 @@ describe("/proof with a MaatInbox recorded", () => {
     render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never, lists }} />);
     await waitFor(() => expect(document.querySelector('[data-proof-state="incomplete"]')).not.toBeNull(), { timeout: 15_000 });
     for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
+    // The vault's logs were all read, so the Decision lines keep their number: CHAIN has no Decision.
+    for (const key of DECISION_LINES) expect(value(key)).toBe("0");
     // The committed plain sends and the owner's brief; the brief is in the inbox's logs, the last plain send nowhere.
     expect(
       screen.getByText(
@@ -469,6 +502,8 @@ describe("/proof with a MaatInbox recorded", () => {
     render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN, { fail: true }), fetchConfig: never }} />);
     await waitFor(() => expect(screen.getByText(/The briefs could not be read/)).toBeInTheDocument(), { timeout: 15_000 });
     expect(value("outside-briefs")).toBe("…");
+    for (const key of DECISION_LINES) expect(value(key)).toBe("…");
+    expect(document.querySelector('[data-testid$="-split"]')).toBeNull();
     expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();
   });
 });
