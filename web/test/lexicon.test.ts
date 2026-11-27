@@ -103,8 +103,8 @@ const RULES: readonly Rule[] = [
 
 /**
  * The public copy: the README, Markdown under docs/, the site's content, components and pages, the skill, the film's
- * captions and the journal publisher's README. contracts/ is out: the deployed vault's NatSpec cannot change. So is
- * web/content/generated/, which docs:gen copies from contracts/ and agent/.
+ * captions and voice-over (the landing's captions track) and the journal publisher's README. contracts/ is out: the
+ * deployed vault's NatSpec cannot change. So is web/content/generated/, which docs:gen copies from contracts/ and agent/.
  */
 const SCOPE = [
   "README.md",
@@ -114,6 +114,7 @@ const SCOPE = [
   "web/app",
   "skills",
   "film/captions.json",
+  "film/narration.json",
   "ops/journal/README.md",
   "agent/README.md",
 ] as const;

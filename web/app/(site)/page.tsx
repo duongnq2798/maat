@@ -3,6 +3,7 @@ import { LiveSnapshotProvider } from "@/components/live/LiveSnapshotProvider";
 import { AgentBuilders } from "@/components/sections/AgentBuilders";
 import { AnnouncementBar } from "@/components/sections/AnnouncementBar";
 import { BuiltOn } from "@/components/sections/BuiltOn";
+import { Film } from "@/components/sections/Film";
 import { Footer } from "@/components/sections/Footer";
 import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
@@ -29,6 +30,7 @@ export default function Page() {
         <Nav />
         <main id="main" tabIndex={-1} className="outline-none">
           <Hero />
+          <Film />
           <BuiltOn />
           <Problem />
           <HowItWorks />
@@ -39,7 +41,7 @@ export default function Page() {
           <TreasuryLoop />
           <AgentBuilders />
         </main>
-        <Footer />
+        <Footer onLanding />
         <ThumbBar />
       </VaultDecisionsProvider>
     </LiveSnapshotProvider>
