@@ -35,7 +35,7 @@ describe("the live pieces on the faceplate and on the chassis (spec 2026-11-23 s
     expect(live.firstElementChild!.className).toBe("anim-live size-1.5 rounded-full bg-accent");
     expect(screen.getByText("NOT LIVE").className).toBe(`${PILL} border border-ink-2 text-ink-2`);
     const link = screen.getByRole("link", { name: "Base block 60,013,066" });
-    expect(link.className).toBe("whitespace-nowrap font-mono text-[12px]");
+    expect(link.className).toBe("tap whitespace-nowrap font-mono text-[12px]");
     expect(link).not.toHaveAttribute("aria-label");
     expect(screen.getByRole("button", { name: "Refresh" }).className).toBe(`${FACEPLATE_READ_BUTTON} h-6 px-2.5`);
     const line = document.querySelector("[data-verdict-line]")!;
@@ -69,7 +69,7 @@ describe("the live pieces on the faceplate and on the chassis (spec 2026-11-23 s
     );
     const link = screen.getByRole("link", { name: "Base block 60,013,066" });
     expect(link).toHaveAttribute("href", "https://basescan.org/block/60013066");
-    expect(link.className).toBe("whitespace-nowrap font-mono text-[12px] text-pass-lit");
+    expect(link.className).toBe("whitespace-nowrap font-mono text-[12px] text-pass-lit max-sm:inline-block max-sm:leading-[44px]");
   });
 
   it("says why a reading is not live in the same words on either surface", () => {
@@ -77,11 +77,11 @@ describe("the live pieces on the faceplate and on the chassis (spec 2026-11-23 s
     const { unmount } = render(<NotLiveWhy state={state} />);
     const words = "last read block 60,013,066, 30 s ago · the RPC did not answer since";
     expect(document.body).toHaveTextContent(words);
-    expect(screen.getByRole("link", { name: "60,013,066" }).className).toBe("whitespace-nowrap font-mono text-[12px]");
+    expect(screen.getByRole("link", { name: "60,013,066" }).className).toBe("tap whitespace-nowrap font-mono text-[12px]");
     unmount();
     render(<NotLiveWhy state={state} palette="chassis" />);
     expect(document.body).toHaveTextContent(words);
-    expect(screen.getByRole("link", { name: "60,013,066" }).className).toBe("whitespace-nowrap font-mono text-[12px] text-pass-lit");
+    expect(screen.getByRole("link", { name: "60,013,066" }).className).toBe("whitespace-nowrap font-mono text-[12px] text-pass-lit max-sm:inline-block max-sm:leading-[44px]");
   });
 
   it("keeps data-tone and the sentence on the chassis, with its own tones", () => {

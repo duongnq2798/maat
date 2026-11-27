@@ -22,14 +22,14 @@ sources:
 next: [security/threat-model, security/testing]
 ---
 
-This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "the agent proposes, the contract decides" against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run, so the agent-side rows describe code that was tested against fakes.
+This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "Claude proposes. The vault decides." against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the agent has run in live mode on Base mainnet only since 2026-11-27, with the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet). Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`, so the agent-side rows describe code that was tested against fakes and on a fork.
 
 ## At a glance
 
 | Question | Answer | Where it is shown |
 | --- | --- | --- |
 | **Audit** | None. No third party has reviewed the contracts or the agent | [Unaudited](/docs/security/not-claimed#unaudited) |
-| **Deployment** | The owner deployed the four Maat contracts to [Base](/docs/help/glossary#base) mainnet, with the default mandate. The agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork | [Base addresses](/docs/reference/base-addresses), and [The agent has not run live on mainnet](/docs/security/not-claimed#the-agent-has-not-run-live-on-mainnet) |
+| **Deployment** | The owner deployed the four Maat contracts to [Base](/docs/help/glossary#base) mainnet, with the default mandate. The agent has run in [live mode](/docs/help/glossary#live-mode) on Base mainnet since 2026-11-27, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` | [Base addresses](/docs/reference/base-addresses), and [The agent went live only on 2026-11-27](/docs/security/not-claimed#the-agent-went-live-only-on-2026-11-27) |
 | **Contract code** | No proxy, `delegatecall` or `selfdestruct`, so the contracts cannot be upgraded and deployed code cannot change. Behind the [timelock](/docs/help/glossary#timelock), the [owner](/docs/help/glossary#owner) can point the vault at a different calendar, swap adapter, credit adapter, feed or pool, or list a new stock token | [Trust boundaries](#trust-boundaries) |
 | **Owner** | One key, fixed at deployment, with no transfer function. Pausing, replacing the [executor](/docs/help/glossary#executor) and withdrawing to the owner are instant | [The owner key](/docs/security/threat-model#the-owner-key) |
 | **Mandate, stock and payee changes** | Queued, then applied with the exact queued values between <Fact name="timelockHours" /> after queueing and <Fact name="gracePeriodDays" /> after that, or cancelled. A change not applied in that window expires | [What the contract enforces](#what-the-contract-enforces) |
@@ -37,7 +37,7 @@ This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the c
 | **Tests** | Unit tests with mocks and fakes, an [invariant suite](/docs/security/testing#invariant-tests) that runs random sequences of calls on the same mocks, plus [fork tests](/docs/help/glossary#fork-test) at two pinned Base blocks. CI runs the unit tests and the invariant suite on every pull request and every push to `main`, and the fork tests run by hand. No fuzz test with random inputs beyond the invariant suite, no fuzzing on a fork, and no static-analysis report is committed | [What is not tested](/docs/security/testing#what-is-not-tested) |
 | **Report a problem** | Privately, through GitHub's report form or a direct message on X | [Report a vulnerability](/docs/security/report-a-vulnerability) |
 
-## The principle: the agent proposes, the contract decides
+## The principle: the vault has the last word
 
 Claude reads the vault's state and proposes trades as JSON. The agent turns each proposal into an [intent](/docs/help/glossary#intent), and an intent can move money in only one way: it is sent to `execute` on the vault, which only the [executor](/docs/help/glossary#executor) may call. The vault then runs its checks, in its own code, against its own state. Every step before that (Claude, the agent's validation, the [preview](/docs/help/glossary#preview), the guarded sender and the CDP policy) is untrusted. Those steps save gas and keep a [journal](/docs/help/glossary#journal). They are not what makes a trade safe.
 
@@ -196,9 +196,9 @@ The guarded sender and the CDP policy are the two layers that sit closest to the
 
 The two layers cover different things. The policy limits where a transaction may go, on which network and with how much value. It does not limit which function is called. The function limit is in the guarded sender, and the guarded sender runs inside the agent process. So the policy and the sender do not add up to a function allowlist for someone who holds the CDP credentials: they could ask CDP to send any calldata to the vault. That is acceptable only because the vault decides. Every function other than `execute` is open to anyone and harmless, or owner-only and reverts for the executor.
 
-<Callout type="warning" title="Not yet run against the real CDP">
+<Callout type="warning" title="Not yet shown against the real CDP">
 
-The CDP policy is tested for its shape only. [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the rules the code builds and parses them with the CDP SDK's own schema, and no test shows that CDP enforces them, because the CDP code has never run against the real service. Treat the policy as one more layer that is untested where it counts, not as a guarantee.
+The CDP policy is tested for its shape only. [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the rules the code builds and parses them with the CDP SDK's own schema, and no test shows that CDP enforces them. Since 2026-11-27 the live agent runs with its real CDP Server Wallet account, and its first `Decision` went through it at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). That send was one the policy allows, and these docs record no send that CDP blocked, so nothing here shows CDP enforcing the policy against a forbidden one. Treat the policy as one more layer that is untested where it counts, not as a guarantee.
 
 </Callout>
 

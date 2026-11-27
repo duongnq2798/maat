@@ -30,9 +30,13 @@ describe("the MaatInbox record in deployments/README.md", () => {
     expect(() => inboxRecord(HEAD + inboxRow(INBOX, "0xabc"))).toThrow(/MaatInbox tx "0xabc" is not a transaction hash/);
   });
 
-  it("is null for the repository's own table today: no MaatInbox is recorded yet", () => {
-    expect(inboxRecord(readFileSync(DEPLOYMENTS_FILE, "utf8"))).toBeNull();
-    expect(readInboxRecord()).toBeNull();
+  it("reads the repository's own table: the MaatInbox the owner deployed on Base mainnet on 2026-11-27", () => {
+    const deployed = {
+      inbox: "0x6a3D27f2d8a5BC991Bf4511aAA698A5B2DCDf12a",
+      deployTx: "0x61b7f0b44ae01a6fbb34e0e7c35d53c2ffd1228fbc3f0b3dd020741826850db4",
+    };
+    expect(inboxRecord(readFileSync(DEPLOYMENTS_FILE, "utf8"))).toEqual(deployed);
+    expect(readInboxRecord()).toEqual(deployed);
   });
 
   it("is null when the file does not exist", async () => {

@@ -1,10 +1,10 @@
 ---
 title: What is Maat
-description: The problem with agents that trade tokenized stocks around the clock, and how a mandate onchain decides every trade they propose.
+description: The problem with agents that trade tokenized stocks around the clock, and how a vault onchain weighs every trade they propose against a written mandate.
 type: overview
 audience: [newcomer, watcher, evaluator]
-status: fork-tested
-lastReviewed: 2026-11-18
+status: live
+lastReviewed: 2026-11-27
 sources:
   - README.md
   - contracts/src/MandateVault.sol
@@ -16,7 +16,13 @@ sources:
 next: [get-started/how-a-decision-is-made, get-started/quickstart, concepts/nine-checks]
 ---
 
-Maat is an experiment in letting an AI agent trade without letting it decide what is safe. This page explains the problem it solves, the one idea behind the answer, and what is built so far, so you can judge the rest of the docs against it.
+Maat is an experiment in letting an AI agent trade without letting it decide what is safe. This page explains where the name comes from, the problem Maat solves, the one idea behind the answer, and what is built so far, so you can judge the rest of the docs against it.
+
+## The name
+
+In the Egyptian Book of the Dead, a heart is weighed against a feather that stands for Ma'at: what is right. A heart that does not balance does not pass. Maat weighs every trade its AI agent proposes against a written mandate, and the chain records the verdict either way.
+
+Source: the British Museum's text on the [Page from the Book of the Dead of Hunefer](https://artsandculture.google.com/asset/page-from-the-book-of-the-dead-of-hunefer/-gFGdB-pjqRpeg), on Google Arts & Culture.
 
 ## The problem
 
@@ -35,9 +41,9 @@ Each hazard below is something the [vault](/docs/help/glossary#vault) checks for
 
 Spending caps on an agent wallet stop the last row. They do not know whether NYSE is open, whether the feed is alive or whether a split is pending. Maat's vault is built to check all of these, onchain, on every BUY and SELL (concentration on a BUY only).
 
-## The answer: the agent proposes, the mandate decides
+## The answer
 
-> The agent proposes. The mandate decides.
+> Claude proposes. The vault decides.
 
 In Maat's design, the [owner](/docs/help/glossary#owner) deploys a vault with a [mandate](/docs/help/glossary#mandate): which stocks it may trade, how much per trade and per day, the largest gap between the pool and the oracle, the trading session, and the [health factor](/docs/help/glossary#health-factor) for borrowing. Claude reads the vault's state and proposes trades. The agent can send them only through `execute`. For a BUY, `execute` runs <Fact name="checksPerTrade" /> market and mandate checks in a fixed order, after a pause switch and with a balance check between the market checks and the size limits. For a SELL it runs the same checks except concentration, and its first check asks less: a BUY needs a stock that is [allowed](/docs/concepts/mandate#allowed), while a SELL needs only one that still has its feed or pool set, so an [exit-only](/docs/help/glossary#exit-only) stock can still be sold. The other [actions](/docs/help/glossary#action) have their own checks.
 
@@ -53,31 +59,33 @@ The agent is built to run a loop on its own treasury. Its rule-based policy aims
 
 Maat is an entry in Base's Stocks Maxxing Season Builder Quest (5 November to 12 December 2026), track Agentic Stock Finance. The design is one agent with one vault, "Agent #1", owned by the team. It is built to trade only its own treasury, which the design spec sizes at <Fact name="treasuryUsd" />.
 
-<Callout type="fork" title="Contracts deployed, agent fork-tested">
+<Callout type="fork" title="Contracts deployed, agent live since 2026-11-27">
 
-The contracts and the agent's send path have run on a [fork](/docs/help/glossary#fork-test) of Base mainnet: a local copy of the chain at a pinned block, with the real stock tokens, price feeds, pools and Aave V4. The fork run broadcast nothing to Base mainnet. The real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) have not run in any Maat test: the fork run uses a scripted proposer and a local sender, the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The owner deployed the four Maat contracts to Base mainnet by hand ([Status and roadmap](/docs/get-started/status#next-mainnet) has their addresses), and the contracts are unaudited. The agent has run in live mode only on a fork.
+The contracts and the agent's send path have run on a [fork](/docs/help/glossary#fork-test) of Base mainnet: a local copy of the chain at a pinned block, with the real stock tokens, price feeds, pools and Aave V4. The fork run broadcast nothing to Base mainnet. No unit or fork test uses the real Claude API or the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet): the fork run uses a scripted proposer and a local sender, the Claude proposer is tested against a fake client, and the CDP code against a fake CDP client only. The owner deployed the four core Maat contracts to Base mainnet by hand on 2026-11-24, and `MaatInbox`, the inbox for [briefs](/docs/guides/brief-the-agent), on 2026-11-27: five contracts in all ([Status and roadmap](/docs/get-started/status#next-mainnet) has their addresses), and they are unaudited. Since 2026-11-27 the agent runs in live mode on Base mainnet, with the real Claude API, and the CDP Server Wallet is the vault's executor. The agent's first `Decision` came at 02:14 UTC on 2026-11-27: Claude proposed a buy of 4.68 USDC of GOOGLc while NYSE was closed for Thanksgiving, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)).
 
 </Callout>
 
 | Stage | What it covers | More |
 | --- | --- | --- |
-| Exists today | The vault and its checks, the market calendar, the swap and credit adapters, the deploy script, the agent runtime and the website are built and tested. The contracts and the agent's send path have also run on a Base mainnet fork, and the owner deployed the four Maat contracts to Base mainnet. | [Built and fork-tested](/docs/get-started/status#built-and-fork-tested) |
-| Next | The go-live steps that follow the deploy: the owner funds the vault and runs a smoke test, then hands the executor role to a Coinbase CDP Server Wallet, and the agent's first real `Decision` is recorded. After the deploy, these docs record only the vault's first two `Decision` events, the two buys of the owner's smoke test on 2026-11-24: one refused because the market was closed, and one allowed in session. | [Next: mainnet](/docs/get-started/status#next-mainnet) |
-| Planned | Revenue from other agents and more. None of it is on `main`. | [Planned, not built](/docs/get-started/status#planned-not-built) |
+| Exists today | The vault and its checks, the market calendar, the swap and credit adapters, the deploy script, the agent runtime and the website are built and tested, and the contracts and the agent's send path have also run on a Base mainnet fork. On Base mainnet, the owner deployed the four core Maat contracts on 2026-11-24 and ran the smoke test that day: one buy refused because the market was closed, and one allowed in session, the vault's first two `Decision` events. On 2026-11-27 the owner deployed `MaatInbox`, five contracts in all, and handed the executor role to the agent's Coinbase CDP Server Wallet. Maat's agent has run in live mode on Base mainnet since, and the public fields of its journal are published to the public `agent-journal` branch. Its first `Decision` came at 02:14 UTC that day: a GOOGLc buy that the vault refused with `MARKET_CLOSED`, because NYSE was closed for Thanksgiving. | [Next: mainnet](/docs/get-started/status#next-mainnet), the [mainnet ledger](/ledger) |
+| Next | Briefs. `MaatInbox` is deployed, but the agent that runs now, from the tag `agent-r2`, predates briefs and reads none, so `/ask` takes no brief yet. The plan is to restart the agent on the tag `agent-r3`, a release that reads briefs, after 02:00 UTC on Saturday 2026-11-28, and to open `/ask` after that restart. | [Brief the agent](/docs/guides/brief-the-agent) |
+| Planned | A rationale store, an MCP server, `MandateFactory` and more. None of it is on `main`. x402 revenue from other agents was dropped for this season. | [Planned, not built](/docs/get-started/status#planned-not-built) |
 
 ## Who it is for
 
 Each reader has a first page.
 
 - **New to Maat:** keep reading, then [How a decision is made](/docs/get-started/how-a-decision-is-made).
-- **Watching the agent:** [Read a decision](/docs/get-started/read-a-decision) explains each field of a `Decision` event, using the fork-run rows on the site.
-- **Developer or judge:** the [Quickstart](/docs/get-started/quickstart) runs the test suites on your machine in about five minutes, with no wallet, RPC or API key.
+- **Watching the agent:** [Read a decision](/docs/get-started/read-a-decision) explains each field of a `Decision` event, using the agent's first `Decision` on Base mainnet and the fork-run rows on the site.
+- **Developer or judge:** the [mainnet ledger](/ledger) shows the vault's `Decision` events, read from Base in your browser, and [Verify Maat by hand](/docs/guides/verify-by-hand) checks the vault and the agent's first `Decision` with read-only commands, without trusting this site. The [Quickstart](/docs/get-started/quickstart) then runs the test suites on your machine, with no wallet, RPC or API key.
 - **Builder:** [Deploy your own vault](/docs/guides/deploy-your-own-vault) shows how to deploy the same contracts with your own mandate.
 - **Evaluator or partner:** the [Security model](/docs/security/model) says what the vault guarantees and what it does not.
 
 ## What you can do today
 
-- **Watch the fork run.** The [decision engine](/) at the top of the site's home page replays a weekday BUY and a weekend BUY from the fork run, check by check, and the [fork ledger](/#ledger) lists the decisions of that run. A scripted proposer stood in for Claude in it.
+- **See the vault decide on Base mainnet.** The top of the site's [home page](/) leads with the vault's latest `Decision` on Base mainnet, and the [mainnet ledger](/ledger) lists every one, with its sender and, when its transaction carries a rationale blob, a check of the blob's hash. [Verify Maat by hand](/docs/guides/verify-by-hand) reads the same records with `cast`.
+- **Watch the fork run.** The home page's [decision engine](/) replays a weekday BUY and a weekend BUY from the fork run, check by check, in its Fork replay tab, and the [fork ledger](/#ledger) lists the decisions of that run. A scripted proposer stood in for Claude in it.
+- **Follow the live agent.** Since 2026-11-27 [`/now`](/now) shows the newest round summary the agent published, and the Rounds tab of the [mainnet ledger](/ledger) lists its rounds, both read from the public `agent-journal` branch.
 - **Read [Status and roadmap](/docs/get-started/status)** for what is built, what comes next and what is planned.
 - **Follow [@maatonbase](https://x.com/maatonbase)** on X, the project's account.
 - **With code:** start with the [Quickstart](/docs/get-started/quickstart), then [Deploy your own vault](/docs/guides/deploy-your-own-vault).

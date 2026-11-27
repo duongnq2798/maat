@@ -5,13 +5,16 @@ import { BuiltOn } from "@/components/sections/BuiltOn";
 import { Hero } from "@/components/sections/Hero";
 import { Nav } from "@/components/sections/Nav";
 import { ASK_OPEN } from "@/content/ask-open";
+import { FILM } from "@/content/film";
+import { HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 
 describe("announcement bar", () => {
-  it("says the vault is live on Base mainnet and unaudited, and names no fork run", () => {
+  it("says the vault is live on Base mainnet, unaudited and small on purpose, and names no fork run", () => {
     const { container } = render(<AnnouncementBar />);
     expect(screen.getByText("Live on Base mainnet")).toBeInTheDocument();
-    expect(screen.getByText("Unaudited.")).toBeInTheDocument();
+    // Spec 2026-11-27 section 4: a small treasury reads as a choice, not as a dormant project.
+    expect(screen.getByText("Unaudited · small treasury on purpose")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Follow the build" })).toHaveAttribute("href", "https://x.com/maatonbase");
     // The age of the last Decision shows only once a live read has landed; none runs here.
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
@@ -28,92 +31,58 @@ function navLinks() {
   return { bar: all.filter((a) => !menu.contains(a)).map(pair), menu: within(menu).getAllByRole("link").map(pair), all };
 }
 
+// Pages first (spec 2026-11-23 section 2, decision 3): the bar and the phone menu list the same pages, and the landing's
+// section links are not in the nav.
+const PAGES = [
+  ["Now", "/now"],
+  ["Gap Index", "/gap-index"],
+  ["Ledger", "/ledger"],
+  ["Docs", SITE.docsUrl],
+];
+const ASK_PAGES = [
+  ["Ask", "/ask"],
+  ["Proof", "/proof"],
+];
+
 describe("nav", () => {
-  it("links to the sections and the ledger, and opens a phone menu of the pages", () => {
+  it("puts the pages first, the same in the bar and in the phone menu, and links no section of the landing", () => {
     render(<Nav askOpen={false} />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const menu = nav.querySelector<HTMLElement>("[data-phone-menu]")!;
-    const outside = within(nav)
-      .getAllByRole("link")
-      .filter((a) => !menu.contains(a))
-      .map((a) => [a.textContent, a.getAttribute("href")]);
-    expect(outside).toEqual([
-      ["maat", "#top"],
-      ["How it works", "#how"],
-      ["Refusals", "#reasons"],
-      ["Try it", "#try"],
-      ["Ledger", "/ledger"],
-      ["Mandate", "#mandate"],
-      ["Docs", SITE.docsUrl],
-      ["View on GitHub ↗", SITE.repoUrl],
-    ]);
+    const { bar, menu: pages, all } = navLinks();
+    expect(bar).toEqual([["maat", "#top"], ...PAGES, ["View on GitHub ↗", SITE.repoUrl]]);
     expect(within(nav).getByRole("link", { name: "Maat home" })).toBeInTheDocument();
     expect(nav.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
+    expect(all.map((a) => a.getAttribute("href")).filter((h) => h?.startsWith("#") || h?.startsWith("/#"))).toEqual(["#top"]);
 
     // A <details>, so it opens without JavaScript; shown up to 720 px, where the links above are hidden.
     expect(menu.tagName).toBe("DETAILS");
     expect(menu.querySelector("summary")).toHaveTextContent("Menu");
     expect(menu.className.split(" ")).toContain("min-[721px]:hidden");
-    const pages = within(menu).getByRole("list", { name: "Pages" });
-    expect(within(pages).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["Ledger", "/ledger"],
-      ["Now", "/now"],
-      ["Gap Index", "/gap-index"],
-      ["Docs", SITE.docsUrl],
-    ]);
+    expect(within(menu).getByRole("list", { name: "Pages" })).toBeInTheDocument();
+    expect(pages).toEqual(PAGES);
+    const navlinks = all.filter((a) => a.classList.contains("navlink") && !a.closest("[data-phone-menu]"));
+    expect(navlinks.map((a) => a.textContent)).toEqual(PAGES.map(([label]) => label));
+    for (const a of navlinks) expect(a.className).toBe("navlink max-[720px]:hidden");
   });
 
-  it("points its section links at the landing from any other page", () => {
+  it("points its home link at the landing from any other page, and every page link as it is", () => {
     render(<Nav onLanding={false} askOpen={false} />);
-    const links = within(screen.getByRole("navigation", { name: "Main" }))
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href"));
-    expect(links).toEqual([
-      "/",
-      "/#how",
-      "/#reasons",
-      "/#try",
-      "/ledger",
-      "/#mandate",
-      "/ledger",
-      "/now",
-      "/gap-index",
-      SITE.docsUrl,
-      SITE.docsUrl,
-      SITE.repoUrl,
-    ]);
+    const hrefs = navLinks().all.map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(["/", ...PAGES.map(([, href]) => href), ...PAGES.map(([, href]) => href), SITE.repoUrl]);
   });
 
   // The owner's switch, content/ask-open.ts, opens /ask; the same deploy adds Ask and Proof to the bar and the menu.
-  it("adds Ask and Proof before Docs, in the bar and in the phone menu, when the owner's switch is on", () => {
+  it("adds Ask and Proof after Ledger, in the bar and in the phone menu, when the owner's switch is on", () => {
     render(<Nav askOpen />);
     const { bar, menu, all } = navLinks();
-    expect(bar).toEqual([
-      ["maat", "#top"],
-      ["How it works", "#how"],
-      ["Refusals", "#reasons"],
-      ["Try it", "#try"],
-      ["Ledger", "/ledger"],
-      ["Mandate", "#mandate"],
-      ["Ask", "/ask"],
-      ["Proof", "/proof"],
-      ["Docs", SITE.docsUrl],
-      ["GitHub ↗", SITE.repoUrl],
-    ]);
-    expect(menu).toEqual([
-      ["Ledger", "/ledger"],
-      ["Now", "/now"],
-      ["Gap Index", "/gap-index"],
-      ["Ask", "/ask"],
-      ["Proof", "/proof"],
-      ["Docs", SITE.docsUrl],
-    ]);
-    // In the bar they give way to the Menu up to 720 px, as the section links do. With two more links, every bar link
-    // takes 10 px side padding and the pill reads GitHub, so the docked reading keeps its 340 px on the row at 1280 px
-    // (e2e/instrument-nav.spec.ts).
+    const pages = [...PAGES.slice(0, -1), ...ASK_PAGES, ...PAGES.slice(-1)];
+    expect(bar).toEqual([["maat", "#top"], ...pages, ["View on GitHub ↗", SITE.repoUrl]]);
+    expect(menu).toEqual(pages);
+    // In the bar they give way to the Menu up to 720 px, as the other pages do.
     const navlinks = all.filter((a) => a.classList.contains("navlink") && !a.closest("[data-phone-menu]"));
-    expect(navlinks.map((a) => a.textContent)).toEqual(["How it works", "Refusals", "Try it", "Ledger", "Mandate", "Ask", "Proof", "Docs"]);
-    for (const a of navlinks) expect(a.className).toBe("navlink px-2.5 max-[720px]:hidden");
+    expect(navlinks.map((a) => a.textContent)).toEqual(["Now", "Gap Index", "Ledger", "Ask", "Proof", "Docs"]);
+    for (const a of navlinks) expect(a.className).toBe("navlink max-[720px]:hidden");
   });
 
   it("links /ask and /proof as they are from any other page, and by default follows the owner's switch", () => {
@@ -132,16 +101,36 @@ describe("nav", () => {
 });
 
 describe("hero", () => {
-  it("states the pitch, the three stats from facts, and leads to the ledger", () => {
+  it("states the pitch, what Maat is, its three steps and the three stats from facts", () => {
     render(<Hero />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("The AI agent that knows when not to trade.");
-    expect(screen.getByText(SITE.description)).toBeInTheDocument();
+    // Spec 2026-11-27 section 1, word for word.
+    expect(HERO_DEFINITION).toBe(
+      "Maat is a vault on Base. Maat's agent proposes trades in tokenized US stocks; the vault checks each one against public rules and records yes or no onchain.",
+    );
+    expect(screen.getByText(HERO_DEFINITION)).toBeInTheDocument();
+    const steps = within(screen.getByRole("list", { name: "How a trade is weighed" })).getAllByRole("link");
+    expect(steps.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["1Maat's agent proposes a trade", "#how"],
+      ["2The vault checks 9 public rules", "#how"],
+      ["3Yes or no is recorded on Base", "#how"],
+    ]);
+    expect(HERO_STEPS).toHaveLength(3);
+    // The site's description is the page's meta description, no longer a line in the hero.
+    expect(screen.queryByText(SITE.description)).toBeNull();
     const stat = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
     expect(stat("CHECKS PER TRADE")).toBe("9");
     expect(stat("TYPED REFUSALS")).toBe("19");
     expect(stat("RULE TIMELOCK")).toBe("24h");
-    expect(screen.getByRole("link", { name: "See the vault's last decision" })).toHaveAttribute("href", "/ledger");
-    expect(screen.getByRole("link", { name: "Try to make it say no" })).toHaveAttribute("href", "#try");
+    // The film CTA shows only while the landing has the film band; until then the first CTA opens How it works.
+    const ctas = [...document.querySelectorAll<HTMLAnchorElement>("[data-hero-cta]")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(ctas).toEqual([
+      FILM.onLanding ? ["Watch the film (1:40)", "#film"] : ["How it works", "#how"],
+      ["Try to make it say no", "#try"],
+    ]);
+    expect(screen.queryByRole("link", { name: "See the vault's last decision" })).toBeNull();
+    // The vault card opens the ledger instead.
+    expect(screen.getByRole("link", { name: "Open the ledger" })).toHaveAttribute("href", "/ledger");
     expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
     // The engine card opens on the mainnet vault; the fork replay is the other tab, its moments in the hidden panel.
     expect(screen.getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");

@@ -17,26 +17,31 @@ export const FAILED = "Could not read Base mainnet (both public RPCs failed). No
 /** A reading the page can show: live, or not live with the reason. */
 export type ShownState = Extract<LiveState, { reading: unknown }>;
 
+/** A reading's verdict as one sentence; headlineText's by default. The landing hero's line gives its own (buyLineText). */
+export type Sentence = (state: ShownState) => string;
+
+const headlineSentence: Sentence = (state) => headlineText(state.reading.headline);
+
 /** What the polite region says: the status and the verdict only, so a new block every refresh is not read aloud. */
-export function announcement(state: LiveState): string {
+export function announcement(state: LiveState, sentence: Sentence = headlineSentence): string {
   switch (state.status) {
     case "reading":
       return READING;
     case "error":
       return FAILED;
     case "live":
-      return `Live. ${headlineText(state.reading.headline)}`;
+      return `Live. ${sentence(state)}`;
     case "stale":
     case "behind":
-      return `Not live. ${headlineText(state.reading.headline)}`;
+      return `Not live. ${sentence(state)}`;
   }
 }
 
 /** The only live region: it changes when the status or the verdict does, never for a new block alone. */
-export function LiveAnnouncer({ state }: { state: LiveState }) {
+export function LiveAnnouncer({ state, sentence }: { state: LiveState; sentence?: Sentence }) {
   return (
     <span role="status" aria-live="polite" className="sr-only">
-      {announcement(state)}
+      {announcement(state, sentence)}
     </span>
   );
 }
@@ -78,9 +83,15 @@ export function Sep({ mark = "·" }: { mark?: "·" | "—" }) {
   );
 }
 
+/**
+ * The strip's rows are a line apart, so its block link and "All 13 tokenized stocks" cannot share a 44 px tap area: below
+ * sm each is set on a 44 px line of its own instead, and from sm it is a plain link (judge rehearsal 2026-11-27, m4).
+ */
+export const STRIP_TAP = "max-sm:inline-block max-sm:leading-[44px]";
+
 const BLOCK_LINK: Readonly<Record<Surface, string>> = {
-  faceplate: "whitespace-nowrap font-mono text-[12px]",
-  chassis: "whitespace-nowrap font-mono text-[12px] text-pass-lit",
+  faceplate: "tap whitespace-nowrap font-mono text-[12px]",
+  chassis: `whitespace-nowrap font-mono text-[12px] text-pass-lit ${STRIP_TAP}`,
 };
 
 /**

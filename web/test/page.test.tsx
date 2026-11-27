@@ -1,6 +1,8 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
+import { FACTS } from "@/content/facts";
+import { FILM } from "@/content/film";
 import { REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
@@ -21,9 +23,26 @@ describe("landing page", () => {
   it("every in-page link has a target", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
-    // The nav's "Ledger" opens /ledger; the landing's #ledger section links there too.
-    expect([...ids].sort()).toEqual(["how", "main", "mandate", "reasons", "top", "try"]);
+    // The nav lists pages, not the landing's sections, so the in-page links are the skip link, the home link and the
+    // hero's and the sections' own links. The hero's three steps open How it works (spec 2026-11-27 section 1), and its
+    // first CTA the film band only while the landing has one (content/film.ts), else How it works too.
+    expect([...ids].sort()).toEqual([...(FILM.onLanding ? ["film"] : []), "how", "main", "reasons", "top", "try"].sort());
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
+  });
+
+  it("defines the mandate where the page's prose first names it (spec 2026-11-27 section 4)", () => {
+    const c = setup();
+    // The text a reader sees, in order: not a hidden tab panel, not the noscript line, and not the agent's note, which
+    // is quoted verbatim.
+    let text = "";
+    const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.parentElement?.closest("[hidden], noscript, [data-hero-note]")) continue;
+      text += `${n.textContent} `;
+    }
+    const at = text.search(/\bmandate\b/i);
+    expect(at).toBeGreaterThan(-1);
+    expect(text.slice(at)).toMatch(/^mandate \(the vault's public rule set\)/);
   });
 
   it("orders the sections like the comp", () => {
@@ -106,7 +125,7 @@ describe("landing page", () => {
       ["Mainnet ledger", "/ledger"],
       ["Docs", SITE.docsUrl],
       ["Source on GitHub", SITE.repoUrl],
-      ["Verify in 5 minutes", SITE.quickstartUrl],
+      ["Run the tests in 5 minutes", SITE.quickstartUrl],
       ["Fork evidence", SITE.forkEvidenceUrl],
       ["MIT License", SITE.licenseUrl],
       [SITE.xHandle, SITE.xUrl],
@@ -115,10 +134,13 @@ describe("landing page", () => {
     expect(screen.getByText(SITE.tagline)).toBeInTheDocument();
   });
 
-  it("never shows a made-up hash and keeps the mainnet tx placeholder", () => {
+  it("never shows a made-up hash: How it works decodes the agent's recorded Decision, its rationaleHash shortened", () => {
     const text = setup().textContent ?? "";
     expect(text).not.toMatch(/0x[0-9a-fA-F]{40,}/);
-    expect(text).toContain("[from mainnet tx]");
+    expect(text).not.toContain("[from mainnet tx]");
+    const agent = FACTS.mainnetDecisions.value.find((l) => l.sender === "agent")!;
+    const rationaleHash = `0x${agent.data.slice(2 + 4 * 64)}`;
+    expect(text).toContain(`rationaleHash${rationaleHash.slice(0, 10)}…${rationaleHash.slice(-4)}`);
   });
 
   it("uses no raster images", () => {

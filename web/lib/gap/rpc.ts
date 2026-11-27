@@ -15,12 +15,34 @@ export const GAP_RPC_FIRST_BLOCK_TS = 1_788_789_347;
 /** The most blocks one eth_getLogs call may cover on that endpoint. */
 export const SPAN = 50_000;
 const MAX_ADDRESSES = 10;
+/**
+ * The RPCs the finalized block is asked of, each FINALIZED_READS times at once: some of the servers behind each answer
+ * an older finalized block than others. Only the finalized block is read from mainnet.base.org, which caps eth_getLogs
+ * at a 200-block range (lib/chain/scan.ts): logs and every other read go to GAP_RPC.
+ */
+export const FINALIZED_RPCS: readonly string[] = [GAP_RPC, "https://mainnet.base.org"];
+export const FINALIZED_READS = 3;
 
 export class RpcRefused extends Error {
-  constructor(method: string, reason: string) {
+  constructor(
+    method: string,
+    readonly reason: string,
+  ) {
     super(`${method} refused: ${reason}`);
     this.name = "RpcRefused";
   }
+}
+
+/** A block and its timestamp. */
+export interface Head {
+  block: number;
+  ts: number;
+}
+/** A finalized block, and, from a reader that asks several times, the RPC that answered it and how many reads answered at all. */
+export interface FinalizedHead extends Head {
+  rpc?: string;
+  answers?: number;
+  reads?: number;
 }
 
 export interface LogQuery {
@@ -30,16 +52,33 @@ export interface LogQuery {
   to: number;
 }
 
+/** What the index reads of a transaction: who sent it, to what, with which calldata, all lowercase. */
+export interface TxRead {
+  from: string;
+  to: string | null;
+  input: string;
+}
+
 export interface LogReader {
   getLogs(q: LogQuery): Promise<RawLog[]>;
   blockTs(n: number): Promise<number>;
   blockAt(ts: number): Promise<number>;
   head(): Promise<{ block: number; ts: number }>;
+  /**
+   * The latest block Base has finalized: no reorg can change a window read through it. createLogReader returns the
+   * newest of several answers, since a finalized block is as final as any older one.
+   */
+  finalized(): Promise<FinalizedHead>;
+  transaction(hash: string): Promise<TxRead>;
   call(to: string, data: string): Promise<string>;
 }
 
 export interface LogReaderOptions {
   url?: string;
+  /** Where finalized() asks: FINALIZED_RPCS, or only `url` when one is given. */
+  finalizedRpcs?: readonly string[];
+  /** How many times finalized() asks each of them at once: FINALIZED_READS. */
+  finalizedReads?: number;
   fetch?: typeof fetch;
   sleep?: (ms: number) => Promise<void>;
   maxSpan?: number;
@@ -51,8 +90,21 @@ const hex = (n: number) => `0x${n.toString(16)}`;
 const position = (l: RawLog) => [Number(BigInt(l.blockNumber)), Number(BigInt(l.logIndex))] as const;
 const reasonOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+const HEX = /^0x[0-9a-f]+$/i;
+
+/** A block's number and timestamp from an eth_getBlockByNumber answer, or RpcRefused when the answer is not a block. */
+function blockOf(b: unknown): Head {
+  const o = (typeof b === "object" && b !== null ? b : {}) as { number?: unknown; timestamp?: unknown };
+  const n = typeof o.number === "string" && HEX.test(o.number) ? Number(BigInt(o.number)) : NaN;
+  const ts = typeof o.timestamp === "string" && HEX.test(o.timestamp) ? Number(BigInt(o.timestamp)) : NaN;
+  if (!Number.isSafeInteger(n) || !Number.isSafeInteger(ts)) throw new RpcRefused("eth_getBlockByNumber", "no finalized block");
+  return { block: n, ts };
+}
+
 export function createLogReader(opts: LogReaderOptions = {}): LogReader {
   const url = opts.url ?? GAP_RPC;
+  const finalizedRpcs = opts.finalizedRpcs ?? (opts.url === undefined ? FINALIZED_RPCS : [opts.url]);
+  const finalizedReads = opts.finalizedReads ?? FINALIZED_READS;
   const doFetch = opts.fetch ?? ((...a: Parameters<typeof fetch>) => fetch(...a));
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
   const maxSpan = opts.maxSpan ?? SPAN;
@@ -60,10 +112,13 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
   const timeoutMs = opts.timeoutMs ?? 30_000;
   let id = 0;
 
-  async function rpc(method: string, params: unknown[]): Promise<unknown> {
+  /** Every read but the finalized block's goes to `url`. */
+  const rpc = (method: string, params: unknown[]) => rpcAt(url, method, params);
+
+  async function rpcAt(target: string, method: string, params: unknown[]): Promise<unknown> {
     let res: Response;
     try {
-      res = await doFetch(url, {
+      res = await doFetch(target, {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ jsonrpc: "2.0", id: ++id, method, params }),
@@ -146,6 +201,29 @@ export function createLogReader(opts: LogReaderOptions = {}): LogReader {
     },
     blockTs,
     head,
+    // Every RPC is asked finalizedReads times at once, each read once: the newest block answered wins, and a read that
+    // fails or answers no block is only not counted. When no read answers, as in a short network drop, all are asked
+    // again after 1 s and then 2 s, as the other single reads retry. It throws only when no read of the three tries answers.
+    async finalized() {
+      const asks = finalizedRpcs.flatMap((u) => Array.from({ length: finalizedReads }, () => u));
+      for (let attempt = 1; ; attempt++) {
+        const settled = await Promise.allSettled(asks.map(async (u) => ({ rpc: u, ...blockOf(await rpcAt(u, "eth_getBlockByNumber", ["finalized", false])) })));
+        const answered = settled.flatMap((s) => (s.status === "fulfilled" ? [s.value] : []));
+        const newest = answered.reduce<(typeof answered)[number] | undefined>((best, a) => (best && best.block >= a.block ? best : a), undefined);
+        if (newest) return { block: newest.block, ts: newest.ts, rpc: newest.rpc, answers: answered.length, reads: asks.length };
+        if (attempt >= 3) {
+          const first = settled.find((s) => s.status === "rejected")?.reason;
+          const why = first instanceof RpcRefused ? first.reason : reasonOf(first);
+          throw new RpcRefused("eth_getBlockByNumber", `no finalized block in ${attempt} tries of ${asks.length} reads of ${finalizedRpcs.join(" and ")}: ${why}`);
+        }
+        await sleep(1000 * attempt);
+      }
+    },
+    async transaction(hash) {
+      const t = (await retried(() => rpc("eth_getTransactionByHash", [hash]))) as { from?: string; to?: string | null; input?: string } | null;
+      if (!t || typeof t.from !== "string" || typeof t.input !== "string") throw new RpcRefused("eth_getTransactionByHash", `no transaction ${hash}`);
+      return { from: t.from.toLowerCase(), to: typeof t.to === "string" ? t.to.toLowerCase() : null, input: t.input.toLowerCase() };
+    },
     async blockAt(ts) {
       const h = await head();
       if (ts > h.ts) throw new Error(`timestamp ${ts} is after the head (block ${h.block}, ${h.ts})`);

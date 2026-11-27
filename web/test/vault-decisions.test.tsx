@@ -1,10 +1,10 @@
 import { readFileSync } from "node:fs";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { getAddress } from "viem";
+import { getAddress, keccak256, toBytes } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LedgerDeps } from "@/components/ledger/useLedger";
 import { HeroCard } from "@/components/sections/HeroCard";
-import { VaultBarStatus, VaultCard, VaultPlate } from "@/components/sections/Vault";
+import { VaultBarStatus, VaultCard, VERDICT_PLATE } from "@/components/sections/Vault";
 import { VaultDecisionsProvider } from "@/components/sections/VaultDecisions";
 import { intentText, RECORDED_ROWS, toVaultRow } from "@/components/sections/vault-rows";
 import { FACTS } from "@/content/facts";
@@ -17,11 +17,15 @@ import { deploymentConfig } from "@/lib/chain/config";
 import { decodeVaultLogs } from "@/lib/chain/events";
 import { toMainnetDecisions } from "@/lib/chain/ledger";
 import type { RationaleSource } from "@/lib/chain/rationale";
-import { basescanTx } from "@/lib/live/basescan";
+import { basescanDecision } from "@/lib/live/basescan";
+import { executeInput, OWNER } from "./helpers/card";
 import { decisionLog, fakeLedgerClient, hash32, memoryStorage, type FakeChain } from "./helpers/fake-ledger";
 
 const RECORDED = FACTS.mainnetDecisions.value;
 const USDC = getAddress(addresses.find((a) => a.name === "USDC")!.value);
+/** A compute bill's maat:v1 blob, as the agent's code writes it (kind "bill"). */
+const BILL_BLOB = `maat:v1:{"b":62500000,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x${"0".repeat(64)}","k":"bill","r":"run-landing-test","s":[],"t":"Compute bill: $1.000000 of Claude API usage unpaid as of UTC day 20784"}`;
+const BILL_HASH = keccak256(toBytes(BILL_BLOB));
 const asLog = ({ blockNumber, logIndex, transactionHash, topics, data }: (typeof RECORDED)[number]): CachedLog => ({
   blockNumber,
   logIndex,
@@ -36,7 +40,9 @@ describe("the recorded Decisions", () => {
     const gasUsed = Object.fromEntries(RECORDED.map((l) => [l.transactionHash, l.gasUsed]));
     const decisions = toMainnetDecisions(decodeVaultLogs(RECORDED.map(asLog)), { blockTimes, gasUsed, decimals: {}, usdc: USDC });
     expect(decisions).toHaveLength(RECORDED.length);
-    expect(RECORDED_ROWS).toEqual(decisions.map(toVaultRow));
+    // Each with the sender label the build records, which the loader takes from the transaction.
+    const sender = (tx: string) => RECORDED.find((l) => l.transactionHash === tx)!.sender;
+    expect(RECORDED_ROWS).toEqual(decisions.map((d) => toVaultRow(d, {}, sender(d.txHash))));
   });
 
   it("are the deployed vault's, and match the transactions the status page records", () => {
@@ -47,12 +53,28 @@ describe("the recorded Decisions", () => {
       expect(getAddress(l.address)).toBe(vault);
       expect(status).toContain(`(https://basescan.org/tx/${l.transactionHash})`);
       expect(status).toContain(`block \`${l.blockNumber}\``);
-      const utc = new Date(l.blockTime * 1000).toISOString().replace("T", " ").replace(/\.\d+Z$/, " UTC");
-      expect(status).toContain(utc);
+      // A paragraph that links the transaction gives its block and its UTC date and time to the second:
+      // "2026-11-24 14:28:15 UTC", or the date, then "02:14:46 UTC that day".
+      const [date, time] = new Date(l.blockTime * 1000).toISOString().replace(/\.\d+Z$/, "").split("T");
+      const dated = status
+        .split("\n")
+        .filter((line) => line.includes(`(https://basescan.org/tx/${l.transactionHash})`) && line.includes(`block \`${l.blockNumber}\``))
+        .filter((line) => line.includes(date!) && line.includes(`${time} UTC`));
+      expect(dated, `${l.transactionHash} at ${date} ${time} UTC`).not.toHaveLength(0);
     }
-    const [allowed, refused] = RECORDED_ROWS;
-    expect(allowed).toMatchObject({ allowed: true, reason: "OK", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", timeLabel: "Tue 24 Nov 11:59" });
-    expect(refused).toMatchObject({ allowed: false, reason: "MARKET_CLOSED", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", timeLabel: "Tue 24 Nov 09:28" });
+    const [agent, allowed, refused] = RECORDED_ROWS;
+    expect(agent).toMatchObject({
+      allowed: false,
+      reason: "MARKET_CLOSED",
+      action: "BUY",
+      symbol: "GOOGLc",
+      amountLabel: "$4.68",
+      timeLabel: "Thu 26 Nov 21:14",
+      rationaleHash: "0xb855268417f4edb7b305281f7d7afb5bd7dc5506878a9e36476cf0ca78e0a6c1",
+      sender: "agent",
+    });
+    expect(allowed).toMatchObject({ allowed: true, reason: "OK", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", timeLabel: "Tue 24 Nov 11:59", sender: "owner, by hand" });
+    expect(refused).toMatchObject({ allowed: false, reason: "MARKET_CLOSED", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", timeLabel: "Tue 24 Nov 09:28", sender: "owner, by hand" });
   });
 });
 
@@ -93,18 +115,22 @@ function landing(d: LedgerDeps) {
   return render(
     <VaultDecisionsProvider deps={d}>
       <VaultBarStatus />
-      <VaultPlate />
       <VaultCard />
     </VaultDecisionsProvider>,
   );
 }
 
-const plate = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-vault-plate]")!;
 const card = (c: HTMLElement) => c.querySelector<HTMLElement>("[data-vault-card]")!;
+/** The card's latest Decision: its intent line and the line under it, with its time, block, age and sender. */
+const latestLine = (c: HTMLElement) => card(c).querySelector<HTMLElement>("[data-latest-line]")!;
+const latestWhen = (c: HTMLElement) => card(c).querySelector<HTMLElement>("[data-latest-when]")!;
+/** The Basescan link of the card's first row, the latest Decision. */
+const firstLink = (c: HTMLElement) =>
+  within(within(card(c)).getByRole("list", { name: "Recent decisions" }).querySelector("li")!).getByRole("link");
 
 describe("the landing's view of the mainnet vault", () => {
   beforeEach(() => {
-    // Only Date is faked, so the age the plate gives is fixed while the loader's own timers run.
+    // Only Date is faked, so the age the card gives is fixed while the loader's own timers run.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime((NEW_TIME + AGE_SEC) * 1000);
   });
@@ -116,14 +142,31 @@ describe("the landing's view of the mainnet vault", () => {
     const { container } = render(
       <>
         <VaultBarStatus />
-        <VaultPlate />
         <VaultCard />
       </>,
     );
-    expect(plate(container)).toHaveAttribute("data-vault-plate", "reading");
-    expect(plate(container)).toHaveAttribute("href", basescanTx(NEWEST.txHash));
-    expect(plate(container)).toHaveTextContent(`BASE MAINNET Recorded Decision: Allowed · ${intentText(NEWEST)} · ${NEWEST.timeLabel} ET`);
+    expect(card(container)).toHaveAttribute("data-vault-card", "reading");
+    // The newest recorded Decision is the agent's refusal, linked to Basescan's Logs tab, where the refusal shows.
+    expect(NEWEST).toMatchObject({ allowed: false, reason: "MARKET_CLOSED", sender: "agent" });
+    expect(firstLink(container)).toHaveAttribute("href", basescanDecision(NEWEST.txHash));
     expect(card(container)).toHaveTextContent("LATEST RECORDED DECISION");
+    expect(latestLine(container)).toHaveTextContent(intentText(NEWEST));
+    expect(latestWhen(container)).toHaveTextContent(new RegExp(`^${NEWEST.timeLabel} ET · block [\\d,]+ · agent$`));
+    expect(card(container).querySelector("[data-verdict]")).toHaveTextContent(`Refused${REASON_LABEL.MARKET_CLOSED}MARKET_CLOSED`);
+    // The first ticker on the landing, named (spec 2026-11-27 section 4).
+    expect(card(container).querySelector("[data-ticker-gloss]")).toHaveTextContent("GOOGLc (Alphabet, a B20 token on Base)");
+    // A refusal sits on the loud plate, white on solid ink.
+    const verdict = card(container).querySelector<HTMLElement>("[data-verdict]")!;
+    expect(verdict).toHaveAttribute("data-verdict", "refused");
+    expect(verdict.className.split(" ")).toContain("bg-ink");
+    expect(verdict).toHaveTextContent("Refused");
+    // An allowed one is the quiet accent tint, never the solid accent.
+    expect(VERDICT_PLATE.allowed.box.split(" ")).toContain("bg-accent-tint");
+    expect(VERDICT_PLATE.allowed.box.split(" ")).not.toContain("bg-accent");
+    // Each row names its sender, as /ledger labels it: the agent's, then the owner's two sent by hand.
+    const rows = within(within(card(container)).getByRole("list", { name: "Recent decisions" })).getAllByRole("listitem");
+    expect(rows.map((r) => r.querySelector("[data-sender]")?.textContent)).toEqual([" · agent", " · owner, by hand", " · owner, by hand"]);
+    expect(rows.map((r) => within(r).getByRole("link").getAttribute("href"))).toEqual(RECORDED_ROWS.map((r) => basescanDecision(r.txHash)));
     expect(card(container)).toHaveTextContent(`${RECORDED.length} Decisions recorded in this build. Reading the vault on Base…`);
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
     expect(container.textContent).not.toMatch(/fork/i);
@@ -131,13 +174,13 @@ describe("the landing's view of the mainnet vault", () => {
 
   it("replaces them with the vault's Decisions read from Base, newest first, with the latest one's age", async () => {
     const { container } = landing(deps(chain()));
-    expect(plate(container)).toHaveAttribute("data-vault-plate", "reading");
+    expect(card(container)).toHaveAttribute("data-vault-card", "reading");
     await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "live"), READ);
 
-    const p = plate(container);
-    expect(p).toHaveAttribute("data-vault-plate", "live");
-    expect(p).toHaveAttribute("href", basescanTx(hash32(9)));
-    expect(p).toHaveTextContent(`BASE MAINNET Last Decision: Refused · ${REASON_LABEL.MARKET_CLOSED} · BUY NVDAc · $20.00 · 2 h 5 min ago`);
+    expect(firstLink(container)).toHaveAttribute("href", basescanDecision(hash32(9)));
+    expect(latestLine(container)).toHaveTextContent("BUY NVDAc · $20.00");
+    expect(latestWhen(container)).toHaveTextContent(" · 2 h 5 min ago");
+    expect(card(container).querySelector("[data-ticker-gloss]")).toHaveTextContent("NVDAc (NVIDIA, a B20 token on Base)");
     expect(container.querySelector("[data-vault-bar]")).toHaveTextContent("Last Decision 2 h 5 min ago.");
 
     const c = card(container);
@@ -145,9 +188,11 @@ describe("the landing's view of the mainnet vault", () => {
     expect(c).toHaveTextContent("LATEST DECISION");
     expect(c.querySelector("[data-verdict]")).toHaveAttribute("data-reason", "MARKET_CLOSED");
     const rows = within(within(c).getByRole("list", { name: "Recent decisions" })).getAllByRole("listitem");
-    expect(rows.map((r) => r.getAttribute("data-decision"))).toEqual(["refused", "allowed", "refused"]);
-    expect(within(rows[1]!).getByRole("link")).toHaveAttribute("href", basescanTx(NEWEST.txHash));
-    expect(c).toHaveTextContent("3 Decisions on Base mainnet, read from Base by your browser.");
+    expect(rows.map((r) => r.getAttribute("data-decision"))).toEqual(["refused", ...RECORDED_ROWS.slice(0, 2).map((r) => (r.allowed ? "allowed" : "refused"))]);
+    expect(within(rows[1]!).getByRole("link")).toHaveAttribute("href", basescanDecision(NEWEST.txHash));
+    // A Decision whose transaction this read did not label keeps none; a recorded one keeps the label this build records.
+    expect(rows.map((r) => r.querySelector("[data-sender]")?.textContent ?? null)).toEqual([null, ...RECORDED_ROWS.slice(0, 2).map((r) => ` · ${r.sender}`)]);
+    expect(c).toHaveTextContent(`${RECORDED.length + 1} Decisions on Base mainnet, read from Base by your browser.`);
     expect(container.textContent).not.toMatch(/fork/i);
   }, WAITS);
 
@@ -158,10 +203,6 @@ describe("the landing's view of the mainnet vault", () => {
     await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "live"), READ);
     const block = `block ${formatInt(Number(HEAD - 10n))}`;
 
-    const p = plate(container);
-    expect(p).toHaveTextContent(`BASE MAINNET Last Decision: Refused · ${REASON_LABEL.MARKET_CLOSED} · BUY NVDAc · $20.00 · ${block}`);
-    expect(p).not.toHaveTextContent(/\bET\b/);
-    expect(p).toHaveAttribute("title", `Last Decision: Refused · ${REASON_LABEL.MARKET_CLOSED} · BUY NVDAc · $20.00 · ${block}`);
     // No age to give, so the bar stays empty.
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
 
@@ -174,14 +215,39 @@ describe("the landing's view of the mainnet vault", () => {
     expect(rows[1]).toHaveTextContent(`${NEWEST.timeLabel} ET`);
   }, WAITS);
 
+  it("labels a paid compute bill as a bill, with its amount and payee, on a neutral plate", async () => {
+    const vault = deploymentConfig(deployments)!.vault;
+    const c0 = chain();
+    c0.logs = [...RECORDED.map(asLog), decisionLog(9, HEAD - 10n, { action: "PAY_EXPENSE", token: USDC, amount: 1_000_000n, rationaleHash: BILL_HASH })];
+    c0.owner = OWNER;
+    c0.txs = { [hash32(9)]: { from: OWNER, to: vault, input: executeInput({ action: "PAY_EXPENSE", token: USDC, amount: 1_000_000n, payee: OWNER, rationaleHash: BILL_HASH, blob: BILL_BLOB }) } };
+    const { container } = landing(deps(c0));
+    await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "live"), READ);
+
+    const line = "Compute bill paid · $1.00 · to the owner's allowlisted address";
+    expect(firstLink(container)).toHaveAttribute("href", basescanDecision(hash32(9)));
+    expect(latestWhen(container)).toHaveTextContent(" · 2 h 5 min ago");
+    // A bill names no ticker.
+    expect(card(container).querySelector("[data-ticker-gloss]")).toBeNull();
+
+    const c = card(container);
+    expect(c.querySelector("[data-latest-line]")).toHaveTextContent(line);
+    const verdict = c.querySelector<HTMLElement>("[data-verdict]")!;
+    expect(verdict).toHaveAttribute("data-verdict", "bill");
+    expect(verdict).toHaveTextContent("Paid");
+    expect(verdict).not.toHaveTextContent("Allowed");
+    expect(verdict.className).not.toMatch(/(^|\s)bg-(accent|refuse|ink)(-|\s|$)/);
+    const rows = within(within(c).getByRole("list", { name: "Recent decisions" })).getAllByRole("listitem");
+    expect(rows.map((r) => r.getAttribute("data-decision"))).toEqual(["bill", ...RECORDED_ROWS.slice(0, 2).map((r) => (r.allowed ? "allowed" : "refused"))]);
+    expect(rows[0]).toHaveTextContent(line);
+    // Never written as a trade.
+    expect(container.textContent).not.toMatch(/PAY_EXPENSE|USDC/);
+  }, WAITS);
+
   it("says the vault has made no Decision yet when Base has none", async () => {
     const { container } = landing(deps({ ...chain(), logs: [] }));
     await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "live"), READ);
 
-    const p = plate(container);
-    expect(p).toHaveAttribute("data-vault-plate", "live");
-    expect(p.tagName).toBe("SPAN");
-    expect(p).toHaveTextContent("BASE MAINNET The vault has made no Decision yet.");
     const c = card(container);
     expect(c).toHaveTextContent("The vault has made no Decision yet.");
     expect(c).toHaveTextContent("0 Decisions on Base mainnet, read from Base by your browser.");
@@ -193,8 +259,7 @@ describe("the landing's view of the mainnet vault", () => {
   it("keeps the recorded Decisions when the scan of the vault's logs leaves a gap", async () => {
     const { container } = landing(deps({ ...chain(), failLogs: true }));
     await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "recorded"), READ);
-    expect(plate(container)).toHaveAttribute("data-vault-plate", "recorded");
-    expect(plate(container)).toHaveAttribute("href", basescanTx(NEWEST.txHash));
+    expect(firstLink(container)).toHaveAttribute("href", basescanDecision(NEWEST.txHash));
     expect(card(container)).toHaveTextContent(`Could not read the vault on Base, so this shows the ${RECORDED.length} Decisions recorded in this build.`);
     expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
@@ -204,8 +269,7 @@ describe("the landing's view of the mainnet vault", () => {
     const c0 = { ...chain(), bytecode: "0x" as const };
     const { container } = landing(deps(c0));
     await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "recorded"), READ);
-    expect(plate(container)).toHaveAttribute("data-vault-plate", "recorded");
-    expect(plate(container)).toHaveAttribute("href", basescanTx(NEWEST.txHash));
+    expect(firstLink(container)).toHaveAttribute("href", basescanDecision(NEWEST.txHash));
     expect(card(container)).toHaveTextContent("recorded · could not read Base");
     expect(card(container)).toHaveTextContent(`Could not read the vault on Base, so this shows the ${RECORDED.length} Decisions recorded in this build.`);
     expect(container.querySelector("[data-vault-bar]")).toBeNull();

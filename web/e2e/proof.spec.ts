@@ -25,6 +25,8 @@ const INBOX_TX: Hash = `0x${"d1".repeat(32)}`;
 const UID: Hex = `0x${"a1".repeat(32)}`;
 const ZERO32: Hex = `0x${"0".repeat(64)}`;
 const VAULT = getAddress(deployments.find((r) => r.network === "Base mainnet" && r.contract === "MandateVault")!.address);
+/** How many sends the owner's committed list holds: in the chain below, its nonces 0 to OWNER_SENDS - 1. */
+const OWNER_SENDS = PROOF_SENDS.find((s) => s.wallet.toLowerCase() === OWNER.toLowerCase())!.txs.length;
 
 /**
  * A chain for `briefs`, with the committed team lists as its own record: the owner's committed transactions come
@@ -37,7 +39,7 @@ function chain(inbox: Address, deployTx: Hash | null, briefs: ProofChain["briefs
     vault: { address: VAULT, owner: OWNER, executor: EXECUTOR, payees: [OWNER] },
     txs: [
       ...plainSends(PROOF_SENDS, DEPLOY),
-      { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: 9, to: VAULT, block: DEPLOY + 1n, logs: [executorSetLog(VAULT, EXECUTOR)] },
+      { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: OWNER_SENDS, to: VAULT, block: DEPLOY + 1n, logs: [executorSetLog(VAULT, EXECUTOR)] },
       ...[0, 1, 2].map((i) => ({
         hash: `0x${(0xe2 + i).toString(16).repeat(32)}` as Hash,
         from: EXECUTOR,
@@ -95,7 +97,21 @@ async function serious(page: Page): Promise<string[]> {
     .map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
 }
 
-const LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs", "bounty-claimants"];
+/** The lines of the rule, in its order, by the data-testid of their value. */
+const LINES = [
+  "owner-decisions",
+  "agent-decisions",
+  "probe-decisions",
+  "outside-briefs",
+  "outside-wallets",
+  "verified",
+  "brief-decisions",
+  "team-briefs",
+  "hidden-briefs",
+  "bounty-claimants",
+];
+const BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+const DECISION_LINES = ["owner-decisions", "agent-decisions", "probe-decisions", "brief-decisions"];
 
 test.describe("/proof with the committed deployments table", () => {
   // The nav links /proof, in the bar and in the phone menu, once the owner's switch has opened /ask.
@@ -115,12 +131,17 @@ test.describe("/proof with the committed deployments table", () => {
 
     if (RECORDED === null) {
       await expect(page.locator('[data-proof-state="not-recorded"]')).toContainText("Counting starts when the inbox is recorded.");
-      for (const key of LINES.slice(0, 5)) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not deployed");
+      for (const key of BRIEF_LINES) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not deployed");
+      for (const key of DECISION_LINES) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not read");
       await expect(page.locator("[data-proof-row]")).toHaveCount(0);
       expect(seen.methods).not.toContain("eth_getLogs");
     } else {
       await expect(page.locator('[data-proof-state="read"]')).toBeVisible();
       await expect(page.getByTestId("proof-outside-briefs")).toHaveText("0");
+      // In this fake chain, not on mainnet: the executor's three Decisions carry no rationale blob, so each is an agent
+      // Decision, and the vault allowed all.
+      await expect(page.getByTestId("proof-agent-decisions")).toHaveText("3");
+      await expect(page.getByTestId("proof-agent-decisions-split")).toHaveText("3 allowed, 0 refused");
     }
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);
@@ -155,6 +176,10 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
 
     await expect(page.locator('[data-proof-state="read"]')).toBeVisible({ timeout: 15_000 });
     const expected: Record<string, string> = {
+      "owner-decisions": "0",
+      "agent-decisions": "3",
+      "probe-decisions": "0",
+      "brief-decisions": "0",
       "outside-briefs": "3",
       "outside-wallets": "2",
       verified: "1",
@@ -163,7 +188,13 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
       "bounty-claimants": "0",
     };
     for (const key of LINES) await expect(page.getByTestId(`proof-${key}`)).toHaveText(expected[key]!);
+    const shown = page.locator("dl dd[data-testid^='proof-']:not([data-testid$='-split'])");
+    expect(await shown.evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")))).toEqual(LINES.map((key) => `proof-${key}`));
+    for (const key of DECISION_LINES) {
+      await expect(page.getByTestId(`proof-${key}-split`)).toHaveText(key === "agent-decisions" ? "3 allowed, 0 refused" : "0 allowed, 0 refused");
+    }
     await expect(page.getByText("Counted to block 62,120,000 of Base mainnet")).toBeVisible();
+    await expect(page.getByText("and the Decision logs of MandateVault")).toBeVisible();
 
     const wallets = page.getByRole("table", { name: "Outside wallets" });
     await expect(wallets.locator("tbody tr")).toHaveCount(2);
@@ -179,7 +210,12 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
 
     const verified = seen.calls.filter((c) => c.to !== VAULT.toLowerCase());
     expect(verified.map((c) => c.functionName).sort()).toEqual(["getAttestation", "getAttestationUid", "getAttestationUid"]);
-    expect(seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName)).toEqual(["owner", "executor", "payees"]);
+    // The page starts reading with the build's table, which records the real inbox, and reads again once
+    // /data/deployments.json serves the test one; each read asks the vault owner(), executor() and payees() once, together.
+    const vaultCalls = seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName);
+    const reads = vaultCalls.length / 3;
+    expect([1, 2]).toContain(reads);
+    expect([...vaultCalls].sort()).toEqual(Array.from({ length: reads }, () => ["executor", "owner", "payees"]).flat().sort());
     expect(new Set(seen.calls.map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);

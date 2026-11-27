@@ -24,7 +24,7 @@ function withoutPointer(entry: string): string {
  * The preview of every glossary entry, by its anchor, from the glossary's processed Markdown (getText("processed")): the
  * whole entry, with its facts filled in, its links as their text and its code in backticks, less a trailing "See …"
  * pointer. It is never cut to its first sentence, since an entry often gives the term's status last: Builder Code's "the
- * owner registered Maat's code", CDP Server Wallet's "has never run against the real CDP". Each H3 is an entry; the
+ * owner registered Maat's code", CDP Server Wallet's "went through it that day". Each H3 is an entry; the
  * letters that group them, and the text above the first, hold no entry.
  */
 export function glossaryPreviews(markdown: string): ReadonlyMap<string, string> {

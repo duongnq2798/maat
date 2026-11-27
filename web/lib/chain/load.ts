@@ -83,6 +83,30 @@ export interface LedgerSnapshot {
   updatedAt: number;
 }
 
+/** What the committed snapshot holds before Base has confirmed it: its block N and its Decisions, newest first. */
+export interface SnapshotPreview {
+  block: bigint;
+  decisions: MainnetDecision[];
+}
+
+/** A Decision's block time and gas this build records (content/facts.ts mainnetDecisions), by block and by tx. */
+export interface RecordedDetails {
+  blockTimes: Readonly<Record<string, number>>;
+  gasUsed: Readonly<Record<string, string>>;
+}
+
+/**
+ * The Decisions of the committed snapshot in `raw` (parsed JSON), newest first, for a page to show while a load
+ * confirms the file on Base. They are not a reading of Base: a time and a gas come only from `recorded`, no transaction
+ * is read, and the load's own Decisions replace them. Null when `raw` is no snapshot of `vault` or holds no Decision.
+ */
+export function snapshotPreview(raw: unknown, vault: Address, recorded: RecordedDetails = { blockTimes: {}, gasUsed: {} }): SnapshotPreview | null {
+  const snapshot = parseSnapshot(raw, vault);
+  if (!snapshot) return null;
+  const decisions = toMainnetDecisions(decodeVaultLogs(snapshot.logs), { blockTimes: recorded.blockTimes, gasUsed: recorded.gasUsed, decimals: {}, usdc: USDC });
+  return decisions.length === 0 ? null : { block: BigInt(snapshot.block), decisions };
+}
+
 export interface LoadOptions {
   client: LedgerClient;
   vault: Address;

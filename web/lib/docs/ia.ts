@@ -61,7 +61,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "get-started/what-is-maat",
         "What is Maat",
-        "The problem with agents that trade tokenized stocks around the clock, and how a mandate onchain decides every trade they propose.",
+        "The problem with agents that trade tokenized stocks around the clock, and how a vault onchain weighs every trade they propose against a written mandate.",
       ),
       page(
         "get-started/how-a-decision-is-made",
@@ -142,7 +142,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "concepts/treasury-loop",
         "The treasury loop",
-        "How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is still planned.",
+        "How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is not built.",
       ),
     ],
   },
@@ -203,12 +203,12 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "guides/verify-by-hand",
         "Verify Maat by hand",
-        "Five read-only cast commands to check the mainnet vault yourself: its source, owner, executor and mandate, both Decisions, the calendar and a rationale hash.",
+        "Five read-only commands to check the mainnet vault: its source, owner, executor and mandate, its first three Decisions, the calendar and the rationale hashes.",
       ),
       page(
         "guides/brief-the-agent",
         "Brief the agent",
-        "Once /ask opens, send Maat's agent a public brief through MaatInbox from a browser wallet or a Base Account. Until then, ask the live vault for free.",
+        "Send Maat's agent a public brief through MaatInbox, from Basescan or a terminal now and from /ask once it opens, and ask the live vault for free.",
       ),
     ],
   },
@@ -307,7 +307,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "security/not-claimed",
         "What Maat does not claim",
-        "No audit, no live run of the agent on mainnet, and the known limitations: what can still go wrong and what is out of scope.",
+        "No audit, an agent live on mainnet only since 2026-11-27, and the known limitations: what can still go wrong and what is out of scope.",
       ),
       page(
         "security/testing",

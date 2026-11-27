@@ -72,7 +72,8 @@ test("at 1280 px the docked reading keeps the bar on one row, even with the long
   await page.goto("/");
   const strip = page.locator("#top [data-live-strip]");
   await expect(strip).toHaveAttribute("data-live-strip", "live");
-  await expect(strip).toContainText("MarketCalendar unreadable · counted closed");
+  // The hero's line names only the verdict (spec 2026-11-27 section 1); the session detail is the docked reading's.
+  await expect(strip).toContainText("Refused · Market closed");
   const before = await navBar(page).evaluate((el) => el.getBoundingClientRect().height);
   await scrollTo(page, "#how");
   await expect(dock(page)).toBeVisible();
@@ -92,11 +93,12 @@ for (const [width, height] of [
   });
 }
 
+// The nav links pages only, so the hero's own link to the simulator stands in for any link to a section of the landing.
 for (const width of [1024, 1440]) {
-  test(`from lg, at ${width} px, a nav link lands its section below the pinned bar`, async ({ page }) => {
+  test(`from lg, at ${width} px, an in-page link lands its section below the pinned bar`, async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await liveWeekend(page, width);
-    await page.getByRole("navigation", { name: "Main" }).getByRole("link", { name: "Try it" }).click();
+    await page.locator("#top").getByRole("link", { name: "Try to make it say no" }).click();
     await expect(page).toHaveURL(/#try$/);
     const navBottom = await navBar(page).evaluate((el) => el.getBoundingClientRect().bottom);
     const sectionTop = await page.locator("#try").evaluate((el) => el.getBoundingClientRect().top);

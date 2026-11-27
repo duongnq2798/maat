@@ -127,6 +127,25 @@ describe("createLogSource", () => {
     expect(fs.readdirSync(dir)).toEqual([]);
   });
 
+  it("reports each span it reads: its cache file name, whether it came from Base or the cache, and whether its file now holds it", async () => {
+    const { r } = reader([answerLog(50, 3n), answerLog(SPAN + 50, 4n)]);
+    const seen: unknown[] = [];
+    const opts = { cacheDir: dir, headBlock: 2 * SPAN + 5_000, onSpan: (s: unknown) => seen.push(s) };
+    await createLogSource(r, opts).updates(["0xAgg"], 0, 2 * SPAN + 100);
+    await createLogSource(r, opts).updates(["0xAgg"], 0, 2 * SPAN + 100);
+    const first = [
+      { name: `answer-0xagg-0-${SPAN - 1}.json`, spanFrom: 0, spanTo: SPAN - 1, from: "rpc", kept: true },
+      { name: `answer-0xagg-${SPAN}-${2 * SPAN - 1}.json`, spanFrom: SPAN, spanTo: 2 * SPAN - 1, from: "rpc", kept: true },
+      // the span that holds the head: read, and never kept
+      { name: `answer-0xagg-${2 * SPAN}-${2 * SPAN + 5_000}.json`, spanFrom: 2 * SPAN, spanTo: 2 * SPAN + 5_000, from: "rpc", kept: false },
+    ];
+    expect(seen).toEqual([...first, { ...first[0], from: "cache" }, { ...first[1], from: "cache" }, first[2]]);
+
+    const none: unknown[] = [];
+    await createLogSource(reader([]).r, { cacheDir: null, headBlock: 2 * SPAN + 5_000, onSpan: (s) => none.push(s) }).swaps("0xpool", 0, 10);
+    expect(none).toEqual([{ name: `swap-0xpool-0-${SPAN - 1}.json`, spanFrom: 0, spanTo: SPAN - 1, from: "rpc", kept: false }]);
+  });
+
   it("returns the rows and leaves no temp file when the cache write fails", async () => {
     const blocker = path.join(dir, "blocker");
     fs.writeFileSync(blocker, "x");
@@ -148,6 +167,26 @@ describe("createLogSource", () => {
       expect(out2.length).toBe(1);
       expect(fs.readdirSync(dir).filter((f) => f.endsWith(".tmp"))).toEqual([]);
       expect(warn).toHaveBeenCalledTimes(2);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it("reports a span whose cache write failed as not kept, with the write's error, and a span it never tried to write with none", async () => {
+    const blocker = path.join(dir, "blocker");
+    fs.writeFileSync(blocker, "x");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const seen: Array<Record<string, unknown>> = [];
+      const { r } = reader([answerLog(50, 3n)]);
+      await createLogSource(r, { cacheDir: blocker, headBlock: SPAN + 5_000, onSpan: (s) => seen.push({ ...s }) }).updates(["0xAgg"], 0, SPAN + 100);
+      expect(seen.map((s) => [s.spanFrom, s.from, s.kept])).toEqual([
+        [0, "rpc", false],
+        [SPAN, "rpc", false],
+      ]);
+      // The settled span was read and its write failed: the report says why. The head's span was never written.
+      expect(seen[0]!.writeError).toMatch(/EEXIST|ENOTDIR/);
+      expect(seen[1]).not.toHaveProperty("writeError");
     } finally {
       warn.mockRestore();
     }

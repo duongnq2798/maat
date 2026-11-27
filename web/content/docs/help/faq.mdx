@@ -4,7 +4,7 @@ description: Short answers to the questions people ask about Maat, from what it 
 type: help
 audience: [newcomer, watcher, developer, builder, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-18
+lastReviewed: 2026-11-27
 sources:
   - README.md
   - deployments/README.md
@@ -21,11 +21,11 @@ sources:
 next: [get-started/quickstart, security/not-claimed]
 ---
 
-These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. The four Maat contracts are deployed on Base mainnet, but the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, so the answers say what the code is built to do and what has run on that fork. Words you do not know are in the [glossary](/docs/help/glossary).
+These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. The four core Maat contracts and `MaatInbox`, five in all, are deployed on Base mainnet, and since 2026-11-27 the agent runs in [live mode](/docs/help/glossary#live-mode) there. Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. The answers say what the code is built to do and what has run on a fork. Words you do not know are in the [glossary](/docs/help/glossary).
 
 | Question | Today | Read more |
 | --- | --- | --- |
-| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | Yes, the four Maat contracts. The agent has run in live mode only on a fork | [Status and roadmap](/docs/get-started/status#next-mainnet) |
+| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | Yes, the four Maat contracts since 2026-11-24, and `MaatInbox`, the inbox for briefs, since 2026-11-27. The agent has run in live mode there since 2026-11-27, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` | [Status and roadmap](/docs/get-started/status#next-mainnet) |
 | Has a third party audited the contracts? | No | [What Maat does not claim](/docs/security/not-claimed#unaudited) |
 | Has it run on a fork of Base mainnet? | Yes, the contracts and the agent's send path | [Status and roadmap](/docs/get-started/status#built-and-fork-tested) |
 | Did the fork run use the real Claude API or the [CDP wallet](/docs/help/glossary#cdp-server-wallet)? | No, a scripted proposer and a local sender stood in | [How a decision is made](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy) |
@@ -34,11 +34,11 @@ These are the questions people ask about Maat, with a short answer to each and a
 
 ### What is Maat?
 
-Maat is an AI agent built to trade [tokenized stocks](/docs/help/glossary#tokenized-stock) on [Base](/docs/help/glossary#base) from its own treasury. Claude proposes the trades, and an onchain [vault](/docs/help/glossary#vault) checks each [intent](/docs/help/glossary#intent) the [executor](/docs/help/glossary#executor) sends against a [mandate](/docs/help/glossary#mandate) and records the verdict, so the agent proposes and the mandate decides. It is built and fork-tested, and the four Maat contracts are deployed on Base mainnet. See [What is Maat](/docs/get-started/what-is-maat).
+Maat is an onchain [vault](/docs/help/glossary#vault) on [Base](/docs/help/glossary#base) and the [mandate](/docs/help/glossary#mandate) it keeps. Its AI agent, Maat's agent, is built to trade [tokenized stocks](/docs/help/glossary#tokenized-stock) from the vault's own treasury. Claude proposes. The vault decides. It checks each [intent](/docs/help/glossary#intent) the [executor](/docs/help/glossary#executor) sends against the mandate and records the verdict. It is built and fork-tested, and its five contracts, the four core Maat contracts and `MaatInbox`, are deployed on Base mainnet. See [What is Maat](/docs/get-started/what-is-maat).
 
 ### Is Maat live?
 
-Partly. The four Maat contracts are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why the docs label their pages fork-tested. The agent has run in live mode only there, with a scripted proposer in place of Claude and a local sender in place of the CDP wallet. See [Status and roadmap](/docs/get-started/status).
+Partly. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why most pages of the docs carry the Fork-tested label; the pages that give the deployed contracts' addresses, functions and events, or record and read what they did on Base mainnet, carry Live on mainnet. There a scripted proposer stood in for Claude and a local sender for the CDP wallet. Since 2026-11-27 the agent runs in live mode on Base mainnet, on the owner's PC, with the real Claude API, and the CDP Server Wallet is the vault's executor. The vault's first two mainnet `Decision` events were the owner's smoke-test buys of 2026-11-24. The agent's first came at 02:14 UTC on 2026-11-27: Claude proposed a buy of 4.68 USDC of GOOGLc while NYSE was closed for Thanksgiving, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). See [Status and roadmap](/docs/get-started/status).
 
 ### Whose money does Maat trade?
 
@@ -55,14 +55,14 @@ See [What it is not](/docs/get-started/what-is-maat#what-it-is-not), and [`notif
 
 ### Is there a Maat token?
 
-No. The repository has no Maat token. No contract in `contracts/src` or `contracts/script` is a token: `contracts/src` holds the vault, the market calendar, the swap and credit adapters, the libraries they use, shared types and events, and interfaces. Outside the third-party libraries in `contracts/lib`, the only token contracts are the test mocks in `contracts/test/mocks` (`MockERC20`, `MockB20` and `MockFaultyERC20`), which the contract unit tests deploy as stand-ins for USDC and the stocks. So a token offered under Maat's name today does not come from this code.
+No. The repository has no Maat token. No contract in `contracts/src` or `contracts/script` is a token: `contracts/src` holds the vault, the market calendar, the swap and credit adapters, the briefs inbox `MaatInbox`, the libraries they use, shared types and events, and interfaces. Outside the third-party libraries in `contracts/lib`, the only token contracts are the test mocks in `contracts/test/mocks` (`MockERC20`, `MockB20` and `MockFaultyERC20`), which the contract unit tests deploy as stand-ins for USDC and the stocks. So a token offered under Maat's name today does not come from this code.
 
 ### How will I know the real vault address?
 
 **From the table in `deployments/README.md`, which the Status page shows under [Next: mainnet](/docs/get-started/status#next-mainnet).**
 
-- That table lists the four Maat contracts with their addresses and deploy transactions ([`deployments/README.md`](https://github.com/duongnq2798/maat/blob/main/deployments/README.md)). [Base addresses](/docs/reference/base-addresses) shows it too, and each address there links to Basescan.
-- No page in these docs carries the Live on mainnet label today ([What the three labels mean](/docs/get-started/status#what-the-three-labels-mean)).
+- That table lists the four Maat contracts and `MaatInbox` with their addresses and deploy transactions ([`deployments/README.md`](https://github.com/duongnq2798/maat/blob/main/deployments/README.md)). [Base addresses](/docs/reference/base-addresses) shows it too, and each address there links to Basescan.
+- The pages that give the deployed contracts' addresses, functions and events, Base addresses among them, carry the Live on mainnet label ([What the three labels mean](/docs/get-started/status#what-the-three-labels-mean)).
 - Treat a vault address from any other source as unverified.
 
 ### Can Claude move funds on its own?
@@ -104,7 +104,7 @@ The agent is built to run one [round](/docs/help/glossary#round) every <Fact nam
 - A round that could not read the vault or the calendar, or that threw an error, waits <Fact name="offSessionMinutes" />.
 - A round that [halted](/docs/guides/run-the-agent#recover-from-a-halted-round) after reading an open market runs again <Fact name="loopMinutes" /> later.
 
-The agent has run in live mode only on a fork, so this is the cadence the code is built to keep. See [Cadence](/docs/concepts/treasury-loop#cadence).
+The agent has run in live mode on Base mainnet only since 2026-11-27, so this is the cadence the code is built to keep; these docs record no measurement of it yet. See [Cadence](/docs/concepts/treasury-loop#cadence).
 
 ### Why is there no Decision for every proposal?
 
@@ -132,7 +132,7 @@ See [How it is tested](/docs/security/testing), which maps each guarantee in the
 
 ### Has Claude or the CDP wallet run for real?
 
-No. In the fork run a scripted proposer stood in for Claude and a local sender stood in for the [CDP wallet](/docs/help/glossary#cdp-server-wallet). The Claude proposer is tested against a fake client and the CDP code against a fake CDP client only, and no output from the real Claude API is committed yet. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
+Since 2026-11-27, yes, in live mode on Base mainnet: the agent calls the real Claude API, and the vault's executor is its [CDP wallet](/docs/help/glossary#cdp-server-wallet) account. The agent's first `Decision` went through that wallet at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). In the fork run a scripted proposer stood in for Claude and a local sender for the CDP wallet. In the tests, the Claude proposer and the CDP code run against fakes. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
 
 ### Which functions can anyone call on a vault?
 
@@ -193,7 +193,7 @@ The owner queues the change, waits <Fact name="timelockHours" />, and then appli
 
 **Claude API fees in every mode, plus gas in [live mode](/docs/help/glossary#live-mode). The vault does not pay Anthropic.**
 
-- A [dry run](/docs/help/glossary#dry-run) still calls Claude, so it costs real API fees even though it sends nothing. The README estimates roughly one cent of Claude usage per round. That is an estimate: the Claude proposer is tested against a fake client, and no output from the real Claude API is committed yet.
+- A [dry run](/docs/help/glossary#dry-run) still calls Claude, so it costs real API fees even though it sends nothing. The README estimates roughly one cent of Claude usage per round. That is an estimate: the Claude proposer is tested against a fake client, and these docs record no measured cost from the live agent's Claude calls, which began on 2026-11-27.
 - In live mode the executor also needs ETH on Base for gas, <Fact name="executorGasEth" /> by the agent README's estimate.
 - The agent is built to track its own [compute bill](/docs/help/glossary#compute-bill) and pay it from the vault in USDC with `PAY_EXPENSE`. The vault pays an allowlisted [payee](/docs/help/glossary#payee), the wallet that pays for the Claude usage (for Agent #1, the owner's). Each payment counts toward the same per-trade and daily caps as trades.
 
@@ -237,8 +237,8 @@ No. Maat gives no investment advice, confers no shareholder rights and is not of
 
 ### Has it been audited?
 
-No. There is no third-party audit, so treat the contracts as unaudited, including the four Maat contracts deployed on Base mainnet. The README lists this first among its known limitations. See [What Maat does not claim](/docs/security/not-claimed#unaudited) for the limitations, and [Status and roadmap](/docs/get-started/status#built-and-fork-tested) for what is built.
+No. There is no third-party audit, so treat the contracts as unaudited, including the five Maat contracts deployed on Base mainnet. The README lists this first among its known limitations. See [What Maat does not claim](/docs/security/not-claimed#unaudited) for the limitations, and [Status and roadmap](/docs/get-started/status#built-and-fork-tested) for what is built.
 
 ### How do I know the numbers on the site are real?
 
-Most figures are rendered from a facts file with its source, and the tests check most of those against the code or the spec. A few cite documents instead: the planned [x402](/docs/help/glossary#x402) price and the treasury size cite the treasury design spec, and the AMZNc pool liquidity cites the README and that spec. The check count cites that spec too, and its only test compares it with the site's own list of check labels, not with the contract. Every code excerpt in these docs is compared with the file it quotes. See [How this page stays honest](/docs/get-started/status#how-this-page-stays-honest).
+Most figures are rendered from a facts file with its source, and the tests check most of those against the code or the spec. A few cite documents instead: the [x402](/docs/help/glossary#x402) price of the dropped Guard Service and the treasury size cite the treasury design spec, and the AMZNc pool liquidity cites the README and that spec. The check count cites that spec too, and its only test compares it with the site's own list of check labels, not with the contract. Every code excerpt in these docs is compared with the file it quotes. See [How this page stays honest](/docs/get-started/status#how-this-page-stays-honest).

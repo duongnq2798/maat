@@ -53,14 +53,14 @@ for (const page of pages) for (const id of linkedEntries(page.source)) linked.se
  */
 const STATUS_WORDS = [
   "the owner registered",
-  "never run",
+  "no transaction",
+  "went through it",
   "not built",
   "planned",
   "deployed",
   "not measured",
   "not been observed",
   "fake",
-  "meant to",
   "built to",
   "built for",
   "assumes",
@@ -190,7 +190,7 @@ describe("the glossary's previews", () => {
     expect(previews.get("builder-code-erc-8021")).toContain(
       "The owner registered Maat's code, and the calldata of the vault's first `Decision` on Base mainnet carries it.",
     );
-    expect(previews.get("cdp-server-wallet")).toContain("has never run against the real CDP");
+    expect(previews.get("cdp-server-wallet")).toContain("went through it that day");
     expect(previews.get("x402")).toContain("It is not built");
     expect(previews.get("fork-test")).toContain("not that it has run on mainnet");
   });

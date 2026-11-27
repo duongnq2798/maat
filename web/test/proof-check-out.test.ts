@@ -18,9 +18,9 @@ describe("checkProofPage", () => {
   const SITEMAP = `<url><loc>${URL_}</loc></url>`;
   const check = (html: string, inbox: boolean, sitemap = SITEMAP) => checkProofPage({ html, inboxRecorded: inbox, sitemap, url: URL_ });
   const NOT_RECORDED = page(
-    '<div data-proof-state="not-recorded"><p>Counting starts when the inbox is recorded.</p></div><dd data-testid="proof-outside-briefs">not deployed</dd>',
+    '<div data-proof-state="not-recorded"><p>Counting starts when the inbox is recorded.</p></div><dd data-testid="proof-outside-briefs">not deployed</dd><dd data-testid="proof-agent-decisions">not read</dd>',
   );
-  const READING = page('<div data-proof-state="reading"><p>Reading briefs from Base…</p></div><dd data-testid="proof-outside-briefs">…</dd>');
+  const READING = page('<div data-proof-state="reading"><p>Reading briefs from Base…</p></div><dd data-testid="proof-outside-briefs">…</dd><dd data-testid="proof-agent-decisions">…</dd>');
 
   it("passes the not-recorded page before the inbox is recorded, and the reading page after", () => {
     expect(check(NOT_RECORDED, false)).toEqual([]);
@@ -35,13 +35,17 @@ describe("checkProofPage", () => {
   it("fails a reading page with a count baked in at build time", () => {
     const baked = READING.replace('data-testid="proof-outside-briefs">…<', 'data-testid="proof-outside-briefs">3<');
     expect(check(baked, true)).toEqual(["out/proof.html has a count in its HTML, read at build time"]);
+    const decided = READING.replace('data-testid="proof-agent-decisions">…<', 'data-testid="proof-agent-decisions">3<');
+    expect(check(decided, true)).toEqual(["out/proof.html has a count in its HTML, read at build time"]);
   });
 
-  it("fails a not-recorded page with a number on a brief line or a row, since there is nothing to count yet", () => {
+  it("fails a not-recorded page with a number on a brief or Decision line or a row, since there is nothing to count yet", () => {
     for (const n of ["2", "0"]) {
       const counted = NOT_RECORDED.replace('data-testid="proof-outside-briefs">not deployed<', `data-testid="proof-outside-briefs">${n}<`);
       expect(check(counted, false)).toEqual(["out/proof.html shows a brief line other than not deployed, but no MaatInbox is recorded"]);
     }
+    const decided = NOT_RECORDED.replace('data-testid="proof-agent-decisions">not read<', 'data-testid="proof-agent-decisions">0<');
+    expect(check(decided, false)).toEqual(["out/proof.html shows a Decision line other than not read, but no MaatInbox is recorded"]);
     const row = NOT_RECORDED.replace("</main>", '<table><tr data-proof-row="outside"><td>0xabc</td></tr></table></main>');
     expect(check(row, false)).toEqual(["out/proof.html lists a wallet or a brief, but no MaatInbox is recorded"]);
   });

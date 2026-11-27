@@ -12,12 +12,14 @@ import type { LedgerSnapshot } from "@/lib/chain/load";
 import type { Treasury } from "@/lib/chain/treasury";
 import { DecisionTimeline } from "./DecisionTimeline";
 import { KpiTiles } from "./KpiTiles";
+import { DECISIONS_ID, LatestDecision } from "./LatestDecision";
 import { MandatePanel } from "./MandatePanel";
 import { RoundsPanel } from "./RoundsPanel";
 import { ConnectingStrip, ErrorStrip, MainnetStrip, WaitingStrip } from "./StatusStrip";
 import { TrailTabs, type TrailTab } from "./TrailTabs";
 import { TreasuryTable } from "./TreasuryTable";
 import { useJournal } from "./useJournal";
+import { useLastLook, type LookDeps } from "./useLastLook";
 import { useLedger } from "./useLedger";
 
 const WAD = 1e18;
@@ -57,9 +59,9 @@ function Charts({ snapshot, reason, onReason }: { snapshot: LedgerSnapshot | nul
   );
 }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div id={id} className="flex scroll-mt-20 flex-col gap-4">
       <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">{title}</h2>
       {children}
     </div>
@@ -68,15 +70,20 @@ function Block({ title, children }: { title: string; children: React.ReactNode }
 
 /**
  * The mainnet ledger. `initial` comes from the build's deployments table, so the static HTML shows the same state the
- * page settles on: the waiting view before the deploy, a connecting line after it.
+ * page settles on: the waiting view before the deploy, a connecting line after it. `look` is where the viewer's last look
+ * is kept (default: this browser's localStorage).
  */
-export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
+export function LedgerApp({ initial, look }: { initial: "waiting" | "loading"; look?: LookDeps }) {
   const state = useLedger();
   const [reason, setReason] = useState<RefusalCode | null>(null);
   const [tab, setTab] = useState<TrailTab>("decisions");
   const [roundsOpened, setRoundsOpened] = useState(false);
   const mode = state.mode === "loading-config" ? initial : state.mode;
   const snapshot = state.mode === "mainnet" ? state.snapshot : null;
+  const since = useLastLook(snapshot, state.mode === "mainnet" && state.loading, look);
+  // The committed snapshot's Decisions, shown while Base confirms the file; the first read of Base replaces them.
+  const preview = state.mode === "loading-config" ? (state.preview ?? null) : null;
+  const latest = snapshot?.decisions[0];
   // GitHub is asked for the journal only when the Rounds tab opens or a Decision carries a blob to anchor in it, and
   // asked again when a refresh brings more blobs.
   const blobs = snapshot ? [...snapshot.trails.values()].filter((t) => t.call?.blob.status === "v1").length : 0;
@@ -104,6 +111,31 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
         <MainnetStrip snapshot={state.snapshot} endpoints={state.endpoints} loading={state.loading} refreshError={state.refreshError} onRetry={state.retry} />
       ) : null}
 
+      {preview ? <LatestDecision decision={preview.decisions[0]!} count={preview.decisions.length} status="confirming" /> : null}
+      {snapshot && latest ? (
+        <LatestDecision
+          decision={latest}
+          trail={snapshot.trails.get(latest.key)}
+          count={snapshot.decisions.length}
+          status={snapshot.scan.done ? "read" : "reading"}
+        />
+      ) : null}
+
+      {preview ? (
+        <Block title="Decisions" id={DECISIONS_ID}>
+          <DecisionTimeline
+            decisions={preview.decisions}
+            rationales={new Map()}
+            rationaleState="checking"
+            txState="checking"
+            reason={null}
+            onReason={() => {}}
+            scanning={false}
+            confirming={preview.block}
+          />
+        </Block>
+      ) : null}
+
       {snapshot ? <KpiTiles summary={snapshot.summary} treasury={snapshot.treasury} /> : null}
 
       {mode === "waiting" || snapshot ? <Charts snapshot={snapshot} reason={reason} onReason={setReason} /> : null}
@@ -115,7 +147,7 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
       ) : null}
 
       {snapshot ? (
-        <Block title="Decisions and rounds">
+        <Block title="Decisions and rounds" id={DECISIONS_ID}>
           <TrailTabs
             tab={tab}
             onTab={openTab}
@@ -130,6 +162,7 @@ export function LedgerApp({ initial }: { initial: "waiting" | "loading" }) {
                 reason={reason}
                 onReason={setReason}
                 scanning={state.mode === "mainnet" && state.loading && !snapshot.scan.done}
+                since={since}
               />
             }
             rounds={<RoundsPanel journal={journal} onReload={journal.reload} briefs={briefMap(snapshot.decisions, snapshot.trails)} />}

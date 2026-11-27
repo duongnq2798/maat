@@ -1,10 +1,10 @@
 ---
 title: The treasury loop
-description: How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is still planned.
+description: How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is not built.
 type: concept
 audience: [newcomer, watcher, builder]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-27
 sources:
   - agent/src/policy.ts
   - agent/src/loop/runOnce.ts
@@ -18,11 +18,11 @@ sources:
 next: [guides/run-the-agent, concepts/credit-and-health-factor]
 ---
 
-Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is still only planned. It describes the agent's code and what the fork run covers. The four Maat contracts are deployed on Base mainnet, and the agent has sent transactions only on a fork.
+Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is not built. It describes the agent's code and what the fork run covers. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet. On mainnet the agent's first `Decision`, on 2026-11-27, was a buy the vault refused with `MARKET_CLOSED`, and its first swaps came later that day, when the vault allowed its buys of GOOGLc and AAPLc toward their target weights ([transaction](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503), [transaction](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69)). Its supply, borrow and bill steps have run only on a fork or in tests.
 
 ## Five steps
 
-The loop has five steps: earn, buy, supply, borrow and pay. The diagram shows the four that the agent is built to run. The first, earning, is planned and not built (see [Planned: earning](#planned-earning)).
+The loop has five steps: earn, buy, supply, borrow and pay. The diagram shows the four that the agent is built to run. The first, earning, is not built (see [Earning: not built](#earning-not-built)).
 
 <TreasuryLoop />
 
@@ -35,7 +35,7 @@ Each step is a rule in the agent's policy, `agent/src/policy.ts`, and an action 
 | Borrow | Keep a [runway](/docs/help/glossary#runway) of compute cost in USDC | `BORROW` | An open market, every supplied stock allowed and unpaused with a valid, fresh [feed](/docs/help/glossary#chainlink-equity-feed) answer and a stable [multiplier](/docs/help/glossary#uimultiplier), and a [health factor](/docs/help/glossary#health-factor) at or above the floor, or at or above the target inside the [de-risk window](/docs/help/glossary#de-risk-window) |
 | Pay | Pay the unpaid compute bill | `PAY_EXPENSE` | The payee allowlist and the caps |
 
-The policy only suggests. Claude can adopt, resize or drop a suggestion, the agent previews every intent, and the vault decides on each one ([How a decision is made](/docs/get-started/how-a-decision-is-made)). The agent starts in [dry-run](/docs/help/glossary#dry-run) mode, which is the default. In dry run it reads the chain, asks Claude and previews every intent, and it sends nothing. [Live mode](/docs/help/glossary#live-mode) needs a registered Builder Code and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), and the agent has used neither for real. The rest of this page describes what the agent is built to do when it does send.
+The policy only suggests. Claude can adopt, resize or drop a suggestion, the agent previews every intent, and the vault decides on each one ([How a decision is made](/docs/get-started/how-a-decision-is-made)). The agent starts in [dry-run](/docs/help/glossary#dry-run) mode, which is the default. In dry run it reads the chain, asks Claude and previews every intent, and it sends nothing. [Live mode](/docs/help/glossary#live-mode) needs a registered Builder Code and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). Maat's agent has run in live mode with both since 2026-11-27, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`, which moved no funds. The rest of this page describes what the agent is built to do when it sends.
 
 <Callout type="fork" title="What the fork run covers">
 
@@ -113,7 +113,7 @@ When USDC falls below the runway plus the unpaid bill, the policy suggests a bor
 
 The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock is not allowed, is paused, has no valid, fresh feed answer or has no stable multiplier, when a credit view cannot be read, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
 
-The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
+The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet: [earning](#earning-not-built) is not built.
 
 ## Paying its own bill
 
@@ -156,7 +156,7 @@ Once at least the bill minimum is owed, the agent puts a bill payment at the fro
 - **It goes to the expense payee, not to Anthropic.** The recipient is the address in the agent's `MAAT_EXPENSE_PAYEE` setting, and the deploy script reads an environment variable of the same name and puts that address on the vault's [payee](/docs/help/glossary#payee) list, with an optional second payee from `MAAT_EXPENSE_PAYEE_2`. The agent pays only the address in its own setting. The README describes the payee as the wallet that pays for the agent's Claude usage (for Agent #1, the owner's), and the runbook in [Deploy your own vault](/docs/guides/deploy-your-own-vault) sets it to the owner's own wallet. The `Decision` does not carry the payee: read the allowlist with `payees()`, and the recipient from the USDC `Transfer` in the same transaction.
 - **The vault limits it.** `PAY_EXPENSE` needs a payee on the allowlist and an amount within the balance and under the per-trade and daily caps, which it shares with trades. It works when the market is closed and it is refused while the vault is paused ([The nine checks](/docs/concepts/nine-checks#other-actions)).
 - **It is paid once.** The agent stores a send as pending before it leaves, and the next round settles it first, from the transaction's receipt once it is mined, or else from `usedIntent`. A lost receipt does not make the agent pay the same bill twice (`does not bill again after a PAY_EXPENSE receipt timed out`).
-- **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost, and says that no output from the real Claude API is committed yet. With no sends, the unpaid total only grows. Live mode refuses to start on a `MAAT_DATA_DIR` whose journal holds dry-run rows, so the vault never pays a dry run's bill: the live agent starts in its own folder, with no bill ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).
+- **Dry run does not pay.** The cost still accrues, because the agent still calls Claude. The README gives an estimate for that cost. The agent has called the real Claude API live only since 2026-11-27, and the README records no measured cost per round; the agent's journal booked about half a cent for its first live round. With no sends, the unpaid total only grows. Live mode refuses to start on a `MAAT_DATA_DIR` whose journal holds dry-run rows, so the vault never pays a dry run's bill: the live agent starts in its own folder, with no bill ([Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round)).
 - **A live bill is paid in one go.** The payment is the unpaid total, or the vault's whole USDC balance when that is smaller, in one `PAY_EXPENSE`; a payment of the whole balance leaves the rest owed. When that amount is above the per-trade cap, the vault refuses it with `SIZE_LIMIT` and the bill stays unpaid.
 
 ## Cadence
@@ -176,11 +176,11 @@ That is <Fact name="loopMinutes" /> in session and <Fact name="offSessionMinutes
 
 Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)). The transaction cap and the compute bill count UTC days. Claude's own spend has a daily cap too: once the day's Claude cost reaches <Fact name="maxLlmUsdPerDay" /> (`MAAT_MAX_LLM_USD_PER_DAY`), the rounds of that UTC day skip Claude and journal why.
 
-## Planned: earning
+## Earning: not built
 
-<Callout type="note" title="Planned">
+<Callout type="note" title="Not built">
 
-The first step of the loop is not built. The design has other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. Earning from x402 safety checks is planned and not built on `main`: no service on `main` takes a payment. [Pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds an x402 Guard Service. The [status page](/docs/get-started/status#planned-not-built) lists it with the other planned work.
+The first step of the loop is not built. The design had other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. That x402 Guard Service was dropped for this season: [pull request #2](https://github.com/duongnq2798/maat/pull/2), which added it, was closed unmerged on 2026-11-27, and no service on `main` takes a payment. The [status page](/docs/get-started/status#planned-not-built) says what is planned instead.
 
 </Callout>
 

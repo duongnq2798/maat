@@ -19,8 +19,10 @@ fast-forward of what it pushed, it stops and says so.
 
 The formats are those of the maat:v1 spec, `docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md`:
 §3.1 (the row hash), §3.2 (the allowlist), §3.4 (the branch) and §3.5 (the publisher's rules). The agent writes `prev`
-and `hash` only from the release that adds the journal chain; until the agent runs that release, each round of the
-publisher prints `has no chained row yet` and pushes nothing.
+and `hash` only from the release that adds the journal chain; an agent on an older release has no chained row, and each
+round of the publisher then prints `has no chained row yet` and pushes nothing. As of 2026-11-27 the live agent runs a
+chaining release (tag `agent-r2`), and the publisher's first push to `agent-journal` was commit `23e2df8`, at 01:23 UTC
+that day.
 
 ## What leaves the PC
 

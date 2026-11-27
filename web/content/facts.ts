@@ -1,3 +1,4 @@
+import type { SenderLabel } from "../lib/chain/ledger";
 import { REASONS } from "./reasons";
 
 /** A number shown on the site and where it comes from. test/facts.test.ts checks every one the repo can prove. */
@@ -57,6 +58,8 @@ export interface RecordedLog {
   blockTime: number;
   /** The tx's gasUsed, decimal. */
   gasUsed: string;
+  /** Who sent it, as /ledger labels it (lib/chain/ledger.ts senderLabel): the tx's sender against the vault's owner(). */
+  sender: SenderLabel;
 }
 
 const SPEC = "docs/superpowers/specs/2026-11-06-mandate-treasury-design.md";
@@ -176,6 +179,7 @@ export const FACTS = {
         data: "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
         blockTime: 1795530495,
         gasUsed: "113352",
+        sender: "owner, by hand",
       },
       {
         address: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
@@ -190,8 +194,24 @@ export const FACTS = {
         data: "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000000baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
         blockTime: 1795539542,
         gasUsed: "702443",
+        sender: "owner, by hand",
+      },
+      {
+        address: "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
+        blockNumber: "62776552",
+        logIndex: 35,
+        transactionHash: "0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6",
+        topics: [
+          "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322",
+          "0x22b5b771641eee43c5b450b8ec57bacdfeb2f0e3f4ffcb7070bfb1cce1b6b4ed",
+          "0x000000000000000000000000b2000000000000000000002d0ba3164cc74f58b7",
+        ],
+        data: "0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000476c1100000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006b855268417f4edb7b305281f7d7afb5bd7dc5506878a9e36476cf0ca78e0a6c1",
+        blockTime: 1795745686,
+        gasUsed: "120814",
+        sender: "agent",
       },
     ],
-    "the vault's Decision log in each tx's receipt (eth_getTransactionReceipt), its block's timestamp (eth_getBlockByNumber) and the tx's gasUsed, read with cast from base-rpc.publicnode.com on 2026-11-25; an eth_getLogs scan of the vault from its deploy block 61,698,517 through block 61,983,761 found these two Decision logs and no other. web/content/docs/get-started/status.mdx records both txs",
+    "the vault's Decision log in each tx's receipt (eth_getTransactionReceipt), its block's timestamp (eth_getBlockByNumber), the tx's gasUsed and its sender (eth_getTransactionByHash) against the vault's owner() 0x3c3a66f7...1D6a, read with cast from base-rpc.publicnode.com: the owner's two smoke-test Decisions on 2026-11-25, and on 2026-11-27 the first Decision of Maat's agent, sent by its executor 0x9bC6E49d...115A, whose maat:v1 blob names neither a probe nor a brief. An eth_getLogs scan of the vault from its deploy block 61,698,517 through block 62,875,303 found these three Decision logs and no other; /ledger and the landing read any later one from Base. web/content/docs/get-started/status.mdx records all three txs",
   ),
 } as const;

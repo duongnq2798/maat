@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   checkAbiFiles,
+  checkAgentNote,
   checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
@@ -24,6 +25,9 @@ import {
   shipsPublicly,
 } from "../lib/check-out";
 import { ASK_OPEN } from "../content/ask-open";
+import { FACTS } from "../content/facts";
+import agentNote from "../content/generated/agent-note.json";
+import { CARD_PAGES } from "../content/page-cards";
 import rationales from "../content/generated/rationales.json";
 import skill from "../content/generated/skill.json";
 import { reasonsFile } from "../content/reasons";
@@ -49,6 +53,12 @@ const REQUIRED = [
   "docs.html",
   "ledger.html",
   "proof.html",
+  "ask.html",
+  "og/ask.png",
+  "og/now.png",
+  "og/ledger.png",
+  "og/gap-index.png",
+  "og/proof.png",
   "api/search.json",
   "llms.txt",
   "llms-full.txt",
@@ -109,6 +119,15 @@ if (existsSync(join(OUT, "proof.html")) && existsSync(join(OUT, "sitemap.xml")))
       url: new URL("/proof", siteUrl()).href,
     }),
   );
+}
+
+// The pages with a link preview of their own, out/og/<page>.png (content/ask-card.ts, content/page-cards.ts): each page's
+// og:image and twitter:image name its card, a 1200x630 PNG, and not the landing's image.
+for (const page of ["/ask", ...CARD_PAGES]) {
+  const html = `${page.slice(1)}.html`;
+  if (existsSync(join(OUT, html))) {
+    problems.push(...checkOgImage(read(html), page, `out/${html}`, (path) => (isFile(join(OUT, path)) ? readFileSync(join(OUT, path)) : undefined)));
+  }
 }
 
 // Every docs page: out/docs.html plus out/docs/**/*.html, each with its .md copy for "Copy page as Markdown".
@@ -190,9 +209,12 @@ if (existsSync(join(OUT, "api/search.json"))) {
   problems.push(...checkSearchIndex(searchIndex.toString("utf8"), searchGzipped, page));
 }
 
+// Warnings: the landing ships either way.
+for (const w of checkAgentNote(agentNote.note, FACTS.mainnetDecisions.value)) console.warn(`! ${w}`);
+
 if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));
   process.exit(1);
 }
-console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
+console.log(`out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and ${docsFiles.length} docs ${docsFiles.length === 1 ? "page" : "pages"} checked)`);
 console.log(`search index: ${searchGzipped} bytes gzipped, budget ${SEARCH_INDEX_GZIP_BUDGET}`);

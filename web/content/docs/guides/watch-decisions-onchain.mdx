@@ -3,8 +3,8 @@ title: Watch decisions onchain
 description: Read a vault's Decision events with cast, decode them as the agent does with viem, match them to the agent's journal, and watch the owner's actions.
 type: guide
 audience: [watcher, developer]
-status: fork-tested
-lastReviewed: 2026-11-21
+status: live
+lastReviewed: 2026-11-27
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -31,11 +31,11 @@ Every [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/g
 
 <Callout type="fork" title="What has run">
 
-Maat's own vault is on Base mainnet, at the address in the `MandateVault` row of the table in `deployments/README.md`, and every `Decision` it emits is public in its events, which [step 1](#read-the-events-with-cast) reads. The commands below that need a vault's address take it from `VAULT`, which step 1 sets to the placeholder `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault, and these docs record no run of them, or of the `jq` line in [step 5](#match-a-decision-to-the-journal). The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
+Maat's own vault is on Base mainnet, at the address in the `MandateVault` row of the table in `deployments/README.md`, and every `Decision` it emits is public in its events, which [step 1](#read-the-events-with-cast) reads. The commands below that need a vault's address take it from `VAULT`, which step 1 sets to the placeholder `<VAULT_ADDRESS>`. The `cast logs` and `cast call` commands need an RPC and a vault. This page records no run of them, or of the `jq` line in [step 5](#match-a-decision-to-the-journal); [Verify Maat by hand](/docs/guides/verify-by-hand) records runs of `cast logs` and `cast call` against Maat's vault, with their output, the agent's first `Decision` among them. The decoding itself does run: the agent decodes the `Decision` of each receipt it sends with the function excerpted in [step 4](#decode-with-viem-the-way-the-agent-does), and the agent's [fork test](/docs/help/glossary#fork-test) checks the decoded `allowed` and `reason` of its sent [intents](/docs/help/glossary#intent) against a [Base](/docs/help/glossary#base) mainnet fork. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it. The fork run is not mainnet, and its journal is not committed.
 
 </Callout>
 
-The site's [mainnet ledger](/ledger) does this reading for you in the browser. It reads the vault that `deployments/README.md` records: its events from its deploy block, decoded with the vault's ABI, each exported rationale checked against its `rationaleHash`, and the balances, prices and health factor at the latest block. Below them it keeps the fork run, labeled as a fork. The steps below are for checking it yourself, or for building on the events.
+The site's [mainnet ledger](/ledger) does this reading for you in the browser. It reads the vault that `deployments/README.md` records: its events from its deploy block, decoded with the vault's ABI, each rationale checked against its `rationaleHash` (the [rationale blob](/docs/help/glossary#rationale-blob) in the transaction's input when it carries one, else the text the operator exported), and the balances, prices and health factor at the latest block. Below them it keeps the fork run, labeled as a fork. The steps below are for checking it yourself, or for building on the events.
 
 ## Before you start
 

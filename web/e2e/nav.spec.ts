@@ -4,15 +4,14 @@ import { ASK_OPEN } from "../content/ask-open";
 import { routeLiveRpc } from "./fake-live-rpc";
 import { collectErrors, lineCount } from "./helpers";
 
-// The landing's nav (components/sections/Nav.tsx) at the widths smoke.spec.ts checks, and at 390 px, a phone. The
-// owner's switch, content/ask-open.ts, adds Ask and Proof before Docs in the bar and in the phone menu; while it is
-// off, neither is there, and the pill reads "View on GitHub". With it on, the pill reads "GitHub", which with narrower
-// links leaves the docked reading its room (e2e/instrument-nav.spec.ts). Up to 720 px the bar's links give way to the
-// Menu.
+// The landing's nav (components/sections/Nav.tsx) at the widths smoke.spec.ts checks, and at 390 px, a phone. Pages
+// first (spec 2026-11-23 section 2, decision 3): the bar and the phone menu list the same pages, Now, Gap Index, Ledger
+// and Docs, and no section of the landing. The owner's switch, content/ask-open.ts, adds Ask and Proof after Ledger in
+// both; while it is off, neither is there. Up to 720 px the bar's links give way to the Menu.
 const ASK = ASK_OPEN ? ["Ask", "Proof"] : [];
-const BAR = ["How it works", "Refusals", "Try it", "Ledger", "Mandate", ...ASK, "Docs"];
-const MENU = ["Ledger", "Now", "Gap Index", ...ASK, "Docs"];
-const PILL = ASK_OPEN ? "GitHub ↗" : "View on GitHub ↗";
+const BAR = ["Now", "Gap Index", "Ledger", ...ASK, "Docs"];
+const MENU = BAR;
+const PILL = "View on GitHub ↗";
 
 for (const width of [360, 390, 768, 1024, 1440, 1920]) {
   test(`at ${width} px the nav ${ASK_OPEN ? "links" : "leaves out"} Ask and Proof, fits, tabs in order and passes axe`, async ({ page }) => {
@@ -69,5 +68,23 @@ for (const width of [360, 390, 768, 1024, 1440, 1920]) {
     const blocking = violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => `${v.id}: ${v.help}`);
     expect(blocking).toEqual([]);
     expect(errors).toEqual([]);
+  });
+}
+
+// /gap-index adds its unlit docked plate before the links. It shows only where the row still fits with it, so the
+// page's nav stays one row, as tall as /ledger's, which has no plate (judge rehearsal 2026-11-27 follow-up).
+for (const width of [768, 820, 900, 1440]) {
+  test(`at ${width} px the /gap-index nav keeps one row, as tall as the /ledger nav`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await routeLiveRpc(page, "weekend");
+    const height = async (path: string) => {
+      await page.goto(path);
+      await page.evaluate(() => document.fonts.ready);
+      return (await page.locator("[data-nav-bar]").boundingBox())!.height;
+    };
+    const ledger = await height("/ledger");
+    const gap = await height("/gap-index");
+    expect(gap).toBe(ledger);
+    await expect(page.locator("[data-nav-bar] [data-docked-plate]")).toBeVisible({ visible: width >= 900 });
   });
 }

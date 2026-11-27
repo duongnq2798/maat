@@ -1,13 +1,14 @@
 "use client";
 
 import { SourcePlate } from "@/components/instrument/SourcePlate";
-import { ReasonTag } from "@/components/ui/ReasonTag";
+import { ReasonTag, type ReasonTagTone } from "@/components/ui/ReasonTag";
+import { tickerGloss } from "@/content/b20-nav";
+import { billLine } from "@/content/bill";
 import { formatInt } from "@/content/format";
-import { REASON_LABEL } from "@/content/reasons";
-import { basescanTx } from "@/lib/live/basescan";
+import { basescanDecision } from "@/lib/live/basescan";
 import { formatAge, formatBlock } from "@/lib/live/format";
 import { useNowSec, useVault, type VaultView } from "./VaultDecisions";
-import { intentText, type VaultRow } from "./vault-rows";
+import { intentText, type PlateKind, plateOf, type VaultRow } from "./vault-rows";
 
 /** How many Decisions the card lists; /ledger lists them all. */
 const LISTED = 3;
@@ -29,9 +30,9 @@ function whenText(row: VaultRow): string {
 /** "0x6162…23c8". */
 const shortHash = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
 
-/** "Refused · Market closed", or "Allowed" for a Decision every check passed. */
-function verdictText(row: VaultRow): string {
-  return row.allowed ? "Allowed" : `Refused · ${REASON_LABEL[row.reason]}`;
+/** "Compute bill paid · $1.00 · to the owner's allowlisted address" for a paid bill; null for any other Decision. */
+function paidBill(row: VaultRow): string | null {
+  return plateOf(row) === "bill" && row.bill !== null ? billLine(row.bill) : null;
 }
 
 /**
@@ -52,60 +53,35 @@ export function VaultBarStatus() {
 }
 
 /**
- * The hero's first line: the vault's latest Decision on Base mainnet, linked to its transaction on Basescan. Live, it
- * gives the Decision's age; before the read lands, or when it fails, it names the recorded Decision and its time. From
- * sm it keeps to one line, so a long refusal never pushes the CTAs below the first screen: what does not fit ends in an
- * ellipsis (the bar gives the age from sm, the engine card the whole Decision), and the link's name keeps all of it.
+ * The engine card's verdict plate, by kind (culture plan Q5; test/vault-bill.test.ts holds each text to its contrast).
+ * Refused is the loud one, white on solid ink. Allowed is a quiet accent tint, and a paid bill a neutral plate, so
+ * neither outshouts a refusal and a bill never reads as a trade or as Allowed.
  */
-export function VaultPlate() {
-  const view = useVault();
-  const now = useNowSec();
-  const latest = view.decisions[0];
-  const chip = (
-    <span className="shrink-0 rounded-full bg-accent-tint px-2 py-[3px] font-mono text-[11px] font-semibold text-accent">BASE MAINNET</span>
-  );
-  const frame =
-    "inline-flex max-w-full flex-wrap items-center gap-x-2.5 gap-y-1 self-start rounded-[20px] border border-line bg-white py-[7px] pl-2 pr-3.5 text-[13px] text-ink-2 sm:flex-nowrap";
-  if (latest === undefined) {
-    return (
-      <span data-vault-plate={view.status} className={frame}>
-        {chip} The vault has made no Decision yet.
-      </span>
-    );
-  }
-  const age = ageOf(view, latest, now);
-  const label = view.status === "live" ? "Last Decision" : "Recorded Decision";
-  const when = age ?? whenText(latest);
-  return (
-    <a
-      data-vault-plate={view.status}
-      href={basescanTx(latest.txHash)}
-      title={`${label}: ${verdictText(latest)} · ${intentText(latest)} · ${when}`}
-      className={`${frame} hover:border-line-strong`}
-    >
-      {chip}{" "}
-      <span className="min-w-0 sm:truncate">
-        {label}: <span className="font-medium text-ink">{verdictText(latest)}</span> · {intentText(latest)} · {when}
-        <span aria-hidden="true"> ↗</span>
-      </span>
-    </a>
-  );
-}
+export const VERDICT_PLATE: Readonly<Record<PlateKind, { box: string; label: string; word: string; tag: ReasonTagTone }>> = {
+  refused: { box: "bg-ink text-white", label: "opacity-80", word: "text-white", tag: "verdict" },
+  allowed: { box: "border border-accent-soft bg-accent-tint text-ink", label: "text-label", word: "text-accent", tag: "neutral" },
+  bill: { box: "border border-line bg-surface-soft text-ink", label: "text-label", word: "text-ink", tag: "neutral" },
+};
+
+/** The plate's word: the vault's verdict, or "Paid" for a bill it paid. */
+const WORD: Readonly<Record<PlateKind, string>> = { refused: "Refused", allowed: "Allowed", bill: "Paid" };
 
 function Verdict({ row }: { row: VaultRow }) {
+  const kind = plateOf(row);
+  const p = VERDICT_PLATE[kind];
   return (
     <div
-      data-verdict={row.allowed ? "allowed" : "refused"}
+      data-verdict={kind}
       data-reason={row.reason}
-      className={`flex flex-wrap items-center justify-between gap-3 rounded-[14px] px-[18px] py-4 text-white ${row.allowed ? "bg-accent" : "bg-ink"}`}
+      className={`flex flex-wrap items-center justify-between gap-3 rounded-[14px] px-[18px] py-4 ${p.box}`}
     >
       <div className="flex flex-col gap-0.5">
-        <span className="font-mono text-[11px] opacity-80">VAULT DECISION</span>
-        <span className="text-[26px] font-semibold tracking-[-0.03em]">{row.allowed ? "Allowed" : "Refused"}</span>
+        <span className={`font-mono text-[11px] ${p.label}`}>VAULT DECISION</span>
+        <span className={`text-[26px] font-semibold tracking-[-0.03em] ${p.word}`}>{WORD[kind]}</span>
       </div>
       <div className="ml-auto flex flex-col gap-1.5 text-right">
-        <ReasonTag code={row.reason} tone="verdict" layout="stacked" />
-        {row.gasUsed === null ? null : <span className="font-mono text-[11px] opacity-80">gas {formatInt(Number(row.gasUsed))}</span>}
+        <ReasonTag code={row.reason} tone={p.tag} layout="stacked" />
+        {row.gasUsed === null ? null : <span className={`font-mono text-[11px] ${p.label}`}>gas {formatInt(Number(row.gasUsed))}</span>}
       </div>
     </div>
   );
@@ -144,6 +120,8 @@ export function VaultCard() {
   const now = useNowSec();
   const [latest] = view.decisions;
   const age = latest === undefined ? null : ageOf(view, latest, now);
+  const latestBill = latest === undefined ? null : paidBill(latest);
+  const latestGloss = latest === undefined || latest.bill !== null ? null : tickerGloss(latest.symbol);
   return (
     <div
       data-vault-card={view.status}
@@ -154,7 +132,7 @@ export function VaultCard() {
           <span className="font-mono text-xs font-semibold">MANDATEVAULT · BASE MAINNET</span>
           <Plate view={view} />
         </div>
-        <a href="/ledger" className="text-[13px] font-medium">
+        <a href="/ledger" className="tap text-[13px] font-medium">
           Open the ledger
           <span aria-hidden="true"> →</span>
         </a>
@@ -166,10 +144,28 @@ export function VaultCard() {
         <>
           <div className="flex min-w-0 flex-col gap-1 px-5 pt-5">
             <span className="font-mono text-[11px] text-ink-2">{view.status === "live" ? "LATEST DECISION" : "LATEST RECORDED DECISION"}</span>
-            <span className="text-[30px] font-semibold tracking-[-0.035em]">{intentText(latest)}</span>
+            {/* Below the plate's 26 px word, so the verdict is the card's largest text; a bill's line smaller still, never a trade's. */}
+            {latestBill === null ? (
+              <>
+                <span data-latest-line="" className="text-[24px] font-semibold tracking-[-0.03em]">
+                  {intentText(latest)}
+                </span>
+                {/* The first ticker on the page, named (spec 2026-11-27 section 4). */}
+                {latestGloss === null ? null : (
+                  <span data-ticker-gloss="" className="text-[13px] text-ink-2">
+                    {latestGloss}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span data-latest-line="" className="text-[19px] font-semibold leading-[1.3] tracking-[-0.02em]">
+                {latestBill}
+              </span>
+            )}
             <span data-latest-when="" className="font-mono text-xs text-ink-2">
               {latest.timestamp === null ? blockText(latest) : `${whenText(latest)} · ${blockText(latest)}`}
               {age === null ? null : ` · ${age}`}
+              {latest.sender === null ? null : ` · ${latest.sender}`}
             </span>
           </div>
           <div className="mx-3 mt-4">
@@ -179,16 +175,19 @@ export function VaultCard() {
             {view.decisions.slice(0, LISTED).map((r) => (
               <li
                 key={r.key}
-                data-decision={r.allowed ? "allowed" : "refused"}
+                data-decision={plateOf(r)}
                 className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-[10px] px-2.5 py-2"
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
-                  <span className="text-sm font-medium">{intentText(r)}</span>
-                  <span className="font-mono text-xs text-ink-2">{whenText(r)}</span>
+                  <span className="text-sm font-medium">{paidBill(r) ?? intentText(r)}</span>
+                  <span className="font-mono text-xs text-ink-2">
+                    {whenText(r)}
+                    {r.sender === null ? null : <span data-sender="">{` · ${r.sender}`}</span>}
+                  </span>
                 </span>
                 <span className="flex flex-col items-end gap-1 text-right">
                   <ReasonTag code={r.reason} tone="neutral" layout="inline" className="justify-end text-[13px]" />
-                  <a href={basescanTx(r.txHash)} aria-label={`${shortHash(r.txHash)} on Basescan`} className="font-mono text-[11px] font-medium">
+                  <a href={basescanDecision(r.txHash)} aria-label={`${shortHash(r.txHash)} on Basescan`} className="tap font-mono text-[11px] font-medium">
                     {shortHash(r.txHash)}
                     <span aria-hidden="true"> ↗</span>
                   </a>

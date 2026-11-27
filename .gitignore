@@ -19,3 +19,6 @@ web/test-results/
 web/playwright-report/
 web/.source/
 web/.cache/
+film/out/
+film/input/*
+!film/input/README.md

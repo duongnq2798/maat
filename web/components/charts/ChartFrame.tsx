@@ -40,7 +40,7 @@ export function ChartFrame({
           <div className="mt-4">{children}</div>
           {table ? (
             <details className="mt-4 text-xs">
-              <summary className="cursor-pointer text-ink-2 hover:text-ink">Show as table</summary>
+              <summary className="tap cursor-pointer text-ink-2 hover:text-ink">Show as table</summary>
               <table className="mt-2 w-full border-collapse font-mono tabular-nums">
                 <thead>
                   <tr className="border-b border-line text-left text-ink-2">

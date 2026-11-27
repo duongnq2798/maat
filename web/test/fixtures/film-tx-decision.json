@@ -1,0 +1,27 @@
+{
+  "note": "eth_getTransactionReceipt and eth_getBlockByNumber (without transactions) for a Base mainnet Decision tx, read from https://mainnet.base.org on 2026-11-26 and trimmed to the fields film/lib/tx.mjs reads. A receipt holds no calldata.",
+  "receipt": {
+    "transactionHash": "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
+    "blockNumber": "0x3ad79f9",
+    "status": "0x1",
+    "from": "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a",
+    "to": "0x3f956072d18ddd20d5efb74e9ccabf8deade699b",
+    "gasUsed": "0x1bac8",
+    "logs": [
+      {
+        "address": "0x3f956072d18ddd20d5efb74e9ccabf8deade699b",
+        "topics": [
+          "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322",
+          "0xdc06ec8e29767044d325cc10445a942d26a463a4ed08487b013c5fed2a59243c",
+          "0x000000000000000000000000b20000000000000000000078ee7ce2fe4908108c"
+        ],
+        "data": "0x000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000004c4b40000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000060baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6",
+        "logIndex": "0x18"
+      }
+    ]
+  },
+  "block": {
+    "number": "0x3ad79f9",
+    "timestamp": "0x6b059eff"
+  }
+}

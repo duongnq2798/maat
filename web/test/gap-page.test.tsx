@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { act } from "react";
 import { createRoot, hydrateRoot, type Root } from "react-dom/client";
@@ -16,6 +14,7 @@ import { formatInt } from "@/content/format";
 import { etDateTime, formatHours, gapBps, gapSide, PUBLISHED, signedBps, TAB_ORDER } from "@/content/gap-index";
 import edition0 from "@/content/gap-index/edition-0.json";
 import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
+import { pageOgImage } from "@/content/page-cards";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "@/lib/gap/decode";
 import { LOOKBACK_SEC } from "@/lib/gap/measure";
 import { GAP_RPC, GAP_RPC_FIRST_BLOCK, GAP_RPC_FIRST_BLOCK_TS, SPAN } from "@/lib/gap/rpc";
@@ -36,10 +35,11 @@ const TWAP_SENTENCE = `the pool's spot price after a swap, not the ${FACTS.manda
 const neverSafe = (text: string) => expect(text).not.toMatch(/safe/i);
 
 describe("the published editions", () => {
-  it("holds every committed edition file, parsed with the schema, latest first", () => {
+  it("holds every committed edition file, parsed with the schema, latest first, one per edition", () => {
     expect(PUBLISHED.length).toBeGreaterThanOrEqual(1);
     const numbers = PUBLISHED.map((e) => e.edition);
     expect(numbers).toEqual([...numbers].sort((a, b) => b - a));
+    expect(new Set(numbers).size).toBe(numbers.length);
     expect(PUBLISHED.find((e) => e.edition === 0)).toEqual(EditionFileSchema.parse(edition0));
   });
 
@@ -105,30 +105,26 @@ describe("the /gap-index page", () => {
     });
   });
 
-  it("opens with a skip link and the same small header as /now", () => {
+  it("opens with a skip link and the same site nav as /now, with its phone Menu", () => {
     const c = setup();
     expect(c.querySelector('a[href="#main"]')).toHaveClass("skip-link");
     expect(c.querySelector("main#main")).not.toBeNull();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Maat home" })).toHaveAttribute("href", "/");
-    expect(within(nav).getByRole("link", { name: "Docs" })).toHaveAttribute("href", SITE.docsUrl);
+    expect(nav.querySelector("[data-phone-menu] > summary")).toHaveTextContent("Menu");
+    expect(within(within(nav).getByRole("list", { name: "Pages" })).getByRole("link", { name: "Ledger" })).toHaveAttribute("href", "/ledger");
+    expect(within(nav).getAllByRole("link", { name: "Docs" })[0]).toHaveAttribute("href", SITE.docsUrl);
     expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
   });
 
-  it("names itself in its metadata: title, description, canonical /gap-index and the landing's link preview image", () => {
+  it("names itself in its metadata: title, description, canonical /gap-index and its own link preview image", () => {
     expect(metadata.title).toBe("Weekend Gap Index · Maat");
     const description = String(metadata.description);
     expect(description.length).toBeGreaterThanOrEqual(50);
     expect(description.length).toBeLessThanOrEqual(160);
     neverSafe(description);
     expect(metadata.alternates?.canonical).toBe("/gap-index");
-    const image = {
-      url: "/opengraph-image.png",
-      type: "image/png",
-      width: 1200,
-      height: 630,
-      alt: readFileSync(join(process.cwd(), "app/opengraph-image.alt.txt"), "utf8"),
-    };
+    const image = pageOgImage("/gap-index");
     const og = metadata.openGraph as { url?: string; title?: string; description?: string; images?: unknown };
     expect(og.url).toBe("/gap-index");
     expect(og.title).toBe("Weekend Gap Index · Maat");
@@ -186,7 +182,8 @@ describe("the /gap-index page", () => {
     expect(document.body.textContent).not.toMatch(/npm run gap-index/);
   });
 
-  it("puts every token's figures of every complete window in its table row and in its chart", () => {
+  // Its own timeout, as the static HTML test has: it walks every window, and each edition adds windows.
+  it("puts every token's figures of every complete window in its table row and in its chart", { timeout: 60_000 }, () => {
     setup();
     for (const w of complete) {
       const s = section(w.id);
@@ -217,7 +214,7 @@ describe("the /gap-index page", () => {
         );
         expect(cell("swapsWhileFrozen").textContent, name).toBe(formatInt(f.swapsWhileFrozen));
         expect(cell("returnMove").textContent, name).toBe(signedBps(f.returnMoveBps));
-        expect(chart).toHaveTextContent(`${formatHours(f.hours)} frozen`);
+        expect(chart).toHaveTextContent(`${formatHours(f.hours)} held without an update`);
         expect(chart).toHaveTextContent(`feed came back ${signedBps(f.returnMoveBps)}`);
         if (t.largestGap) {
           // The gap's two prices, as the edition holds them with all 8 decimals, in the chart's header and under the table's bps.
@@ -255,7 +252,7 @@ describe("the /gap-index page", () => {
     const chart = section("2026-11-13").querySelector<HTMLElement>('[data-gap-chart="NVDAc"]')!;
     expect(chart.querySelector("[data-gap-value]")!.textContent).toBe("+356 bps");
     expect(chart.querySelector("[data-gap-value]")).toHaveClass("text-accent");
-    for (const text of ["pool above the held answer", "49.40 h frozen", "17,478 swaps meanwhile", "feed came back +254 bps"]) {
+    for (const text of ["pool above the held answer", "49.40 h held without an update", "17,478 swaps meanwhile", "feed came back +254 bps"]) {
       expect(chart).toHaveTextContent(text);
     }
     const below = section("2026-11-13").querySelector<HTMLElement>('[data-gap-chart="CRCLc"]')!;
@@ -347,7 +344,7 @@ describe("the /gap-index page", () => {
       expect(s.querySelectorAll("[data-gap-chart]")).toHaveLength(NAV_TOKENS.length);
       expect(s.querySelectorAll("[hidden]")).toHaveLength(0);
       const nvda = w.tokens.find((t) => t.symbol === "NVDAc")!;
-      expect(s.textContent).toContain(`${formatHours(nvda.freeze!.hours)} frozen`);
+      expect(s.textContent).toContain(`${formatHours(nvda.freeze!.hours)} held without an update`);
     }
     neverSafe(html);
     neverSafe(setup().textContent ?? "");
@@ -382,7 +379,7 @@ describe("GapChart", () => {
       w.openLabel,
       "+356 bps",
       "pool above the held answer",
-      "49.40 h frozen",
+      "49.40 h held without an update",
       "17,478 swaps meanwhile",
       "feed came back +254 bps",
       `pool ${row.largestGap!.pool} vs held ${row.largestGap!.held}`,
@@ -431,11 +428,12 @@ describe("GapChart", () => {
   });
 
   it("says feed not live in this window, and the swaps in window, for a token without a live feed", () => {
-    const w = complete[0]!;
+    // ANTc's feed was not live in edition 0's first window: named by id, so a later edition published first changes nothing.
+    const w = complete.find((x) => x.id === "2026-11-06")!;
     const c = draw(w, "ANTc");
     expect(c).toHaveTextContent("feed not live in this window");
     expect(c).toHaveTextContent("0 swaps in window");
-    expect(c).not.toHaveTextContent(/bps|frozen|meanwhile/);
+    expect(c).not.toHaveTextContent(/bps|held without|meanwhile/);
   });
 
   // The y of every vertex a path draws: M and L carry x then y, H an x, V a y.
@@ -520,7 +518,7 @@ describe("GapChart", () => {
     const header = c.querySelector("[data-gap-chart]")!.firstElementChild!;
     expect(header.textContent!.match(/no swap meanwhile/g)).toHaveLength(1);
     expect(header.textContent).not.toMatch(/\d swaps? meanwhile/);
-    expect(header).toHaveTextContent(`${formatHours(row.freeze!.hours)} frozen`);
+    expect(header).toHaveTextContent(`${formatHours(row.freeze!.hours)} held without an update`);
     const label = c.querySelector("svg[role=img]")!.getAttribute("aria-label")!;
     expect(label.match(/no swap meanwhile/gi)).toHaveLength(1);
     expect(label).not.toMatch(/\d swaps? meanwhile/);

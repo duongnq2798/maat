@@ -1,6 +1,6 @@
 import type { Hash } from "viem";
 import { formatInt } from "@/content/format";
-import { basescanTx } from "@/lib/chain/basescan";
+import { basescanDecision, basescanTx } from "@/lib/chain/basescan";
 import { etLabel, formatUsd6, JOURNAL_BRANCH_URL, JOURNAL_RAW_URL, type BriefEntry, type JournalRow } from "@/lib/chain/ledger";
 import { COMMIT_RE } from "@/lib/chain/rationale";
 import { CommitRef } from "./AgentTrail";
@@ -11,6 +11,12 @@ import type { JournalView } from "./useJournal";
 export const ROUNDS_SHOWN = 30;
 
 const TX_RE = /^0x[0-9a-fA-F]{64}$/;
+/**
+ * The row kinds whose txHash is the agent's execute call to the vault, so the tx holds a Decision: Basescan opens it on
+ * the Logs tab, where the Decision log shows a refusal that the tx's own "Success" hides. A housekeeping or brief row's
+ * tx is another call, opened on the plain tx page.
+ */
+const DECISION_KINDS: ReadonlySet<unknown> = new Set(["intent", "sent", "reconcile"]);
 const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-4)}`;
 
 /** A field of a published row as plain text; the publisher wrote it, so nothing in it is followed as a link. */
@@ -95,7 +101,7 @@ function Row({ row }: { row: JournalRow }) {
       <span className="flex flex-row flex-wrap gap-x-3 font-mono text-[11px] text-ink-2 md:flex-col md:items-end md:text-right">
         <span title={`hash ${row.hash}`}>{shortHash(row.hash)}</span>
         {tx ? (
-          <a href={basescanTx(tx)} aria-label={`Transaction ${tx.slice(0, 10)}… on Basescan`}>
+          <a href={DECISION_KINDS.has(f.kind) ? basescanDecision(tx) : basescanTx(tx)} aria-label={`Transaction ${tx.slice(0, 10)}… on Basescan`} className="tap">
             Basescan<span aria-hidden="true"> ↗</span>
           </a>
         ) : null}

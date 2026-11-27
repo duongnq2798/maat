@@ -41,13 +41,14 @@ function tableRows(text: string): string[][] {
 const unquote = (cell: string) => cell.replace(/^`|`$/g, "");
 
 describe("skills/maat-market-guard", () => {
+  // The selftest is a child node process; on a loaded machine its start alone can pass vitest's 5 s default.
   it("passes its offline selftest, which serves recorded answers and fails on any network call", () => {
     const out = execFileSync(process.execPath, [`${DIR}/scripts/selftest.mjs`], { cwd: REPO_ROOT, encoding: "utf8" });
     const m = /^selftest: (\d+)\/(\d+) passed \(offline, fixtures recorded \S+ from mainnet\.base\.org\)$/m.exec(out);
     expect(m, out).not.toBeNull();
     expect(m![1]).toBe(m![2]);
     expect(Number(m![2])).toBeGreaterThan(0);
-  });
+  }, 30_000);
 
   it("has a catalog.json in BankrBot's schemaVersion 1 form, its slug the folder's name", () => {
     const catalog = JSON.parse(readRepo(`${DIR}/catalog.json`)) as Record<string, unknown>;

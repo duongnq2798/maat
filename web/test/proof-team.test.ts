@@ -380,6 +380,33 @@ describe("the sends the trace finds from the vault's logs and the inbox's briefs
     await expect(trace(chain)).rejects.toThrow("upstream request timed out");
   });
 
+  it("gives the vault's Decisions it read, with each one's sender, recipient, calldata and verdict, and the vault's owner()", async () => {
+    const refused: FakeTx = { hash: txHash(27), from: EXECUTOR, nonce: 3, to: VAULT, block: 62_000_140n, input: "0x4AD3993F", logs: [decisionLog(VAULT, 9, USDC, { allowed: false, reason: 6 })] };
+    const t = await trace(withTxs(...HANDOVER, MULTI_CALL, OUTSIDE_CALL, refused));
+    expect([t.vault, t.owner]).toEqual([lower(VAULT), lower(OWNER)]);
+    // Only Decision logs: setExecutor, the multiplier change and the outsider's RevenueReceived are not Decisions.
+    expect(t.decisions).toEqual([
+      ...[0, 1, 2].map((i) => ({ txHash: txHash(21 + i), block: 62_000_100n + BigInt(i), logIndex: 0, from: lower(EXECUTOR), to: lower(VAULT), input: "0x", allowed: true, reason: 0 })),
+      { txHash: txHash(27), block: 62_000_140n, logIndex: 0, from: lower(EXECUTOR), to: lower(VAULT), input: "0x4ad3993f", allowed: false, reason: 6 },
+    ]);
+  });
+
+  it("reads no Decision, and gives no vault, when the table gives no deploy transaction for the vault", async () => {
+    const t = await trace(withTxs(...HANDOVER), { ...INPUTS, deployments: INPUTS.deployments.map((r) => (r.contract === "MandateVault" ? { ...r, tx: "" } : r)) });
+    expect([t.vault, t.owner, t.decisions]).toEqual([null, null, []]);
+  });
+
+  it("stops rather than label a Decision whose transaction the RPC gives no calldata for", async () => {
+    const rpc = proofChainRpc(withTxs(...HANDOVER));
+    const noInput = async (method: string, params: unknown[]) => {
+      const out = await rpc(method, params);
+      if (method !== "eth_getTransactionByHash" || out === null) return out;
+      const { input: _input, ...rest } = out as { input: string };
+      return rest;
+    };
+    await expect(traceTeam(noInput, INPUTS, HEAD)).rejects.toThrow(`the RPC gives no calldata for ${txHash(21)}, which left a Decision log`);
+  });
+
   it("gives --sends the sends the logs cover, in nonce order, from the same reads", async () => {
     const chain = withTxs(...HANDOVER, MULTI_CALL, plainSend(8), OUTSIDE_CALL);
     const covered = await team.loggedSends(proofChainRpc(chain), INPUTS, OWNER, HEAD);
@@ -402,6 +429,7 @@ describe("what the trace hard-codes, since the script has no keccak", () => {
     expect(team.TRANSFER_TOPIC).toBe(keccak256(toBytes("Transfer(address,address,uint256)")));
     expect(team.APPROVAL_TOPIC).toBe(keccak256(toBytes("Approval(address,address,uint256)")));
     expect(team.APPROVAL_FOR_ALL_TOPIC).toBe(keccak256(toBytes("ApprovalForAll(address,address,bool)")));
+    expect(team.DECISION_TOPIC).toBe(keccak256(toBytes("Decision(bytes32,uint8,address,uint256,bool,uint8,bytes32)")));
   });
 
   it("reads every event of MandateVault's ABI but RevenueReceived, which anyone can make the vault emit", () => {
@@ -412,11 +440,17 @@ describe("what the trace hard-codes, since the script has no keccak", () => {
 });
 
 describe("the committed team lists", () => {
-  it("lists the owner's sent transactions, the first four being the deploys in deployments/README.md", () => {
+  it("lists the owner's sent transactions in nonce order, with every deploy in deployments/README.md among them", () => {
     const owner = PROOF_SENDS.find((s) => lower(s.wallet) === lower(OWNER));
-    expect(owner?.txs).toHaveLength(9);
-    const deploys = docsData.deployments.filter((r) => r.network === "Base mainnet" && r.tx !== "").map((r) => lower(r.tx));
-    expect(owner?.txs.slice(0, 4).map(lower)).toEqual(deploys.slice(0, 4));
+    // Nonces 0 to 8, then nonce 10; nonce 9, the setExecutor, left an ExecutorSet log of the vault.
+    expect(owner?.txs).toHaveLength(10);
+    const txs = (owner?.txs ?? []).map(lower);
+    const rows = docsData.deployments.filter((r) => r.network === "Base mainnet" && r.tx !== "");
+    const deploys = rows.map((r) => lower(r.tx));
+    // The owner deployed every row, in table order: Deploy.s.sol's four contracts at nonces 0 to 3, MaatInbox at nonce 10.
+    expect(txs.filter((t) => deploys.includes(t))).toEqual(deploys);
+    expect(txs.slice(0, 4)).toEqual(deploys.slice(0, 4));
+    expect(txs.at(-1)).toBe(lower(rows.find((r) => r.contract === "MaatInbox")?.tx ?? ""));
     expect(new Set(PROOF_SENDS.map((s) => lower(s.wallet))).size).toBe(PROOF_SENDS.length);
   });
 

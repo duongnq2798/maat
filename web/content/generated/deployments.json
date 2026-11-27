@@ -26,5 +26,12 @@
     "address": "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
     "tx": "0xf5a532fe5d8b2ddf7fce312f524537e614f4988b425972dd1098f3d56631c9c1",
     "date": "2026-11-24"
+  },
+  {
+    "network": "Base mainnet",
+    "contract": "MaatInbox",
+    "address": "0x6a3D27f2d8a5BC991Bf4511aAA698A5B2DCDf12a",
+    "tx": "0x61b7f0b44ae01a6fbb34e0e7c35d53c2ffd1228fbc3f0b3dd020741826850db4",
+    "date": "2026-11-27"
   }
 ]

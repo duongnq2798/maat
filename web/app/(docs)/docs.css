@@ -1,4 +1,4 @@
-/* Docs stylesheet. Loaded by app/(docs)/layout.tsx and the 404; the landing page keeps app/globals.css. */
+/* Docs stylesheet. Loaded by app/(docs)/layout.tsx; the landing page and the 404 keep app/globals.css. */
 @import "tailwindcss" source(none);
 @import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
@@ -7,8 +7,6 @@
 @source "./";
 @source "../../components/docs";
 @source "../../content/docs";
-/* The 404 page (app/global-not-found.tsx) uses this stylesheet too. */
-@source "../global-not-found.tsx";
 
 /* Signal tokens (app/globals.css) mapped onto the Fumadocs color slots. Light is the default. */
 @theme {
@@ -71,6 +69,16 @@
   --color-fd-muted: #151821;
   --color-fd-secondary: #1a1e28;
   --color-fd-muted-foreground: #a0a6b4;
+}
+
+/* On a phone each icon button is a 44 px target (judge rehearsal 2026-11-27, m4): search and the sidebar toggle in the
+   header, and the GitHub link, the theme toggle and the close button in the sidebar. The header is 56 px tall. */
+@media (width < 48rem) {
+  #nd-subnav > button,
+  #nd-sidebar-mobile :is(a, button)[aria-label] {
+    min-width: 44px;
+    min-height: 44px;
+  }
 }
 
 /* An owner may print a runbook (the deploy checklist, the emergency playbook) before signing: print the article only,

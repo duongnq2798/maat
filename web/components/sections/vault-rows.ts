@@ -1,10 +1,11 @@
 import { isoOfDay, localTime } from "@/content/calendar";
+import type { Bill } from "@/content/bill";
 import { ACTIONS, type ActionName } from "@/content/decisions";
 import { FACTS, type RecordedLog } from "@/content/facts";
 import { clockLabel, dayLabel } from "@/content/format";
 import addresses from "@/content/generated/base-addresses.json";
 import { REASONS, type ReasonCode } from "@/content/reasons";
-import type { MainnetDecision } from "@/lib/chain/ledger";
+import type { MainnetDecision, SenderLabel } from "@/lib/chain/ledger";
 
 /**
  * One Decision of the mainnet vault as the landing shows it. Plain values only: the landing ships no ABI decoder in its
@@ -28,10 +29,31 @@ export interface VaultRow {
   reason: ReasonCode;
   /** Decimal, or null when the receipt was not read. */
   gasUsed: string | null;
+  /** For a PAY_EXPENSE, what is known of the bill (content/bill.ts); null for every other action. */
+  bill: Bill | null;
+  /** The bytes32 the Decision committed to. */
+  rationaleHash: `0x${string}`;
+  /** Who sent it, as /ledger labels it ("agent", "owner, by hand"...), or null while that is not known. */
+  sender: SenderLabel | null;
 }
 
-/** A live Decision from the ledger's loader (lib/chain/ledger.ts) as a row. */
-export function toVaultRow(d: MainnetDecision): VaultRow {
+/** What the live read knows of a PAY_EXPENSE beyond its log: whether its blob is a bill's, its payee, the vault's owner. */
+export interface BillContext {
+  compute?: boolean;
+  payee?: string | null;
+  owner?: string | null;
+}
+
+function billOf(action: ActionName, amountLabel: string, allowed: boolean, ctx: BillContext): Bill | null {
+  if (action !== "PAY_EXPENSE") return null;
+  return { name: ctx.compute ? "Compute bill" : "Expense", amount: amountLabel, allowed, payee: ctx.payee ?? null, owner: ctx.owner ?? null };
+}
+
+/**
+ * A live Decision from the ledger's loader (lib/chain/ledger.ts) as a row; vault-live.ts gives a bill its context and
+ * the row its sender label.
+ */
+export function toVaultRow(d: MainnetDecision, bill: BillContext = {}, sender: SenderLabel | null = null): VaultRow {
   return {
     key: d.key,
     txHash: d.txHash,
@@ -44,12 +66,23 @@ export function toVaultRow(d: MainnetDecision): VaultRow {
     allowed: d.allowed,
     reason: d.reason,
     gasUsed: d.gasUsed === null ? null : d.gasUsed.toString(),
+    bill: billOf(d.action, d.amountLabel, d.allowed, bill),
+    rationaleHash: d.rationaleHash,
+    sender,
   };
 }
 
-/** "BUY NVDAc · $5.00". */
+/** "BUY NVDAc · $5.00"; a bill by its name, "Compute bill · $1.00", never as a trade. */
 export function intentText(r: VaultRow): string {
-  return `${r.action} ${r.symbol} · ${r.amountLabel}`;
+  return r.bill ? `${r.bill.name} · ${r.amountLabel}` : `${r.action} ${r.symbol} · ${r.amountLabel}`;
+}
+
+/** The plate a Decision sits on: a paid bill on the neutral one, never Allowed; a refused bill is a refusal. */
+export type PlateKind = "allowed" | "refused" | "bill";
+
+export function plateOf(r: VaultRow): PlateKind {
+  if (!r.allowed) return "refused";
+  return r.bill ? "bill" : "allowed";
 }
 
 // The rules of lib/chain/ledger.ts and lib/chain/tokens.ts, which test/vault-decisions.test.tsx holds this decoder to.
@@ -79,6 +112,8 @@ function recordedRow(l: RecordedLog): VaultRow {
   const token = `0x${(l.topics[2] ?? "").slice(26)}`.toLowerCase();
   const symbol = USDC_AMOUNT.has(action) && action !== "BUY" ? "USDC" : (SYMBOLS.get(token) ?? `${token.slice(0, 6)}…${token.slice(-4)}`);
   const t = localTime(l.blockTime);
+  const amountLabel = USDC_AMOUNT.has(action) ? usd6(amount) : `${amount} raw ${symbol}`;
+  const allowed = word(l.data, 2) === 1n;
   return {
     key: `${l.transactionHash}:${l.logIndex}`,
     txHash: l.transactionHash,
@@ -87,10 +122,14 @@ function recordedRow(l: RecordedLog): VaultRow {
     timeLabel: `${dayLabel(isoOfDay(t.etDay))} ${clockLabel(t.minuteOfDay)}`,
     action,
     symbol,
-    amountLabel: USDC_AMOUNT.has(action) ? usd6(amount) : `${amount} raw ${symbol}`,
-    allowed: word(l.data, 2) === 1n,
+    amountLabel,
+    allowed,
     reason,
     gasUsed: l.gasUsed,
+    // A recorded log carries neither the calldata nor the owner: a recorded payment is an expense, payee not read.
+    bill: billOf(action, amountLabel, allowed, {}),
+    rationaleHash: `0x${l.data.slice(2 + 4 * 64, 2 + 5 * 64)}`,
+    sender: l.sender,
   };
 }
 
@@ -99,3 +138,8 @@ export const RECORDED_ROWS: readonly VaultRow[] = [...FACTS.mainnetDecisions.val
   .sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : Number(BigInt(a.blockNumber) - BigInt(b.blockNumber))))
   .map(recordedRow)
   .reverse();
+
+/** The sender a recorded Decision gives `txHash`, or null when this build records no Decision of that transaction. */
+export function recordedSender(txHash: string): SenderLabel | null {
+  return RECORDED_ROWS.find((r) => r.txHash.toLowerCase() === txHash.toLowerCase())?.sender ?? null;
+}

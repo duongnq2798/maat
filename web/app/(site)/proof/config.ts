@@ -19,6 +19,29 @@ export function proofConfig(rows: readonly Deployment[]): ProofConfig {
   };
 }
 
+/** Two addresses or hashes, either possibly null, name the same thing: hex compares without regard to case. */
+export const sameHex = (a: string | null, b: string | null) => a === b || (a !== null && b !== null && a.toLowerCase() === b.toLowerCase());
+
+/**
+ * Whether two tables give /proof the same inputs: the same inbox and deploy tx, and the same Base mainnet rows (the
+ * team trace's deployers and vault) in the same order. The page keeps its running read when the runtime table is the
+ * build's, and reads again only when they differ.
+ */
+export function sameProofConfig(a: Pick<ProofConfig, "inbox" | "deployments">, b: Pick<ProofConfig, "inbox" | "deployments">): boolean {
+  if (a.inbox === null || b.inbox === null) {
+    if (a.inbox !== b.inbox) return false;
+  } else if (!sameHex(a.inbox.inbox, b.inbox.inbox) || !sameHex(a.inbox.deployTx, b.inbox.deployTx)) {
+    return false;
+  }
+  return (
+    a.deployments.length === b.deployments.length &&
+    a.deployments.every((r, i) => {
+      const o = b.deployments[i]!;
+      return r.contract === o.contract && sameHex(r.address, o.address) && sameHex(r.tx, o.tx);
+    })
+  );
+}
+
 const deploymentsSchema = z.object({
   contracts: z.array(z.object({ network: z.string(), contract: z.string(), address: z.string(), tx: z.string(), date: z.string() })),
 });

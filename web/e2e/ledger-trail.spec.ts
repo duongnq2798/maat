@@ -236,11 +236,16 @@ test.describe("/ledger agent trail before the journal branch exists", () => {
 });
 
 test.describe("/ledger Verify it by hand", () => {
-  test("shows the five read-only cast commands against the recorded vault", async ({ page }) => {
+  test("shows the six read-only steps against the recorded vault, the agent's first Decision last", async ({ page }) => {
     await page.route((url) => RPC_HOSTS.includes(url.host), (route) => route.abort());
     await page.goto("/ledger");
     const panel = page.getByRole("region", { name: "Verify it by hand" });
-    await expect(panel.getByRole("list", { name: "Five read-only commands" }).getByRole("listitem")).toHaveCount(5);
+    const steps = panel.getByRole("list", { name: "Six read-only steps" }).getByRole("listitem");
+    await expect(steps).toHaveCount(6);
+    await expect(steps.nth(2).getByRole("heading")).toHaveText("3. Read the owner's two smoke-test Decisions");
+    await expect(steps.nth(5).getByRole("heading")).toHaveText("6. The agent's first Decision");
+    await expect(panel.getByRole("region", { name: "Command 6", exact: true })).toContainText("cast tx \"$TX\" from");
+    await expect(panel.getByRole("region", { name: "Output of command 6" })).toContainText("0xb8552684…a6c1");
     await expect(panel.getByRole("region", { name: "Set the RPC and the addresses" })).toContainText(`export VAULT=${VAULT}`);
     await expect(panel.getByRole("region", { name: "Command 1", exact: true })).toContainText(`cast receipt ${DEPLOY_TX} contractAddress`);
     await expect(panel.getByRole("region", { name: "Output of command 5" })).toHaveText("0x0baa4c52…57f6");

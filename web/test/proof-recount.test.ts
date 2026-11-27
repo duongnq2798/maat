@@ -6,13 +6,15 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { encodeFunctionResult, keccak256, toBytes, toFunctionSelector, type Address, type Hash, type Hex } from "viem";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
-import { countBriefs, reportLines, type ProofLists } from "@/app/(site)/proof/count";
+import { countBriefs, countDecisions, proofLines, reportLines, type ProofLists } from "@/app/(site)/proof/count";
 import { readProof } from "@/app/(site)/proof/load";
-import { DECISION_NOTE, TEAM_SET_NOTE } from "@/app/(site)/proof/team";
+import { DECISION_NOTE, DECISION_TOPIC, TEAM_SET_NOTE, teamLines } from "@/app/(site)/proof/team";
 import { COINBASE_INDEXER, EAS_ADDRESS, easAbi, indexerAbi, VERIFIED_ACCOUNT_SCHEMA, type Attestation } from "@/app/(site)/proof/verified";
 import type { TeamWallet } from "@/content/proof-team";
 import { memoryStorage, saveCache } from "@/lib/chain/cache";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
+import { senderLabel } from "@/lib/chain/ledger";
+import { canon, decodeExecuteInput, EXECUTE_SELECTOR } from "@/lib/chain/rationale";
 import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
 import { parseDeployments } from "@/lib/docs/docs-data";
 import * as recount from "../../scripts/recount.mjs";
@@ -30,6 +32,7 @@ import {
   type ProofChain,
   type ProofRpcLog,
 } from "./helpers/fake-proof-chain";
+import { AGENT_TEST_SUFFIX, executeCalldata, txInput, VECTORS } from "./helpers/maat-v1";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // Each case starts node; on a busy machine that alone can take seconds.
@@ -188,16 +191,23 @@ async function recountRun(args: string[]): Promise<{ code: number; stdout: strin
   }
 }
 
-/** The report lines of the script's output: from "Outside briefs:" to the end. */
+/** The report's first line: the rule's first line, Owner by hand. */
+const FIRST_LINE = "Owner by hand Decisions: ";
+/** The report lines of the script's output: from its first line to the end. */
 const reportOf = (stdout: string) => {
   const lines = stdout.replace(/\r\n/g, "\n").trimEnd().split("\n");
-  return lines.slice(lines.findIndex((l) => l.startsWith("Outside briefs: ")));
+  return lines.slice(lines.findIndex((l) => l.startsWith(FIRST_LINE)));
 };
 /** The lines printed before the report. */
 const preambleOf = (stdout: string) => {
   const lines = stdout.replace(/\r\n/g, "\n").trimEnd().split("\n");
-  return lines.slice(0, lines.findIndex((l) => l.startsWith("Outside briefs: ")));
+  return lines.slice(0, lines.findIndex((l) => l.startsWith(FIRST_LINE)));
 };
+/** The report the page gives for one read, which the script must print. */
+const pageLines = (p: Awaited<ReturnType<typeof readProof>>) => reportLines(p.count, p.verified, p.complete ? "counted" : "incomplete", p.team, p.decisions);
+/** CHAIN's three Decisions: the executor's bare calls to the vault, all allowed, so all agent Decisions. */
+const DECISION_LINES = ["Owner by hand Decisions: 0 (0 allowed, 0 refused)", "Agent Decisions: 3 (3 allowed, 0 refused)", "Probe Decisions: 0 (0 allowed, 0 refused)"];
+const BRIEF_DRIVEN_NONE = "Brief-driven Decisions: 0 (0 allowed, 0 refused)";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -218,14 +228,19 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     expect(page.problems).toEqual([]);
     expect(page.complete).toBe(true);
     expect(page.head).toBe(HEAD);
-    const expected = reportLines(page.count, page.verified!, "counted", page.team);
-    expect(expected.slice(0, 6)).toEqual([
+    const expected = pageLines(page);
+    expect(expected.slice(0, 13)).toEqual([
+      ...DECISION_LINES,
       "Outside briefs: 4",
       "Outside wallets: 3",
       "Outside wallets with a Verified Account: 1",
+      BRIEF_DRIVEN_NONE,
       "Team briefs: 6",
       "Hidden briefs: 1",
       "Bounty claimants: 1",
+      `Decision ${DECISION_TXS[0]} log 0 in block 62,000,100: agent, vault allowed`,
+      `Decision ${DECISION_TXS[1]} log 0 in block 62,000,101: agent, vault allowed`,
+      `Decision ${DECISION_TXS[2]} log 0 in block 62,000,102: agent, vault allowed`,
     ]);
     expect(expected.filter((l) => l.startsWith("Incomplete: "))).toEqual([]);
 
@@ -234,6 +249,7 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     expect(out.code).toBe(0);
     expect(reportOf(out.stdout)).toEqual(expected);
     expect(out.stdout).toContain(`MaatInbox ${lower(INBOX)}: Brief logs from block 62,000,000 to block 62,120,000`);
+    expect(out.stdout).toContain(`MandateVault ${lower(VAULT)}: its Decision logs to block 62,120,000`);
   });
 
   it("puts a wallet the owner funded, and the vault's payee, on the team, in the page and in the script", async () => {
@@ -250,7 +266,7 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     expect(out.stdout).toContain(`Hop stop ${lower(VAULT)}: MandateVault (deployments/README.md)`);
   });
 
-  it("prints the team-set note and the Decision note right before the brief lines, as the page shows them", async () => {
+  it("prints the team-set note and the Decision note right before the lines, as the page shows them", async () => {
     const out = await recountRun(["--rpc", rpc.url, "--root", root]);
     expect(preambleOf(out.stdout).slice(-2)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
   });
@@ -311,7 +327,7 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     try {
       const out = await recountRun(["--rpc", loud.url, "--root", root]);
       expect(out.code).toBe(0);
-      expect(reportOf(out.stdout)).toEqual(reportLines(noisy.page.count, noisy.page.verified!, "counted", noisy.page.team));
+      expect(reportOf(out.stdout)).toEqual(pageLines(noisy.page));
       expect((await recountRun(["--rpc", quiet.url, "--root", root])).code).toBe(0);
       expect(txReads(quiet.seen)).toBeGreaterThan(0);
       expect(txReads(loud.seen)).toBe(txReads(quiet.seen));
@@ -328,7 +344,7 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
       const out = await recountRun(["--rpc", server.url, "--root", root]);
       expect(out.code).toBe(0);
       const page = await readProof(proofChainClient(long), CONFIG, LISTS);
-      expect(reportOf(out.stdout)).toEqual(reportLines(page.count, page.verified!, "counted", page.team));
+      expect(reportOf(out.stdout)).toEqual(pageLines(page));
       expect(server.seen.logsInFlight[lower(INBOX)]).toBe(16);
       expect(server.seen.logsInFlight[lower(VAULT)]).toBe(16);
     } finally {
@@ -340,16 +356,140 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     for (const block of [String(HEAD - 2n), (HEAD - 2n).toLocaleString("en-US"), "62_119_998"]) {
       const out = await recountRun(["--rpc", rpc.url, "--root", root, "--to-block", block]);
       expect(out.code).toBe(0);
-      expect(reportOf(out.stdout).slice(0, 6)).toEqual([
+      expect(reportOf(out.stdout).slice(0, 10)).toEqual([
+        ...DECISION_LINES,
         "Outside briefs: 4",
         "Outside wallets: 3",
         "Outside wallets with a Verified Account: 1",
+        BRIEF_DRIVEN_NONE,
         "Team briefs: 5",
         "Hidden briefs: 1",
         "Bounty claimants: 1",
       ]);
     }
+    // Before the executor's first Decision, no Decision line counts one.
+    const early = await recountRun(["--rpc", rpc.url, "--root", root, "--to-block", String(DEPLOY + 99n)]);
+    expect(reportOf(early.stdout).slice(0, 3)).toEqual([
+      "Owner by hand Decisions: 0 (0 allowed, 0 refused)",
+      "Agent Decisions: 0 (0 allowed, 0 refused)",
+      "Probe Decisions: 0 (0 allowed, 0 refused)",
+    ]);
     expect((await recountRun(["--rpc", rpc.url, "--root", root, "--to-block", "62.1M"])).code).toBe(1);
+  });
+});
+
+/** A maat:v1 blob from V5's fields with other brief ids in `q`. */
+const briefBlob = (q: number[]) => `maat:v1:${canon({ ...(JSON.parse(VECTORS.V5.blob.slice(8)) as object), q })}`;
+const labelledTx = (n: number) => `0x${(0xc100 + n).toString(16).padStart(64, "0")}` as Hash;
+/**
+ * A Decision of every label after CHAIN's three: the owner sending execute itself with a probe's blob (owner by hand,
+ * first match wins), a probe, two brief-driven Decisions, and three agent ones: a model's own intent, a probe's blob that
+ * is not in canonical form, and a probe's blob in a transaction to another contract, which carries no blob the vault
+ * reads. Each one is a send the trace finds from the vault's logs.
+ */
+const LABELLED: FakeTx[] = [
+  { hash: labelledTx(1), from: OWNER, nonce: 5, to: VAULT, block: DEPLOY + 110n, input: txInput(VECTORS.V4.blob), logs: [decisionLog(VAULT, 11, TOKEN, { allowed: false, reason: 6 })] },
+  { hash: labelledTx(2), from: EXECUTOR, nonce: 3, to: VAULT, block: DEPLOY + 111n, input: txInput(VECTORS.V4.blob), logs: [decisionLog(VAULT, 12, TOKEN, { allowed: false, reason: 6 })] },
+  { hash: labelledTx(3), from: EXECUTOR, nonce: 4, to: VAULT, block: DEPLOY + 112n, input: txInput(VECTORS.V5.blob), logs: [decisionLog(VAULT, 13)] },
+  { hash: labelledTx(4), from: EXECUTOR, nonce: 5, to: VAULT, block: DEPLOY + 113n, input: txInput(briefBlob([1, 3])), logs: [decisionLog(VAULT, 14, TOKEN, { allowed: false, reason: 11 })] },
+  { hash: labelledTx(5), from: EXECUTOR, nonce: 6, to: VAULT, block: DEPLOY + 114n, input: txInput(VECTORS.V1.blob, { code: null }), logs: [decisionLog(VAULT, 15, TOKEN, { allowed: false, reason: 9 })] },
+  { hash: labelledTx(6), from: EXECUTOR, nonce: 7, to: VAULT, block: DEPLOY + 115n, input: txInput(VECTORS.V4.blob.replace('{"b":', '{ "b":')), logs: [decisionLog(VAULT, 16)] },
+  { hash: labelledTx(7), from: EXECUTOR, nonce: 8, to: MULTI, block: DEPLOY + 116n, input: txInput(VECTORS.V4.blob), logs: [decisionLog(VAULT, 17, TOKEN, { allowed: false, reason: 6 })] },
+];
+const LABELLED_CHAIN: ProofChain = { ...CHAIN, txs: [...TXS, ...LABELLED] };
+
+describe("the Decision lines, on the page and in the recount, with a Decision of every label", () => {
+  it("label each Decision once, first match wins, split each line into allowed and refused, and print the same lines", async () => {
+    const page = await readProof(proofChainClient(LABELLED_CHAIN), CONFIG, LISTS);
+    expect(page.complete).toBe(true);
+    const expected = pageLines(page);
+    expect(expected.slice(0, 20)).toEqual([
+      "Owner by hand Decisions: 1 (0 allowed, 1 refused)",
+      "Agent Decisions: 6 (4 allowed, 2 refused)",
+      "Probe Decisions: 1 (0 allowed, 1 refused)",
+      "Outside briefs: 4",
+      "Outside wallets: 3",
+      "Outside wallets with a Verified Account: 1",
+      "Brief-driven Decisions: 2 (1 allowed, 1 refused)",
+      "Team briefs: 6",
+      "Hidden briefs: 1",
+      "Bounty claimants: 1",
+      `Decision ${DECISION_TXS[0]} log 0 in block 62,000,100: agent, vault allowed`,
+      `Decision ${DECISION_TXS[1]} log 0 in block 62,000,101: agent, vault allowed`,
+      `Decision ${DECISION_TXS[2]} log 0 in block 62,000,102: agent, vault allowed`,
+      `Decision ${labelledTx(1)} log 0 in block 62,000,110: owner by hand, vault refused`,
+      `Decision ${labelledTx(2)} log 0 in block 62,000,111: probe, vault refused`,
+      `Decision ${labelledTx(3)} log 0 in block 62,000,112: brief-driven citing #7, vault allowed`,
+      `Decision ${labelledTx(4)} log 0 in block 62,000,113: brief-driven citing #1, #3, vault refused`,
+      `Decision ${labelledTx(5)} log 0 in block 62,000,114: agent, vault refused`,
+      `Decision ${labelledTx(6)} log 0 in block 62,000,115: agent, vault allowed`,
+      `Decision ${labelledTx(7)} log 0 in block 62,000,116: agent, vault refused`,
+    ]);
+    const rpc = await serveProofChain(LABELLED_CHAIN);
+    try {
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true)]);
+      expect([out.code, out.stderr]).toEqual([0, ""]);
+      expect(reportOf(out.stdout)).toEqual(expected);
+      expect(preambleOf(out.stdout).slice(-2)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("print only the ten lines as CSV with --csv, with the page's numbers, and the same exit code", async () => {
+    const page = await readProof(proofChainClient(LABELLED_CHAIN), CONFIG, LISTS);
+    const fromPage = proofLines(page.count, page.verified, page.decisions).map((l) =>
+      [l.label, l.value === null ? "not read" : String(l.value), l.split ? String(l.split.allowed) : "", l.split ? String(l.split.refused) : ""].join(","),
+    );
+    const rpc = await serveProofChain(LABELLED_CHAIN);
+    try {
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true), "--csv"]);
+      expect([out.code, out.stderr]).toEqual([0, ""]);
+      const csv = out.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n");
+      expect(csv).toEqual([recount.CSV_HEAD, ...fromPage]);
+      expect(csv).toEqual([
+        "line,count,allowed,refused",
+        "Owner by hand Decisions,1,0,1",
+        "Agent Decisions,6,4,2",
+        "Probe Decisions,1,0,1",
+        "Outside briefs,4,,",
+        "Outside wallets,3,,",
+        "Outside wallets with a Verified Account,1,,",
+        "Brief-driven Decisions,2,1,1",
+        "Team briefs,6,,",
+        "Hidden briefs,1,,",
+        "Bounty claimants,1,,",
+      ]);
+      // Incomplete: the brief lines give the word, the Decision lines keep their number, and the exit code is 1.
+      const short: ProofLists = { ...LISTS, sends: [{ wallet: OWNER, txs: [VAULT_TX, DEPLOY_TX] }] };
+      const incomplete = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, short), "--csv"]);
+      expect(incomplete.code).toBe(1);
+      expect(incomplete.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n").slice(1, 5)).toEqual([
+        "Owner by hand Decisions,1,0,1",
+        "Agent Decisions,6,4,2",
+        "Probe Decisions,1,0,1",
+        "Outside briefs,incomplete,,",
+      ]);
+      expect(incomplete.stderr).toContain("recount: the count is incomplete: ");
+      expect((await recountRun(["--rpc", rpc.url, "--csv", "--sends", OWNER])).code).toBe(2);
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("give the Decision lines no number while no vault's logs were read, on the page and in the recount", () => {
+    const trace = { vault: null, owner: null, decisions: [] };
+    expect(countDecisions(trace)).toBeNull();
+    expect(recount.countDecisions(trace)).toBeNull();
+    expect(recount.reportLines(countBriefs([], LISTS), new Map(), "counted", [], null)).toEqual(reportLines(countBriefs([], LISTS), new Map(), "counted"));
+  });
+
+  it("label every trace the page labels the same way in the recount, rows included", async () => {
+    const page = await readProof(proofChainClient(LABELLED_CHAIN), CONFIG, LISTS);
+    const script = recount.countDecisions(page.team);
+    expect(script).toEqual(page.decisions);
+    // The script's default of null for its decisions makes TypeScript type the parameter as null alone.
+    expect(recount.reportLines(page.count, page.verified!, "counted", teamLines(page.team), script as never)).toEqual(pageLines(page));
   });
 });
 
@@ -368,11 +508,14 @@ describe("the recount when a team wallet sent a transaction that no vault or inb
       const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, short)]);
       expect(out.code).toBe(1);
       const lines = reportOf(out.stdout);
-      expect(lines).toEqual(reportLines(page.count, page.verified, "incomplete", page.team));
-      expect(lines.slice(0, 6)).toEqual([
+      expect(lines).toEqual(pageLines(page));
+      // The Decision lines come from the vault's logs, which were all read, so they keep their number.
+      expect(lines.slice(0, 10)).toEqual([
+        ...DECISION_LINES,
         "Outside briefs: incomplete",
         "Outside wallets: incomplete",
         "Outside wallets with a Verified Account: incomplete",
+        BRIEF_DRIVEN_NONE,
         "Team briefs: incomplete",
         "Hidden briefs: incomplete",
         "Bounty claimants: 1",
@@ -396,7 +539,7 @@ describe("the recount when a team wallet sent a transaction that no vault or inb
       expect(page.problems).toEqual([gap]);
       const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true)]);
       expect(out.code).toBe(1);
-      expect(reportOf(out.stdout)).toEqual(reportLines(page.count, page.verified, "incomplete", page.team));
+      expect(reportOf(out.stdout)).toEqual(pageLines(page));
       const sends = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true), "--sends", OWNER]);
       expect(sends.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n")).toEqual([
         `// 8 transactions sent by block 62,120,000, read from ${rpc.url}.`,
@@ -418,7 +561,7 @@ describe("the recount when a team wallet sent a transaction that no vault or inb
       expect(page.problems).toEqual([ONE_MISSING]);
       const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true, both)]);
       expect(out.code).toBe(1);
-      expect(reportOf(out.stdout)).toEqual(reportLines(page.count, page.verified, "incomplete", page.team));
+      expect(reportOf(out.stdout)).toEqual(pageLines(page));
     } finally {
       await rpc.close();
     }
@@ -431,7 +574,6 @@ const SNAPSHOT = vaultSnapshot(CHAIN, VAULT, DEPLOY - 10n, N);
 const SNAPSHOT_FILE = "web/content/generated/decisions-snapshot.json";
 /** The lowest block of an eth_getLogs of the vault. */
 const lowestVault = (seen: ProofRpcLog) => seen.logRanges.filter((r) => r.address === lower(VAULT)).reduce((m, r) => (r.from < m ? r.from : m), HEAD + 1n);
-const pageLines = (p: Awaited<ReturnType<typeof readProof>>) => reportLines(p.count, p.verified, p.complete ? "counted" : "incomplete", p.team);
 
 describe("the page and the recount, with the vault's logs from the committed snapshot and without it", () => {
   it("print the same lines either way; --snapshot reads the vault's logs only above the file's reorg window and says so", async () => {
@@ -518,7 +660,7 @@ describe("the page and the recount, with the vault's logs from the committed sna
       expect([a.code, b.code]).toEqual([1, 1]);
       expect(reportOf(a.stdout)).toEqual(pageLines(page));
       expect(reportOf(b.stdout)).toEqual(pageLines(page));
-      expect(reportOf(b.stdout).slice(0, 1)).toEqual(["Outside briefs: incomplete"]);
+      expect(reportOf(b.stdout).slice(0, 4)).toEqual([...DECISION_LINES, "Outside briefs: incomplete"]);
     } finally {
       await rpc.close();
     }
@@ -642,7 +784,7 @@ describe("the recount on an RPC that caps eth_getLogs at 200 blocks and rate-lim
       const page = await readProof(proofChainClient({ ...short, maxLogRange: 50_000n }), CONFIG, LISTS);
       const out = await recountRun(["--rpc", capped.url, "--root", root]);
       expect(out.code).toBe(0);
-      expect(reportOf(out.stdout)).toEqual(reportLines(page.count, page.verified!, "counted", page.team));
+      expect(reportOf(out.stdout)).toEqual(pageLines(page));
       expect(capped.seen.logRanges.every((r) => r.to - r.from + 1n <= 200n)).toBe(true);
     } finally {
       await capped.close();
@@ -734,14 +876,34 @@ describe("the recount while deployments/README.md records no MaatInbox", () => {
       expect(out.stdout).toContain("MaatInbox is not recorded in deployments/README.md yet, so there is no brief to count. Counting starts when the inbox is recorded.");
       expect(out.stdout).toContain(`chain id 8453, head block ${HEAD.toLocaleString("en-US")}`);
       expect(reportOf(out.stdout)).toEqual(reportLines(countBriefs([], LISTS), new Map(), "not-deployed"));
+      // No trace runs without an inbox, so no Decision is read either, as on the page.
       expect(reportOf(out.stdout)).toEqual([
+        "Owner by hand Decisions: not read",
+        "Agent Decisions: not read",
+        "Probe Decisions: not read",
         "Outside briefs: not deployed",
         "Outside wallets: not deployed",
         "Outside wallets with a Verified Account: not deployed",
+        "Brief-driven Decisions: not read",
         "Team briefs: not deployed",
         "Hidden briefs: not deployed",
         "Bounty claimants: 1",
         `Bounty claimant ${lower(CAROL)}: a fork test that previewIntent allows`,
+      ]);
+      const csv = await recountRun(["--rpc", rpc.url, "--root", root, "--csv"]);
+      expect(csv.code).toBe(0);
+      expect(csv.stdout.replace(/\r\n/g, "\n").trimEnd().split("\n")).toEqual([
+        "line,count,allowed,refused",
+        "Owner by hand Decisions,not read,,",
+        "Agent Decisions,not read,,",
+        "Probe Decisions,not read,,",
+        "Outside briefs,not deployed,,",
+        "Outside wallets,not deployed,,",
+        "Outside wallets with a Verified Account,not deployed,,",
+        "Brief-driven Decisions,not read,,",
+        "Team briefs,not deployed,,",
+        "Hidden briefs,not deployed,,",
+        "Bounty claimants,1,,",
       ]);
       expect(preambleOf(out.stdout)).toContain(DECISION_NOTE);
       expect(rpc.seen.methods).not.toContain("eth_getLogs");
@@ -786,6 +948,72 @@ describe("what the script hard-codes, since it has no keccak", () => {
   it("reads the deployments table as docs:gen does", () => {
     const text = readRepo("deployments/README.md");
     expect(recount.parseDeployments(text)).toEqual(parseDeployments(text));
+  });
+
+  it("labels a Decision as the page does, with the page's decoder and senderLabel, on every vector and broken blob", () => {
+    expect(recount.EXECUTE_SELECTOR).toBe(EXECUTE_SELECTOR);
+    expect(DECISION_TOPIC).toBe(keccak256(toBytes("Decision(bytes32,uint8,address,uint256,bool,uint8,bytes32)")));
+    const v1 = JSON.parse(VECTORS.V1.blob.slice(8)) as Record<string, unknown>;
+    const { m: _m, ...noModel } = v1;
+    const make = (o: Record<string, unknown>) => `maat:v1:${canon(o)}`;
+    const probeText = "PROBE v1, not a Claude proposal.";
+    const blobs = [
+      ...Object.values(VECTORS).map((v) => v.blob),
+      make({ ...noModel, k: "probe", t: probeText }),
+      make({ ...noModel, k: "bill", t: "Compute bill: $1.000000 of Claude API usage unpaid as of UTC day 20781" }),
+      make({ ...v1, q: [2, 5] }),
+      make({ ...v1, c: "unknown" }),
+      // Each breaks a rule of §2.6, so the blob is invalid and its k or q labels nothing.
+      make({ ...v1, k: "probe" }),
+      make({ ...noModel, k: "probe" }),
+      make({ ...noModel, k: "probe", q: [1], t: probeText }),
+      make({ ...v1, q: [] }),
+      make({ ...v1, q: [3, 3] }),
+      make({ ...v1, q: [1, 2, 3, 4] }),
+      make({ ...v1, x: 1 }),
+      make({ ...v1, m: "us.anthropic.claude-sonnet-5-5" }),
+      make({ ...v1, r: "run.example.com" }),
+      make({ ...v1, s: [["NVDAc", "1", 1]] }),
+      make({ ...v1, t: "" }),
+      make({ ...v1, s: Array.from({ length: 16 }, () => ["NVDAc", "36893488147419105055", 1_795_539_382, 19]) }),
+      VECTORS.V5.blob.replace('{"b":', '{ "b":'),
+      VECTORS.V4.blob.replace("PROBE v1", "PROBE\tv1"),
+      "maat:v1:{not json",
+      "maat:v1:[1,2]",
+      // Not a maat:v1 blob at all.
+      "hello world",
+    ];
+    const bare = executeCalldata({ rationaleHash: VECTORS.V1.hash });
+    const inputs: Hex[] = [
+      ...blobs.flatMap((b) => [txInput(b), txInput(b, { code: null })]),
+      bare,
+      `${bare}${AGENT_TEST_SUFFIX.slice(2)}`,
+      `${bare}ff00${"8021".repeat(8)}`,
+      txInput(VECTORS.V5.blob).replace(/00(8021){8}$/, `01${"8021".repeat(8)}`) as Hex,
+      "0x",
+      `0xdeadbeef${"00".repeat(228)}`,
+      bare.slice(0, -2) as Hex,
+    ];
+    const labels = new Set<string>();
+    for (const input of inputs) {
+      const page = decodeExecuteInput(input);
+      const script = recount.decisionBlob(input);
+      if (page === null) {
+        expect(script, input).toBeNull();
+        continue;
+      }
+      expect(script?.status, input).toBe(page.blob.status);
+      if (page.blob.status === "v1") {
+        const { k, q } = page.blob.fields;
+        expect((script as { fields?: unknown }).fields, input).toEqual({ ...(k ? { k } : {}), ...(q ? { q } : {}) });
+      }
+      for (const from of [OWNER, EXECUTOR]) {
+        const label = senderLabel(from, OWNER, page.blob);
+        expect(recount.senderLabel(lower(from), OWNER, script), input).toBe(label);
+        labels.add(label);
+      }
+    }
+    expect([...labels].sort()).toEqual(["agent", "brief-driven", "owner, by hand", "probe"]);
   });
 });
 

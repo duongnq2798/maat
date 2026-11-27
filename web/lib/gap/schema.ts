@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { NAV_TOKENS, type NavToken } from "@/content/b20-nav";
+import { DECISION_TOPIC, decisionCounts, REASON_CODES, SENDERS, type Sender } from "./decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC } from "./decode";
 import type { TokenFigures } from "./measure";
 import { GAP_RPC } from "./rpc";
@@ -47,6 +48,20 @@ const token = z.strictObject({
   }),
 });
 
+const senderCount = z.strictObject({ count, marketClosed: count });
+
+/** The vault's Decision logs in a window's blocks, and their counts (lib/gap/vault.ts reads them). */
+const decisions = z.strictObject({
+  vault: address,
+  topic: z.literal(DECISION_TOPIC),
+  count,
+  marketClosed: count,
+  bySender: z.strictObject(Object.fromEntries(SENDERS.map((s) => [s, senderCount])) as Record<Sender, typeof senderCount>),
+  list: z.array(
+    z.strictObject({ block: count, logIndex: count, ts: count, tx: hash, sender: z.enum(SENDERS), allowed: z.boolean(), reason: z.enum(REASON_CODES) }),
+  ),
+});
+
 const windowBase = {
   id: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   closeTs: count,
@@ -83,11 +98,26 @@ function inOrder(partial: boolean) {
 /** Rules across fields that a per-field schema cannot state; they also hold for every committed file. */
 function consistent(file: { windows: unknown[] }, ctx: z.core.$RefinementCtx): void {
   const bad = (path: (string | number)[], message: string) => ctx.addIssue({ code: "custom", path, message });
-  (file.windows as Array<{ status: string; id: string; closeTs: number; openTs: number; blocks?: { from: number; to: number }; tokens?: TokenRow[] }>).forEach((w, wi) => {
+  type Win = { status: string; id: string; closeTs: number; openTs: number; blocks?: { from: number; to: number }; decisions?: Decisions; tokens?: TokenRow[] };
+  (file.windows as Win[]).forEach((w, wi) => {
     const at = ["windows", wi];
     if (!(w.closeTs < w.openTs)) bad(at, `window ${w.id}: closeTs must be before openTs`);
     if (w.status !== "complete") return;
     if (w.blocks && !(w.blocks.from <= w.blocks.to)) bad([...at, "blocks"], `window ${w.id}: blocks.from must not exceed blocks.to`);
+    if (w.decisions && w.blocks) {
+      const d = w.decisions;
+      const dat = [...at, "decisions"];
+      const { count: n, marketClosed, bySender } = decisionCounts(d.list);
+      if (n !== d.count || marketClosed !== d.marketClosed || SENDERS.some((s) => bySender[s].count !== d.bySender[s].count || bySender[s].marketClosed !== d.bySender[s].marketClosed)) {
+        bad(dat, `window ${w.id}: the Decision counts are not those of its list`);
+      }
+      d.list.forEach((x, i) => {
+        if (x.block < w.blocks!.from || x.block > w.blocks!.to) bad([...dat, "list", i], `window ${w.id}: a Decision at block ${x.block} lies outside blocks ${w.blocks!.from} to ${w.blocks!.to}`);
+        if (x.allowed !== (x.reason === "OK")) bad([...dat, "list", i], `window ${w.id}: the Decision at block ${x.block} log ${x.logIndex} is allowed only if its reason is OK`);
+        const prev = d.list[i - 1];
+        if (prev && (prev.block > x.block || (prev.block === x.block && prev.logIndex >= x.logIndex))) bad([...dat, "list", i], `window ${w.id}: the Decisions are not in block and log order`);
+      });
+    }
     (w.tokens ?? []).forEach((t, ti) => {
       const tat = [...at, "tokens", ti];
       const name = `${w.id} ${t.symbol}`;
@@ -115,6 +145,8 @@ export function editionSchema({ partial }: { partial: boolean }) {
     status: z.literal("complete"),
     ...windowBase,
     blocks: z.strictObject({ from: count, to: count }),
+    // Only an edition whose definition counts Decisions has them, so edition 0's windows are written as before.
+    decisions: decisions.optional(),
     tokens: z.array(token).superRefine(inOrder(partial)),
   });
   const file = z.strictObject({
@@ -133,6 +165,7 @@ export function editionSchema({ partial }: { partial: boolean }) {
 export const EditionFileSchema = editionSchema({ partial: false });
 export type EditionFile = z.infer<typeof EditionFileSchema>;
 export type TokenRow = Extract<EditionFile["windows"][number], { status: "complete" }>["tokens"][number];
+export type Decisions = z.infer<typeof decisions>;
 
 const lower = (s: string) => s.toLowerCase();
 

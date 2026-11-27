@@ -108,7 +108,9 @@ test.describe("/ledger's first read with a decisions snapshot", () => {
       await expect(decisions(page)).toHaveCount(SNAP_ROWS.length);
       await expect(page.getByText(/Reading the vault's history/)).toHaveCount(0);
       await expect(page.getByText(/^Logs up to block/)).toHaveCount(0);
-      expect(lowest(logRequests)).toBe(SNAP_DEPLOY);
+      // The rows can show from the snapshot preview before the whole read drops the file and reads from the
+      // deploy, so wait for that read instead of checking the requests once.
+      await expect.poll(() => lowest(logRequests)).toBe(SNAP_DEPLOY);
       expect(errors).toEqual([]);
     });
   }

@@ -30,7 +30,7 @@ const scrollTo = (page: Page, selector: string, block: ScrollLogicalPosition = "
     b: block,
   });
 
-test("at 1440x900 the H1, both CTAs, the live Readout, its block and its verdict line are in the first screen", async ({
+test("at 1440x900 the H1, the definition, the three steps, both CTAs, the live Readout, its block and its verdict line are in the first screen", async ({
   page,
 }) => {
   await liveWeekend(page, 1440, 900);
@@ -38,6 +38,8 @@ test("at 1440x900 the H1, both CTAs, the live Readout, its block and its verdict
   await expect(s.locator(".readout-digits")).toHaveText("60,013,066");
   const parts: [string, Locator][] = [
     ["H1", page.getByRole("heading", { level: 1 })],
+    ["definition", page.locator("#top [data-hero-definition]")],
+    ["steps", page.locator("#top [data-hero-steps]")],
     ["Readout", s],
     ["block", s.getByRole("link", { name: "Base block 60,013,066" })],
     ["verdict line", s.locator("[data-verdict-line]")],
@@ -49,9 +51,12 @@ test("at 1440x900 the H1, both CTAs, the live Readout, its block and its verdict
   for (const [name, l] of parts) expect.soft(await bottom(l), name).toBeLessThanOrEqual(900);
 });
 
-test("at 390x844 the H1 and the live verdict line are in the first screen", async ({ page }) => {
+test("at 390x844 the H1, the definition, the three steps and the live verdict line are in the first screen", async ({ page }) => {
   await liveWeekend(page, 390, 844);
   expect(await bottom(page.getByRole("heading", { level: 1 })), "H1").toBeLessThanOrEqual(844);
+  // Spec 2026-11-27 section 1: a phone reader learns what Maat is before scrolling.
+  expect(await bottom(page.locator("#top [data-hero-definition]")), "definition").toBeLessThanOrEqual(844);
+  expect(await bottom(page.locator("#top [data-hero-steps]")), "steps").toBeLessThanOrEqual(844);
   expect(await bottom(strip(page).locator("[data-verdict-line]")), "verdict line").toBeLessThanOrEqual(844);
   // Amendment A10 applies only if the CTAs end below the first screen here.
   const ctaBottoms = await Promise.all((await page.locator("[data-hero-cta]").all()).map(bottom));
@@ -105,16 +110,16 @@ test("nothing scrolls sideways at 360 px, with the live Readout and with the Thu
   expect(scrolled.clipped).toEqual([]);
 });
 
-test("HOLD holds the page at one read through two refresh intervals, and one interval after release adds one more", async ({
+test("Pause holds the page at one read through two refresh intervals, and one interval after release adds one more", async ({
   page,
 }) => {
   const rpc = await liveWeekend(page, 1440, 900);
   const s = strip(page);
   expect(rpc.calls()).toBe(1);
-  const hold = s.locator("[data-readout-keys]").getByRole("button", { name: "Hold" });
+  const hold = s.locator("[data-readout-keys]").getByRole("button", { name: "Pause" });
   await hold.click();
   await expect(hold).toHaveAttribute("aria-pressed", "true");
-  await expect(s.locator("[data-read-age]")).toContainText("held · ");
+  await expect(s.locator("[data-read-age]")).toContainText("paused · ");
   await page.clock.runFor(2 * REFRESH_MS);
   expect(rpc.calls()).toBe(1);
   await expect(s).toHaveAttribute("data-live-strip", "live");

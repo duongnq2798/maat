@@ -10,6 +10,7 @@ const TARGETS: ReadonlyArray<readonly [string, string]> = [
   ["mandateVaultAbi", "MandateVault.sol/MandateVault.json"],
   ["creditAdapterAbi", "ICreditAdapter.sol/ICreditAdapter.json"],
   ["marketCalendarAbi", "MarketCalendar.sol/MarketCalendar.json"],
+  ["maatInboxAbi", "MaatInbox.sol/MaatInbox.json"],
   ["b20AssetAbi", "IB20Asset.sol/IB20Asset.json"],
   ["aggregatorV3Abi", "IExternal.sol/IAggregatorV3.json"],
   ["erc20Abi", "IExternal.sol/IERC20Minimal.json"],

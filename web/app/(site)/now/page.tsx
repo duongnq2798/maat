@@ -1,17 +1,17 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { NowBoard } from "@/components/live/NowBoard";
 import { Footer } from "@/components/sections/Footer";
-import { Mark } from "@/components/ui/Mark";
+import { Nav } from "@/components/sections/Nav";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { MULTICALL3, NAV_TOKENS } from "@/content/b20-nav";
 import { CHECK_LABELS } from "@/content/engine";
 import { FACTS, type MandateFacts } from "@/content/facts";
 import { andList, formatInt } from "@/content/format";
+import { pageOgImage } from "@/content/page-cards";
 import type { RefusalCode } from "@/content/reasons";
+import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
 import { basescanAddress } from "@/lib/live/basescan";
 import { formatAge } from "@/lib/live/format";
 import { HEAD_MAX_LAG_SEC, LIVE_MAX_AGE_MS, REFRESH_MS } from "@/lib/live/freshness";
@@ -19,19 +19,10 @@ import { LIVE_RPCS } from "@/lib/live/rpc";
 import { buildCalls, calendarAddress } from "@/lib/live/snapshot";
 import { repoFileUrl, SITE } from "@/lib/site";
 
-// A page's openGraph replaces the layout's whole object, so /now names the landing's link preview image again: the
-// same object as app/(site)/layout.tsx.
-const ogImage = {
-  url: "/opengraph-image.png",
-  type: "image/png",
-  width: 1200,
-  height: 630,
-  alt: readFileSync(join(process.cwd(), "app/opengraph-image.alt.txt"), "utf8"),
-};
-
 const TITLE = `Right now on Base · ${SITE.name}`;
 const DESCRIPTION = `What an agent under ${SITE.name}'s default mandate would do right now with the ${NAV_TOKENS.length} B20 tokens that have a NAV, read from Base mainnet in your browser.`;
 
+// Its own card (content/page-cards.ts), drawn at build time by app/og/now.png/route.ts; the landing's image stays the landing's.
 export const metadata: Metadata = {
   title: TITLE,
   description: DESCRIPTION,
@@ -43,7 +34,7 @@ export const metadata: Metadata = {
     title: TITLE,
     description: DESCRIPTION,
     locale: "en_US",
-    images: [ogImage],
+    images: [pageOgImage("/now")],
   },
   twitter: {
     card: "summary_large_image",
@@ -51,7 +42,7 @@ export const metadata: Metadata = {
     creator: SITE.xHandle,
     title: TITLE,
     description: DESCRIPTION,
-    images: [ogImage],
+    images: [pageOgImage("/now")],
   },
 };
 
@@ -75,32 +66,6 @@ function RepoFile({ path }: { path: string }) {
     <a href={repoFileUrl(path)} {...EXTERNAL} className="font-mono text-[0.9em] [overflow-wrap:anywhere]">
       {path}
     </a>
-  );
-}
-
-/** Its own small header: the landing's Nav links anchors on the landing itself. */
-function Header() {
-  return (
-    <header>
-      <nav aria-label="Main" className="wrap flex flex-wrap items-center justify-between gap-3 py-[18px]">
-        <a href="/" aria-label="Maat home" className="flex items-center gap-2.5 text-ink">
-          <Mark />
-          <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
-        </a>
-        <div className="flex flex-wrap items-center gap-1">
-          <a href="/#how" className="navlink max-[720px]:hidden">
-            How Maat decides
-          </a>
-          <a href={SITE.docsUrl} className="navlink">
-            Docs
-          </a>
-          <a href={SITE.repoUrl} {...EXTERNAL} className="pill-dark ml-2 px-[18px] py-[11px]">
-            View on GitHub
-            <span aria-hidden="true"> ↗</span>
-          </a>
-        </div>
-      </nav>
-    </header>
   );
 }
 
@@ -169,7 +134,7 @@ function Method() {
           eyebrow="Method"
           id="method-title"
           title="How this page reads Base"
-          lead="Your browser asks a public Base RPC for one block's state and judges it the way MandateVault would judge a BUY. Only eth_call: nothing is signed or sent, and this site has no server."
+          lead="Your browser asks a public Base RPC for one block's state with eth_call and judges it the way MandateVault would judge a BUY. For the week it reads the vault's Decisions as the ledger does, with eth_getCode, eth_getLogs and block, receipt and transaction reads, and the agent's journal from raw.githubusercontent.com. Every one is a read: nothing is signed or sent, and this site has no server."
         />
 
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-start gap-x-16 gap-y-14">
@@ -250,6 +215,28 @@ function Method() {
                   <Code>isOpen(blockTimestamp, REGULAR)</Code>. A failed call counts as closed.
                 </p>
               )}
+            </Part>
+
+            <Part title="The week and the agent's note">
+              <p className="m-0">
+                The week is drawn from <RepoFile path="web/content/calendar.ts" /> at your clock: its sessions, holidays and
+                early closes, in New York time. The large line under its heading comes from the reading above: while the
+                reading&apos;s session is closed it names the next REGULAR open, as <Code>nextOpen</Code> counts it.
+              </p>
+              <p className="m-0">
+                The ticks are the vault&apos;s <Code>Decision</Code> events on Base mainnet, read with the ledger&apos;s own
+                loader over the same RPCs. The first read starts from the committed snapshot,{" "}
+                <Code>/data/decisions-snapshot.json</Code>: once Base gives the same hash for its block and the same logs in
+                their receipts, the logs up to {formatInt(Number(SNAPSHOT_REORG_WINDOW + 1n))} blocks before it come from the file, and{" "}
+                <Code>eth_getLogs</Code> scans the rest to the head. Without it, the scan starts at the deploy block. Then each Decision&apos;s block, receipt and
+                transaction are read, so each one has its time and its sender. The line under the week says which way the
+                read went. Nothing is signed or sent.
+              </p>
+              <p className="m-0">
+                The note is the newest round summary on the public agent-journal branch, fetched from raw.githubusercontent.com
+                and shown only after your browser has checked the hash of every line, as the ledger&apos;s Rounds tab does.
+                While the branch has no summary, the page shows no note.
+              </p>
             </Part>
 
             <Part title="The limits">
@@ -347,7 +334,7 @@ export default function NowPage() {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <Header />
+      <Nav onLanding={false} />
       <main id="main" tabIndex={-1} className="outline-none">
         <div className="wrap flex flex-col gap-10 pb-20 pt-8 sm:pt-14 md:pb-28">
           <div className="flex max-w-[820px] flex-col gap-5">

@@ -5,6 +5,7 @@ import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
 import { OG_IMAGE_SIZE, ogImageUrl } from "./docs/og";
+import { noteSuperseded } from "./live/hero-note";
 import { SITE } from "./site";
 
 /** Problems with the exported landing page; an empty list means it is ready to ship. */
@@ -65,6 +66,24 @@ export function checkExport(html: string): string[] {
   return problems;
 }
 
+/**
+ * Warnings, not problems: the landing still ships. The hero quotes the agent's note recorded in this build
+ * (content/generated/agent-note.json) and hides the quote while the vault's latest Decision is newer than the note's
+ * round (components/sections/HeroNote.tsx). When a Decision recorded in this build already is, every visitor sees the
+ * one line that points to /now instead of the note, until a data PR records a newer note.
+ */
+export function checkAgentNote(
+  note: { ts: number; when: string } | null,
+  decisions: readonly { blockNumber: string; blockTime: number }[],
+): string[] {
+  if (note === null) return ["the build records no note of Maat's agent, so the hero shows none (npm run agent-note)"];
+  const newest = [...decisions].sort((a, b) => b.blockTime - a.blockTime)[0];
+  if (newest === undefined || !noteSuperseded(note.ts, newest.blockTime)) return [];
+  return [
+    `the agent's note recorded in this build (${note.when}) is older than the Decision recorded at block ${newest.blockNumber}, so the hero hides it: run npm run agent-note -- --git origin/agent-journal and commit content/generated/agent-note.json`,
+  ];
+}
+
 /** Records `problem` when `ok` is false. Each page's check passes its own, which puts the page's name before it. */
 type Need = (ok: boolean, problem: string) => void;
 
@@ -106,6 +125,14 @@ export function checkNowPage(html: string): string[] {
   need(!html.includes(">LIVE<"), "the exported HTML shows a LIVE pill, so a reading was baked into the page");
   need(!html.includes("basescan.org/block/"), "the exported HTML links a Base block, so a reading was baked into the page");
   need(!html.includes("data-verdict-line"), "the exported HTML holds a verdict line, so a reading was baked into the page");
+
+  // The market week is drawn from the visitor's clock, its line from the reading, its ticks and the agent's note from
+  // reads in the browser: the export holds the waiting week and none of them.
+  need(html.includes('data-market-week="waiting"'), "the market week's waiting state is not in the exported HTML");
+  need(!html.includes("data-now-marker"), "the exported HTML holds the week's now line, so a clock was baked into the page");
+  need(!html.includes("data-session-line="), "the exported HTML holds a session line, so a reading was baked into the page");
+  need(!html.includes("data-tick"), "the exported HTML holds a Decision tick, so a read of the vault was baked into the page");
+  need(!html.includes("data-agent-note"), "the exported HTML holds the agent note, so a read of the journal was baked into the page");
 
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
     need(html.includes(` id="${id}"`), `link #${id} has no target`);
@@ -505,12 +532,14 @@ const PROOF_HEADING = "Proof";
 const PROOF_RULE_MARK = "No line is ever added to another.";
 /** The brief lines, by the data-testid of their value; the bounty line comes from a committed list, not the chain. */
 const PROOF_BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+/** The Decision lines, by the data-testid of their value, read from the vault's Decision logs in the browser. */
+const PROOF_DECISION_LINES = ["owner-decisions", "agent-decisions", "probe-decisions", "brief-decisions"];
 
 /**
  * Problems with out/proof.html. It is a public page, so it may not ask not to be indexed and the sitemap lists it. Its
- * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then and
- * every brief line says "not deployed", with no number and no wallet or brief row; after, it shows the reading state
- * and no count, since the browser reads the logs. Its markup holds the counting rule.
+ * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then,
+ * every brief line says "not deployed" and every Decision line "not read", with no number and no wallet or brief row;
+ * after, it shows the reading state and no count, since the browser reads the logs. Its markup holds the counting rule.
  */
 export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sitemap: string; url: string }): string[] {
   const { html, inboxRecorded, sitemap, url } = opts;
@@ -528,16 +557,19 @@ export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sit
 
   const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   need(markup.includes(PROOF_RULE_MARK), " does not hold the counting rule in its markup");
-  const values = PROOF_BRIEF_LINES.map((key) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1]);
+  const valueOf = (key: string) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1];
+  const values = PROOF_BRIEF_LINES.map(valueOf);
+  const decisions = PROOF_DECISION_LINES.map(valueOf);
   if (inboxRecorded) {
     const reading = markup.includes('data-proof-state="reading"');
     need(reading, " does not show the reading state, but a MaatInbox is recorded");
-    if (reading) need(values.every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
+    if (reading) need([...values, ...decisions].every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
   } else {
     const waiting = markup.includes('data-proof-state="not-recorded"') && markup.includes("Counting starts when the inbox is recorded.");
     need(waiting, " does not say counting starts when the inbox is recorded, but no MaatInbox is recorded");
     if (waiting) {
       need(values.every((v) => v === undefined || v === "not deployed"), " shows a brief line other than not deployed, but no MaatInbox is recorded");
+      need(decisions.every((v) => v === undefined || v === "not read"), " shows a Decision line other than not read, but no MaatInbox is recorded");
       need(!/data-proof-row="(?:outside|team|hidden)"/.test(markup), " lists a wallet or a brief, but no MaatInbox is recorded");
     }
   }

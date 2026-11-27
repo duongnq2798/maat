@@ -415,12 +415,24 @@ describe("llmsIndex", () => {
     );
   });
 
+  it("lists the site's pages under Site, before the docs pages, each as a link with its description", () => {
+    const docs = { title: "Maat docs", summary: "S.", status: "built.", fullUrl: "https://x.dev/llms-full.txt" };
+    const site = [
+      { title: "Mainnet ledger", url: "https://x.dev/ledger", description: "L." },
+      { title: "Right now on Base", url: "https://x.dev/now", description: "N." },
+    ];
+    const text = llmsIndex(docs, [{ title: "A", url: "https://x.dev/docs" }], [], site);
+    expect(text).toContain(
+      ["Every page as one Markdown file: https://x.dev/llms-full.txt", "", "## Site", "", "- [Mainnet ledger](https://x.dev/ledger): L.", "- [Right now on Base](https://x.dev/now): N.", "", "## Pages", ""].join("\n"),
+    );
+  });
+
   it("gives the status in the words of the docs home's Today paragraph, clause by clause", () => {
     const home = readFileSync("content/docs/index.mdx", "utf8").replace(/\r\n/g, "\n");
     const today = home.split("\n\n").find((p) => p.startsWith("Today ")) ?? "";
     const words = today.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").toLowerCase();
     const clauses = LLMS_STATUS.replace(/\.$/, "").split(/[.,:] /);
-    expect(clauses).toHaveLength(4);
+    expect(clauses).toHaveLength(8);
     for (const clause of clauses) expect(words, clause).toContain(clause.toLowerCase());
   });
 });

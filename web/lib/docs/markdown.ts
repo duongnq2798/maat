@@ -94,7 +94,7 @@ export function pageMarkdown(page: {
  * (content/docs/index.mdx). test/docs-page.test.tsx checks each of its clauses against that paragraph.
  */
 export const LLMS_STATUS =
-  "built and fork-tested, and the four Maat contracts are deployed to Base mainnet. The contracts are unaudited, and the real Claude API and CDP wallet have not run in any Maat test.";
+  "built and fork-tested, and the four Maat contracts are deployed to Base mainnet, and so is `MaatInbox`, the inbox for briefs: five contracts in all. The contracts are unaudited, and since 2026-11-27 Maat's agent runs in live mode on Base mainnet with the real Claude API and the CDP wallet. The vault refused the agent's first `Decision` with `MARKET_CLOSED` on 2026-11-27 and allowed its first two buys later that day.";
 
 /** The line that opens each page's own Markdown file: where the index and the other pages are. */
 export const INDEX_NOTE_START = "> Index of every page: ";
@@ -111,16 +111,62 @@ export function standaloneMarkdown(markdown: string, base: URL, built?: string):
   return `${note}\n\n${built ? `${built}\n\n` : ""}${markdown}`;
 }
 
+/** A page of the site outside the docs, as llms.txt lists it under Site. */
+export interface SitePage {
+  /** The page's path on the site. */
+  readonly path: string;
+  /** Its name, as its <title> gives it before " · Maat". */
+  readonly title: string;
+  /** Its meta description, word for word (test/docs-page.test.tsx compares them). */
+  readonly description: string;
+}
+
 /**
- * /llms.txt (llmstxt.org): the docs title, summary and status, where all of it is as one file, then every page as an
- * absolute link to its Markdown copy, with its web page after the description, then the other files for tools.
+ * The site's pages that show Maat on Base, which llms.txt lists under Site, the mainnet ledger first. /ask joins them
+ * only once the owner's switch has opened it (app/llms.txt/route.ts), as the nav does.
+ */
+export const LLMS_SITE_PAGES: readonly SitePage[] = [
+  {
+    path: "/ledger",
+    title: "Mainnet ledger",
+    description: "Every decision Maat's MandateVault makes on Base, allowed or refused, with its treasury and rules, read from the chain in your browser.",
+  },
+  {
+    path: "/now",
+    title: "Right now on Base",
+    description: "What an agent under Maat's default mandate would do right now with the 13 B20 tokens that have a NAV, read from Base mainnet in your browser.",
+  },
+  {
+    path: "/proof",
+    title: "Proof",
+    description: "How Maat counts outside briefs to its AI agent, and the counts, rebuilt from MaatInbox logs on Base by a script anyone can run.",
+  },
+  {
+    path: "/gap-index",
+    title: "Weekend Gap Index",
+    description:
+      "For each closed NYSE window: how long the Chainlink feeds of the 13 B20 stocks on Base went without an update, and the Aerodrome swaps and gaps meanwhile.",
+  },
+];
+
+/**
+ * /llms.txt (llmstxt.org): the docs title, summary and status, where all of it is as one file, then the site's pages
+ * that show Maat on Base (`site`), then every docs page as an absolute link to its Markdown copy, with its web page after
+ * the description, then the other files for tools.
  */
 export function llmsIndex(
   docs: { title: string; summary: string; status: string; fullUrl: string },
   pages: readonly { title: string; url: string; description?: string }[],
   abis: readonly { title: string; url: string; description: string }[],
+  site: readonly { title: string; url: string; description: string }[] = [],
 ): string {
-  const lines = [`# ${docs.title}`, "", `> ${docs.summary}`, "", `Status: ${docs.status}`, "", `Every page as one Markdown file: ${docs.fullUrl}`, "", "## Pages", ""];
+  const lines = [`# ${docs.title}`, "", `> ${docs.summary}`, "", `Status: ${docs.status}`, "", `Every page as one Markdown file: ${docs.fullUrl}`, ""];
+  if (site.length > 0) {
+    lines.push("## Site", "");
+    for (const s of site) lines.push(`- [${s.title}](${s.url}): ${s.description}`);
+    lines.push("");
+  }
+  lines.push("## Pages", "");
   for (const p of pages) {
     const md = new URL(markdownUrl(new URL(p.url).pathname), p.url).href;
     lines.push(`- [${p.title}](${md}): ${p.description ? `${p.description} ` : ""}Web page: ${p.url}`);

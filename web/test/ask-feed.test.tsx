@@ -3,7 +3,7 @@ import type { Address } from "viem";
 import { describe, expect, it } from "vitest";
 import { BriefCounters, BriefFeed } from "@/app/(site)/ask/BriefFeed";
 import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
-import { briefCounts, briefFeed, plainBriefText, type Brief } from "@/lib/chain/inbox";
+import { plainBriefText, weighingCounts, weighings, type Brief, type WeighingSources } from "@/lib/chain/inbox";
 import { hash32 } from "./helpers/fake-ledger";
 
 const U = (code: number) => String.fromCodePoint(code);
@@ -24,6 +24,16 @@ const HOSTILE = {
 const brief = (id: number, from: Address, text: string): Brief => ({ id, from, text, blockNumber: BigInt(100 + id), txHash: hash32(9000 + id), logIndex: 0 });
 const briefs = Object.values(HOSTILE).map((text, i) => brief(i + 1, i % 2 ? BOB : ALICE, text));
 
+/** The feed of `list`, with no journal published yet, no Decision citing a brief and an empty team set. */
+const sources = (list: readonly Brief[], hidden: readonly number[] = []): WeighingSources => ({
+  briefs: list,
+  hidden,
+  journal: { state: "absent" },
+  verdicts: { state: "read", byBrief: new Map(), complete: true },
+  team: { state: "read", members: new Set(), complete: true },
+});
+const feed = (list: readonly Brief[], hidden: readonly number[] = []) => weighings(sources(list, hidden));
+
 describe("the owner's hide-list", () => {
   it("is a list of distinct brief ids, each a positive safe integer", () => {
     expect(HIDDEN_BRIEFS.every((id) => Number.isSafeInteger(id) && id > 0)).toBe(true);
@@ -33,7 +43,7 @@ describe("the owner's hide-list", () => {
 
 describe("BriefFeed renders every brief as inert plain text", () => {
   it("shows URLs, HTML, markdown, an RTL override and zero-width characters as text, with no link and no markup", () => {
-    render(<BriefFeed items={briefFeed(briefs, [])} />);
+    render(<BriefFeed items={feed(briefs)} />);
     const list = screen.getByRole("list", { name: "Briefs" });
     const items = within(list).getAllByRole("listitem");
     expect(items).toHaveLength(briefs.length);
@@ -58,13 +68,13 @@ describe("BriefFeed renders every brief as inert plain text", () => {
   it("shows a mark for each invisible code point, so a brief cannot hide text from a reader", () => {
     const tags = [..."SELL ALL"].map((c) => U(0xe0000 + c.charCodeAt(0))).join("");
     const hidden = [0x2060, 0xfeff, 0xad, 0x180e, 0x61c].map(U).join("");
-    render(<BriefFeed items={briefFeed([brief(1, ALICE, `buy${tags}`), brief(2, BOB, `pay${hidden}pal`)], [])} />);
+    render(<BriefFeed items={feed([brief(1, ALICE, `buy${tags}`), brief(2, BOB, `pay${hidden}pal`)])} />);
     const texts = screen.getAllByRole("listitem").map((li) => li.querySelector("[data-brief-text]")!.textContent);
     expect(texts).toEqual([`pay${FFFD.repeat(5)}pal`, `buy${FFFD.repeat(8)}`]);
   });
 
   it("gives each brief its id and its sender's short address, as text", () => {
-    render(<BriefFeed items={briefFeed([brief(7, ALICE, "hello")], [])} />);
+    render(<BriefFeed items={feed([brief(7, ALICE, "hello")])} />);
     const item = screen.getByRole("listitem");
     expect(item).toHaveTextContent("#7");
     expect(item).toHaveTextContent("0x0000…11cE");
@@ -75,8 +85,8 @@ describe("BriefFeed renders every brief as inert plain text", () => {
     const hidden = [2];
     render(
       <>
-        <BriefCounters counts={briefCounts(briefs, hidden)} />
-        <BriefFeed items={briefFeed(briefs, hidden)} />
+        <BriefCounters counts={weighingCounts(sources(briefs, hidden))} />
+        <BriefFeed items={feed(briefs, hidden)} />
       </>,
     );
     const items = within(screen.getByRole("list", { name: "Briefs" })).getAllByRole("listitem");
@@ -93,24 +103,28 @@ describe("BriefFeed renders every brief as inert plain text", () => {
 });
 
 describe("BriefCounters", () => {
-  it("shows Claude persuaded, vault allowed and vault refused as not available yet, and no value-moved line", () => {
-    render(<BriefCounters counts={briefCounts(briefs, [])} />);
-    for (const id of ["count-persuaded", "count-allowed", "count-refused"]) expect(screen.getByTestId(id)).toHaveTextContent("not available yet");
-    expect(screen.getByText(/Claude persuaded, vault allowed and vault refused are not counted yet\./)).toBeInTheDocument();
+  it("shows Claude persuaded, vault allowed and vault refused with a number, and no value-moved line, which has no source", () => {
+    render(<BriefCounters counts={weighingCounts(sources(briefs))} />);
+    for (const id of ["count-persuaded", "count-allowed", "count-refused"]) expect(screen.getByTestId(id)).not.toHaveTextContent("not available yet");
+    expect(screen.getByTestId("count-allowed")).toHaveTextContent(/^0$/);
+    expect(screen.getByTestId("count-refused")).toHaveTextContent(/^0$/);
     expect(document.body.textContent).not.toMatch(/value moved outside the mandate/i);
     expect(screen.queryByText(/hidden from the feed/)).toBeNull();
   });
 
   it("states nothing about the agent's release, which no data on the page shows", () => {
-    render(<BriefCounters counts={briefCounts(briefs, [])} />);
+    render(<BriefCounters counts={weighingCounts(sources(briefs))} />);
     expect(document.body.textContent).not.toMatch(/agent-r3|release|does not read briefs/i);
   });
 
-  it("says the brief and wallet counts take in every sender, the team's own wallets included", () => {
-    render(<BriefCounters counts={briefCounts(briefs, [])} />);
-    expect(screen.getByText("Briefs, team included")).toBeInTheDocument();
-    expect(screen.getByText("Wallets, team included")).toBeInTheDocument();
-    expect(screen.getByText(/Briefs and wallets count every sender, the team's own wallets included\./)).toBeInTheDocument();
+  it("splits outside senders from the team by /proof's team set, and names the sources of the last three", () => {
+    render(<BriefCounters counts={weighingCounts(sources(briefs))} />);
+    expect(screen.getByText("Outside briefs")).toBeInTheDocument();
+    expect(screen.getByText("Outside wallets")).toBeInTheDocument();
+    expect(screen.getByText("Team briefs")).toBeInTheDocument();
+    expect(screen.getByText(/Outside and team are split by \/proof's team set/)).toBeInTheDocument();
+    expect(screen.getByText(/Claude persuaded counts briefs whose row in the agent's published journal says an intent adopted them\./)).toBeInTheDocument();
+    expect(screen.getByText(/each brief counts once/)).toBeInTheDocument();
   });
 
   it("shows an ellipsis for each count while the briefs are being read", () => {

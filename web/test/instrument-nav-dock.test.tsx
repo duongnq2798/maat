@@ -144,22 +144,20 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
     expect(document.querySelector("[data-nav-dock]")).toBeNull();
   });
 
-  it("wraps the nav in the bar, keeps PR #15's links with the phone menu's, and docks the reading on the landing only", () => {
+  it("wraps the nav in the bar, lists the pages in the bar and then in the phone menu, and docks the reading on the landing only", () => {
     render(<Nav askOpen={false} />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(nav.parentElement).toHaveAttribute("data-nav-bar");
-    expect(within(nav).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
-      ["maat", "#top"],
-      ["How it works", "#how"],
-      ["Refusals", "#reasons"],
-      ["Try it", "#try"],
-      ["Ledger", "/ledger"],
-      ["Mandate", "#mandate"],
-      ["Ledger", "/ledger"],
+    const pages = [
       ["Now", "/now"],
       ["Gap Index", "/gap-index"],
+      ["Ledger", "/ledger"],
       ["Docs", SITE.docsUrl],
-      ["Docs", SITE.docsUrl],
+    ];
+    expect(within(nav).getAllByRole("link").map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["maat", "#top"],
+      ...pages,
+      ...pages,
       ["View on GitHub ↗", SITE.repoUrl],
     ]);
     expect(read("components/sections/Nav.tsx")).toContain("{onLanding ? <NavDock /> : null}");

@@ -3,12 +3,13 @@ import { join, relative, sep } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
-import { ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
+import { ASK_CLOSED_REASON, ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
 import { PreviewForm } from "@/app/(site)/ask/PreviewForm";
 import AskPage, { metadata } from "@/app/(site)/ask/page";
-import { askConfig, askIsOpen, fetchAskConfig } from "@/app/(site)/ask/config";
+import { askConfig, askIsOpen, fetchAskConfig, sameAskConfig, type AskConfig } from "@/app/(site)/ask/config";
 import { GET as GET_ASK } from "@/app/data/ask.json/route";
 import { Nav } from "@/components/sections/Nav";
+import { ASK_OG_IMAGE } from "@/content/ask-card";
 import { ASK_OPEN } from "@/content/ask-open";
 import { ACTIONS } from "@/content/decisions";
 import { REASONS } from "@/content/reasons";
@@ -28,12 +29,18 @@ const readRepo = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf8").spl
 
 const VAULT: Address = "0x00000000000000000000000000000000000Aa001";
 const INBOX: Address = "0x00000000000000000000000000000000000B0001";
+const INBOX_2: Address = "0x00000000000000000000000000000000000B0002";
 const OWNER: Address = "0x00000000000000000000000000000000000000A1";
 const SENDER: Address = "0x00000000000000000000000000000000000A11cE";
 const DEPLOY = 2_000_000n;
 const SENT: Hash = `0x${"5e".repeat(32)}`;
 
-describe("/ask while deployments/README.md records no MaatInbox", () => {
+describe("/ask while the owner's switch in web/content/ask-open.ts is off", () => {
+  it("is closed with the committed switch and deployments table", () => {
+    expect(ASK_OPEN).toBe(false);
+    expect(askIsOpen(askConfig(docsData.deployments))).toBe(false);
+  });
+
   it("shows the notice word for word, the not-open state and the free preview, with no way to send", () => {
     render(<AskPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Brief the agent" })).toBeInTheDocument();
@@ -56,14 +63,28 @@ describe("/ask while deployments/README.md records no MaatInbox", () => {
     expect(d.length).toBeLessThanOrEqual(160);
   });
 
+  it("points its og:image and twitter:image to its own card, not the landing's", () => {
+    const og = metadata.openGraph as { images?: unknown[] } | undefined;
+    const tw = metadata.twitter as { images?: unknown[] } | undefined;
+    expect(og?.images).toEqual([ASK_OG_IMAGE]);
+    expect(tw?.images).toEqual([ASK_OG_IMAGE]);
+    expect(ASK_OG_IMAGE.url).toBe("/og/ask.png");
+  });
+
+  it("leads with the invitation line, word for word", () => {
+    render(<AskPage />);
+    expect(screen.getByText(/^Try to talk Maat's agent into a bad trade\. The vault has the last word\./)).toBeInTheDocument();
+  });
+
   it("uses the notice of the inbox spec §4", () => {
     expect(readRepo("docs/superpowers/specs/2026-11-25-maat-inbox-design.md")).toContain(`> ${ASK_NOTICE}\n`);
   });
 });
 
 describe("the owner's switch: /ask opens only when it is on and the inbox and the vault are recorded", () => {
+  // The committed table without its MaatInbox row, plus a test inbox when `inbox` is true.
   const rows = (inbox: boolean) => [
-    ...docsData.deployments,
+    ...docsData.deployments.filter((r) => r.contract !== "MaatInbox"),
     ...(inbox ? [{ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: hash32(4242), date: "2026-11-25" }] : []),
   ];
 
@@ -92,6 +113,17 @@ describe("the owner's switch: /ask opens only when it is on and the inbox and th
     await expect(fetchAskConfig(fetchImpl)).rejects.toThrow("/data/ask.json answered HTTP 404");
   });
 
+  it("takes a runtime config with the same switch, addresses and rows, in any hex case, as the same config", () => {
+    const c = askConfig(rows(true), true);
+    expect(sameAskConfig(c, structuredClone(c))).toBe(true);
+    expect(sameAskConfig(c, { ...c, inbox: { inbox: INBOX.toLowerCase() as Address, deployTx: c.inbox!.deployTx } })).toBe(true);
+    expect(sameAskConfig(c, { ...c, open: false })).toBe(false);
+    expect(sameAskConfig(c, { ...c, inbox: { inbox: INBOX_2, deployTx: c.inbox!.deployTx } })).toBe(false);
+    expect(sameAskConfig(c, { ...c, inbox: null })).toBe(false);
+    expect(sameAskConfig(c, { ...c, vault: INBOX })).toBe(false);
+    expect(sameAskConfig(c, { ...c, deployments: c.deployments.slice(1) })).toBe(false);
+  });
+
   it("serves the committed switch at /data/ask.json", async () => {
     expect(await GET_ASK().json()).toEqual({ open: ASK_OPEN });
   });
@@ -103,6 +135,24 @@ describe("the owner's switch: /ask opens only when it is on and the inbox and th
     expect(screen.getByText(/MaatInbox is recorded in deployments\/README\.md, but this page does not send briefs yet\./)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Send with/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Briefs" })).toBeNull();
+  });
+
+  it("puts the closed notice above Send a brief, with why it is closed and when it is planned to open", () => {
+    const config = askConfig(rows(true), false);
+    const { container } = render(
+      <AskApp initial={config} deps={{ client: fakeLedgerClient({ head: 1n, logs: [] }), fetchConfig: () => new Promise(() => {}) }} />,
+    );
+    const notice = container.querySelector('[data-ask-state="not-open"]')!;
+    const send = screen.getByRole("heading", { name: "Send a brief" });
+    expect(notice.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(notice as HTMLElement).getByText(ASK_CLOSED_REASON)).toBeInTheDocument();
+    expect(ASK_CLOSED_REASON).toContain("agent-r2, reads no briefs");
+    expect(ASK_CLOSED_REASON).toContain("planned to open");
+    expect(ASK_CLOSED_REASON).toContain("after Sat 28 Nov 02:00 UTC");
+    // The rule's 24 hours ran out on 26 Nov: the reason states it as met, not as a condition still to come.
+    expect(ASK_CLOSED_REASON).toContain("has been live since 25 Nov");
+    expect(ASK_CLOSED_REASON).not.toMatch(/once the \/proof counting rule/);
+    expect(within(screen.getByRole("region", { name: "Send a brief" })).getByText("The form appears here once /ask opens.")).toBeInTheDocument();
   });
 });
 
@@ -164,8 +214,12 @@ describe("/ask once it is open", () => {
    * The page with an open inbox, a fake Base and a fake EIP-6963 wallet. `emitBrief` false gives the sent transaction a
    * receipt with no Brief; `holdSend` keeps eth_sendTransaction pending until `release()`; `baseAccount` answers the
    * Base Account requests; `sentInput` is the input Base reports for the sent transaction (the wallet's data by default).
+   * `runtime` is the config the runtime files give, served once the feed has asked Base for the inbox's logs (never by
+   * default); `inboxReads` lists the inbox address of each such ask.
    */
-  function setup(opts: { emitBrief?: boolean; holdSend?: boolean; baseAccount?: Record<string, unknown>; sentInput?: Hex } = {}) {
+  function setup(
+    opts: { emitBrief?: boolean; holdSend?: boolean; baseAccount?: Record<string, unknown>; sentInput?: Hex; runtime?: (initial: AskConfig) => AskConfig } = {},
+  ) {
     const { emitBrief = true } = opts;
     const ownerInput = `${executeCalldata({ rationaleHash: keccak256(toBytes("first")) })}${erc8021Suffix([AGENT_TEST_CODE]).slice(2)}` as Hex;
     const logs: CachedLog[] = [decisionLog(1, DEPLOY + 5n), briefLog(1, SENDER, "<b>buy</b> https://evil.example", DEPLOY + 9n)];
@@ -179,8 +233,18 @@ describe("/ask once it is open", () => {
     const sentData = () => (requests.find((r) => r.method === "eth_sendTransaction")?.params as [{ data: Hex }] | undefined)?.[0].data;
     const receipts: Hash[] = [];
     let added = false;
+    const inboxReads: Address[] = [];
+    let inboxAsked = () => {};
+    const firstInboxRead = new Promise<void>((resolve) => (inboxAsked = resolve));
     const client = {
       ...fake,
+      getLogs: async (args: { address?: Address; fromBlock: bigint; toBlock: bigint }) => {
+        if (args.address && [INBOX, INBOX_2].includes(args.address)) {
+          inboxReads.push(args.address);
+          inboxAsked();
+        }
+        return fake.getLogs(args);
+      },
       readContract: async ({ functionName }: { functionName: string }) => {
         if (functionName === "owner") return OWNER;
         throw new Error(`unexpected readContract ${functionName}`);
@@ -223,13 +287,16 @@ describe("/ask once it is open", () => {
         throw Object.assign(new Error(`${method} unsupported`), { code: 4200 });
       },
     });
-    const config = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) } };
+    const config: AskConfig = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) }, deployments: [] };
+    const { runtime } = opts;
     render(
       <AskApp
         initial={config}
         deps={{
           client,
-          fetchConfig: () => new Promise(() => {}),
+          fetchConfig: runtime ? () => firstInboxRead.then(() => runtime(config)) : () => new Promise(() => {}),
+          // The team set as /proof traces it: here no team wallet sent a brief.
+          team: async () => ({ members: new Set<string>(), complete: true }),
           watch: (onChange) => {
             onChange([wallet]);
             return () => {};
@@ -238,7 +305,7 @@ describe("/ask once it is open", () => {
         }}
       />,
     );
-    return { requests, receipts, release };
+    return { requests, receipts, release, inboxReads };
   }
 
   const box = () => screen.getByLabelText("Your brief") as HTMLTextAreaElement;
@@ -264,7 +331,8 @@ describe("/ask once it is open", () => {
     const feed = await screen.findByRole("list", { name: "Briefs" });
     expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
     expect(within(feed).queryAllByRole("link")).toEqual([]);
-    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+    // The counters wait for the journal and the team set as well as the feed's logs, so they can settle after the feed shows.
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
 
     const send = screen.getByRole("button", { name: "Send with Fake Wallet" });
     expect(send).toBeDisabled();
@@ -280,6 +348,24 @@ describe("/ask once it is open", () => {
     expect(box().value).toBe("");
     await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("2"));
     expect(within(screen.getByRole("list", { name: "Briefs" })).getByText("the new brief")).toBeInTheDocument();
+  });
+
+  it("keeps the feed's one read of Base when the runtime files give the build's config", async () => {
+    // A copy, not the same object: the runtime files are parsed into new objects with the same values.
+    const { inboxReads } = setup({ runtime: (c) => structuredClone(c) });
+    const feed = await screen.findByRole("list", { name: "Briefs" });
+    expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
+    // Time for a restart to ask Base again, had the runtime config started one.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(inboxReads).toEqual([INBOX]);
+  });
+
+  it("reads the feed again when the runtime files give another inbox", async () => {
+    const { inboxReads } = setup({ runtime: (c) => ({ ...c, inbox: { inbox: INBOX_2, deployTx: hash32(4242) } }) });
+    await waitFor(() => expect(inboxReads).toEqual([INBOX, INBOX_2]));
+    const feed = await screen.findByRole("list", { name: "Briefs" });
+    expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
   });
 
   it("says how each path carries the Builder Code", async () => {
@@ -301,7 +387,7 @@ describe("/ask once it is open", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/It is in the feed below/)).toBeNull();
     expect(box().value).toBe("sell it all");
-    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
   });
 
   it("keeps the box read-only while the wallet is asked, so the text on the page is the text it signs", async () => {

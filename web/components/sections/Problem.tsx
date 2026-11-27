@@ -31,6 +31,16 @@ function ProblemCard({ tag, code, title, body, children }: CardProps) {
   );
 }
 
+/**
+ * A B20 token's uiMultiplier as a reader takes it in (spec 2026-11-27 section 4): four decimals, then its change from 1
+ * in percent, "1.0005 (+0.05%)" for 1.000537939576369481. The full value stays in the title.
+ */
+export function splitMultiplierText(value: string): string {
+  const m = Number(value);
+  const pct = (m - 1) * 100;
+  return `${m.toFixed(4)} (${pct < 0 ? "" : "+"}${pct.toFixed(2)}%)`;
+}
+
 export function Problem() {
   const m = FACTS.mandate.value;
   const cooldownH = m.multiplierCooldownSec / 3600;
@@ -58,7 +68,12 @@ export function Problem() {
           title="The pool can drift from fair value."
           body={`Each trade compares a ${m.twapWindowSec / 60}-minute Aerodrome TWAP with Chainlink. We measured these premiums in session before setting the limit.`}
         >
-          <PremiumChart />
+          <div className="flex flex-col gap-2">
+            <span data-chart-label="" className="font-mono text-[11px] text-ink-2">
+              pool vs Chainlink, in bps · limit {m.maxPremiumBps}
+            </span>
+            <PremiumChart />
+          </div>
         </ProblemCard>
         <ProblemCard
           tag="03 · CORPORATE ACTIONS"
@@ -67,9 +82,12 @@ export function Problem() {
           body={`When the B20 multiplier moves, the vault records it and pauses that token for ${cooldownH} hours while prices settle.`}
         >
           <div className="flex flex-col gap-2.5 rounded-[14px] bg-surface-soft p-[18px]">
-            <span className="font-mono text-[11px] text-ink-2">NVDAc · uiMultiplier</span>
-            <span className="break-all font-mono text-[clamp(18px,1.8vw,22px)] font-medium tracking-[-0.02em]">
-              {FACTS.nvdaUiMultiplier.value}
+            <span className="font-mono text-[11px] text-ink-2">NVDAc · split multiplier</span>
+            <span
+              title={`uiMultiplier ${FACTS.nvdaUiMultiplier.value}`}
+              className="break-all font-mono text-[clamp(18px,1.8vw,22px)] font-medium tracking-[-0.02em]"
+            >
+              {splitMultiplierText(FACTS.nvdaUiMultiplier.value)}
             </span>
             <div className="flex items-center gap-2 font-mono text-xs">
               <span className="rounded-md bg-refuse-tint px-2 py-[3px] text-refuse">change detected</span>

@@ -1,14 +1,20 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
 import { NAV_TOKENS } from "@/content/b20-nav";
+import { regularSession } from "@/content/calendar";
 import { EDITIONS, editionWindows } from "@/content/gap-index/editions";
+import { DECISION_TOPIC } from "@/lib/gap/decisions";
 import { ANSWER_UPDATED_TOPIC, SWAP_TOPIC, type RawLog } from "@/lib/gap/decode";
-import { measureEdition } from "@/lib/gap/edition";
+import { measureEdition, type EditionDeps, type EditionOptions } from "@/lib/gap/edition";
 import { createLogSource } from "@/lib/gap/logs";
 import { LOOKBACK_SEC } from "@/lib/gap/measure";
-import type { LogQuery, LogReader } from "@/lib/gap/rpc";
+import { createLogReader, GAP_RPC, RpcRefused, type LogQuery, type LogReader, type TxRead } from "@/lib/gap/rpc";
 import { editionSchema } from "@/lib/gap/schema";
+import { OWNER_SELECTOR } from "@/lib/gap/vault";
+import { calendarChecks } from "@/lib/gap/windows";
 import { word } from "@/lib/live/abi";
+import { decisionLog, hash32 } from "./helpers/fake-ledger";
+import { txInput, VECTORS } from "./helpers/maat-v1";
 
 const NVDA = NAV_TOKENS.find((t) => t.symbol === "NVDAc")!;
 const A1 = `0x${"a1".repeat(20)}`;
@@ -39,15 +45,23 @@ interface Ev {
   value: bigint;
 }
 
-/** A chain with 2-second blocks that ends at `headTs`, and the events it holds. */
+/**
+ * A chain that ends at `headTs`, with 2-second blocks unless it is given Base's 5 blocks a second (whole-second
+ * timestamps, so five blocks share each one), and the events it holds. Its finalized block is `finalizedLag` blocks
+ * below its head.
+ */
 class Chain implements LogReader {
   events: Ev[] = [];
   swapReads: { from: number; to: number }[] = [];
   headers: number[] = [];
   phases = [A1, A2];
-  constructor(readonly headTs: number) {}
+  finalizedLag = 0;
+  constructor(
+    readonly headTs: number,
+    readonly blocksPerSecond = 0.5,
+  ) {}
 
-  ts = (n: number) => this.headTs - (HEAD - n) * 2;
+  ts = (n: number) => this.headTs - Math.floor((HEAD - n) / this.blocksPerSecond);
   at = (ts: number) => HEAD - Math.floor((this.headTs - ts) / 2);
 
   answer(block: number, whole: number, address = A2, logIndex = 0) {
@@ -93,6 +107,12 @@ class Chain implements LogReader {
   }
   async head() {
     return { block: HEAD, ts: this.headTs };
+  }
+  async finalized() {
+    return { block: HEAD - this.finalizedLag, ts: this.ts(HEAD - this.finalizedLag) };
+  }
+  async transaction(hash: string): Promise<TxRead> {
+    throw new Error(`no transaction ${hash}`);
   }
   async call(to: string, data: string) {
     expect(NAV_TOKENS.map((t) => t.feed)).toContain(to);
@@ -311,5 +331,503 @@ describe("measureEdition", () => {
     await done;
     expect(lines).toHaveLength(1);
     expect(lines[0]).toMatch(/^NVDAc 2026-11-13: \d+ reads, \d+\.\d s$/);
+  });
+});
+
+const CALENDAR = `0x${"ca".repeat(20)}`;
+const VAULT = `0x${"5a".repeat(20)}`;
+const OWNER = `0x${"a1".repeat(20)}`;
+const AGENT = `0x${"b2".repeat(20)}`;
+const THANKSGIVING = editionWindows(EDITIONS[1]!)[0]!;
+const WEEKEND = editionWindows(EDITIONS[1]!)[1]!;
+
+/** The chain with MarketCalendar (answering as the repo calendar does, unless told otherwise) and the vault's Decisions. */
+class Week extends Chain {
+  decisions: RawLog[] = [];
+  txs = new Map<string, TxRead>();
+  calendarAsked: number[] = [];
+  calendarSays = new Map<number, boolean>();
+  logQueries: LogQuery[] = [];
+
+  decision(n: number, block: number, sender: string, blob: string, reason: string) {
+    const l = decisionLog(n, BigInt(block), { reason });
+    this.decisions.push({
+      address: VAULT,
+      topics: l.topics,
+      data: l.data,
+      blockNumber: `0x${block.toString(16)}`,
+      logIndex: "0x0",
+      transactionHash: l.transactionHash,
+      blockTimestamp: `0x${this.ts(block).toString(16)}`,
+    });
+    this.txs.set(l.transactionHash.toLowerCase(), { from: sender, to: VAULT, input: txInput(blob) });
+  }
+  first(ts: number) {
+    let lo = 0;
+    let hi = HEAD;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (this.ts(mid) >= ts) hi = mid;
+      else lo = mid + 1;
+    }
+    return lo;
+  }
+  override async getLogs(q: LogQuery): Promise<RawLog[]> {
+    this.logQueries.push(q);
+    if (q.topic0 !== DECISION_TOPIC) return super.getLogs(q);
+    expect(q.address).toBe(VAULT);
+    return this.decisions.filter((l) => Number(l.blockNumber) >= q.from && Number(l.blockNumber) <= q.to);
+  }
+  override async transaction(hash: string): Promise<TxRead> {
+    const t = this.txs.get(hash.toLowerCase());
+    if (!t) throw new Error(`no transaction ${hash}`);
+    return t;
+  }
+  override async call(to: string, data: string) {
+    if (to === VAULT && data === OWNER_SELECTOR) return `0x${word(BigInt(OWNER))}`;
+    if (to === CALENDAR) {
+      const m = /^0x3fef6f98([0-9a-f]{64})([0-9a-f]{64})$/.exec(data);
+      if (!m || BigInt(`0x${m[2]}`) !== 0n) throw new Error(`unexpected calendar call ${data}`);
+      const ts = Number(BigInt(`0x${m[1]}`));
+      this.calendarAsked.push(ts);
+      return `0x${word((this.calendarSays.get(ts) ?? regularSession(ts).open) ? 1n : 0n)}`;
+    }
+    return super.call(to, data);
+  }
+}
+
+const measure = (chain: Chain, opts: Partial<EditionOptions> & { edition: number }, deps: Partial<EditionDeps> = {}) => {
+  const lines: string[] = [];
+  const done = measureEdition(
+    {
+      reader: chain,
+      source: (headBlock) => createLogSource(chain, { cacheDir: null, headBlock }),
+      log: (l) => lines.push(l),
+      calendar: CALENDAR,
+      vault: VAULT,
+      ...deps,
+    },
+    { tokens: ["NVDAc"], ...opts },
+  );
+  return { done, lines };
+};
+const only = (f: Awaited<ReturnType<typeof measureEdition>>, id: string) => {
+  const w = f.windows.find((x) => x.id === id)!;
+  if (w.status !== "complete") throw new Error(`expected ${id} complete`);
+  return w;
+};
+
+describe("measureEdition on windows that start on a weekday", () => {
+  it("bounds the Wednesday holiday window by timestamp on 5 blocks a second: the first block at or after the close, the last before the open", async () => {
+    const chain = new Week(THANKSGIVING.openTs + 3600, 5);
+    chain.finalizedLag = 25; // five seconds of blocks: the file reads through the finalized block, past the open
+    const from = chain.first(THANKSGIVING.closeTs);
+    const to = chain.first(THANKSGIVING.openTs) - 1;
+    // Five blocks share each second: the bounds are the first of the close's five and the last before the open's five.
+    expect([chain.ts(from - 1), chain.ts(from), chain.ts(from + 4), chain.ts(from + 5)]).toEqual([
+      THANKSGIVING.closeTs - 1,
+      THANKSGIVING.closeTs,
+      THANKSGIVING.closeTs,
+      THANKSGIVING.closeTs + 1,
+    ]);
+    expect([chain.ts(to), chain.ts(to + 1)]).toEqual([THANKSGIVING.openTs - 1, THANKSGIVING.openTs]);
+    chain.swap(from + 1_000);
+    const f = await measure(chain, { edition: 1, windows: [THANKSGIVING.id] }).done;
+    const w = only(f, "2026-11-25");
+    expect(w).toMatchObject({ closeLabel: "Wed 25 Nov 16:00 ET", openLabel: "Fri 27 Nov 09:30 ET", blocks: { from, to } });
+    expect(w.tokens[0]!.swapsInWindow).toBe(1);
+    expect(f.head).toEqual({ block: HEAD - 25, ts: chain.headTs - 5 });
+    // Pinned to MarketCalendar: open the second before the Wednesday close, closed through Thanksgiving, open at the Friday open.
+    expect(chain.calendarAsked).toEqual(calendarChecks(THANKSGIVING).map((c) => c.ts));
+    expect(editionSchema({ partial: true }).safeParse(f).error?.issues ?? []).toEqual([]);
+  });
+
+  it("measures the weekend after the 13:00 ET early close from the early close, 68.5 hours", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    const from = chain.first(WEEKEND.closeTs);
+    chain.swap(from); // the first block of the window: a swap at the early close itself
+    chain.swap(from - 1); // the second before, still in session: outside the window
+    const w = only(await measure(chain, { edition: 1, windows: [WEEKEND.id] }).done, "2026-11-27");
+    expect(w.closeLabel).toBe("Fri 27 Nov 13:00 ET");
+    expect((w.openTs - w.closeTs) / 3600).toBe(68.5);
+    expect(w.blocks).toEqual({ from, to: chain.first(WEEKEND.openTs) - 1 });
+    expect(w.tokens[0]!.swapsInWindow).toBe(1);
+    // The calendar is asked at the early close itself: open at 12:59:59 ET, closed at 13:00:00 ET.
+    expect(chain.calendarAsked.slice(0, 2)).toEqual([WEEKEND.closeTs - 1, WEEKEND.closeTs]);
+    expect(chain.calendarAsked).toEqual(calendarChecks(WEEKEND).map((c) => c.ts));
+  });
+
+  it("measures a window across a month end and a year end, Thursday 31 December to Monday 4 January", async () => {
+    const def = { edition: 7, title: "Year end", from: "2026-12-31", to: "2026-12-31" };
+    const [yearEnd] = editionWindows(def);
+    const chain = new Week(yearEnd!.openTs + 3600, 5);
+    chain.swap(chain.first(yearEnd!.closeTs) + 10);
+    const f = await measure(chain, { edition: 7 }, { editions: [def] }).done;
+    const w = only(f, "2026-12-31");
+    expect([w.closeLabel, w.openLabel]).toEqual(["Thu 31 Dec 16:00 ET", "Mon 4 Jan 09:30 ET"]);
+    expect(w.blocks).toEqual({ from: chain.first(yearEnd!.closeTs), to: chain.first(yearEnd!.openTs) - 1 });
+    expect(w.tokens[0]!.swapsInWindow).toBe(1);
+    expect(chain.calendarAsked).toHaveLength(7); // the two instants at each edge, and 09:30 ET of 1, 2 and 3 January
+    expect(w.decisions).toBeUndefined(); // an edition that does not count Decisions
+  });
+
+  it("counts the vault's Decisions in the window's blocks by sender, and those refused with MARKET_CLOSED", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    const from = chain.first(WEEKEND.closeTs);
+    const to = chain.first(WEEKEND.openTs) - 1;
+    chain.decision(1, from - 5, AGENT, VECTORS.V4.blob, "OK"); // a probe at 17:58 UTC, before the close: not counted
+    chain.decision(2, from, AGENT, VECTORS.V4.blob, "MARKET_CLOSED");
+    chain.decision(3, from + 50_000, AGENT, VECTORS.V1.blob, "MARKET_CLOSED");
+    chain.decision(4, to, AGENT, VECTORS.V1.blob, "MARKET_CLOSED");
+    chain.decision(5, to + 1, OWNER, VECTORS.V1.blob, "OK"); // at the open: not counted
+    const { done, lines } = measure(chain, { edition: 1, windows: [WEEKEND.id] });
+    const f = await done;
+    const w = only(f, "2026-11-27");
+    expect(w.decisions).toEqual({
+      vault: VAULT,
+      topic: DECISION_TOPIC,
+      count: 3,
+      marketClosed: 3,
+      bySender: {
+        agent: { count: 2, marketClosed: 2 },
+        probe: { count: 1, marketClosed: 1 },
+        brief: { count: 0, marketClosed: 0 },
+        owner: { count: 0, marketClosed: 0 },
+        unlabelled: { count: 0, marketClosed: 0 },
+      },
+      list: [
+        { block: from, logIndex: 0, ts: WEEKEND.closeTs, tx: hash32(2), sender: "probe", allowed: false, reason: "MARKET_CLOSED" },
+        { block: from + 50_000, logIndex: 0, ts: chain.ts(from + 50_000), tx: hash32(3), sender: "agent", allowed: false, reason: "MARKET_CLOSED" },
+        { block: to, logIndex: 0, ts: WEEKEND.openTs - 1, tx: hash32(4), sender: "agent", allowed: false, reason: "MARKET_CLOSED" },
+      ],
+    });
+    expect(chain.logQueries.filter((q) => q.topic0 === DECISION_TOPIC)).toEqual([{ address: VAULT, topic0: DECISION_TOPIC, from, to }]);
+    expect(lines).toContain("window 2026-11-27: 3 Decisions, 3 refused with MARKET_CLOSED");
+    expect(editionSchema({ partial: true }).safeParse(f).error?.issues ?? []).toEqual([]);
+  });
+
+  it("refuses an edition that counts Decisions when it is given no vault", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    await expect(measure(chain, { edition: 1 }, { vault: undefined }).done).rejects.toThrow(
+      "edition 1 counts the vault's Decisions: it needs the MandateVault address",
+    );
+  });
+
+  it("asks MarketCalendar at every edge of every window before it measures one, and refuses a window the calendar disagrees with", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    const { done, lines } = measure(chain, { edition: 1 });
+    await done;
+    expect(chain.calendarAsked).toEqual([...calendarChecks(THANKSGIVING), ...calendarChecks(WEEKEND)].map((c) => c.ts));
+    expect(lines).toContain(`window 2026-11-25: MarketCalendar ${CALENDAR} agrees at 5 instants`);
+    expect(lines).toContain(`window 2026-11-27: MarketCalendar ${CALENDAR} agrees at 6 instants`);
+
+    const wrong = new Week(WEEKEND.openTs + 3600, 5);
+    wrong.calendarSays.set(WEEKEND.closeTs - 1, false); // a calendar that closed a second early
+    await expect(measure(wrong, { edition: 1 }).done).rejects.toThrow(
+      `window 2026-11-27: MarketCalendar ${CALENDAR} answers isOpen(${WEEKEND.closeTs - 1}) = false where the window needs true`,
+    );
+    expect(wrong.logQueries).toEqual([]);
+  });
+});
+
+describe("a window that has not ended by the finalized block", () => {
+  it("is pending, and the head the file records is the finalized block, not the latest", async () => {
+    const chain = new Week(WEEKEND.openTs + 600, 5);
+    chain.finalizedLag = 6_000; // 20 minutes of blocks: the finalized block is before Monday's open
+    const { done, lines } = measure(chain, { edition: 1 });
+    const f = await done;
+    expect(f.head).toEqual({ block: HEAD - 6_000, ts: WEEKEND.openTs - 600 });
+    expect(f.windows.map((w) => [w.id, w.status])).toEqual([
+      ["2026-11-25", "complete"],
+      ["2026-11-27", "pending"],
+    ]);
+    expect(lines.some((l) => l.startsWith("window 2026-11-27: pending"))).toBe(true);
+  });
+
+  it("is pending when its open is still in the future, and none of its logs is read", async () => {
+    const chain = new Week(WEEKEND.closeTs + 3600, 5);
+    const f = await measure(chain, { edition: 1, windows: [WEEKEND.id] }).done;
+    expect(f.windows[0]!.status).toBe("pending");
+    expect(chain.logQueries).toEqual([]);
+  });
+
+  it("with complete, refuses the whole run before it reads a log, naming the window and the finalized block", async () => {
+    const chain = new Week(WEEKEND.openTs + 600, 5);
+    chain.finalizedLag = 6_000;
+    await expect(measure(chain, { edition: 1, complete: true }).done).rejects.toThrow(
+      `window 2026-11-27 ends Mon 30 Nov 09:30 ET, after block ${HEAD - 6_000}, the latest finalized one (2026-11-30T14:20:00Z): it is not measured yet, so nothing is written; run again once Base has finalized a block at or after its open`,
+    );
+    expect(chain.logQueries).toEqual([]);
+  });
+
+  it("with complete, measures every window once the finalized block is past the last open", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 6_000;
+    const f = await measure(chain, { edition: 1, complete: true }).done;
+    expect(f.windows.map((w) => w.status)).toEqual(["complete", "complete"]);
+    expect(f.head.block).toBe(HEAD - 6_000);
+  });
+});
+
+describe("a pinned head", () => {
+  it("reads through the block it is given, as a rerun of a committed file does, when that block is finalized", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    const pinned = HEAD - 9_000;
+    const f = await measure(chain, { edition: 1, head: pinned }).done;
+    expect(f.head).toEqual({ block: pinned, ts: chain.ts(pinned) });
+  });
+
+  it("refuses a block that is not finalized yet", async () => {
+    const chain = new Week(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 100;
+    await expect(measure(chain, { edition: 1, head: HEAD - 50 }).done).rejects.toThrow(
+      `block ${HEAD - 50} is not finalized yet: the latest finalized block is ${HEAD - 100}`,
+    );
+  });
+});
+
+describe("the head of a run that reads Base through createLogReader", () => {
+  const BASE_RPC = "https://mainnet.base.org";
+  /** Block 0 is at 00:00 UTC on Tue 24 Nov, 5 blocks a second: every block below is before both of edition 1's windows end. */
+  const T = Date.parse("2026-11-24T00:00:00Z") / 1000;
+  const iso = (n: number) => new Date((T + Math.floor(n / 5)) * 1000).toISOString().replace(".000Z", "Z");
+  const def = { edition: 9, title: "Thanksgiving week again", from: "2026-11-23", to: "2026-11-29" };
+  /** publicnode's three finalized answers go back and forth; mainnet.base.org's first one is the newest. */
+  const reader = () => {
+    const answers: Record<string, number[]> = { [GAP_RPC]: [1_000, 900, 950], [BASE_RPC]: [1_200, 1_100, 1_000] };
+    const seen: Record<string, number> = {};
+    const f = (async (url: string, init: { body: string }) => {
+      const req = JSON.parse(init.body) as { id: number; method: string; params: unknown[] };
+      let result: unknown = null;
+      if (req.method === "eth_getBlockByNumber" && req.params[0] === "finalized") {
+        const n = answers[url]![(seen[url] = (seen[url] ?? 0) + 1) - 1]!;
+        result = { number: `0x${n.toString(16)}`, timestamp: `0x${(T + Math.floor(n / 5)).toString(16)}` };
+      } else if (req.method === "eth_getBlockByNumber" && url === GAP_RPC) {
+        result = { timestamp: `0x${(T + Math.floor(Number(req.params[0]) / 5)).toString(16)}` };
+      }
+      return new Response(JSON.stringify({ jsonrpc: "2.0", id: req.id, result }));
+    }) as unknown as typeof fetch;
+    return createLogReader({ fetch: f, sleep: async () => {} });
+  };
+  const head = (opts: Partial<EditionOptions> = {}) => {
+    const r = reader();
+    const lines: string[] = [];
+    const done = measureEdition(
+      { reader: r, source: (headBlock) => createLogSource(r, { cacheDir: null, headBlock }), log: (l) => lines.push(l), editions: [def] },
+      { edition: 9, ...opts },
+    );
+    return { done, lines };
+  };
+
+  it("reads through the newest of the six finalized answers, and says which RPC gave it and how many answered", async () => {
+    const { done, lines } = head();
+    const f = await done;
+    expect(f.head).toEqual({ block: 1_200, ts: T + 240 });
+    expect(f.windows.map((w) => w.status)).toEqual(["pending", "pending"]);
+    expect(lines[0]).toBe(`head: finalized block 1200 (${iso(1_200)}) from ${BASE_RPC}, newest of 6 answers to 6 reads`);
+  });
+
+  it("takes a pinned --head at or below the newest answer, even when the first answer is older than it", async () => {
+    const { done, lines } = head({ head: 1_150 });
+    expect((await done).head).toEqual({ block: 1_150, ts: T + 230 });
+    expect(lines[0]).toBe(`head: block 1150 (${iso(1_150)}), pinned with --head; finalized block 1200 (${iso(1_200)}) from ${BASE_RPC}, newest of 6 answers to 6 reads`);
+  });
+
+  it("refuses a pinned --head above the newest answer, naming that answer", async () => {
+    await expect(head({ head: 1_201 }).done).rejects.toThrow("block 1201 is not finalized yet: the latest finalized block is 1200");
+  });
+});
+
+describe("--complete with a wait", () => {
+  const OPEN = "Mon 30 Nov 09:30 ET (2026-11-30T14:30:00Z)";
+  const iso = (ts: number) => new Date(ts * 1000).toISOString().replace(".000Z", "Z");
+  /** The Week chain, with every finalized read and every log read in one list, in the order the run made them. */
+  class Waiting extends Week {
+    order: string[] = [];
+    override async finalized() {
+      const f = await super.finalized();
+      this.order.push(`finalized ${f.block}`);
+      return f;
+    }
+    override async getLogs(q: LogQuery): Promise<RawLog[]> {
+      this.order.push("logs");
+      return super.getLogs(q);
+    }
+  }
+  /**
+   * A clock that only the run's sleeps move: each sleep also moves the chain's finalized block `step` blocks up, or the
+   * next of `step`'s blocks when it is a list (none once the list ends).
+   */
+  const clocked = (chain: Waiting, step: number | number[], readMs = 0) => {
+    const c = { ms: 0, sleeps: [] as number[] };
+    const read = chain.finalized.bind(chain);
+    chain.finalized = async () => {
+      c.ms += readMs;
+      return read();
+    };
+    return {
+      c,
+      deps: {
+        now: () => c.ms,
+        sleep: async (ms: number) => {
+          c.sleeps.push(ms);
+          c.ms += ms;
+          chain.finalizedLag -= typeof step === "number" ? step : (step[c.sleeps.length - 1] ?? 0);
+        },
+      },
+    };
+  };
+  /** The run's reads in order, each run of log reads as one "logs". */
+  const runs = (order: string[]) => order.filter((o, i) => o !== "logs" || order[i - 1] !== "logs");
+  /** NVDAc updates inside Monday's window, and first after it `after` seconds after the open. */
+  const lateFeed = (chain: Waiting, after: number) => {
+    chain.answer(chain.first(WEEKEND.closeTs) + 10, 160);
+    chain.answer(chain.first(WEEKEND.openTs + after), 165);
+  };
+
+  it("rereads the finalized block every 30 s, one line each, and measures once it is past the last open, reading no log before", async () => {
+    // The latest block is an hour after Monday's open; the finalized one starts 400 s before the open.
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 20_000;
+    const { c, deps } = clocked(chain, 1_500);
+    const { done, lines } = measure(chain, { edition: 1, complete: true, waitMinutes: 20 }, deps);
+    const f = await done;
+    expect(c.sleeps).toEqual([30_000, 30_000]);
+    expect(lines.filter((l) => l.startsWith("--wait"))).toEqual([
+      `--wait 20: finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}; reading it again every 30 s, 40 times at most`,
+      `--wait 20, reread 1 of 40: finalized block ${HEAD - 18_500} (${iso(WEEKEND.openTs - 100)}); 100 s before the last open, ${OPEN}`,
+      `--wait 20, reread 2 of 40: finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); 200 s after the last open, ${OPEN}: measuring`,
+    ]);
+    expect(chain.order.slice(0, 3)).toEqual([`finalized ${HEAD - 20_000}`, `finalized ${HEAD - 18_500}`, `finalized ${HEAD - 17_000}`]);
+    expect(chain.order.slice(3).every((o) => o === "logs")).toBe(true);
+    expect(chain.order.length).toBeGreaterThan(3);
+    expect(f.head).toEqual({ block: HEAD - 17_000, ts: WEEKEND.openTs + 200 });
+    expect(f.windows.map((w) => w.status)).toEqual(["complete", "complete"]);
+  });
+
+  it("refuses with the message a run without a wait gives once the minutes pass, having read no log, rereading on a 30 s beat from the start", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 20_000;
+    const { c, deps } = clocked(chain, 0, 1_500); // each read takes 1.5 s: the beat stays on 30 s from the start
+    const { done, lines } = measure(chain, { edition: 1, complete: true, waitMinutes: 1 }, deps);
+    await expect(done).rejects.toThrow(
+      `window 2026-11-27 ends Mon 30 Nov 09:30 ET, after block ${HEAD - 20_000}, the latest finalized one (${iso(WEEKEND.openTs - 400)}): it is not measured yet, so nothing is written; run again once Base has finalized a block at or after its open`,
+    );
+    expect(c.sleeps).toEqual([30_000, 28_500]);
+    expect(lines.filter((l) => l.startsWith("--wait"))).toEqual([
+      `--wait 1: finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}; reading it again every 30 s, 2 times at most`,
+      `--wait 1, reread 1 of 2: finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}`,
+      `--wait 1, reread 2 of 2: finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}`,
+    ]);
+    expect(chain.order).toEqual(Array.from({ length: 3 }, () => `finalized ${HEAD - 20_000}`));
+    expect(chain.logQueries).toEqual([]);
+  });
+
+  it("does not wait when the finalized block is already past the last open", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 6_000;
+    const { c, deps } = clocked(chain, 1_500);
+    const { done, lines } = measure(chain, { edition: 1, complete: true, waitMinutes: 20 }, deps);
+    expect((await done).windows.map((w) => w.status)).toEqual(["complete", "complete"]);
+    expect(c.sleeps).toEqual([]);
+    expect(lines.filter((l) => l.startsWith("--wait"))).toEqual([]);
+  });
+
+  it("takes a reread that no RPC answers as one more beat: it keeps its head, says so, and reads again 30 s later", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 20_000;
+    const { c, deps } = clocked(chain, 1_500);
+    // The first reread fails at every RPC, as in a short local network drop.
+    const read = chain.finalized.bind(chain);
+    let n = 0;
+    chain.finalized = async () => {
+      if (++n === 2) throw new RpcRefused("eth_getBlockByNumber", "no finalized block in 3 tries of 6 reads of a fake and b fake: fetch failed");
+      return read();
+    };
+    const { done, lines } = measure(chain, { edition: 1, complete: true, waitMinutes: 20 }, deps);
+    const f = await done;
+    expect(c.sleeps).toEqual([30_000, 30_000]);
+    expect(lines.filter((l) => l.startsWith("--wait"))).toEqual([
+      `--wait 20: finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}; reading it again every 30 s, 40 times at most`,
+      `--wait 20, reread 1 of 40: no answer (eth_getBlockByNumber refused: no finalized block in 3 tries of 6 reads of a fake and b fake: fetch failed); still finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}`,
+      `--wait 20, reread 2 of 40: finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); 200 s after the last open, ${OPEN}: measuring`,
+    ]);
+    expect(f.head).toEqual({ block: HEAD - 17_000, ts: WEEKEND.openTs + 200 });
+  });
+
+  it("still throws at once an error that is not an RPC refusal", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 20_000;
+    const { deps } = clocked(chain, 1_500);
+    const read = chain.finalized.bind(chain);
+    let n = 0;
+    chain.finalized = async () => {
+      if (++n === 2) throw new Error("a bug, not the network");
+      return read();
+    };
+    await expect(measure(chain, { edition: 1, complete: true, waitMinutes: 20 }, deps).done).rejects.toThrow("a bug, not the network");
+  });
+
+  it("when a live feed has not updated by the head, waits for Base to finalize a newer block and measures again, reading no log in between", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 20_000;
+    lateFeed(chain, 300); // after the first head past the open, 200 s after it
+    const { c, deps } = clocked(chain, [1_500, 1_500, 0, 1_500]);
+    const { done, lines } = measure(chain, { edition: 1, complete: true, waitMinutes: 20 }, deps);
+    const f = await done;
+    expect(c.sleeps).toEqual([30_000, 30_000, 30_000, 30_000]);
+    expect(lines.filter((l) => l.startsWith("--wait"))).toEqual([
+      `--wait 20: finalized block ${HEAD - 20_000} (${iso(WEEKEND.openTs - 400)}); 400 s before the last open, ${OPEN}; reading it again every 30 s, 40 times at most`,
+      `--wait 20, reread 1 of 40: finalized block ${HEAD - 18_500} (${iso(WEEKEND.openTs - 100)}); 100 s before the last open, ${OPEN}`,
+      `--wait 20, reread 2 of 40: finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); 200 s after the last open, ${OPEN}: measuring`,
+      `--wait 20: NVDAc 2026-11-27: the feed has not updated by finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); reading it again every 30 s until Base finalizes a newer block or the wait ends`,
+      `--wait 20, reread 3 of 40: finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); 200 s after the last open, ${OPEN}`,
+      `--wait 20, reread 4 of 40: finalized block ${HEAD - 15_500} (${iso(WEEKEND.openTs + 500)}); 500 s after the last open, ${OPEN}: newer, measuring again`,
+    ]);
+    expect(runs(chain.order)).toEqual([
+      `finalized ${HEAD - 20_000}`,
+      `finalized ${HEAD - 18_500}`,
+      `finalized ${HEAD - 17_000}`,
+      "logs",
+      `finalized ${HEAD - 17_000}`,
+      `finalized ${HEAD - 15_500}`,
+      "logs",
+    ]);
+    expect(f.head).toEqual({ block: HEAD - 15_500, ts: WEEKEND.openTs + 500 });
+    const row = only(f, "2026-11-27").tokens[0]!;
+    expect(row.freeze?.to.block).toBe(chain.first(WEEKEND.openTs + 300));
+  });
+
+  it("refuses with the feed's message when no newer block is finalized before the wait ends, counting the minutes from its start", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 17_000; // already 200 s past the open: no wait for it
+    lateFeed(chain, 300);
+    const { c, deps } = clocked(chain, 0);
+    // The first measurement takes 45 s, so the wait's first beat after it, at 30 s, has passed: the next is at 60 s.
+    const getLogs = chain.getLogs.bind(chain);
+    let slow = true;
+    chain.getLogs = async (q) => {
+      if (slow) c.ms += 45_000;
+      slow = false;
+      return getLogs(q);
+    };
+    const { done, lines } = measure(chain, { edition: 1, complete: true, waitMinutes: 1 }, deps);
+    await expect(done).rejects.toThrow(`NVDAc 2026-11-27: the feed has not updated since the window; run again later`);
+    expect(c.sleeps).toEqual([15_000]);
+    expect(lines.filter((l) => l.startsWith("--wait"))).toEqual([
+      `--wait 1: NVDAc 2026-11-27: the feed has not updated by finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); reading it again every 30 s until Base finalizes a newer block or the wait ends`,
+      `--wait 1, reread 2 of 2: finalized block ${HEAD - 17_000} (${iso(WEEKEND.openTs + 200)}); 200 s after the last open, ${OPEN}`,
+    ]);
+    expect(runs(chain.order)).toEqual([`finalized ${HEAD - 17_000}`, "logs", `finalized ${HEAD - 17_000}`]);
+  });
+
+  it("without a wait, a live feed that has not updated by the head still ends the run at once", async () => {
+    const chain = new Waiting(WEEKEND.openTs + 3600, 5);
+    chain.finalizedLag = 17_000;
+    lateFeed(chain, 300);
+    const { c, deps } = clocked(chain, 1_500);
+    await expect(measure(chain, { edition: 1, complete: true }, deps).done).rejects.toThrow(`NVDAc 2026-11-27: the feed has not updated since the window; run again later`);
+    expect(c.sleeps).toEqual([]);
+    expect(runs(chain.order)).toEqual([`finalized ${HEAD - 17_000}`, "logs"]);
   });
 });

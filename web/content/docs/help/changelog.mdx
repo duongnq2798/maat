@@ -4,7 +4,7 @@ description: "Maat's milestones, newest first: what each one added, when, and wh
 type: help
 audience: [newcomer, evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-27
 sources:
   - README.md
   - deployments/README.md
@@ -21,7 +21,7 @@ sources:
 next: [get-started/status, help/faq]
 ---
 
-This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and the contracts and the agent are fork-tested. The four Maat contracts are deployed on [Base](/docs/help/glossary#base) mainnet, but the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer and a local sender, so each code milestone says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
+This page lists Maat's milestones, newest first: what each one added, when it happened, and where to read the code and the plan behind it. The code milestones are built and tested, and the contracts and the agent are fork-tested. The four core Maat contracts and `MaatInbox` are deployed on [Base](/docs/help/glossary#base) mainnet, and since 2026-11-27 the agent runs in [live mode](/docs/help/glossary#live-mode) there. Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. Each code milestone says what was built and what ran on a fork. [Status and roadmap](/docs/get-started/status) says what is next.
 
 The table lists the code milestones. For each one, the dates are the author dates that `git log --date=short` prints for its first and last commit. A commit is cited only after checking that `main` contains it. Work on branches that have not been merged into `main` is not listed.
 
@@ -35,6 +35,14 @@ The table lists the code milestones. For each one, the dates are the author date
 | [Credit](/docs/help/changelog#credit) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
 | [Core contracts](/docs/help/changelog#core-contracts) | 2026-11-06 | 2026-11-06 | 2026-11-07 |
 | [Project start](/docs/help/changelog#project-start) | 2026-11-06 | 2026-11-06 | Root commit |
+
+## MaatInbox deploy
+
+**Date.** 2026-11-27.
+
+**Scope.** The owner deployed `MaatInbox`, the inbox for [briefs](/docs/guides/brief-the-agent) to the agent, on [Base](/docs/help/glossary#base) mainnet at [`0x6a3D27f2...f12a`](https://basescan.org/address/0x6a3D27f2d8a5BC991Bf4511aAA698A5B2DCDf12a), in transaction [`0x61b7f0b4...0db4`](https://basescan.org/tx/0x61b7f0b44ae01a6fbb34e0e7c35d53c2ffd1228fbc3f0b3dd020741826850db4). Sourcify and Basescan show an exact match of its source. `/ask` stays closed until the agent restarts on a release that reads briefs; the agent that runs now, from the tag `agent-r2`, reads none.
+
+**Read.** [Next: mainnet](/docs/get-started/status#next-mainnet), on the Status page, lists its address with the other four, and [Brief the agent](/docs/guides/brief-the-agent) says what the inbox accepts.
 
 ## Base mainnet deploy
 

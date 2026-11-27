@@ -1,10 +1,10 @@
 ---
 title: What Maat does not claim
-description: "No audit, no live run of the agent on mainnet, and the known limitations: what can still go wrong and what is out of scope."
+description: "No audit, an agent live on mainnet only since 2026-11-27, and the known limitations: what can still go wrong and what is out of scope."
 type: concept
 audience: [evaluator, newcomer]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-27
 sources:
   - README.md
   - contracts/src/MandateVault.sol
@@ -14,9 +14,9 @@ sources:
 next: [security/testing, security/report-a-vulnerability]
 ---
 
-<Callout type="warning" title="Unaudited, and the agent has run live only on a fork">
+<Callout type="warning" title="Unaudited, and the agent live on mainnet only since 2026-11-27">
 
-No third party has reviewed the contracts. The owner deployed the four Maat contracts, the [vault](/docs/help/glossary#vault) among them, to [Base](/docs/help/glossary#base) mainnet unaudited, at the addresses under [Next: mainnet](/docs/get-started/status#next-mainnet). The agent has run in [live mode](/docs/help/glossary#live-mode) only on a local fork of Base mainnet, which is where all the execution evidence in these docs comes from. The fork run used a scripted proposer and a local sender: the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run.
+No third party has reviewed the contracts. The owner deployed the four Maat contracts, the [vault](/docs/help/glossary#vault) among them, to [Base](/docs/help/glossary#base) mainnet unaudited, at the addresses under [Next: mainnet](/docs/get-started/status#next-mainnet). Since 2026-11-27 the agent runs in [live mode](/docs/help/glossary#live-mode) on Base mainnet, with the real Claude API, and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) is the vault's executor. Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)), and at 15:15 UTC the vault allowed its first two buys, of GOOGLc and AAPLc ([transaction](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503), [transaction](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69)). Apart from those three, all the execution evidence in these docs comes from two sources. One is the vault's first two `Decision` events, which the owner sent. The other is a local fork of Base mainnet, where the fork run used a scripted proposer and a local sender. The agent has not sold, supplied, borrowed or repaid on Base mainnet.
 
 </Callout>
 
@@ -28,11 +28,11 @@ This page lists what Maat does not claim, so that you can weigh the rest of thes
 
 **What would fix it.** A review by an independent security reviewer, and fixes for what it finds. None has been done.
 
-## The agent has not run live on mainnet
+## The agent went live only on 2026-11-27
 
-**What it means for you.** The four Maat contracts are on Base mainnet, but the agent has run in live mode only on a fork, and every [`Decision`](/docs/help/glossary#decision) these docs show is from the fork run, apart from the vault's first two `Decision` events on Base mainnet, a refused buy and an allowed one, which the owner sent, not the agent, and [Next: mainnet](/docs/get-started/status#next-mainnet) records. Each `Decision` the vault on Base mainnet emits is public in its events on Basescan, and the site's [mainnet ledger](/ledger) reads them from Base in the browser. The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The owner registered Maat's [Builder Code](/docs/help/glossary#builder-code-erc-8021), and the calldata of those two `Decision` events carries it, but no output from the real Claude API is committed. The Base App mini-app and [x402](/docs/help/glossary#x402) revenue do not exist yet.
+**What it means for you.** The four core Maat contracts and `MaatInbox` are on Base mainnet. Until 2026-11-27 the owner's wallet was both owner and executor. On 2026-11-27 at 01:04:08 UTC (block `62755363`) the owner made the agent's CDP Server Wallet account, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, the executor. Since then the agent has run in live mode with the real Claude API, from the tag `agent-r2`. Its first live round, at 01:14 UTC, proposed no trade because NYSE was closed for Thanksgiving. Its first `Decision` came at 02:14 UTC that day: Claude proposed a buy of 4.68 USDC of GOOGLc, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)), so it moved no funds. At 15:15 UTC that day, in session, the vault allowed the agent's first two buys, 4.64 USDC of GOOGLc and 4.64 USDC of AAPLc. That is a short live record, and it holds buys only. Every other [`Decision`](/docs/help/glossary#decision) these docs show is from the fork run, apart from the vault's first two `Decision` events on Base mainnet, a refused buy and an allowed one, which the owner sent, not the agent. [Next: mainnet](/docs/get-started/status#next-mainnet) records all five. Each `Decision` the vault on Base mainnet emits is public in its events on Basescan, and the site's [mainnet ledger](/ledger) reads them from Base in the browser. The contracts and the agent's send path have run on a local fork of Base mainnet, which shows what the code does against real state at a pinned block, not how the system behaves on mainnet over time. The fork run used a scripted proposer in place of Claude and a local sender in place of the CDP wallet. The owner registered Maat's [Builder Code](/docs/help/glossary#builder-code-erc-8021), and the calldata of those two `Decision` events carries it. The Base App mini-app does not exist, and there is no [x402](/docs/help/glossary#x402) revenue: the x402 Guard Service was dropped for this season, and [pull request #2](https://github.com/duongnq2798/maat/pull/2), which added it, was closed unmerged on 2026-11-27.
 
-**What would fix it.** The agent runs its first real [rounds](/docs/help/glossary#round) on the mainnet vault, in live mode, with the real Claude API and the CDP wallet. The checklist is in [Next: mainnet](/docs/get-started/status#next-mainnet), and the commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault). The deploy did not make the contracts audited.
+**What would fix it.** Time: the live agent keeps sending intents through the CDP wallet, so that the vault's `Decision` events from the agent's executor show how the system behaves over many sessions, sells and credit actions included. The agent's [rounds](/docs/help/glossary#round) are public in its redacted journal on the [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch, which `/now` and the Rounds tab of `/ledger` read. The checklist is in [Next: mainnet](/docs/get-started/status#next-mainnet), and the commands are in [Deploy your own vault](/docs/guides/deploy-your-own-vault). The deploy did not make the contracts audited.
 
 ## The calendar must be maintained
 
@@ -76,7 +76,7 @@ When the preview said `OK` and the vault refused, the agent stops the round and 
 
 ## Operational costs
 
-**What it means for you.** The executor needs a little ETH on Base for gas (<Fact name="executorGasEth" /> by the agent README's estimate). The CDP paymaster serves smart accounts only, and the executor is not one. With no gas, the send fails and the round halts. [Dry-run mode](/docs/help/glossary#dry-run) still calls Claude, at roughly one cent per round by the README's estimate. No output from the real Claude API is committed, so that figure is an estimate.
+**What it means for you.** The executor needs a little ETH on Base for gas (<Fact name="executorGasEth" /> by the agent README's estimate). The CDP paymaster serves smart accounts only, and the executor is not one. With no gas, the send fails and the round halts. [Dry-run mode](/docs/help/glossary#dry-run) still calls Claude, at roughly one cent per round by the README's estimate. The agent has called the real Claude API in live mode only since 2026-11-27, and these docs record no measured cost per round, so that figure is an estimate.
 
 **What would fix it.** Topping up the executor's gas, which is manual. A smart-account executor whose gas a paymaster could pay is not built.
 

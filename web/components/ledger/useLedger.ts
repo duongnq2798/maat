@@ -5,7 +5,17 @@ import { isAddress, isHash, type Address, type Hash } from "viem";
 import { z } from "zod";
 import { browserStorage, memoryStorage } from "@/lib/chain/cache";
 import type { TxInput } from "@/lib/chain/ledger";
-import { errorText, loadLedger, verifyVault, type LedgerClient, type LedgerSnapshot } from "@/lib/chain/load";
+import { FACTS } from "@/content/facts";
+import {
+  errorText,
+  loadLedger,
+  snapshotPreview,
+  verifyVault,
+  type LedgerClient,
+  type LedgerSnapshot,
+  type RecordedDetails,
+  type SnapshotPreview,
+} from "@/lib/chain/load";
 import { staticRationaleSource, type RationaleSource } from "@/lib/chain/rationale";
 import { createLedgerClient, rpcUrls } from "@/lib/chain/rpc";
 import { fetchSnapshotJson } from "@/lib/chain/snapshot";
@@ -14,7 +24,14 @@ import { fetchSnapshotJson } from "@/lib/chain/snapshot";
 export const REFRESH_MS = 60_000;
 
 export type LedgerState =
-  | { mode: "loading-config" }
+  | {
+      mode: "loading-config";
+      /**
+       * The committed snapshot's Decisions, shown at once while Base confirms the file and the tail scan runs; absent
+       * until the file is fetched, and when it holds none.
+       */
+      preview?: SnapshotPreview;
+    }
   | { mode: "waiting" }
   | { mode: "error"; message: string; vault?: Address }
   | {
@@ -44,6 +61,12 @@ export interface LedgerDeps {
   now?: () => number;
   refreshMs?: number;
 }
+
+/** The block time and gas of each Decision this build records, which the preview's rows take before Base is read. */
+const RECORDED: RecordedDetails = {
+  blockTimes: Object.fromEntries(FACTS.mainnetDecisions.value.map((l) => [l.blockNumber, l.blockTime])),
+  gasUsed: Object.fromEntries(FACTS.mainnetDecisions.value.map((l) => [l.transactionHash.toLowerCase(), l.gasUsed])),
+};
 
 const deploymentsSchema = z.object({
   vault: z.string().refine((v) => isAddress(v, { strict: false })).nullable(),
@@ -102,6 +125,11 @@ export function useLedger(deps: LedgerDeps = {}): LedgerState & { retry: () => v
       const rationaleSource = d.rationaleSource ?? staticRationaleSource();
       // Fetched while the vault is checked; only the first read needs it, since later ones have the cache.
       const committed = (d.fetchSnapshot ?? fetchSnapshotJson)().catch(() => null);
+      // Its Decisions show as soon as it arrives, labelled as confirming, until the first read of Base replaces them.
+      void committed.then((raw) => {
+        const preview = signal.aborted ? null : snapshotPreview(raw, vault, RECORDED);
+        if (preview) setState((s) => (s.mode === "loading-config" ? { mode: "loading-config", preview } : s));
+      });
       try {
         await verifyVault(client, vault);
       } catch (e) {

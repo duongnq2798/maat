@@ -4,10 +4,11 @@ description: "Deploy a vault with the default mandate: dry-run it on a fork firs
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-21
+lastReviewed: 2026-11-27
 sources:
   - deployments/README.md
   - contracts/script/Deploy.s.sol
+  - contracts/script/DeployMaatInbox.s.sol
   - contracts/script/MaatConfig.sol
   - contracts/test/fork/DeployFork.t.sol
   - contracts/src/MandateVault.sol
@@ -28,6 +29,7 @@ sources:
   - agent/src/intent.ts
   - agent/src/chain/preview.ts
   - agent/src/exec/calls.ts
+  - agent/src/briefs/inbox.ts
   - agent/src/abi/generated.ts
   - agent/scripts/gen-abis.ts
   - agent/scripts/cdp-setup.ts
@@ -52,9 +54,9 @@ The owner deployed the four Maat contracts to Base mainnet with the default mand
 
 ## The whole path
 
-<Callout type="note" title="On mainnet, the deploy and two smoke-test buys are recorded">
+<Callout type="note" title="On mainnet, the deploy, two smoke-test buys and the agent's first Decision are recorded">
 
-Nobody has followed this whole path on Base mainnet. The owner deployed the four Maat contracts there, which is step 2 below. After it, these docs record only the vault's first two `Decision` events, on [Status and roadmap](/docs/get-started/status#next-mainnet): a `BUY` the vault refused with `MARKET_CLOSED`, and a `BUY` in a US market session that it allowed. Each step links the sections that explain it.
+Nobody has followed this whole path on Base mainnet. The owner deployed the four Maat contracts there, which is step 2 below. After it, these docs record the owner's two smoke-test `Decision` events, on [Status and roadmap](/docs/get-started/status#next-mainnet): a `BUY` the vault refused with `MARKET_CLOSED`, and a `BUY` in a US market session that it allowed. Since 2026-11-27 they also record the agent's first `Decision`, a `BUY` the vault refused with `MARKET_CLOSED`, sent after the owner made the agent's CDP wallet the executor. Each step links the sections that explain it.
 
 </Callout>
 
@@ -413,9 +415,9 @@ cast call "$ADAPTER" "hasPosition()(bool)" --rpc-url "$BASE_RPC_URL"
 
 ### Record the addresses
 
-deployments/README.md has a table with one row per contract: `MarketCalendar`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `MandateVault`. Its columns are the network, the contract, the address, the transaction and the date. Fill in the addresses and the transaction hashes from the broadcast and the smoke tests. The addresses are in the script output. The transactions are in `contracts/broadcast/Deploy.s.sol/8453/run-*.json`, which holds the transactions and the deployer address but no key. Whether to commit that file is the owner's decision.
+deployments/README.md has a table with one row per contract: the four contracts `Deploy.s.sol` deploys, `MarketCalendar`, `AerodromeSwapAdapter`, `AaveV4CreditAdapter` and `MandateVault`, then `MaatInbox`, which `contracts/script/DeployMaatInbox.s.sol` deploys on its own. Its columns are the network, the contract, the address, the transaction and the date. Fill in the addresses and the transaction hashes from the broadcast and the smoke tests. The addresses are in the script output. The transactions are in `contracts/broadcast/Deploy.s.sol/8453/run-*.json`, which holds the transactions and the deployer address but no key. Whether to commit that file is the owner's decision.
 
-The Maat team's table holds the addresses of the four Maat contracts that the owner deployed. If you deploy from your own copy of the repository, put your addresses in place of those in your copy of the table, and keep the vault address for the agent's `MAAT_VAULT` setting.
+The Maat team's table holds the addresses of the five Maat contracts that the owner deployed: the four of 2026-11-24 and `MaatInbox`, of 2026-11-27. If you deploy from your own copy of the repository, put your four addresses in place of Maat's in your copy of the table, and keep the vault address for the agent's `MAAT_VAULT` setting. Replace or delete the `MaatInbox` row too. An agent built from `main` reads [briefs](/docs/guides/brief-the-agent) from whichever `MaatInbox` that row names, and no `agent/.env` setting turns them off, so a copy that keeps Maat's row makes your agent read the briefs anyone sends to Maat's inbox and send them to Claude, within your agent's brief budget. Put the address and deploy transaction of your own `MaatInbox` there, or delete the row, and the agent starts with `briefs=off`.
 
 </Step>
 
@@ -428,7 +430,7 @@ The Maat team's table holds the addresses of the four Maat contracts that the ow
 - `previewIntent` returned `0`, and `cast logs` shows the BUY's `Decision` with `allowed=true` and `reason=0`.
 - The weekend intent emitted a `Decision` with `reason=6`, `MARKET_CLOSED`, and `allowed=false`. A refusal moves no funds.
 - The four credit intents emitted a `Decision` with `allowed=true` each, and the adapter reads `debt()` as `0` and `hasPosition()` as `false`.
-- Your copy of the table in deployments/README.md has your four addresses, in place of Maat's.
+- Your copy of the table in deployments/README.md has your four addresses, in place of Maat's, and its `MaatInbox` row names your own inbox or is gone.
 
 ## Common mistakes
 
@@ -449,7 +451,7 @@ The Maat team's table holds the addresses of the four Maat contracts that the ow
 
 <Callout type="fork" title="Only this repository's agent has done this">
 
-No agent other than the one in this repository has driven a vault, and that agent has run in live mode only in its fork test, on a local Base fork.
+No agent other than the one in this repository has driven a vault. That agent sent intents first in its fork test, on a local Base fork. Since 2026-11-27 it runs in live mode on Maat's mainnet vault, where its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)).
 
 </Callout>
 

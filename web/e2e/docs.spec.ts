@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { ASK_OPEN } from "../content/ask-open";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 import { HEALTH_FACTOR_SCALE, MULTIPLIER_FLOW } from "../lib/docs/flows";
 import { DOCS_IA } from "../lib/docs/ia";
@@ -778,7 +779,14 @@ test.describe("files for tools", () => {
     request,
   }) => {
     const llms = await (await request.get("/llms.txt")).text();
-    expect(llms).toMatch(/^> .+\n\nStatus: built and fork-tested, and the four Maat contracts are deployed to Base mainnet\. The contracts are unaudited, /m);
+    expect(llms).toMatch(
+      /^> .+\n\nStatus: built and fork-tested, and the four Maat contracts are deployed to Base mainnet, and so is `MaatInbox`, the inbox for briefs: five contracts in all\. The contracts are unaudited, /m,
+    );
+    // The site's pages that show Maat on Base come before the docs pages, each linked as the static host serves it.
+    const site = [...(llms.split("\n## Site\n")[1]?.split("\n## Pages\n")[0] ?? "").matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\): /gm)];
+    expect(site.map(([, url]) => new URL(url!).pathname)).toEqual(["/ledger", "/now", "/proof", "/gap-index", ...(ASK_OPEN ? ["/ask"] : [])]);
+    for (const [, url] of site) expect((await request.get(new URL(url!).pathname)).status(), url).toBe(200);
+    expect(llms).toContain("/data/abi/MaatInbox.json): ");
     const copies = [...llms.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+\/md\/docs[^)]*\.md)\): .*Web page: (\S+)$/gm)];
     expect(copies).toHaveLength(DOCS_IA.flatMap((s) => s.pages).length);
     for (const [, md = "", web] of copies) {
@@ -837,7 +845,7 @@ test.describe("glossary previews", () => {
     return term.page().locator(`[id="${id}"]`);
   }
   /** The CDP Server Wallet entry's last sentence, its status. */
-  const CDP_STATUS = "has never run against the real CDP";
+  const CDP_STATUS = "went through it that day";
   /** Whether these words of a preview are inside the part of it the window shows. */
   const inView = (preview: Locator, words: string) =>
     preview.evaluate((el, w) => {
@@ -885,7 +893,7 @@ test.describe("glossary previews", () => {
     const b20 = await entryWithoutPointer(page, "b20");
     const cdp = await entryWithoutPointer(page, "cdp-server-wallet");
     // The status of the term is in its last sentence.
-    expect(cdp).toContain("has never run against the real CDP");
+    expect(cdp).toContain(CDP_STATUS);
     await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
     const first = termOf(page, "b20");
     await first.focus();
@@ -1246,19 +1254,6 @@ test.describe("glossary previews", () => {
       await expect(page).toHaveURL(/\/docs\/help\/glossary#b20$/);
     });
   });
-});
-
-test("the 404 page offers search and the docs sections", async ({ page }) => {
-  for (const path of ["/does-not-exist", "/docs/does-not-exist"]) {
-    const response = await page.goto(path);
-    expect(response?.status()).toBe(404);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("This page does not exist.");
-    await expect(page.getByRole("link", { name: "Maat docs" })).toHaveAttribute("href", "/docs");
-  }
-  await page.locator("button[data-search-full]").click();
-  const dialog = page.getByRole("dialog");
-  await dialog.getByRole("combobox").fill("maat");
-  await expect(dialog.getByRole("option", { name: /Maat docs/ }).first()).toBeVisible();
 });
 
 test.describe("copy", () => {
