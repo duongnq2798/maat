@@ -4,7 +4,7 @@ import { base } from "viem/chains";
 import { describe, expect, it } from "vitest";
 import { ProofApp } from "@/app/(site)/proof/ProofApp";
 import ProofPage, { metadata } from "@/app/(site)/proof/page";
-import { proofConfig } from "@/app/(site)/proof/config";
+import { proofConfig, sameProofConfig, type ProofConfig } from "@/app/(site)/proof/config";
 import { readProof, type ProofClient } from "@/app/(site)/proof/load";
 import { DECISION_NOTE, TEAM_SET_NOTE } from "@/app/(site)/proof/team";
 import { VERIFIED_ACCOUNT_SCHEMA, type Attestation } from "@/app/(site)/proof/verified";
@@ -389,6 +389,66 @@ describe("/proof with a MaatInbox recorded", () => {
     render(<ProofApp initial={proofConfig(ROWS(false))} deps={{ client: proofChainClient(CHAIN), fetchConfig: async () => proofConfig(ROWS(true)) }} />);
     await waitFor(() => expect(value("outside-briefs")).toBe("3"), { timeout: 10_000 });
     expect(document.querySelector('[data-proof-state="not-recorded"]')).toBeNull();
+  });
+
+  describe("when /data/deployments.json arrives during the read", () => {
+    /**
+     * The page with `initial`, whose runtime table `runtime` is served once the first read has started. Each read
+     * fetches the snapshot once, so `reads()` is how many reads started; this one fails, so the vault is read from Base.
+     */
+    function renderServed(initial: ProofConfig, runtime: ProofConfig) {
+      let reads = 0;
+      let started = () => {};
+      const firstRead = new Promise<void>((resolve) => (started = resolve));
+      let served = false;
+      const client = proofChainClient(CHAIN);
+      const fetchSnapshot = async () => {
+        reads += 1;
+        started();
+        throw new Error("no snapshot in this test");
+      };
+      const fetchConfig = () =>
+        firstRead.then(() => {
+          served = true;
+          return runtime;
+        });
+      render(<ProofApp initial={initial} deps={{ client, fetchConfig, fetchSnapshot, storage: null }} />);
+      const ownerCalls = () => client.seen.calls.filter((c) => c.to === VAULT.toLowerCase() && c.functionName === "owner").length;
+      return { reads: () => reads, served: () => served, ownerCalls };
+    }
+
+    it("keeps its one read of Base when the table is the build's", async () => {
+      // A new object with the same rows, as the runtime file is parsed into.
+      const page = renderServed(proofConfig(ROWS(true)), proofConfig(ROWS(true)));
+      await waitFor(() => expect(value("outside-briefs")).toBe("3"), { timeout: 10_000 });
+      expect(page.served()).toBe(true);
+      // Time for a restart to start, had the runtime table caused one.
+      await new Promise((r) => setTimeout(r, 200));
+      expect(page.reads()).toBe(1);
+      expect(page.ownerCalls()).toBe(1);
+      expect(value("outside-briefs")).toBe("3");
+    });
+
+    it("reads Base again with the runtime table when it records another inbox", async () => {
+      const OTHER: Address = "0x00000000000000000000000000000000000B0002";
+      const page = renderServed({ ...proofConfig(ROWS(true)), inbox: { inbox: OTHER, deployTx: DEPLOY_TX } }, proofConfig(ROWS(true)));
+      await waitFor(() => expect(value("outside-briefs")).toBe("3"), { timeout: 10_000 });
+      expect(page.served()).toBe(true);
+      expect(page.reads()).toBe(2);
+      expect(screen.getByText(/^Counted to block/)).toHaveTextContent(INBOX.toLowerCase());
+    });
+
+    it("takes a table with the same inbox and rows, in any hex case, as the same", () => {
+      const c = proofConfig(ROWS(true));
+      const lower = { inbox: { inbox: INBOX.toLowerCase() as Address, deployTx: DEPLOY_TX }, deployments: c.deployments.map((r) => ({ ...r, address: r.address.toLowerCase() })) };
+      expect(sameProofConfig(c, structuredClone(c))).toBe(true);
+      expect(sameProofConfig(c, lower)).toBe(true);
+      expect(sameProofConfig(c, { ...c, inbox: null })).toBe(false);
+      expect(sameProofConfig(proofConfig(ROWS(false)), proofConfig(ROWS(false)))).toBe(true);
+      expect(sameProofConfig(c, { ...c, inbox: { inbox: INBOX, deployTx: null } })).toBe(false);
+      expect(sameProofConfig(c, { ...c, deployments: c.deployments.map((r) => (r.contract === "MandateVault" ? { ...r, address: INBOX } : r)) })).toBe(false);
+      expect(sameProofConfig(c, { ...c, deployments: c.deployments.slice(1) })).toBe(false);
+    });
   });
 
   it("says when the briefs cannot be read, and shows no number it did not read", async () => {

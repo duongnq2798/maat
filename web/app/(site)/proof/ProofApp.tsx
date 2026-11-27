@@ -11,7 +11,7 @@ import type { InboxDeployment } from "@/lib/chain/inbox";
 import { errorText } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
 import { fetchSnapshotJson } from "@/lib/chain/snapshot";
-import { fetchProofConfig, type ProofConfig } from "./config";
+import { fetchProofConfig, sameProofConfig, type ProofConfig } from "./config";
 import { countBriefs, formatCount, type ProofLists } from "./count";
 import { readProof, type ProofClient, type ProofRead } from "./load";
 import { ProofCounts } from "./ProofCounts";
@@ -158,8 +158,8 @@ function NotRecorded({ lists }: { lists: ProofLists }) {
 
 /**
  * /proof: the counting rule of inbox spec §5, word for word, and the brief lines it gives, counted in the browser
- * from MaatInbox's Brief logs. `initial` is the build's deployments table; the page then reads /data/deployments.json
- * and keeps `initial` when that read fails.
+ * from MaatInbox's Brief logs. `initial` is the build's deployments table; the page then reads /data/deployments.json,
+ * keeps `initial` when that read fails or gives the same inputs, and reads Base again only when it gives others.
  */
 export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: ProofDeps }) {
   const [config, setConfig] = useState(initial);
@@ -172,8 +172,9 @@ export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: 
 
   useEffect(() => {
     let live = true;
+    // The same table as the build's keeps the running read: a new object would restart it for nothing.
     fetchConfig()
-      .then((c) => live && setConfig(c))
+      .then((c) => live && setConfig((prev) => (sameProofConfig(prev, c) ? prev : c)))
       .catch(() => {});
     return () => {
       live = false;

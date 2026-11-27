@@ -1,5 +1,6 @@
 import type { Address, Hash } from "viem";
 import { z } from "zod";
+import { sameHex, sameProofConfig } from "@/app/(site)/proof/config";
 import type { TeamInputs } from "@/app/(site)/proof/team";
 import { ASK_OPEN } from "@/content/ask-open";
 import { deploymentConfig } from "@/lib/chain/config";
@@ -32,6 +33,14 @@ export function askConfig(rows: readonly Deployment[], open: boolean = ASK_OPEN)
 /** Whether /ask sends briefs and shows the feed: the owner's switch is on, and the inbox and the vault are recorded. */
 export function askIsOpen(c: AskConfig): c is AskConfig & { vault: Address; inbox: InboxDeployment } {
   return c.open && c.inbox !== null && c.vault !== null;
+}
+
+/**
+ * Whether two configs give /ask the same page: the same switch, vault, deploy tx, inbox and Base mainnet rows. The page
+ * keeps the config it has when the runtime one is the same, so the feed's read of Base does not start again.
+ */
+export function sameAskConfig(a: AskConfig, b: AskConfig): boolean {
+  return a.open === b.open && sameHex(a.vault, b.vault) && sameHex(a.deployTx, b.deployTx) && sameProofConfig(a, b);
 }
 
 const deploymentsSchema = z.object({
