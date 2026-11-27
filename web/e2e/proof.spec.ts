@@ -181,7 +181,12 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
 
     const verified = seen.calls.filter((c) => c.to !== VAULT.toLowerCase());
     expect(verified.map((c) => c.functionName).sort()).toEqual(["getAttestation", "getAttestationUid", "getAttestationUid"]);
-    expect(seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName)).toEqual(["owner", "executor", "payees"]);
+    // The page starts reading with the build's table, which records the real inbox, and reads again once
+    // /data/deployments.json serves the test one; each read asks the vault owner(), executor() and payees() once, together.
+    const vaultCalls = seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName);
+    const reads = vaultCalls.length / 3;
+    expect([1, 2]).toContain(reads);
+    expect([...vaultCalls].sort()).toEqual(Array.from({ length: reads }, () => ["executor", "owner", "payees"]).flat().sort());
     expect(new Set(seen.calls.map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);
