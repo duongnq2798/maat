@@ -122,7 +122,7 @@ describe("MarketWeek", () => {
       "Weighing № 2 · Tue 24 Nov 11:59 ET · Allowed · All checks passed (OK) · BUY NVDAc · $5.00 · owner, by hand · Basescan ↗",
     ]);
     const link = within(items[0]!).getByRole("link");
-    expect(link).toHaveAttribute("href", `https://basescan.org/tx/${REFUSED!.transactionHash}`);
+    expect(link).toHaveAttribute("href", `https://basescan.org/tx/${REFUSED!.transactionHash}#eventlog`);
     expect(link).toHaveAccessibleName(`Weighing № 1, transaction ${REFUSED!.transactionHash.slice(0, 10)}… on Basescan`);
   });
 

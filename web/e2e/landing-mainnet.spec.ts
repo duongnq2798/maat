@@ -9,7 +9,7 @@ import { REASON_LABEL, REASONS } from "../content/reasons";
 import { vaultAbi } from "../lib/chain/abi";
 import { word } from "../lib/live/abi";
 import { deploymentConfig } from "../lib/chain/config";
-import { basescanTx } from "../lib/live/basescan";
+import { basescanDecision } from "../lib/live/basescan";
 import { LIVE_RPCS } from "../lib/live/rpc";
 import { SITE } from "../lib/site";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
@@ -20,7 +20,7 @@ import { collectErrors, lineCount } from "./helpers";
 // The landing's first screen leads with the mainnet vault (plan 2026-11-25 Move 4). The live strip reads the recorded
 // weekend of e2e/fake-live-rpc.ts. The vault's read is /ledger's loader, whose batched calls go to the fake chain of
 // e2e/fake-rpc.ts where a test routes them; elsewhere the strip's fake answers them with an error, and the landing keeps
-// the two Decisions recorded in this build. No test here touches the network.
+// the Decisions recorded in this build. No test here touches the network.
 
 const VIEWPORTS = [
   { width: 390, height: 844 },
@@ -42,7 +42,7 @@ const NVDAC = getAddress(addresses.find((a) => a.name === "NVDAC")!.value);
 // The refusal with the longest label, so the plate is at its longest.
 const LONGEST = [...REASONS].sort((a, b) => REASON_LABEL[b].length - REASON_LABEL[a].length)[0]!;
 
-/** The vault on a fake Base: the two recorded Decisions, then a newer refusal of $50 of NVDAc, the per-trade cap. */
+/** The vault on a fake Base: the recorded Decisions, then a newer refusal of $50 of NVDAc, the per-trade cap. */
 const scenario: FakeScenario = {
   head: HEAD,
   headTime: NEW_TIME + 20,
@@ -177,12 +177,14 @@ for (const vp of VIEWPORTS) {
     await page.goto("/");
     await expect(plate(page)).toHaveAttribute("data-vault-plate", "recorded");
 
-    // The plate is the hero's first line, above the H1, and links the latest recorded Decision's transaction.
+    // The plate is the hero's first line, above the H1, and links the latest recorded Decision's transaction on
+    // Basescan's Logs tab: the agent's refusal, labelled as /ledger labels its sender.
     const p = plate(page);
     await expect(p).toBeVisible();
-    await expect(p).toHaveAttribute("href", basescanTx(NEWEST.transactionHash));
+    await expect(p).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
     await expect(p).toContainText("BASE MAINNET");
-    await expect(p).toContainText(/Recorded Decision: Allowed · BUY NVDAc · \$5\.00 · \w{3} \d{1,2} \w{3} \d{2}:\d{2} ET/);
+    expect(NEWEST.sender).toBe("agent");
+    await expect(p).toContainText(/Recorded Decision: Refused · Market closed · BUY GOOGLc · \$4\.68 · agent · \w{3} \d{1,2} \w{3} \d{2}:\d{2} ET/);
     expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
     const h1 = await page.getByRole("heading", { level: 1 }).boundingBox();
     expect(await bottom(p)).toBeLessThanOrEqual(h1!.y);
@@ -217,15 +219,15 @@ for (const vp of VIEWPORTS) {
     await expect(vaultCard(page)).toHaveAttribute("data-vault-card", "live");
     const p = plate(page);
     await expect(p).toHaveAttribute("data-vault-plate", "live");
-    await expect(p).toHaveAttribute("href", basescanTx(hash32(9)));
+    await expect(p).toHaveAttribute("href", basescanDecision(hash32(9)));
     await expect(p).toContainText(`Last Decision: Refused · ${REASON_LABEL[LONGEST]} · BUY NVDAc · $50.00 · ${AGE} ago`);
     expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
 
     const card = vaultCard(page);
-    await expect(card).toContainText(`3 Decisions on Base mainnet, read from Base by your browser.`);
+    await expect(card).toContainText(`${RECORDED.length + 1} Decisions on Base mainnet, read from Base by your browser.`);
     const rows = card.getByRole("list", { name: "Recent decisions" }).getByRole("listitem");
     await expect(rows).toHaveCount(3);
-    await expect(rows.nth(1).getByRole("link")).toHaveAttribute("href", basescanTx(NEWEST.transactionHash));
+    await expect(rows.nth(1).getByRole("link")).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
     await expect(card.locator("[data-verdict]")).toHaveAttribute("data-reason", LONGEST);
     await page.screenshot({ path: `test-results/screens/landing-mainnet-live-${vp.width}.png` });
 
@@ -254,7 +256,7 @@ for (const vp of VIEWPORTS) {
     const card = vaultCard(page);
     await expect(card).toHaveAttribute("data-vault-card", "live");
     const p = plate(page);
-    await expect(p).toHaveAttribute("href", basescanTx(hash32(9)));
+    await expect(p).toHaveAttribute("href", basescanDecision(hash32(9)));
     await expect(p).toContainText(`Last Decision: ${BILL_LINE} · ${AGE} ago`);
     expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
 
@@ -373,7 +375,7 @@ for (const vp of VIEWPORTS) for (const reading of READINGS) {
   });
 }
 
-test("when Base does not answer, the landing shows the two recorded Decisions and reads again on Read again", async ({ page }) => {
+test("when Base does not answer, the landing shows the recorded Decisions and reads again on Read again", async ({ page }) => {
   const errors: { text: string; url: string }[] = [];
   page.on("console", (m) => {
     if (m.type() === "error") errors.push({ text: m.text(), url: m.location().url });
@@ -387,12 +389,12 @@ test("when Base does not answer, the landing shows the two recorded Decisions an
   const card = vaultCard(page);
   await expect(card).toHaveAttribute("data-vault-card", "recorded", { timeout: 20_000 });
   await expect(plate(page)).toHaveAttribute("data-vault-plate", "recorded");
-  await expect(plate(page)).toHaveAttribute("href", basescanTx(NEWEST.transactionHash));
+  await expect(plate(page)).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
   await expect(card).toContainText("recorded · could not read Base");
   await expect(card).toContainText(`Could not read the vault on Base, so this shows the ${RECORDED.length} Decisions recorded in this build.`);
   const rows = card.getByRole("list", { name: "Recent decisions" }).getByRole("listitem");
   await expect(rows).toHaveCount(RECORDED.length);
-  for (const [i, r] of RECORDED.entries()) await expect(rows.nth(i).getByRole("link")).toHaveAttribute("href", basescanTx(r.transactionHash));
+  for (const [i, r] of RECORDED.entries()) await expect(rows.nth(i).getByRole("link")).toHaveAttribute("href", basescanDecision(r.transactionHash));
   await expect(page.locator("[data-vault-bar]")).toHaveCount(0);
 
   rpc.set("weekend");

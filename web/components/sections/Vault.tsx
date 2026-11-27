@@ -5,10 +5,10 @@ import { ReasonTag, type ReasonTagTone } from "@/components/ui/ReasonTag";
 import { billLine } from "@/content/bill";
 import { formatInt } from "@/content/format";
 import { REASON_LABEL } from "@/content/reasons";
-import { basescanTx } from "@/lib/live/basescan";
+import { basescanDecision } from "@/lib/live/basescan";
 import { formatAge, formatBlock } from "@/lib/live/format";
 import { useNowSec, useVault, type VaultView } from "./VaultDecisions";
-import { intentText, type PlateKind, plateOf, type VaultRow } from "./vault-rows";
+import { intentText, intentWithSender, type PlateKind, plateOf, type VaultRow } from "./vault-rows";
 
 /** How many Decisions the card lists; /ledger lists them all. */
 const LISTED = 3;
@@ -40,9 +40,12 @@ function paidBill(row: VaultRow): string | null {
   return plateOf(row) === "bill" && row.bill !== null ? billLine(row.bill) : null;
 }
 
-/** How the hero plate and the bar's title read a Decision: a paid bill by its bill line, else verdict and intent. */
+/**
+ * How the hero plate and the bar's title read a Decision: a paid bill by its bill line, else verdict, intent and, when
+ * known, who sent it, with /ledger's label ("agent", "owner, by hand").
+ */
 function summaryText(row: VaultRow): string {
-  return paidBill(row) ?? `${verdictText(row)} · ${intentText(row)}`;
+  return paidBill(row) ?? `${verdictText(row)} · ${intentWithSender(row)}`;
 }
 
 /**
@@ -91,14 +94,14 @@ export function VaultPlate() {
   return (
     <a
       data-vault-plate={view.status}
-      href={basescanTx(latest.txHash)}
+      href={basescanDecision(latest.txHash)}
       title={`${label}: ${summaryText(latest)} · ${when}`}
       className={`${frame} hover:border-line-strong`}
     >
       {chip}{" "}
       <span className="min-w-0 sm:truncate">
         {label}: <span className="font-medium text-ink">{bill ?? verdictText(latest)}</span>
-        {bill === null ? ` · ${intentText(latest)}` : null} · {when}
+        {bill === null ? ` · ${intentWithSender(latest)}` : null} · {when}
         <span aria-hidden="true"> ↗</span>
       </span>
     </a>
@@ -209,6 +212,7 @@ export function VaultCard() {
             <span data-latest-when="" className="font-mono text-xs text-ink-2">
               {latest.timestamp === null ? blockText(latest) : `${whenText(latest)} · ${blockText(latest)}`}
               {age === null ? null : ` · ${age}`}
+              {latest.sender === null ? null : ` · ${latest.sender}`}
             </span>
           </div>
           <div className="mx-3 mt-4">
@@ -223,11 +227,14 @@ export function VaultCard() {
               >
                 <span className="flex min-w-0 flex-col gap-0.5">
                   <span className="text-sm font-medium">{paidBill(r) ?? intentText(r)}</span>
-                  <span className="font-mono text-xs text-ink-2">{whenText(r)}</span>
+                  <span className="font-mono text-xs text-ink-2">
+                    {whenText(r)}
+                    {r.sender === null ? null : <span data-sender="">{` · ${r.sender}`}</span>}
+                  </span>
                 </span>
                 <span className="flex flex-col items-end gap-1 text-right">
                   <ReasonTag code={r.reason} tone="neutral" layout="inline" className="justify-end text-[13px]" />
-                  <a href={basescanTx(r.txHash)} aria-label={`${shortHash(r.txHash)} on Basescan`} className="font-mono text-[11px] font-medium">
+                  <a href={basescanDecision(r.txHash)} aria-label={`${shortHash(r.txHash)} on Basescan`} className="font-mono text-[11px] font-medium">
                     {shortHash(r.txHash)}
                     <span aria-hidden="true"> ↗</span>
                   </a>

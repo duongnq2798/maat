@@ -34,17 +34,20 @@ const RECORDED = deploymentConfig(deployments)!;
 const VAULT = RECORDED.vault;
 const DEPLOY = 61_698_517n;
 const OWNER: Address = getAddress("0x00000000000000000000000000000000000000a1");
+/** The executor of Maat's agent on this fake chain, which is not the owner. */
+const AGENT: Address = getAddress("0x00000000000000000000000000000000000000a2");
 const USDC = getAddress(addresses.find((a) => a.name === "USDC")!.value);
 const NVDAC = getAddress(addresses.find((a) => a.name === "NVDAC")!.value);
-const [FIRST, SECOND] = [...FACTS.mainnetDecisions.value].sort((a, b) => a.blockTime - b.blockTime);
-/** A Decision of the open week: Mon 30 Nov 10:15 ET, allowed, about three blocks a second after the recorded ones. */
-const MONDAY_BLOCK = BigInt(SECOND!.blockNumber) + BigInt(Math.floor((utc(2026, 11, 30, 15, 15) - SECOND!.blockTime) / 2));
+/** The recorded Decisions in chain order: the owner's two smoke-test buys, then the first of Maat's agent. */
+const [FIRST, SECOND, THIRD] = [...FACTS.mainnetDecisions.value].sort((a, b) => a.blockTime - b.blockTime);
+/** A Decision of the open week: Mon 30 Nov 10:15 ET, allowed, one block every 2 s after the recorded ones. */
+const MONDAY_BLOCK = BigInt(THIRD!.blockNumber) + BigInt(Math.floor((utc(2026, 11, 30, 15, 15) - THIRD!.blockTime) / 2));
 const MONDAY_TIME = utc(2026, 11, 30, 15, 15);
 const HEAD = MONDAY_BLOCK + 2_000n;
 
 /**
- * The vault on a fake Base: the two Decisions recorded in this build (Tue 24 Nov 09:28 ET refused, 11:59 ET allowed),
- * and an allowed one on Mon 30 Nov 10:15 ET, each sent by the vault's owner, as every mainnet Decision so far was.
+ * The vault on a fake Base: the Decisions recorded in this build (the owner's Tue 24 Nov 09:28 ET refused and 11:59 ET
+ * allowed, then the agent's Thu 26 Nov 21:14 ET refused), and an allowed one on Mon 30 Nov 10:15 ET from the owner.
  */
 const scenario: FakeScenario = {
   head: HEAD,
@@ -61,10 +64,9 @@ const scenario: FakeScenario = {
     [hash32(9)]: { block: MONDAY_BLOCK, gasUsed: 110_000n },
   },
   txs: Object.fromEntries(
-    [...FACTS.mainnetDecisions.value.map((l) => l.transactionHash.toLowerCase()), hash32(9)].map((h) => [
-      h,
-      { from: OWNER, to: VAULT, input: executeCalldata({ rationaleHash: keccak256(toBytes(h)) }) },
-    ]),
+    [...FACTS.mainnetDecisions.value.map((l) => [l.transactionHash.toLowerCase(), l.sender === "agent" ? AGENT : OWNER] as const), [hash32(9), OWNER] as const].map(
+      ([h, from]) => [h, { from, to: VAULT, input: executeCalldata({ rationaleHash: keccak256(toBytes(h)) }) }],
+    ),
   ),
   calls: {
     [VAULT.toLowerCase()]: {
@@ -216,22 +218,27 @@ for (const vp of VIEWPORTS) {
     expect(await along(saturday.locator("[data-now-marker]"), bar(saturday))).toBeCloseTo(600 / 1440, 2);
     await expect(saturday).toContainText("now 10:00 ET");
 
-    // The two recorded Decisions are ticks on Tuesday: the refusal two minutes before the open, the allowed one at 11:59.
+    // The owner's two recorded Decisions are ticks on Tuesday: the refusal two minutes before the open, the allowed one
+    // at 11:59; the agent's refusal is a tick on Thanksgiving at 21:14.
     const tuesday = day(page, "2026-11-24");
     const ticks = tuesday.locator("[data-tick]");
     await expect(ticks).toHaveCount(2);
-    await expect(page.locator("[data-tick]")).toHaveCount(2);
+    await expect(page.locator("[data-tick]")).toHaveCount(3);
+    const thursday = day(page, "2026-11-26");
+    await expect(thursday.locator("[data-tick]")).toHaveAttribute("data-verdict", "refused");
+    expect(await along(thursday.locator("[data-tick]"), bar(thursday))).toBeCloseTo((21 * 60 + 14) / 1440, 2);
     expect(await along(ticks.nth(0), bar(tuesday))).toBeCloseTo((9 * 60 + 28) / 1440, 2);
     expect(await along(ticks.nth(1), bar(tuesday))).toBeCloseTo((11 * 60 + 59) / 1440, 2);
     await expect(ticks.nth(0)).toHaveAttribute("data-verdict", "refused");
     await expect(ticks.nth(1)).toHaveAttribute("data-verdict", "allowed");
-    await expect(page.locator("[data-week-count]")).toHaveText("2 Decisions this week");
+    await expect(page.locator("[data-week-count]")).toHaveText("3 Decisions this week");
     const items = page.locator("[data-week-decisions] > li");
     await expect(items).toHaveText([
       "Weighing № 1 · Tue 24 Nov 09:28 ET · Refused · Market closed (MARKET_CLOSED) · BUY NVDAc · $5.00 · owner, by hand · Basescan ↗",
       "Weighing № 2 · Tue 24 Nov 11:59 ET · Allowed · All checks passed (OK) · BUY NVDAc · $5.00 · owner, by hand · Basescan ↗",
+      "Weighing № 3 · Thu 26 Nov 21:14 ET · Refused · Market closed (MARKET_CLOSED) · BUY GOOGLc · $4.68 · agent · Basescan ↗",
     ]);
-    expect(FIRST!.transactionHash).not.toBe(SECOND!.transactionHash);
+    expect(new Set([FIRST!.transactionHash, SECOND!.transactionHash, THIRD!.transactionHash]).size).toBe(3);
 
     // The agent's latest note, verbatim, with its ET time and its commit.
     const note = page.locator("[data-agent-note]");
@@ -271,7 +278,7 @@ for (const vp of VIEWPORTS) {
     await expect(tick).toHaveAttribute("data-verdict", "allowed");
     expect(await along(tick, bar(monday))).toBeCloseTo((10 * 60 + 15) / 1440, 2);
     await expect(page.locator("[data-week-decisions] > li")).toHaveText([
-      "Weighing № 3 · Mon 30 Nov 10:15 ET · Allowed · All checks passed (OK) · BUY NVDAc · $5.00 · owner, by hand · Basescan ↗",
+      "Weighing № 4 · Mon 30 Nov 10:15 ET · Allowed · All checks passed (OK) · BUY NVDAc · $5.00 · owner, by hand · Basescan ↗",
     ]);
 
     // An empty journal holds no note, so there is no tile at all.
@@ -304,9 +311,9 @@ test("the week is reached by keyboard: Tab lands on each Decision's Basescan lin
   await page.setViewportSize({ width: 1440, height: 900 });
   await setUp(page, CLOSED_AT, PUBLISHED);
   await page.goto("/now");
-  await expect(page.locator("[data-week-decisions] > li")).toHaveCount(2);
+  await expect(page.locator("[data-week-decisions] > li")).toHaveCount(3);
   const names: string[] = [];
-  for (let i = 0; i < 30 && names.length < 2; i++) {
+  for (let i = 0; i < 30 && names.length < 3; i++) {
     await page.keyboard.press("Tab");
     const name = await page.evaluate(() => (document.activeElement?.closest("[data-week-decisions]") ? document.activeElement.getAttribute("aria-label") : null));
     if (name !== null) names.push(name);
@@ -314,6 +321,7 @@ test("the week is reached by keyboard: Tab lands on each Decision's Basescan lin
   expect(names).toEqual([
     `Weighing № 1, transaction ${FIRST!.transactionHash.slice(0, 10)}… on Basescan`,
     `Weighing № 2, transaction ${SECOND!.transactionHash.slice(0, 10)}… on Basescan`,
+    `Weighing № 3, transaction ${THIRD!.transactionHash.slice(0, 10)}… on Basescan`,
   ]);
 });
 
@@ -325,7 +333,7 @@ for (const vp of VIEWPORTS) {
     await page.goto("/now");
     await page.evaluate(() => document.fonts.ready);
     await expect(page.locator("[data-agent-note]")).toBeVisible();
-    await expect(page.locator("[data-week-decisions] > li")).toHaveCount(2);
+    await expect(page.locator("[data-week-decisions] > li")).toHaveCount(3);
     expect(await page.evaluate(() => document.getAnimations().length)).toBe(0);
     const { violations } = await new AxeBuilder({ page }).analyze();
     expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }))).toEqual([]);
@@ -338,7 +346,7 @@ test("while the agent-journal branch does not exist, /now shows no note and no p
   const asked = page.waitForRequest(`${JOURNAL}index.json`);
   await page.goto("/now");
   await asked;
-  await expect(page.locator("[data-week-decisions] > li")).toHaveCount(2);
+  await expect(page.locator("[data-week-decisions] > li")).toHaveCount(3);
   await expect(page.locator("[data-agent-note]")).toHaveCount(0);
   await expect(page.getByText(/note from Maat's agent/)).toHaveCount(0);
   // The only error is the browser's line for GitHub's 404, as for the branch today.

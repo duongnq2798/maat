@@ -29,6 +29,8 @@ import { VECTORS } from "./helpers/maat-v1";
 const ts = (iso: string) => Date.parse(iso) / 1000;
 const TX1 = "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b";
 const TX2 = "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8";
+/** The first Decision of Maat's agent, 2026-11-27. */
+const TX3 = "0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6";
 
 describe("the Balance's ticks", () => {
   it("light up to the check a code maps to: passed before it, failed at it, not reached after", () => {
@@ -73,10 +75,12 @@ describe("Weighing № N", () => {
     .filter((e) => e.name === "Decision")
     .map((e) => ({ blockNumber: e.blockNumber, logIndex: e.logIndex, tx: e.txHash }));
 
-  it("numbers the two operator Decisions of 24 Nov 1 and 2, from the committed decisions snapshot", () => {
-    expect(positions.map((p) => p.tx)).toEqual([TX1, TX2]);
+  it("numbers the two operator Decisions of 24 Nov 1 and 2 and the agent's first 3, from the committed decisions snapshot", () => {
+    // A later snapshot may hold later Decisions too; the first three never change.
+    expect(positions.slice(0, 3).map((p) => p.tx)).toEqual([TX1, TX2, TX3]);
     expect(ordinalOf(positions, positions[0]!)).toBe(1);
     expect(ordinalOf(positions, positions[1]!)).toBe(2);
+    expect(ordinalOf(positions, positions[2]!)).toBe(3);
   });
 
   it("counts in chain order: block, then log index", () => {

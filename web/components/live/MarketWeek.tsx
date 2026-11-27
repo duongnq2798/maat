@@ -1,7 +1,7 @@
 import type { Hash } from "viem";
 import { formatInt } from "@/content/format";
 import { type ReasonCode, reasonText } from "@/content/reasons";
-import { basescanTx } from "@/lib/live/basescan";
+import { basescanDecision } from "@/lib/live/basescan";
 import { nowMark, pct, placeTicks, type SpanKind, weekAt } from "@/lib/live/week";
 
 /** One mainnet Decision as the week draws it: plain values from /ledger's loader (NowDecisions.tsx). */
@@ -147,7 +147,7 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
                   <span className="text-ink-2">{d.sender}</span>
                   {" · "}
                   <a
-                    href={basescanTx(d.txHash)}
+                    href={basescanDecision(d.txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`${tag === null ? "Transaction" : `${tag}, transaction`} ${d.txHash.slice(0, 10)}… on Basescan`}

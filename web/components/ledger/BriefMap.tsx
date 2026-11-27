@@ -1,4 +1,4 @@
-import { basescanTx } from "@/lib/chain/basescan";
+import { basescanDecision } from "@/lib/chain/basescan";
 import type { BriefEntry } from "@/lib/chain/ledger";
 import { reasonDisplay } from "@/lib/chain/reason";
 
@@ -40,7 +40,7 @@ export function BriefMap({ briefs }: { briefs: readonly BriefEntry[] }) {
                         {d.allowed ? "Allowed" : "Refused"} · {reason.label}
                       </span>
                       <code className="font-mono text-[11px] text-ink-2">{reason.code}</code>
-                      <a href={basescanTx(d.txHash)} aria-label={`Transaction ${d.txHash.slice(0, 10)}… on Basescan`} className="font-mono text-[12px]">
+                      <a href={basescanDecision(d.txHash)} aria-label={`Transaction ${d.txHash.slice(0, 10)}… on Basescan`} className="font-mono text-[12px]">
                         Basescan<span aria-hidden="true"> ↗</span>
                       </a>
                     </p>

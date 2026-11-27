@@ -122,19 +122,21 @@ describe("nowMark: where the now line sits", () => {
 });
 
 describe("placeTicks: the vault's Decisions on the week", () => {
-  // The two mainnet Decisions recorded in this build: Tue 24 Nov 09:28 ET (refused, MARKET_CLOSED), 11:59 ET (allowed).
+  // The mainnet Decisions recorded in this build: the owner's Tue 24 Nov 09:28 ET (refused, MARKET_CLOSED) and 11:59 ET
+  // (allowed), then the agent's first, Thu 26 Nov 21:14 ET (refused, MARKET_CLOSED, on Thanksgiving).
   const recorded = FACTS.mainnetDecisions.value.map((l) => ({ key: l.transactionHash, timestamp: l.blockTime }));
 
-  it("puts each recorded Decision on Tuesday's row at its ET minute", () => {
+  it("puts each recorded Decision on its day's row at its ET minute", () => {
     const ticks = placeTicks(weekAt(SATURDAY), recorded);
-    expect(ticks.map((t) => t.index)).toEqual([1, 1]);
-    expect(ticks.map((t) => Math.floor(t.minute))).toEqual([9 * 60 + 28, 11 * 60 + 59]);
+    expect(ticks.map((t) => t.index)).toEqual([1, 1, 3]);
+    expect(ticks.map((t) => Math.floor(t.minute))).toEqual([9 * 60 + 28, 11 * 60 + 59, 21 * 60 + 14]);
     // In chain order, oldest first, whatever order they came in.
     expect(ticks.map((t) => t.item.key)).toEqual([...recorded].sort((a, b) => a.timestamp - b.timestamp).map((r) => r.key));
     // The refusal sits two minutes before the open, in the closed window, and the allowed one in the session.
     expect(ticks[0]!.minute).toBeLessThan(OPEN);
     expect(ticks[1]!.minute).toBeGreaterThan(OPEN);
     expect(ticks[1]!.minute).toBeLessThan(CLOSE);
+    expect(ticks[2]!.minute).toBeGreaterThan(CLOSE);
   });
 
   it("leaves out a Decision of another week, one at the next Monday's midnight, and one whose time was not read", () => {

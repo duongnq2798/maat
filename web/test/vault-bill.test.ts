@@ -149,8 +149,10 @@ describe("a live PAY_EXPENSE on the landing", () => {
 });
 
 describe("the recorded Decisions", () => {
-  it("are two trades, so neither is a bill", () => {
+  it("are three trades, so none is a bill", () => {
+    // Newest first: the agent's refused buy, then the owner's allowed and refused buys.
     expect(RECORDED_ROWS.map((r) => [r.bill, plateOf(r)])).toEqual([
+      [null, "refused"],
       [null, "allowed"],
       [null, "refused"],
     ]);
