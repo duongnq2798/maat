@@ -8,12 +8,12 @@
     },
     "earlyCloseAllowed": {
       "label": "Probe before the early close",
-      "hash": null,
+      "hash": "0x605ea741681e3a105020a2de2491829b2cc58707b5f2f89b8f7c7cf58986e0e2",
       "expect": { "event": "Decision", "contract": "MandateVault", "reason": "OK", "sender": "probe", "etDate": "2026-11-27", "etBefore": "13:00" }
     },
     "earlyCloseRefused": {
       "label": "Probe after the early close",
-      "hash": null,
+      "hash": "0x7c086145003fde5a42437d9d3637d51e694f6b371d63fbb9669a9538745c1f0f",
       "expect": { "event": "Decision", "contract": "MandateVault", "reason": "MARKET_CLOSED", "sender": "probe", "etDate": "2026-11-27", "etFrom": "13:00" }
     },
     "strangerBrief": {
