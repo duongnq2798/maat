@@ -46,19 +46,73 @@ export function deploymentRows(md) {
 /** How the verification note under the deployments table spells a count. */
 export const COUNT_WORDS = Object.freeze(["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten"]);
 
+/** The note under the deployments table: the day Basescan showed a count of contracts verified, and that count. */
+const VERIFIED_NOTE = /On (\d{4}-\d{2}-\d{2}), Basescan showed the source of all (\w+) contracts as verified/;
+/** A contract's own paragraph: the day Basescan showed its source verified. */
+const VERIFIED_OWN = /\bon (\d{4}-\d{2}-\d{2}),? Basescan showed its source as verified/;
+
+/**
+ * The day deployments/README.md says Basescan showed each Base mainnet row's source verified, "" where it says none.
+ * The note under the table covers the rows deployed on or before its day, and only while their number is exactly the
+ * count it gives. A row it does not cover takes the day from its own paragraph: one that names that contract, and no
+ * other row's, in backticks. A day before the row's deploy day counts as none.
+ */
+export function deploymentVerification(md) {
+  const rows = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address);
+  const [, noteIso = "", noted = ""] = VERIFIED_NOTE.exec(md) ?? [];
+  const early = noteIso ? rows.filter((r) => r.date !== "" && r.date <= noteIso) : [];
+  const covered = new Set(early.length > 0 && COUNT_WORDS.indexOf(noted.toLowerCase()) === early.length ? early : []);
+  const paragraphs = md.split(/\n\s*\n/);
+  const names = rows.map((r) => r.contract);
+  const ownDay = (contract) =>
+    paragraphs
+      .filter((p) => p.includes(`\`${contract}\``) && names.every((n) => n === contract || !p.includes(`\`${n}\``)))
+      .map((p) => VERIFIED_OWN.exec(p)?.[1])
+      .find(Boolean) ?? "";
+  return rows.map((r) => {
+    const iso = covered.has(r) ? noteIso : ownDay(r.contract);
+    return { contract: r.contract, address: r.address, date: r.date, verifiedOn: iso !== "" && iso >= r.date ? iso : "" };
+  });
+}
+
+/**
+ * Which contracts Basescan showed verified on which day, in day order, once every row has a day; else "". `label`
+ * spells a day. One day for every row reads "all on <day>"; otherwise each day names its contract, or a group's count.
+ */
+function verifiedPhrase(verified, label) {
+  if (verified.length === 0 || verified.some((v) => v.verifiedOn === "")) return "";
+  const days = [...new Set(verified.map((v) => v.verifiedOn))].sort();
+  if (days.length === 1) return `all on ${label(days[0])}`;
+  return days
+    .map((day) => {
+      const on = verified.filter((v) => v.verifiedOn === day);
+      return `${on.length === 1 ? on[0].contract : COUNT_WORDS[on.length]} on ${label(day)}`;
+    })
+    .join(", ");
+}
+
+/** The line under the contracts card: the day each contract's source was shown verified, or "" while a row has none. */
+export function verifiedNote(md) {
+  const phrase = verifiedPhrase(deploymentVerification(md), (iso) => iso);
+  return phrase === "" ? "" : `Basescan showed the source of every contract as verified: ${phrase}.`;
+}
+
 /**
  * The deployment figures: how many contracts are on Base mainnet; the day Basescan showed their source verified, only
- * while the note counts as many contracts as the table holds; and the inbox's address once the table records it.
+ * while the note counts as many contracts as the table holds; the days it showed each one verified, only while
+ * deployments/README.md gives one for every row; and the inbox's address once the table records it.
  */
 export function deploymentFigures(md) {
   const rows = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address);
-  const [, verifiedOn, noted = ""] = /On (\d{4}-\d{2}-\d{2}), Basescan showed the source of all (\w+) contracts as verified/.exec(md) ?? [];
+  const [, verifiedOn, noted = ""] = VERIFIED_NOTE.exec(md) ?? [];
   /** @type {Record<string, string>} */
   const out = { "deployments.count": String(rows.length) };
   if (verifiedOn && COUNT_WORDS.indexOf(noted.toLowerCase()) === rows.length) {
     out["deployments.verifiedOnIso"] = verifiedOn;
     out["deployments.verifiedOn"] = dayLabel(verifiedOn);
   }
+  const verified = verifiedPhrase(deploymentVerification(md), dayLabel);
+  if (verified) out["deployments.verified"] = verified;
   const inbox = rows.find((r) => r.contract === "MaatInbox");
   if (inbox) out["deployments.inbox"] = inbox.address;
   return out;
@@ -69,6 +123,7 @@ export const OPTIONAL_KEYS = Object.freeze({
   "deployments.inbox": "deployments/README.md has a Base mainnet MaatInbox row",
   "deployments.verifiedOn": "the verification note under the deployments table counts every Base mainnet row",
   "deployments.verifiedOnIso": "the same, as an ISO date",
+  "deployments.verified": "deployments/README.md gives the day Basescan showed each Base mainnet row's source verified",
 });
 
 const CI_ROWS = {

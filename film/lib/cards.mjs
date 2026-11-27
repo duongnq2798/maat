@@ -192,7 +192,7 @@ ${BALANCED}`;
   });
 }
 
-/** The verified contracts, from the deployments table and its verification note. */
+/** The verified contracts, from the deployments table and the day Basescan showed each one's source verified. */
 export function deploymentsCardHtml({ format, rows, verifiedNote, fontsDir }) {
   const s = SIZE[format];
   const wide = format === "wide";

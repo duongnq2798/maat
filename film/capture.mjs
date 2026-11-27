@@ -26,7 +26,7 @@ import { frameListText } from "./lib/ffmpeg.mjs";
 import { FORMATS } from "./lib/formats.mjs";
 import { briefReply, readJournal } from "./lib/journal.mjs";
 import { fetchInput, fetchOwner, fetchTx } from "./lib/rpc.mjs";
-import { CAPTURED, OPTIONAL_KEYS, capturedValue, ciAgeWarning, ciFigures, deploymentRows, fileSources } from "./lib/sources.mjs";
+import { CAPTURED, OPTIONAL_KEYS, capturedValue, ciAgeWarning, ciFigures, deploymentRows, deploymentVerification, fileSources, verifiedNote } from "./lib/sources.mjs";
 import {
   persuasionCardHtml,
   persuasionParts,
@@ -140,11 +140,12 @@ export async function capture({ work, input, formats, site }) {
   const deployMd = read("deployments/README.md");
   const deployments = deploymentRows(deployMd).filter((r) => r.network === "Base mainnet" && r.address);
   const warnings = [];
-  // The note shows on the contracts card only while it counts every row; lib/sources.mjs reads it the same way.
-  const verifiedNote =
-    files.values["deployments.verifiedOn"] !== undefined ? (/On \d{4}-\d{2}-\d{2}, Basescan showed the source of all [^.]*\./.exec(deployMd)?.[0] ?? "") : "";
-  if (verifiedNote === "") {
-    warnings.push(`beat 8 does not say the contracts are verified: the note under deployments/README.md's table does not count its ${deployments.length} Base mainnet rows`);
+  // The contracts card says the contracts are verified only while deployments/README.md gives a day for every row, from
+  // the note under its table or the contract's own paragraph; the receipts caption reads it the same way.
+  const verifiedLine = verifiedNote(deployMd);
+  if (verifiedLine === "") {
+    const unverified = deploymentVerification(deployMd).filter((v) => v.verifiedOn === "").map((v) => v.contract);
+    warnings.push(`beat 8 does not say the contracts are verified: deployments/README.md gives no day Basescan showed ${unverified.join(", ") || "any row"} verified`);
   }
   const ci = ciFigures(read("README.md"));
   const ciAge = ciAgeWarning(files.values, new Date().toISOString().slice(0, 10));
@@ -222,7 +223,7 @@ export async function capture({ work, input, formats, site }) {
             shot.card === "title"
               ? titleCardHtml({ format, fontsDir, mark })
               : shot.card === "deployments"
-                ? deploymentsCardHtml({ format, rows: deployments, verifiedNote, fontsDir })
+                ? deploymentsCardHtml({ format, rows: deployments, verifiedNote: verifiedLine, fontsDir })
                 : shot.card === "ci"
                   ? ciCardHtml({ format, figures: ci, fontsDir })
                   : endCardHtml({ format, fontsDir, mark });
