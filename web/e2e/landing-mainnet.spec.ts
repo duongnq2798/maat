@@ -1,3 +1,4 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
 import { encodeFunctionData, getAddress, keccak256, toBytes, toHex, type Address, type Hex } from "viem";
 import { ASK_OPEN } from "../content/ask-open";
@@ -321,6 +322,8 @@ for (const vp of VIEWPORTS) {
     await expect(note.locator("blockquote")).toHaveCount(0);
     await expect(note.getByRole("link", { name: "Newer rounds on /now" })).toHaveAttribute("href", "/now");
     await page.screenshot({ path: `test-results/screens/landing-note-superseded-${vp.width}.png` });
+    const { violations } = await new AxeBuilder({ page }).include("#top [data-hero-note]").analyze();
+    expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")) }))).toEqual([]);
     expect(errors).toEqual([]);
   });
 }

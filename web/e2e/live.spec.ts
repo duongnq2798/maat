@@ -149,6 +149,8 @@ test("in session with every market check passing, the live line names what passe
   const [tokens, row] = await Promise.all([line.locator("[data-ticker-gloss]").boundingBox(), method.boundingBox()]);
   expect(row!.y).toBeGreaterThan(tokens!.y);
   expect(await method.evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
+  const { violations } = await new AxeBuilder({ page }).include("#top").analyze();
+  expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
