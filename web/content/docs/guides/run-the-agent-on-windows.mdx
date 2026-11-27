@@ -123,11 +123,11 @@ For the soak:
 
 ```text title="agent/.env (soak)"
 MAAT_MODE=dry-run
-MAAT_EXECUTOR=<OWNER_ADDRESS>
+MAAT_EXECUTOR=<EXECUTOR_ADDRESS>
 MAAT_DATA_DIR=./data-dryrun
 ```
 
-`MAAT_EXECUTOR` must be the executor the vault reports, and that stays the owner's wallet until the owner hands the role to the CDP account. A round whose `MAAT_EXECUTOR` differs from it ends with the status `wrong-executor`.
+`MAAT_EXECUTOR` must be the executor the vault reports, in dry run too. On a vault of your own that is the owner's wallet until the owner hands the role to the CDP account, and the CDP account after that. On Maat's own vault it has been the agent's CDP account, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, since 2026-11-27, so a soak against that vault sets that address. A round whose `MAAT_EXECUTOR` differs from it ends with the status `wrong-executor`.
 
 For live mode:
 

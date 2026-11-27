@@ -263,7 +263,7 @@ The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat
 
 <Callout type="warning" title="Not exercised">
 
-Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no output from the real Claude API is committed. The CDP code is tested against a fake client only. Outside the tests, Maat's live agent has run with its real CDP account since 2026-11-27 but, as of 2026-11-27, has sent no transaction through it. These tests show the agent's logic, not what those services do.
+Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no unit or fork test calls the real Claude API. The CDP code is tested against a fake client only. Outside the tests, Maat's live agent has called the real Claude API and run with its real CDP account since 2026-11-27, and its round summaries, written by Claude, are on the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch. As of 2026-11-27 it has sent no transaction through the CDP account. These tests show the agent's logic, not what those services do.
 
 </Callout>
 
@@ -316,7 +316,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | --- | --- |
 | **No audit** | Nobody independent has reviewed the code. See [What Maat does not claim](/docs/security/not-claimed) |
 | **Fuzzing beyond the mocks** | Only the [live fork run](#live-fork-run-against-the-deployed-vault) fuzzes against the real contracts, in short campaigns at one block a day. The offline invariant suite runs on mocks, and every other contract test, the other fork tests included, takes fixed inputs. [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the offline suite leaves out |
-| **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
+| **The real Claude API** | The proposer runs against a fake client, and no unit or fork test calls the real API. Since 2026-11-27 the live agent's round summaries, written by Claude, are on the public `agent-journal` branch, but no test checks them |
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
 | **Mainnet** | The owner deployed the four Maat contracts on Base mainnet, but every test is still a unit test or a fork |
 | **A real split or dividend** | The assumption that the feed includes the multiplier has not been observed across one |

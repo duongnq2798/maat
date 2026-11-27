@@ -131,7 +131,7 @@ At the end the attacker address holds nothing and the vault holds all the USDC i
 
 The vault pays only for the usage the agent counted. The agent computes each cost from the `usage` in its own responses, so calls made by someone else are not on the bill that the vault pays. If the agent's calls fail for any reason, including a revoked key, the proposer returns no proposals and does not throw ([`proposer.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/proposer.test.ts): "never throws on an API error"). The [round](/docs/help/glossary#round) then proposes no trades, but a bill that is due is still queued, because `runOnce` adds it before it looks at Claude's answer.
 
-**Response.** Revoke the key with Anthropic, create a new one and put it in the agent's environment. The key never reaches the chain, so nothing onchain needs to change. In the tests the proposer's calls run only against a fake client; since 2026-11-27 the live agent calls the real Claude API with the key in `agent/.env`.
+**Response.** Revoke the key with Anthropic, create a new one and put it in the agent's environment. The key never reaches the chain, so nothing onchain needs to change. In the tests the proposer's calls run only against a fake client; since 2026-11-27 the live agent calls the real Claude API with the owner's key.
 
 ### The CDP API key and wallet secret
 

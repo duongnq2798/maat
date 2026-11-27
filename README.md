@@ -343,6 +343,7 @@ on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `449
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, unit-tested against a fake CDP client. The vault's executor since 2026-11-27 (`0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, [`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), used by the live agent; as of 2026-11-27 it has sent no transaction | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
 | Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Fork replay. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the mainnet ledger, the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
 | The agent's public journal: `ops/journal/publish.mjs` copies the public fields of the agent's hash-chained journal to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch every 15 minutes, and the mainnet ledger's Rounds tab and `/now` read it | **Built**. Running beside the live agent since 2026-11-27 (first push `23e2df8`, 01:23 UTC, 1 row) | [`ops/journal/`](ops/journal) |
+| A rationale store the agent writes as it runs, read by the mainnet ledger (W2 follow-up). The public journal above leaves out the raw `rationale` text, which stays on the owner's PC | **Planned** | [W2 spec §10](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md) |
 | Daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
 | x402 revenue: other agents pay about one cent per "is this trade safe now?" check | **Planned**. Not on `main`; PR #2, open and unmerged, adds an x402 Guard Service | [spec §3.4](docs/superpowers/specs/2026-11-06-mandate-treasury-design.md) |
 | Market-guard skill, the Bankr Skill: the vault's calendar and `previewIntent`, read-only, with a typed reason, for other agents to call | **Built**, with an offline selftest on answers recorded from Base mainnet, which a web unit test runs. Its `SKILL.md` is served at `/skill.md`. Not yet submitted to BankrBot's skills repository | [`skills/maat-market-guard`](skills/maat-market-guard) |
@@ -673,8 +674,9 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
 - **Gas estimation.** The vault catches inner failures, so `eth_estimateGas` can return a limit too low for
   the swap. The agent uses fixed floors (2,500,000 for `execute`) and a 3,000,000 cap instead.
 - **Operational costs.** The executor needs a little ETH on Base for gas (the CDP paymaster serves smart
-  accounts only). Dry-run mode still calls Claude, at roughly one cent per round: an estimate, since no
-  output from the real Claude API is committed to check it.
+  accounts only). Dry-run mode still calls Claude, at roughly one cent per round. That figure is an
+  estimate: the agent has called the real Claude API live only since 2026-11-27, and this README records no
+  measured cost per round (the agent's journal booked about half a cent for its first live round).
 - **The owner is a single key.** It is immutable and has no transfer function. A multisig owner is
   compatible but not set up.
 - **Dependency advisories** (as of 2026-11-19). `npm audit` reports 3 high-severity vulnerabilities in the
@@ -698,11 +700,13 @@ Planned, roughly in this order. No dates are promised.
    2026-11-27 ([Deployments and traction](#deployments-and-traction)); as of that date it has sent no transaction. Its
    journal has been published to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch since that day, and
    `/ledger`'s Rounds tab reads it.
-2. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
+2. A rationale store the agent writes as it runs, read by `/ledger` (W2 follow-up). The public journal leaves out
+   the raw `rationale` text, which stays on the owner's PC.
+3. x402 Guard Service: other agents pay about one cent per check, and that USDC funds the treasury loop. In
    progress in PR #2, open and unmerged.
-3. MCP server exposing the same check, and the market-guard skill submitted to BankrBot's skills repository.
-4. `MandateFactory`: any agent deploys its own vault with its own mandate.
-5. Daily diary and replay page (W3).
+4. MCP server exposing the same check, and the market-guard skill submitted to BankrBot's skills repository.
+5. `MandateFactory`: any agent deploys its own vault with its own mandate.
+6. Daily diary and replay page (W3).
 
 ## Built during the Quest
 

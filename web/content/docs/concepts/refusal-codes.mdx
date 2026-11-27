@@ -227,7 +227,7 @@ A token transfer or an approval failed.
 
 ## How the agent reacts
 
-The agent is built to preview every intent before it sends anything, and then to look at the preview's reason. The agent is built and fork-tested, and the real Claude API and the CDP Server Wallet have never run in a Maat test. Since 2026-11-27 it runs in live mode on Base mainnet, where, as of 2026-11-27, it has sent no transaction. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, it sends nothing, so what follows is what it is built to do when it does send. The rule is all in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
+The agent is built to preview every intent before it sends anything, and then to look at the preview's reason. The agent is built and fork-tested, and no unit or fork test uses the real Claude API or the CDP Server Wallet. Since 2026-11-27 it runs in live mode on Base mainnet, where, as of 2026-11-27, it has sent no transaction. In [dry-run mode](/docs/help/glossary#dry-run), which is the default, it sends nothing, so what follows is what it is built to do when it does send. The rule is all in `agent/src/refusals.ts`. First the set of reasons it considers worth recording:
 
 ```typescript title="agent/src/refusals.ts#L6-L18"
 export const LOGGABLE_REASONS: ReadonlySet<ReasonName> = new Set<ReasonName>([

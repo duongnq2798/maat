@@ -244,7 +244,7 @@ A billed cost is added to that day's compute total, so it becomes part of what t
 
 <Callout type="warning" title="Tested against a fake client only">
 
-`proposer.test.ts` checks the request shape, the fallback handling, the API error, the refusal, the truncation, invalid JSON and a schema violation against a fake client. No test covers the malformed response. The real Claude API has never run in a Maat test, and no response from it is committed.
+`proposer.test.ts` checks the request shape, the fallback handling, the API error, the refusal, the truncation, invalid JSON and a schema violation against a fake client. No test covers the malformed response. No unit or fork test calls the real Claude API. Since 2026-11-27 the live agent's round summaries, written by Claude, are on the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch.
 
 </Callout>
 
