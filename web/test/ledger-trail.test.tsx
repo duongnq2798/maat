@@ -290,6 +290,36 @@ describe("the Rounds tab", () => {
     expect(row).toHaveTextContent("run live · not ok · daily LLM cap reached, Claude not called · block 61800000 · proposals 0 · suggestions 2");
   });
 
+  it("opens a row's vault execute tx on Basescan's Logs tab, where its Decision shows, and any other tx on its plain page", () => {
+    let prev: Hex = GENESIS;
+    const ts = "2026-11-27T02:14:46.000Z";
+    const lines = [
+      { kind: "sent", ts, runId: "r", action: "BUY", symbol: "GOOGLc", amountUsd6: "4680721", txHash: hash32(2) },
+      { kind: "intent", ts, runId: "r", action: "BUY", symbol: "GOOGLc", amountUsd6: "4680721", txHash: hash32(2), decision: { allowed: false, reason: "MARKET_CLOSED" } },
+      { kind: "reconcile", ts, runId: "r", action: "BUY", txHash: hash32(3), outcome: "applied", decision: { allowed: true, reason: "OK" } },
+      { kind: "housekeeping", ts, runId: "r", call: "syncMultiplier", txHash: hash32(4) },
+      { kind: "brief", ts, runId: "r", briefId: 1, txHash: hash32(5), outcome: "adopted" },
+    ].map((fields) => {
+      const hash = keccak256(toBytes(canon({ ...fields, prev })));
+      const line = canon({ ...fields, prev, hash });
+      prev = hash;
+      return line;
+    });
+    const chainOk = verifyJournal([{ name: "2026-11-27.jsonl", text: lines.map((l) => `${l}\n`).join("") }]);
+    expect(chainOk.failure).toBeNull();
+    render(<RoundsPanel journal={{ state: "read", files: ["2026-11-27.jsonl"], ...chainOk }} onReload={() => {}} />);
+    const rows = within(screen.getByRole("list", { name: "Journal rows, newest first" })).getAllByRole("listitem");
+    const href = (row: HTMLElement) => within(row).getByRole("link", { name: /on Basescan/ }).getAttribute("href");
+    // Newest first: brief, housekeeping, reconcile, intent, sent.
+    expect(rows.map(href)).toEqual([
+      `https://basescan.org/tx/${hash32(5)}`,
+      `https://basescan.org/tx/${hash32(4)}`,
+      `https://basescan.org/tx/${hash32(3)}#eventlog`,
+      `https://basescan.org/tx/${hash32(2)}#eventlog`,
+      `https://basescan.org/tx/${hash32(2)}#eventlog`,
+    ]);
+  });
+
   it("names the first line that broke the chain", () => {
     const broken = verifyJournal([{ name: "2026-11-24.jsonl", text: `${JOURNAL_LINES[0]}\n${JOURNAL_LINES[0]}\n` }]);
     render(<RoundsPanel journal={{ state: "read", files: ["2026-11-24.jsonl"], ...broken }} onReload={() => {}} />);
