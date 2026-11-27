@@ -22,15 +22,16 @@ export interface SentTransactions {
   txs: readonly string[];
 }
 
-// The agent executor, 0x9bC6E49d42e0659f3ef667B09B67506B348e115A, had sent none by block 62,244,801 (`--sends`), so it
-// has no entry. Each execute it sends that does not revert leaves a Decision log of the vault, so it needs none. A
-// syncMultiplier it sends leaves a MultiplierChangeDetected log when it records a change; the agent halts on one that
-// does not (agent/src/loop/runOnce.ts), and that send goes here.
+// The agent executor, 0x9bC6E49d42e0659f3ef667B09B67506B348e115A, had sent 1 transaction by block 62,793,789 (`--sends`):
+// the execute of 2026-11-27 02:14 UTC. Each execute it sends that does not revert leaves a Decision log of the vault, as
+// that one did, so it has no entry. A syncMultiplier it sends leaves a MultiplierChangeDetected log when it records a
+// change; the agent halts on one that does not (agent/src/loop/runOnce.ts), and that send goes here.
 export const PROOF_SENDS: readonly SentTransactions[] = [
   // The owner: 9 transactions sent by block 62,201,650, printed by `--sends` from https://mainnet.base.org on
   // 2026-11-26, before the trace read the vault's logs. Nonces 0 to 3 are the four deploys in deployments/README.md.
   // At block 62,244,712 `--sends` gives 4 of them (nonces 3, 6, 7 and 8) from the vault's logs and needs the other 5;
-  // the 4 stay listed and count once.
+  // the 4 stay listed and count once. On 2026-11-27 `--sends` at block 62,793,624 gives 11 transactions: nonce 9, the
+  // setExecutor, left an ExecutorSet log; nonce 10, the MaatInbox deploy, left none and is added last.
   {
     wallet: "0x3c3a66f713dae7e4a03bbd81db79ff65f42c1d6a",
     txs: [
@@ -43,6 +44,7 @@ export const PROOF_SENDS: readonly SentTransactions[] = [
       "0x3e0aa478853b7172e955dd1245ed17c047f925d2817806b8429095f268edb309",
       "0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b",
       "0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8",
+      "0x61b7f0b44ae01a6fbb34e0e7c35d53c2ffd1228fbc3f0b3dd020741826850db4",
     ],
   },
 ];

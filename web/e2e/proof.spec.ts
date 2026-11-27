@@ -25,6 +25,8 @@ const INBOX_TX: Hash = `0x${"d1".repeat(32)}`;
 const UID: Hex = `0x${"a1".repeat(32)}`;
 const ZERO32: Hex = `0x${"0".repeat(64)}`;
 const VAULT = getAddress(deployments.find((r) => r.network === "Base mainnet" && r.contract === "MandateVault")!.address);
+/** How many sends the owner's committed list holds: in the chain below, its nonces 0 to OWNER_SENDS - 1. */
+const OWNER_SENDS = PROOF_SENDS.find((s) => s.wallet.toLowerCase() === OWNER.toLowerCase())!.txs.length;
 
 /**
  * A chain for `briefs`, with the committed team lists as its own record: the owner's committed transactions come
@@ -37,7 +39,7 @@ function chain(inbox: Address, deployTx: Hash | null, briefs: ProofChain["briefs
     vault: { address: VAULT, owner: OWNER, executor: EXECUTOR, payees: [OWNER] },
     txs: [
       ...plainSends(PROOF_SENDS, DEPLOY),
-      { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: 9, to: VAULT, block: DEPLOY + 1n, logs: [executorSetLog(VAULT, EXECUTOR)] },
+      { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: OWNER_SENDS, to: VAULT, block: DEPLOY + 1n, logs: [executorSetLog(VAULT, EXECUTOR)] },
       ...[0, 1, 2].map((i) => ({
         hash: `0x${(0xe2 + i).toString(16).repeat(32)}` as Hash,
         from: EXECUTOR,
