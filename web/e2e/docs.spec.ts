@@ -837,7 +837,7 @@ test.describe("glossary previews", () => {
     return term.page().locator(`[id="${id}"]`);
   }
   /** The CDP Server Wallet entry's last sentence, its status. */
-  const CDP_STATUS = "no transaction has gone through it";
+  const CDP_STATUS = "went through it that day";
   /** Whether these words of a preview are inside the part of it the window shows. */
   const inView = (preview: Locator, words: string) =>
     preview.evaluate((el, w) => {

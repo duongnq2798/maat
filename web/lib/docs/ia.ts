@@ -307,7 +307,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "security/not-claimed",
         "What Maat does not claim",
-        "No audit, no Decision yet from the agent's live run on mainnet, and the known limitations: what can still go wrong and what is out of scope.",
+        "No audit, an agent live on mainnet only since 2026-11-27, and the known limitations: what can still go wrong and what is out of scope.",
       ),
       page(
         "security/testing",

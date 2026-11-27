@@ -32,8 +32,9 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 > agent's Coinbase CDP Server Wallet account `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`
 > ([`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), and Maat's agent
 > now runs in live mode on Base mainnet with the real Claude API, from tag `agent-r2` (`b8c914a`). Its first live round,
-> at 01:14 UTC, proposed no trade because NYSE was closed for Thanksgiving. As of 2026-11-27 the agent has sent
-> **no transaction**, so every `Decision` on the vault so far was sent by the owner. The website and its docs are **online** at [maatonbase.xyz](https://maatonbase.xyz).
+> at 01:14 UTC, proposed no trade because NYSE was closed for Thanksgiving. **The agent's first `Decision`** came at
+> 02:14 UTC on 2026-11-27: Claude proposed a $4.68 GOOGLc buy while NYSE was closed for Thanksgiving, and the vault
+> refused it with `MARKET_CLOSED` ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)); no funds moved. The website and its docs are **online** at [maatonbase.xyz](https://maatonbase.xyz).
 > x402 revenue, the Guard Service API, MCP and `MandateFactory` are **planned, not built** on
 > `main` (an x402 Guard Service is in PR #2, open and unmerged). See [Status](#status).
 
@@ -55,8 +56,9 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
   167 agent, 1,494 website unit and 259 end-to-end tests passed.
 - **On Base mainnet.** The owner deployed the four Maat contracts on 2026-11-24. They are unaudited.
   [Addresses](#deployments-and-traction).
-- **What is not done yet.** As of 2026-11-27 the agent runs live on Base mainnet with the real Claude API and its CDP
-  Server Wallet, but has sent no transaction yet; no audit; x402 and the rest are planned (see the box above).
+- **What is not done yet.** No audit; x402 and the rest are planned (see the box above). The agent has run live on
+  Base mainnet with the real Claude API and its CDP Server Wallet since 2026-11-27; its first `Decision`, at 02:14 UTC
+  that day, was a buy the vault refused with `MARKET_CLOSED`.
 - **Evidence.** On a local fork of Base mainnet at block 53,551,627 (Thursday 2026-11-05, 10:30 ET), the agent,
   with a scripted proposer, bought $20 of NVDAc (allowed, 758,192 gas). With the clock moved to Saturday, a $10
   GOOGLc buy was refused as market closed (`MARKET_CLOSED`) and logged on the fork (111,116 gas). [Fork evidence](#base-mainnet-fork-evidence).
@@ -162,7 +164,7 @@ links; the docs show the same table on
 - **Builder Code.** The ERC-8021 suffix is built and tested. The owner registered Maat's code on the Base
   Dashboard, and the calldata of the vault's first `Decision` on Base mainnet
   ([`0xdfdb6739...6c3b`](https://basescan.org/tx/0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b)) carries it.
-- **Executor.** Handed by the owner to the agent's CDP Server Wallet account `0x9bC6E49d42e0659f3ef667B09B67506B348e115A` on 2026-11-27 at 01:04:08 UTC, block 62,755,363 ([`0x6f866bf7...f483`](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)); `owner()` is unchanged. Before that, the owner's wallet held the role. As of 2026-11-27 the new executor has sent no transaction.
+- **Executor.** Handed by the owner to the agent's CDP Server Wallet account `0x9bC6E49d42e0659f3ef667B09B67506B348e115A` on 2026-11-27 at 01:04:08 UTC, block 62,755,363 ([`0x6f866bf7...f483`](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)); `owner()` is unchanged. Before that, the owner's wallet held the role. The agent's first `Decision` through the new executor came at 02:14 UTC that day ([`0xca9e2dfe...bed6`](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)).
 - **Owner smoke test.** On 2026-11-24 the owner, as the executor, sent two 5 USDC NVDAc `BUY` intents with
   [`deployments/go-live.md`](deployments/go-live.md) and the calldata of
   [`agent/scripts/first-decision.ts`](agent/scripts/first-decision.ts); the agent runtime sent neither. The vault
@@ -171,6 +173,15 @@ links; the docs show the same table on
   and allowed the second, in session, with reason `OK`
   ([`0x61622340...23c8`](https://basescan.org/tx/0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8),
   block 61,745,836, 16:59:02 UTC), which swapped 5 USDC for 0.03311718 NVDAc.
+- **The agent's first `Decision`.** On 2026-11-27 at 02:14:46 UTC (Thursday 21:14 ET, NYSE closed for Thanksgiving),
+  in block 62,776,552, the agent's executor sent a `BUY` of 4,680,721 USDC units ($4.68) of GOOGLc, intent id
+  `0x22b5b771641eee43c5b450b8ec57bacdfeb2f0e3f4ffcb7070bfb1cce1b6b4ed`, and the vault refused it with reason 6,
+  `MARKET_CLOSED` ([`0xca9e2dfe...bed6`](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). No funds moved. Claude (`claude-sonnet-5-5`)
+  proposed it in live round `1795745679507-b16b90d3`; its rationale said the market was closed, so the contract may refuse
+  and the refusal is worth recording. The calldata carries the maat:v1 rationale blob, whose keccak256 is the
+  `rationaleHash` `0xb855268417f4edb7b305281f7d7afb5bd7dc5506878a9e36476cf0ca78e0a6c1`, and the Builder Code
+  `bc_w7i5vjdv`. Claude also proposed an AAPLc buy in that round; the agent did not send it, because a
+  `MARKET_CLOSED` refusal for the NYSE date 2026-11-26 was already logged.
 - **Mainnet `Decision` events.** This README keeps no count. Every `Decision` the vault emits is public in its
   events on Basescan, at the `MandateVault` address in [`deployments/README.md`](deployments/README.md). The
   [mainnet ledger](https://maatonbase.xyz/ledger) reads them from Base in your browser, with the vault's
@@ -338,9 +349,9 @@ on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `449
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested. **Deployed** on Base mainnet | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
 | `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop). **Deployed** on Base mainnet | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
 | Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner deployed the four Maat contracts to Base mainnet on 2026-11-24, from `main` at `66bd0d0` | [`contracts/script`](contracts/script) |
-| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, from tag `agent-r2` (`b8c914a`), with the real Claude API; its first live round (01:14 UTC) proposed no trade because NYSE was closed for Thanksgiving, and as of 2026-11-27 it has sent no transaction | [`agent/`](agent) |
+| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, from tag `agent-r2` (`b8c914a`), with the real Claude API; its first live round (01:14 UTC) proposed no trade because NYSE was closed for Thanksgiving, and its first `Decision`, at 02:14 UTC, was a GOOGLc buy that the vault refused with `MARKET_CLOSED` ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)) | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
-| Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, unit-tested against a fake CDP client. The vault's executor since 2026-11-27 (`0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, [`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), used by the live agent; as of 2026-11-27 it has sent no transaction | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
+| Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, unit-tested against a fake CDP client. The vault's executor since 2026-11-27 (`0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, [`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), used by the live agent, which sent its first `Decision` through it at 02:14 UTC that day ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)) | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
 | Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Fork replay. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (1,494 unit tests and 259 Playwright tests passed in CI run [44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467) at `3778fea`, before the mainnet ledger, the live strip, `/now` and `/gap-index` were added; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
 | The agent's public journal: `ops/journal/publish.mjs` copies the public fields of the agent's hash-chained journal to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch every 15 minutes, and the mainnet ledger's Rounds tab and `/now` read it | **Built**. Running beside the live agent since 2026-11-27 (first push `23e2df8`, 01:23 UTC, 1 row) | [`ops/journal/`](ops/journal) |
 | A rationale store the agent writes as it runs, read by the mainnet ledger (W2 follow-up). The public journal above leaves out the raw `rationale` text, which stays on the owner's PC | **Planned** | [W2 spec §10](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md) |
@@ -456,7 +467,7 @@ All addresses are Base mainnet, from [`contracts/script/BaseAddresses.sol`](cont
 | **Chainlink equity feeds** | Oracle price per raw token (multiplier already included), staleness | [NVDA](https://basescan.org/address/0x04689a41629776563E6822F76f2e57D148d28513), [GOOGL](https://basescan.org/address/0x5bF49E0ffA937CE2FfF033c739aD7C634c4D34F2), [AAPL](https://basescan.org/address/0x787f13dEa48Db0897CbCDD985de77809D837F988) |
 | **Aerodrome Slipstream** | Swap venue and 30-minute TWAP; called directly, no router | [NVDAc/USDC](https://basescan.org/address/0xF668e21993f0ACd7ab00BB1cFbAeD0df28A3C8EC), [GOOGLc/USDC](https://basescan.org/address/0x16c70F04C3080a127486Cdf5a4C33c066bBF47C3), [AAPLc/USDC](https://basescan.org/address/0xF5FCB9CDAFcE67d50AfEf298F88E709d2B946BA6) |
 | **Aave V4 (MAG7 Spoke, Equities Hub)** | Stocks as collateral, USDC borrowing; the adapter is the Aave user and only its vault can move the position | [Spoke](https://basescan.org/address/0x17905Db0e4A3514467539956c084180616AE7B8D), [Hub](https://basescan.org/address/0xa4d5947Eb727A052bae69C593FfC84247EC9864E) |
-| **Coinbase CDP Server Wallet** | The executor key, with an account policy (sends and signs only zero-value transactions to the vault, sends only on Base; hash, message and typed-data signing rejected). The vault's executor since 2026-11-27, run by the live agent; as of 2026-11-27 it has sent no transaction | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
+| **Coinbase CDP Server Wallet** | The executor key, with an account policy (sends and signs only zero-value transactions to the vault, sends only on Base; hash, message and typed-data signing rejected). The vault's executor since 2026-11-27, run by the live agent, which sent its first `Decision` through it at 02:14 UTC that day | [`cdpSender.ts`](agent/src/exec/cdpSender.ts) |
 | **ERC-8021 Builder Codes** | Appended by the agent to the calldata of every transaction it sends (via `ox/erc8021`). Owner-signed transactions (deploy, `fund`, `setExecutor`) do not carry it; the first-decision BUYs of [`deployments/go-live.md`](deployments/go-live.md) do, because the owner sends the calldata that [`first-decision.ts`](agent/scripts/first-decision.ts) builds | [`builderCode.ts`](agent/src/exec/builderCode.ts) |
 | **Claude** | `claude-sonnet-5-5` by default (`MAAT_LOOP_MODEL`), with structured output, proposes the round's intents. Called only at `https://api.anthropic.com`, with `ANTHROPIC_API_KEY`. Unit-tested against a fake client; called for real by the live agent since 2026-11-27 | [`agent/src/config.ts#L27`](agent/src/config.ts#L27) |
 
@@ -644,13 +655,13 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
 ## Known limitations
 
 - **Unaudited.** No third party has reviewed the contracts.
-- **The agent has only just gone live, and has sent nothing yet.** Maat's agent has run in live mode on Base mainnet
-  since 2026-11-27, with the real Claude API and its CDP Server Wallet as the vault's executor
-  ([Deployments and traction](#deployments-and-traction)). As of 2026-11-27 it has sent no transaction: its first live
-  round proposed no trade because NYSE was closed for Thanksgiving, and every agent transaction this README reports ran
-  on a local fork, with a scripted proposer. x402 revenue does not exist yet. The mainnet ledger at `/ledger` reads the
-  vault's `Decision` events from Base, and the owner's wallet, not the agent, sent the ones it shows so far (as of
-  2026-11-27).
+- **The agent went live only on 2026-11-27.** Maat's agent has run in live mode on Base mainnet since 2026-11-27, with
+  the real Claude API and its CDP Server Wallet as the vault's executor
+  ([Deployments and traction](#deployments-and-traction)). Its first `Decision`, at 02:14 UTC that day, was a GOOGLc buy
+  the vault refused with `MARKET_CLOSED` while NYSE was closed for Thanksgiving, so it moved no funds. The trades this
+  README reports ran on a local fork, with a scripted proposer. x402 revenue does not exist yet. The mainnet ledger at
+  `/ledger` reads the vault's `Decision` events from Base, the owner's smoke-test buys of 2026-11-24 and the agent's
+  since 2026-11-27.
 - **The calendar must be maintained.** It ships with Thanksgiving and Christmas 2026 and every NYSE
   holiday of 2027 (New Year to Christmas observed on 2027-12-24), plus early closes on 2026-11-27, 2026-12-24
   and 2027-11-26. Later holidays need `addHoliday` from the calendar owner. If one is missed, only the price
@@ -686,8 +697,9 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
   Neither package ships in the static site.
 
 **The case against Maat.** It is unaudited, and its agent evidence is thin: Maat's agent has run live on Base mainnet only
-since 2026-11-27 and, as of that date, has sent no transaction, so every agent transaction this README reports ran on a local
-fork, with a scripted proposer in place of Claude, and nothing here yet shows how the real model trades with real money. Its session check is only as good as a calendar the owner must keep current;
+since 2026-11-27, and its first `Decision` that day was a refusal while NYSE was closed, so every agent trade this README
+reports ran on a local fork, with a scripted proposer in place of Claude, and nothing here yet shows how the real model trades
+with real money. Its session check is only as good as a calendar the owner must keep current;
 its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
 counters; and one immutable owner key, with no multisig, controls the vault.
 
@@ -697,7 +709,8 @@ Planned, roughly in this order. No dates are promised.
 
 1. The agent's own `Decision` events on mainnet, which the website's [`/ledger`](https://maatonbase.xyz/ledger) page reads
    beside the owner's. The owner handed the executor to the agent's CDP Server Wallet and the agent went live on
-   2026-11-27 ([Deployments and traction](#deployments-and-traction)); as of that date it has sent no transaction. Its
+   2026-11-27 ([Deployments and traction](#deployments-and-traction)). Its first `Decision`, at 02:14 UTC that day, was a
+   GOOGLc buy the vault refused with `MARKET_CLOSED` ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). Its
    journal has been published to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch since that day, and
    `/ledger`'s Rounds tab reads it.
 2. A rationale store the agent writes as it runs, read by `/ledger` (W2 follow-up). The public journal leaves out
@@ -744,7 +757,7 @@ plan, then implementation task by task, with a review after each task and of the
 ([`docs/superpowers`](docs/superpowers)). At `3778fea`, every non-merge commit on `main` (271 of 271) carries
 a `Co-Authored-By: Claude` trailer, and so do 16 of the 20 merge commits. The owner decides the product
 and signs the mainnet deploy and every owner-only call; since 2026-11-27 the executor role is held by the agent's CDP
-Server Wallet account, which signs the agent's transactions (as of 2026-11-27 it has sent none). From PR #3 on, Claude Code merged the pull requests from the
+Server Wallet account, which signs the agent's transactions; the first, at 02:14 UTC that day, was a `BUY` the vault refused with `MARKET_CLOSED`. From PR #3 on, Claude Code merged the pull requests from the
 owner's GitHub account.
 
 ## Compliance

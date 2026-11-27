@@ -21,11 +21,11 @@ sources:
 next: [get-started/quickstart, security/not-claimed]
 ---
 
-These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. The four Maat contracts are deployed on Base mainnet, and since 2026-11-27 the agent runs in [live mode](/docs/help/glossary#live-mode) there. As of 2026-11-27 it has sent no transaction, so the answers say what the code is built to do and what has run on a fork. Words you do not know are in the [glossary](/docs/help/glossary).
+These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. The four Maat contracts are deployed on Base mainnet, and since 2026-11-27 the agent runs in [live mode](/docs/help/glossary#live-mode) there. Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. The answers say what the code is built to do and what has run on a fork. Words you do not know are in the [glossary](/docs/help/glossary).
 
 | Question | Today | Read more |
 | --- | --- | --- |
-| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | Yes, the four Maat contracts. The agent has run in live mode there since 2026-11-27 and, as of 2026-11-27, has sent no transaction | [Status and roadmap](/docs/get-started/status#next-mainnet) |
+| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | Yes, the four Maat contracts. The agent has run in live mode there since 2026-11-27, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` | [Status and roadmap](/docs/get-started/status#next-mainnet) |
 | Has a third party audited the contracts? | No | [What Maat does not claim](/docs/security/not-claimed#unaudited) |
 | Has it run on a fork of Base mainnet? | Yes, the contracts and the agent's send path | [Status and roadmap](/docs/get-started/status#built-and-fork-tested) |
 | Did the fork run use the real Claude API or the [CDP wallet](/docs/help/glossary#cdp-server-wallet)? | No, a scripted proposer and a local sender stood in | [How a decision is made](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy) |
@@ -38,7 +38,7 @@ Maat is an onchain [vault](/docs/help/glossary#vault) on [Base](/docs/help/gloss
 
 ### Is Maat live?
 
-Partly. The four Maat contracts are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why the docs label their pages fork-tested. There a scripted proposer stood in for Claude and a local sender for the CDP wallet. Since 2026-11-27 the agent runs in live mode on Base mainnet, on the owner's PC, with the real Claude API, and the CDP Server Wallet is the vault's executor. As of 2026-11-27 it has sent no transaction, so the vault's only mainnet `Decision` events are still the owner's two smoke-test buys. See [Status and roadmap](/docs/get-started/status).
+Partly. The four Maat contracts are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why the docs label their pages fork-tested. There a scripted proposer stood in for Claude and a local sender for the CDP wallet. Since 2026-11-27 the agent runs in live mode on Base mainnet, on the owner's PC, with the real Claude API, and the CDP Server Wallet is the vault's executor. The vault's first two mainnet `Decision` events were the owner's smoke-test buys of 2026-11-24. The agent's first came at 02:14 UTC on 2026-11-27: Claude proposed a buy of 4.68 USDC of GOOGLc while NYSE was closed for Thanksgiving, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). See [Status and roadmap](/docs/get-started/status).
 
 ### Whose money does Maat trade?
 
@@ -132,7 +132,7 @@ See [How it is tested](/docs/security/testing), which maps each guarantee in the
 
 ### Has Claude or the CDP wallet run for real?
 
-Since 2026-11-27, yes, in live mode on Base mainnet: the agent calls the real Claude API, and the vault's executor is its [CDP wallet](/docs/help/glossary#cdp-server-wallet) account. As of 2026-11-27 it has sent no transaction through that wallet. In the fork run a scripted proposer stood in for Claude and a local sender for the CDP wallet. In the tests, the Claude proposer and the CDP code run against fakes. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
+Since 2026-11-27, yes, in live mode on Base mainnet: the agent calls the real Claude API, and the vault's executor is its [CDP wallet](/docs/help/glossary#cdp-server-wallet) account. The agent's first `Decision` went through that wallet at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). In the fork run a scripted proposer stood in for Claude and a local sender for the CDP wallet. In the tests, the Claude proposer and the CDP code run against fakes. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
 
 ### Which functions can anyone call on a vault?
 
