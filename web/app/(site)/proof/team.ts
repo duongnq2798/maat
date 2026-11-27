@@ -1,7 +1,8 @@
 // The team set of the /proof counting rule (inbox spec §5), traced from Base at the block the briefs are counted to,
-// and the notes the page and the recount print next to the brief lines. It has no import and only erasable types, so
-// the page runs it in the browser and `node scripts/recount.mjs` runs this same file with Node's own type stripping:
-// both build one team set from one RPC's answers.
+// the vault's Decisions the trace reads on the way, which the Decision lines count, and the notes the page and the
+// recount print next to the lines. It has no import and only erasable types, so the page runs it in the browser and
+// `node scripts/recount.mjs` runs this same file with Node's own type stripping: both build one team set and one list
+// of Decisions from one RPC's answers.
 
 /** One JSON-RPC call: its result, or a thrown error. */
 export type Rpc = (method: string, params: unknown[]) => Promise<unknown>;
@@ -74,6 +75,27 @@ export interface HopStop {
   source: string;
 }
 
+/**
+ * A Decision log of the vault, with what its transaction gives: the rule labels each Decision by its transaction's
+ * sender and, for a transaction sent to the vault, the maat:v1 blob in its calldata (count.ts, scripts/recount.mjs).
+ */
+export interface VaultDecision {
+  /** Lowercased. */
+  txHash: string;
+  block: bigint;
+  logIndex: number;
+  /** The transaction's sender, lowercased. */
+  from: string;
+  /** The transaction's recipient, lowercased, or null for a contract creation. */
+  to: string | null;
+  /** The transaction's calldata, lowercased. */
+  input: string;
+  /** The Decision's `allowed`: the vault allowed it, or refused it with `reason`. */
+  allowed: boolean;
+  /** The uint8 of enum Reason in contracts/src/Types.sol; 0 is OK. */
+  reason: number;
+}
+
 export interface TeamTrace {
   block: bigint;
   /** In the order found: the rule's wallets, then hop 1, then hop 2. */
@@ -87,6 +109,18 @@ export interface TeamTrace {
   seed: { source: VaultSeed["source"]; from: bigint; to: bigint; anchor: bigint | null } | null;
   /** Why a seed the caller gave was not used, or null. */
   seedRejected: string | null;
+  /**
+   * The MandateVault of deployments/README.md whose logs the trace read from its deploy block, lowercased, or null when
+   * the table gives no vault or no mined deploy transaction for it: then no Decision was read.
+   */
+  vault: string | null;
+  /** The vault's owner() at `block`, lowercased, or null when `vault` is. */
+  owner: string | null;
+  /**
+   * Every Decision log of the vault from its deploy block to `block`, in block and log order: the logs the trace reads
+   * for the team's sends, a seed's included once each held its receipt. Empty with no vault.
+   */
+  decisions: VaultDecision[];
 }
 
 /** owner(), executor() and payees() of MandateVault. */
@@ -121,15 +155,20 @@ export const VAULT_TOPICS = [
   "0x7084f5476618d8e60b11ef0d7d3f06914655adb8793e28ff7f018d4c76d505d5", // Withdrawn
   "0xd2e626325a6f2abbc5f3e654cf4b4bb4221fd1ceb5bdb212fc4d136398943ac9", // MultiplierChangeDetected
 ] as const;
+/** The vault's Decision event, the first of VAULT_TOPICS. */
+export const DECISION_TOPIC = VAULT_TOPICS[0];
 /** Hop 1 and hop 2. */
 export const MAX_HOPS = 2;
 
 /** Printed next to the Outside lines, on /proof and by the recount. */
 export const TEAM_SET_NOTE =
   "The team set is traced from Base at the block counted to: the wallets in web/content/proof-team.ts, the vault's owner(), executor() and payees(), the deployer of every contract in deployments/README.md, and every wallet those funded within 2 hops. ETH funding comes from each wallet's sent transactions, checked against its nonce: those that left a log of the vault other than RevenueReceived, which anyone can make it emit, or a Brief of MaatInbox that names the wallet, are read from those logs, and the rest are committed in web/content/proof-sends.ts. Token funding comes from the Transfer logs of those transactions and of each token they approved. A token moved by a signature alone, and ETH a wallet with code sends inside another wallet's transaction, are not seen.";
-/** Printed next to the brief lines, on /proof and by the recount, until the Decision lines are counted. */
+/**
+ * Printed next to the lines, on /proof and by the recount: how each Decision gets its line (inbox spec §5, and §4 of
+ * the maat:v1 rationale blob spec it names).
+ */
 export const DECISION_NOTE =
-  "The Decision lines of the rule (owner by hand, agent, probe, brief-driven) are not counted on /proof or by scripts/recount.mjs yet; the ledger labels each Decision with them.";
+  'Each Decision log of the vault gets one label, first match wins: owner by hand when the vault\'s owner() sent its transaction; probe when that transaction, sent to the vault, carries a valid maat:v1 blob with k "probe"; brief-driven when that blob cites brief ids in q; agent for every other. Each Decision line counts the Decisions the vault allowed and those it refused. The Owner by hand line counts the owner\'s Decisions, not its other transactions, such as deploys, funding and mandate changes.';
 
 const VAULT_CONTRACT = "MandateVault";
 const ZERO_ADDRESS = `0x${"0".repeat(40)}`;
@@ -170,6 +209,7 @@ interface RawTx {
   to: string | null;
   value: string;
   blockNumber: string | null;
+  input?: string;
 }
 interface RawLog {
   address: string;
@@ -417,10 +457,55 @@ function seedRange(seed: VaultSeed, vault: { address: string; from: bigint }, bl
   return from <= to ? { from, to } : `it holds no block from ${fmt(vault.from)} to ${fmt(block)}`;
 }
 
-/** What logSends gives: the sends the logs give, wallet by wallet, and where the vault's logs came from. */
+/** A log of the vault as eth_getLogs gives it (hex numbers) or a seed keeps it (SeedLog). */
+interface VaultLog {
+  transactionHash: string;
+  topics: readonly string[];
+  data: string;
+  blockNumber: string;
+  logIndex: string | number;
+}
+
+/**
+ * The Decision logs among `logs`, each once, in block and log order, with what its transaction in `sends` gives. A log
+ * whose data is not a Decision's five words, or a transaction the RPC gives no calldata for, stops the trace: a Decision
+ * labelled without its calldata could land on the wrong line.
+ */
+function decisionsOf(logs: readonly VaultLog[], sends: ReadonlyMap<string, Send>): VaultDecision[] {
+  const out = new Map<string, VaultDecision>();
+  for (const l of logs) {
+    if (String(l.topics[0]).toLowerCase() !== DECISION_TOPIC) continue;
+    const txHash = l.transactionHash.toLowerCase();
+    const logIndex = Number(l.logIndex);
+    const data = String(l.data);
+    if (!/^0x[0-9a-fA-F]{320}$/.test(data)) throw new Error(`the Decision log at index ${logIndex} of ${txHash} does not hold the 160 bytes of a Decision`);
+    const { tx } = sends.get(txHash)!;
+    if (typeof tx.input !== "string" || !HEX.test(tx.input)) throw new Error(`the RPC gives no calldata for ${txHash}, which left a Decision log`);
+    // Decision(intentId, action, token, amount, allowed, reason, rationaleHash): the data words are action, amount,
+    // allowed, reason and rationaleHash.
+    const word = (i: number) => BigInt(`0x${data.slice(2 + 64 * i, 66 + 64 * i)}`);
+    out.set(`${txHash}:${logIndex}`, {
+      txHash,
+      block: BigInt(l.blockNumber),
+      logIndex,
+      from: tx.from.toLowerCase(),
+      to: tx.to === null ? null : tx.to.toLowerCase(),
+      input: tx.input.toLowerCase(),
+      allowed: word(2) !== 0n,
+      reason: Number(word(3)),
+    });
+  }
+  return [...out.values()].sort((a, b) => (a.block === b.block ? a.logIndex - b.logIndex : a.block < b.block ? -1 : 1));
+}
+
+/**
+ * What logSends gives: the sends the logs give, wallet by wallet, the vault's Decisions among those logs, and where the
+ * vault's logs came from.
+ */
 interface LoggedSends {
   of: (wallet: string) => Promise<Send[]>;
   briefsComplete: boolean;
+  decisions: VaultDecision[];
   seed: TeamTrace["seed"];
   seedRejected: string | null;
   /** With a seed in use: the same sends with the seed's blocks read from the RPC instead, `why` as seedRejected. */
@@ -433,7 +518,7 @@ interface LoggedSends {
  * the Brief names, only when that wallet sent it. The vault's logs come from the RPC, or from `inputs.vaultSeed` for
  * the blocks it covers once seedProblem finds nothing. All vault transactions are read here, at most READ_WORKERS at a
  * time, before the Brief scan is waited for; a wallet's briefs are read when its sends are. A send counts only toward
- * the wallet that sent it, so a log never covers another wallet's send.
+ * the wallet that sent it, so a log never covers another wallet's send. The Decisions come from the same logs and reads.
  */
 async function logSends(
   rpc: Rpc,
@@ -450,26 +535,29 @@ async function logSends(
     if (tx.blockNumber === null || BigInt(tx.blockNumber) > block) throw new Error(`the RPC gives ${r.hash}, ${source}, no block by ${fmt(block)}`);
     return { ...r, tx: { ...tx, blockNumber: tx.blockNumber } };
   };
-  const bySender = async (logs: readonly { transactionHash: string }[]) => {
+  const bySender = async (logs: readonly VaultLog[]) => {
     const byVault = new Map<string, Send[]>();
+    const sends = new Map<string, Send>();
     const hashes = [...new Set(logs.map((l) => l.transactionHash.toLowerCase()))];
     for (const r of await mapLimit(hashes, READ_WORKERS, read)) {
       const s = sent(r, `which left a log of ${VAULT_CONTRACT}`);
+      sends.set(s.hash, s);
       const from = s.tx.from.toLowerCase();
       byVault.set(from, [...(byVault.get(from) ?? []), s]);
     }
-    return byVault;
+    return { byVault, decisions: decisionsOf(logs, sends) };
   };
   let byVault = new Map<string, Send[]>();
+  let decisions: VaultDecision[] = [];
   let seed: TeamTrace["seed"] = null;
   let seedRejected: string | null = null;
-  let withoutSeed: (() => Promise<{ transactionHash: string }[]>) | null = null;
+  let withoutSeed: (() => Promise<VaultLog[]>) | null = null;
   if (vault && vault.from <= block) {
     const filter = { address: vault.address, topics: [[...VAULT_TOPICS]] };
     const given = (await inputs.vaultSeed) ?? null;
     const usable = given ? seedRange(given, vault, block) : null;
     if (given && typeof usable === "string") seedRejected = usable;
-    let logs: { transactionHash: string }[];
+    let logs: VaultLog[];
     if (given && usable && typeof usable !== "string") {
       // The seed's logs of VAULT_TOPICS in its range are checked against their receipts while the blocks it does not
       // cover are read; RevenueReceived logs in it are dropped unread, as the scan never asks for them.
@@ -498,7 +586,7 @@ async function logSends(
     } else {
       logs = await logsIn(rpc, filter, vault.from, block, signal);
     }
-    byVault = await bySender(logs);
+    ({ byVault, decisions } = await bySender(logs));
   }
   const { briefs, complete } = (await inputs.briefScan) ?? { briefs: [], complete: true };
   const briefsOf = new Map<string, Set<string>>();
@@ -516,9 +604,12 @@ async function logSends(
   };
   const again = withoutSeed;
   const unseeded = again
-    ? async (why: string): Promise<LoggedSends> => ({ of: sendsBy(await bySender(await again())), briefsComplete: complete, seed: null, seedRejected: why, unseeded: null })
+    ? async (why: string): Promise<LoggedSends> => {
+        const fresh = await bySender(await again());
+        return { of: sendsBy(fresh.byVault), briefsComplete: complete, decisions: fresh.decisions, seed: null, seedRejected: why, unseeded: null };
+      }
     : null;
-  return { of: sendsBy(byVault), briefsComplete: complete, seed, seedRejected, unseeded };
+  return { of: sendsBy(byVault), briefsComplete: complete, decisions, seed, seedRejected, unseeded };
 }
 
 /**
@@ -587,10 +678,12 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
   const add = addTo(named);
 
   for (const t of inputs.team) add(checked(t.address, "web/content/proof-team.ts"), 0, `web/content/proof-team.ts (${t.role})`);
+  let vaultOwner: string | null = null;
   if (vaultAddress) {
     const read = async (data: string) => String(await rpc("eth_call", [{ to: vaultAddress, data }, tag]));
     const [owner, executor, payees] = await Promise.all([read(OWNER_SELECTOR), read(EXECUTOR_SELECTOR), read(PAYEES_SELECTOR)]);
-    add(addressOf(owner), 0, "the vault's owner()");
+    vaultOwner = addressOf(owner);
+    add(vaultOwner, 0, "the vault's owner()");
     add(addressOf(executor), 0, "the vault's executor()");
     for (const p of addressList(payees)) add(p, 0, "on the vault's payees()");
   }
@@ -721,7 +814,8 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     return out;
   };
 
-  let logged = await logSends(rpc, read, await vaultOf(rows, txOf), inputs, block, signal);
+  const vaultRead = await vaultOf(rows, txOf);
+  let logged = await logSends(rpc, read, vaultRead, inputs, block, signal);
   let walked = await walk(logged);
   // A seed can leave a vault log out, and a log left out can only leave a team wallet with fewer sends than its nonce,
   // which leaves the count incomplete. Then the blocks the seed gave are read from the RPC and the hops walked again, so
@@ -740,6 +834,9 @@ export async function traceTeam(rpc: Rpc, inputs: TeamInputs, block: bigint, sig
     notes: walked.notes,
     seed: logged.seed,
     seedRejected: logged.seedRejected,
+    vault: vaultRead?.address ?? null,
+    owner: vaultRead ? vaultOwner : null,
+    decisions: logged.decisions,
   };
 }
 

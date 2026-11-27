@@ -1,5 +1,17 @@
 import type { ReactNode } from "react";
-import { formatCount, lineText, proofLines, verifiedText, emptyCount, type LinesState, type ProofCount, type ProofLine, type VerifiedColumn } from "./count";
+import {
+  emptyCount,
+  formatCount,
+  proofLines,
+  splitText,
+  valueText,
+  verifiedText,
+  type DecisionCount,
+  type LinesState,
+  type ProofCount,
+  type ProofLine,
+  type VerifiedColumn,
+} from "./count";
 import type { TeamTrace } from "./team";
 
 const MONO = "font-mono text-[13px] text-ink [overflow-wrap:anywhere]";
@@ -61,25 +73,29 @@ function TeamSet({ team }: { team: TeamTrace }) {
 }
 
 /**
- * The six lines of the rule and the rows behind them, as plain text: every address and UID is text, never a link.
+ * The ten lines of the rule and the rows behind them, as plain text: every address and UID is text, never a link.
  * While the briefs are read (`state` "reading", `count` null) every line shows "…". When the read is incomplete or no
- * inbox is recorded, the brief lines say so in place of a number and list no row; the bounty line keeps its number,
- * which comes from a committed list.
+ * inbox is recorded, the brief lines say so in place of a number and list no row; the Decision lines, from the vault's
+ * Decision logs, and the bounty line, from a committed list, keep their number. A Decision line gives under its number
+ * how many of its Decisions the vault allowed and refused, and says "not read" while `decisions` is null.
  */
 export function ProofCounts({
   count,
   verified,
   state,
   team = null,
+  decisions = null,
 }: {
   count: ProofCount | null;
   verified: VerifiedColumn | null;
   state: "reading" | LinesState;
   team?: TeamTrace | null;
+  decisions?: DecisionCount | null;
 }) {
   const c = count ?? emptyCount();
-  const lines = proofLines(c, verified);
-  const shown = (l: ProofLine) => (state === "reading" || count === null ? "…" : lineText(l, state));
+  const reading = state === "reading" || count === null;
+  const lines = proofLines(c, verified, decisions);
+  const shown = (l: ProofLine) => (reading ? "…" : valueText(l, state));
   const counted = state === "counted" && count !== null;
   return (
     <div className="flex flex-col gap-8">
@@ -90,6 +106,11 @@ export function ProofCounts({
             <dd data-testid={`proof-${l.key}`} className="m-0 font-mono text-[20px] font-medium text-ink">
               {shown(l)}
             </dd>
+            {!reading && l.split ? (
+              <dd data-testid={`proof-${l.key}-split`} className="m-0 text-[13px] text-ink-2">
+                {splitText(l.split)}
+              </dd>
+            ) : null}
           </div>
         ))}
       </dl>
