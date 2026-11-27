@@ -121,7 +121,7 @@ The agent keeps each rationale in its journal and sends a sanitized copy in the 
 
 Each request carries a system prompt, a user message with the round's state, and the JSON schema, whose field descriptions add a few short instructions. The system prompt is fixed except for its credit lines, which follow the `MAAT_CREDIT_ACTIONS` setting ([MAAT_CREDIT_ACTIONS](/docs/reference/agent-configuration#maat_credit_actions)). With credit actions off, the default, it tells Claude never to propose `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY`. This is the system prompt:
 
-```typescript title="agent/src/llm/prompt.ts#L8-L55"
+```typescript title="agent/src/llm/prompt.ts#L8-L56"
 /** The credit lines of the prompt, by MAAT_CREDIT_ACTIONS. Off, they say so, and name the actions never to propose. */
 const CREDIT = {
   on: {
@@ -177,7 +177,7 @@ The prompt says that every verdict, including refusals, is published onchain, an
 
 `renderUserMessage` builds the user message each round:
 
-```typescript title="agent/src/llm/prompt.ts#L62-L100"
+```typescript title="agent/src/llm/prompt.ts#L63-L101"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
