@@ -1,9 +1,18 @@
 # Film
 
-The demo film: 100 seconds, no voice and no sound (the audio track is silent), captions burned in, in two cuts, 16:9
-(1920x1080) and 9:16 (1080x1920). It is built only from the live site, [maatonbase.xyz](https://maatonbase.xyz), which
-Playwright opens read-only, from Base mainnet transactions shown as text beside a Basescan link card, and from the
-published agent journal. ffmpeg assembles it. Nothing here signs, sends or uploads anything.
+The demo film: 100 seconds, captions burned in, in two cuts, 16:9 (1920x1080) and 9:16 (1080x1920). Its picture is
+built only from the live site, [maatonbase.xyz](https://maatonbase.xyz), which Playwright opens read-only, from Base
+mainnet transactions shown as text beside a Basescan link card, and from the published agent journal. ffmpeg assembles
+it. Nothing here signs, sends or uploads anything.
+
+The film has a voice-over and music, both made with ElevenLabs: the narration with its text-to-speech, the score with
+Eleven Music. They are mixed onto the picture after the render, outside this folder: this pipeline renders the picture
+with a silent audio track, and `film/` holds no audio file (`web/test/film-identity.test.ts` checks both). The same
+step draws one more line on the end card, under its disclaimer, from 93.9 s; the landing prints it under the player too:
+
+> Voice and music: AI-generated with ElevenLabs
+
+The landing serves the 16:9 cut itself ([On the landing](#on-the-landing)).
 
 It opens on the title card and closes on the end card, and both draw the mark of `web/brand/src/mark.svg`, so the
 first and the last frame show it: the cut fades at the edges of each beat, but never on its first or last frame.
@@ -82,10 +91,11 @@ decides says the mechanism line word for word.
 | `render.mjs` | The one command: `capture.mjs`, then `assemble.mjs` |
 | `capture.mjs` | Opens each page with Playwright at each cut's viewport (16:9 at 1920x1080; 9:16 at 540x960 with a pixel ratio of 2, the site's phone layout) and screenshots every frame of each scroll; renders the cards and the caption overlays; reads the tx receipts; writes `work/manifest.json` |
 | `assemble.mjs` | Runs ffmpeg: one H.264 segment per shot with its captions burned in, then the segments joined, with a silent audio track |
+| `vtt.mjs` | Writes a cut's captions as WebVTT from `work/manifest.json`, for the landing's captions track ([On the landing](#on-the-landing)) |
 | `captions.json` | Every caption. Each number in a caption is a `{placeholder}` |
 | `txs.json` | The transactions of beats 5 to 7, by hash, and what each receipt must show |
 | `input/` | Where the owner drops the two Basescan clips; git ignores everything in it but its README |
-| `lib/` | The beat plan, the caption sources, the cards, the frame style and measures (`frame.mjs`), the tx decoder, the journal reader (`journal.mjs`, beat 7's reply) and the ffmpeg argument builder |
+| `lib/` | The beat plan, the caption sources, the cards, the frame style and measures (`frame.mjs`), the tx decoder, the journal reader (`journal.mjs`, beat 7's reply), the ffmpeg argument builder and the WebVTT writer (`vtt.mjs`) |
 
 ## Commands
 
@@ -234,3 +244,43 @@ label and `/ask`'s brief-to-Decision map):
 - when the journal has the brief's row, its `adopted` flag is `true`.
 
 The verdict step then says what ties it to the brief: "brief-driven, adopts brief #N", and "sent by" the executor.
+
+## On the landing
+
+The landing's film band, `#film` directly under the hero (`web/components/sections/Film.tsx`, spec 2026-11-27 section
+2), plays the 16:9 cut from the site itself. Its three files are in `web/public/film/`:
+
+| File | What it is |
+| --- | --- |
+| `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,109,414 bytes |
+| `maat-film-poster.webp` | The poster: the frame at 53.5 s, the tx card of Maat's agent's Thanksgiving Decision, "Refused · Market closed (MARKET_CLOSED)", at 1280x720; 43,408 bytes |
+| `maat-film.en.vtt` | The cut's 18 burned-in captions as WebVTT, at the cut's times, written by `vtt.mjs` |
+
+The player has `preload="none"` and no autoplay, so a visitor's browser fetches the poster on arrival and no byte of
+the cut before play, and nothing on the band loads from a third party (`checkExport` in `web/lib/check-out.ts` and
+`web/e2e/film.spec.ts` check both). The captions track is off by default: the captions are burned in, and the track
+repeats them for screen readers and search. `web/test/film-band.test.tsx` checks the three files: the cut's codec,
+size, weight and index, the poster's size and weight, and that every cue says the words of its caption in
+`captions.json`, with only the placeholders filled.
+
+`FILM.youtubeUrl` in `web/content/film.ts` is null. Once the owner has uploaded the film to YouTube, set it to the
+video's URL, and the band shows a plain "Watch on YouTube" link under the player. The landing never embeds a player.
+
+The cut there today is the v1 cut of 27 Nov 2026. Beats 6 and 7 show their labelled placeholders: the early-close probes
+and an outside brief were not on Base when its picture was rendered.
+
+To put a new cut on the landing, run from the repository root, with `<cut>` the 16:9 MP4 with its sound and `<work>` the
+work folder of the render its picture comes from:
+
+```bash
+ffmpeg -i <cut> -map 0:v:0 -map 0:a:0 -map_metadata -1 -vf "scale=1280:720:flags=lanczos" \
+  -c:v libx264 -preset slow -crf 26 -profile:v high -level:v 3.1 -pix_fmt yuv420p -r 30 \
+  -c:a aac -b:a 128k -ar 48000 -ac 2 -movflags +faststart web/public/film/maat-film-720p.mp4
+ffmpeg -ss 53.5 -i <cut> -frames:v 1 -vf "scale=1280:720:flags=lanczos" -map_metadata -1 \
+  -c:v libwebp -quality 82 -compression_level 6 web/public/film/maat-film-poster.webp
+node film/vtt.mjs --manifest <work>/manifest.json --out web/public/film/maat-film.en.vtt
+```
+
+53.5 s is the middle of the Thanksgiving tx shot (51 to 56 s) in today's beat plan; if the plan moves that shot, take
+the middle of its new span. `film-band.test.tsx` keeps the cut between 5 and 6 MB: raise the CRF a step if a cut comes
+out heavier. `vtt.mjs` writes nothing while a cue's words are not its caption's.
