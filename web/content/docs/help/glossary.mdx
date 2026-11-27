@@ -18,7 +18,7 @@ sources:
 next: [get-started/what-is-maat, help/faq]
 ---
 
-This page defines terms used across the docs, each in one to three sentences, with a link to the page that explains it in full. The entries are in alphabetical order, one section per letter. If you would rather start from a subject, the table below groups the terms by topic. The four Maat contracts are deployed on Base mainnet, but the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, so the entries about the vault and the agent say how they are built and fork-tested, not how a running system behaves.
+This page defines terms used across the docs, each in one to three sentences, with a link to the page that explains it in full. The entries are in alphabetical order, one section per letter. If you would rather start from a subject, the table below groups the terms by topic. The four Maat contracts are deployed on Base mainnet, and the agent has run in [live mode](/docs/help/glossary#live-mode) there since 2026-11-27. Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. The entries about the vault and the agent say how they are built and fork-tested, not how the agent behaves on mainnet over time.
 
 | Topic | Terms |
 | --- | --- |
@@ -67,7 +67,7 @@ A short code registered for a project, which ERC-8021 appends to a transaction's
 
 ### CDP Server Wallet
 
-The Coinbase CDP wallet service that the agent is meant to use as the vault's [executor](/docs/help/glossary#executor) in [live mode](/docs/help/glossary#live-mode). Its account policy accepts only zero-value transactions to the vault, sending on Base only, and rejects signing a hash, a message or typed data ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client only and has never run against the real CDP ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
+The Coinbase CDP wallet service that the agent uses as the vault's [executor](/docs/help/glossary#executor) in [live mode](/docs/help/glossary#live-mode). Its account policy accepts only zero-value transactions to the vault, sending on Base only, and rejects signing a hash, a message or typed data ([How a decision is made](/docs/get-started/how-a-decision-is-made#step-3-preview-and-send)). The code is tested against a fake CDP client. Since 2026-11-27 the agent's CDP account is Maat's executor, and the agent's first `Decision` went through it that day ([Status and roadmap](/docs/get-started/status#built-and-fork-tested)).
 
 ### Chainlink equity feed
 
@@ -103,7 +103,7 @@ The agent's default mode, set with `MAAT_MODE`. It reads the chain, asks Claude,
 
 ### Executor
 
-The one address allowed to call `execute` on the vault. It is set when the vault is created, the owner can replace it at once, and it can call no owner function. In live mode the agent is meant to use a [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the executor ([Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do)).
+The one address allowed to call `execute` on the vault. It is set when the vault is created, the owner can replace it at once, and it can call no owner function. In live mode the agent uses a [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) as the executor; for Maat's vault, the owner set it on 2026-11-27 ([Timelock and roles](/docs/concepts/timelock-and-roles#what-the-executor-can-do)).
 
 ### Exit-only
 
@@ -139,13 +139,13 @@ A request the agent sends to the vault's `execute`: an id, an [action](/docs/hel
 
 ### Journal
 
-The agent's local, append-only log: `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default). It has one JSON line per event of a [round](/docs/help/glossary#round), such as the round itself, each intent, send and reconcile, and any error, with the [rationale](/docs/help/glossary#rationale) text and [blob](/docs/help/glossary#rationale-blob) behind each `rationaleHash`. It stays on the operator's machine. See [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder).
+The agent's local, append-only log: `journal.jsonl` in its data folder (`MAAT_DATA_DIR`, `./data` by default). It has one JSON line per event of a [round](/docs/help/glossary#round), such as the round itself, each intent, send and reconcile, and any error, with the [rationale](/docs/help/glossary#rationale) text and [blob](/docs/help/glossary#rationale-blob) behind each `rationaleHash`. The file stays on the operator's machine. For Maat's agent, the journal publisher (`ops/journal/publish.mjs`) has pushed the public fields of its new rows to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch every 15 minutes since 2026-11-27. See [What the agent keeps in its data folder](/docs/guides/run-the-agent#what-the-agent-keeps-in-its-data-folder).
 
 ## L
 
 ### Live mode
 
-`MAAT_MODE=live`. The agent then also sends to the vault the intents its gate lets through and any `syncMultiplier` call that a changed multiplier needs, through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) from `MAAT_BUILDER_CODE` appended, which live mode requires. The send path has run on a fork with a local sender in place of CDP, for `execute` only (a fresh vault needs no `syncMultiplier`), and the CDP code is tested against a fake CDP client only ([Go live](/docs/guides/run-the-agent#go-live)).
+`MAAT_MODE=live`. The agent then also sends to the vault the intents its gate lets through and any `syncMultiplier` call that a changed multiplier needs, through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), with the [Builder Code](/docs/help/glossary#builder-code-erc-8021) from `MAAT_BUILDER_CODE` appended, which live mode requires. The send path has run on a fork with a local sender in place of CDP, for `execute` only (a fresh vault needs no `syncMultiplier`), and the CDP code is tested against a fake CDP client. Maat's agent has run in live mode on Base mainnet since 2026-11-27, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` ([Go live](/docs/guides/run-the-agent#go-live)).
 
 ## M
 

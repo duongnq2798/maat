@@ -21,11 +21,11 @@ sources:
 next: [get-started/quickstart, security/not-claimed]
 ---
 
-These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. The four Maat contracts are deployed on Base mainnet, but the agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork, so the answers say what the code is built to do and what has run on that fork. Words you do not know are in the [glossary](/docs/help/glossary).
+These are the questions people ask about Maat, with a short answer to each and a link to the page that proves it. The four Maat contracts are deployed on Base mainnet, and since 2026-11-27 the agent runs in [live mode](/docs/help/glossary#live-mode) there. Its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. The answers say what the code is built to do and what has run on a fork. Words you do not know are in the [glossary](/docs/help/glossary).
 
 | Question | Today | Read more |
 | --- | --- | --- |
-| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | Yes, the four Maat contracts. The agent has run in live mode only on a fork | [Status and roadmap](/docs/get-started/status#next-mainnet) |
+| Is Maat deployed to [Base](/docs/help/glossary#base) mainnet? | Yes, the four Maat contracts. The agent has run in live mode there since 2026-11-27, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED` | [Status and roadmap](/docs/get-started/status#next-mainnet) |
 | Has a third party audited the contracts? | No | [What Maat does not claim](/docs/security/not-claimed#unaudited) |
 | Has it run on a fork of Base mainnet? | Yes, the contracts and the agent's send path | [Status and roadmap](/docs/get-started/status#built-and-fork-tested) |
 | Did the fork run use the real Claude API or the [CDP wallet](/docs/help/glossary#cdp-server-wallet)? | No, a scripted proposer and a local sender stood in | [How a decision is made](/docs/get-started/how-a-decision-is-made#worked-example-the-saturday-buy) |
@@ -38,7 +38,7 @@ Maat is an onchain [vault](/docs/help/glossary#vault) on [Base](/docs/help/gloss
 
 ### Is Maat live?
 
-Partly. The four Maat contracts are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why the docs label their pages fork-tested. The agent has run in live mode only there, with a scripted proposer in place of Claude and a local sender in place of the CDP wallet. See [Status and roadmap](/docs/get-started/status).
+Partly. The four Maat contracts are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why the docs label their pages fork-tested. There a scripted proposer stood in for Claude and a local sender for the CDP wallet. Since 2026-11-27 the agent runs in live mode on Base mainnet, on the owner's PC, with the real Claude API, and the CDP Server Wallet is the vault's executor. The vault's first two mainnet `Decision` events were the owner's smoke-test buys of 2026-11-24. The agent's first came at 02:14 UTC on 2026-11-27: Claude proposed a buy of 4.68 USDC of GOOGLc while NYSE was closed for Thanksgiving, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). See [Status and roadmap](/docs/get-started/status).
 
 ### Whose money does Maat trade?
 
@@ -104,7 +104,7 @@ The agent is built to run one [round](/docs/help/glossary#round) every <Fact nam
 - A round that could not read the vault or the calendar, or that threw an error, waits <Fact name="offSessionMinutes" />.
 - A round that [halted](/docs/guides/run-the-agent#recover-from-a-halted-round) after reading an open market runs again <Fact name="loopMinutes" /> later.
 
-The agent has run in live mode only on a fork, so this is the cadence the code is built to keep. See [Cadence](/docs/concepts/treasury-loop#cadence).
+The agent has run in live mode on Base mainnet only since 2026-11-27, so this is the cadence the code is built to keep; these docs record no measurement of it yet. See [Cadence](/docs/concepts/treasury-loop#cadence).
 
 ### Why is there no Decision for every proposal?
 
@@ -132,7 +132,7 @@ See [How it is tested](/docs/security/testing), which maps each guarantee in the
 
 ### Has Claude or the CDP wallet run for real?
 
-No. In the fork run a scripted proposer stood in for Claude and a local sender stood in for the [CDP wallet](/docs/help/glossary#cdp-server-wallet). The Claude proposer is tested against a fake client and the CDP code against a fake CDP client only, and no output from the real Claude API is committed yet. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
+Since 2026-11-27, yes, in live mode on Base mainnet: the agent calls the real Claude API, and the vault's executor is its [CDP wallet](/docs/help/glossary#cdp-server-wallet) account. The agent's first `Decision` went through that wallet at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). In the fork run a scripted proposer stood in for Claude and a local sender for the CDP wallet. In the tests, the Claude proposer and the CDP code run against fakes. See [Built and fork-tested](/docs/get-started/status#built-and-fork-tested).
 
 ### Which functions can anyone call on a vault?
 
@@ -193,7 +193,7 @@ The owner queues the change, waits <Fact name="timelockHours" />, and then appli
 
 **Claude API fees in every mode, plus gas in [live mode](/docs/help/glossary#live-mode). The vault does not pay Anthropic.**
 
-- A [dry run](/docs/help/glossary#dry-run) still calls Claude, so it costs real API fees even though it sends nothing. The README estimates roughly one cent of Claude usage per round. That is an estimate: the Claude proposer is tested against a fake client, and no output from the real Claude API is committed yet.
+- A [dry run](/docs/help/glossary#dry-run) still calls Claude, so it costs real API fees even though it sends nothing. The README estimates roughly one cent of Claude usage per round. That is an estimate: the Claude proposer is tested against a fake client, and these docs record no measured cost from the live agent's Claude calls, which began on 2026-11-27.
 - In live mode the executor also needs ETH on Base for gas, <Fact name="executorGasEth" /> by the agent README's estimate.
 - The agent is built to track its own [compute bill](/docs/help/glossary#compute-bill) and pay it from the vault in USDC with `PAY_EXPENSE`. The vault pays an allowlisted [payee](/docs/help/glossary#payee), the wallet that pays for the Claude usage (for Agent #1, the owner's). Each payment counts toward the same per-trade and daily caps as trades.
 
