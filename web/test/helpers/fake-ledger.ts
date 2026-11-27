@@ -52,6 +52,8 @@ export interface FakeChain {
   failLogs?: boolean;
   /** eth_getLogs fails, as an RPC that is down does, for any range that starts below this block. */
   failLogsBelow?: bigint;
+  /** The contract every log's receipt says emitted it (default FAKE_VAULT): the inbox, for a chain of Brief logs. */
+  logAddress?: Address;
   failTreasury?: boolean;
   /** eth_getBlockByNumber fails for these blocks, as an RPC that is down does. */
   failBlocks?: readonly bigint[];
@@ -132,7 +134,7 @@ export function fakeLedgerClient(chain: FakeChain): FakeLedgerClient {
       receiptCalls.push(hash);
       if (chain.failReceipts?.some((h) => h.toLowerCase() === hash.toLowerCase())) throw new TypeError("Failed to fetch");
       const own = chain.logs.filter((l) => l.transactionHash.toLowerCase() === hash.toLowerCase());
-      const logs = own.map((l) => ({ ...l, address: FAKE_VAULT, blockNumber: BigInt(l.blockNumber), blockHash: fakeBlockHash(BigInt(l.blockNumber)) }));
+      const logs = own.map((l) => ({ ...l, address: chain.logAddress ?? FAKE_VAULT, blockNumber: BigInt(l.blockNumber), blockHash: fakeBlockHash(BigInt(l.blockNumber)) }));
       if (chain.deployTx && hash === chain.deployTx.hash) {
         return { blockNumber: chain.deployTx.block, blockHash: fakeBlockHash(chain.deployTx.block), gasUsed: 4_000_000n, logs };
       }
