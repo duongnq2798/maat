@@ -70,7 +70,7 @@ export const TREASURY_LOOP: FlowData = {
     },
     { title: "Pay", detail: "Its own Claude bill in USDC, to an allowlisted payee, at any hour." },
   ],
-  caption: "Earning from x402 safety checks is planned and not built.",
+  caption: "Earning from x402 safety checks is not built, and was dropped for this season.",
 };
 
 // The order of GuardLib.multiplierBlocked: the snapshot check blocks before anything is recorded, and the cooldown
