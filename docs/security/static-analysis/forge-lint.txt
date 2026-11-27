@@ -1,0 +1,580 @@
+warning[calls-loop]: external call inside a loop
+   ╭▸ src/adapters/AaveV4CreditAdapter.sol:57:45
+   │
+57 │             IAaveV4Spoke.Reserve memory r = s.getReserve(reserveIds_[i]);
+   │                                             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+   ╭▸ src/adapters/AaveV4CreditAdapter.sol:59:17
+   │
+59 │                 revert ReserveMismatch(reserveIds_[i]);
+   │                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[arbitrary-send-erc20]: `transferFrom` uses an arbitrary `from`; require it to equal `msg.sender` or `address(this)`
+   ╭▸ src/adapters/AaveV4CreditAdapter.sol:76:9
+   │
+76 │         token.safeTransferFrom(vault, address(this), amount);
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/arbitrary-send-erc20
+
+warning[unused-return]: return value of an external call is not used
+   ╭▸ src/adapters/AaveV4CreditAdapter.sol:78:9
+   │
+78 │         spoke.supply(id, amount, address(this));
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+   ╭▸ src/adapters/AaveV4CreditAdapter.sol:81:27
+   │
+81 │         (bool enabled,) = spoke.getUserReserveStatus(id, address(this));
+   │                           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+   ╭▸ src/adapters/AaveV4CreditAdapter.sol:92:9
+   │
+92 │         spoke.withdraw(id, amount, address(this));
+   │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ src/adapters/AaveV4CreditAdapter.sol:100:9
+    │
+100 │         spoke.borrow(usdcReserveId, amount, address(this));
+    │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[arbitrary-send-erc20]: `transferFrom` uses an arbitrary `from`; require it to equal `msg.sender` or `address(this)`
+    ╭▸ src/adapters/AaveV4CreditAdapter.sol:109:13
+    │
+109 │             usdc.safeTransferFrom(vault, address(this), repaid);
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/arbitrary-send-erc20
+
+warning[unused-return]: return value of an external call is not used
+    ╭▸ src/adapters/AaveV4CreditAdapter.sol:111:13
+    │
+111 │             spoke.repay(usdcReserveId, repaid, address(this));
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/unused-return
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/adapters/AaveV4CreditAdapter.sol:131:29
+    │
+131 │         return p == 0 ? 0 : spoke.getUserSuppliedAssets(p - 1, address(this));
+    │                             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[missing-zero-check]: address parameter is used in a state write or value transfer without a zero-address check
+   ╭▸ src/adapters/AerodromeSwapAdapter.sol:19:26
+   │
+19 │     function swapExactIn(address pool, address tokenIn, uint256 amountIn, uint256 minOut, address recipient)
+   │                          ━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/missing-zero-check
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/adapters/AerodromeSwapAdapter.sol:34:13
+   │
+34 │             int256(amountIn),
+   │             ━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'int256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/adapters/AerodromeSwapAdapter.sol:40:21
+   │
+40 │         amountOut = uint256(-(zeroForOne ? a1 : a0));
+   │                     ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/adapters/AerodromeSwapAdapter.sol:50:24
+   │
+50 │         uint256 owed = uint256(amount0Delta > 0 ? amount0Delta : amount1Delta);
+   │                        ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/GuardLib.sol:164:13
+    │
+164 │         try IB20Asset(token).policyId(scope) returns (uint64 id) {
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/GuardLib.sol:166:17
+    │
+166 │             try IPolicyRegistry(registry).isAuthorized(id, account) returns (bool ok) {
+    │                 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+  ╭▸ src/lib/DateLib.sol:9:27
+  │
+9 │         int256 yoe = yy - era * 400;
+  │                           ━━━━━━━━━
+  │
+  ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+   ╭▸ src/lib/DateLib.sol:13:24
+   │
+13 │         return uint256(era * 146097 + doe - 719468);
+   │                        ━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[unsafe-typecast]: typecast can truncate values
+  ╭▸ src/lib/DateLib.sol:7:21
+  │
+7 │         int256 yy = int256(y) - (m <= 2 ? int256(1) : int256(0));
+  │                     ━━━━━━━━━
+  │
+  ├ note: consider disabling this lint if you're certain the cast is safe
+  │       
+  │       // casting to 'int256' is safe because [explain why]
+  │       // forge-lint: disable-next-line(unsafe-typecast)
+  │       
+  │       
+  ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:10:22
+   │
+10 │         int256 mp = (int256(m) + 9) % 12; // March = 0
+   │                      ━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'int256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:11:43
+   │
+11 │         int256 doy = (153 * mp + 2) / 5 + int256(d) - 1;
+   │                                           ━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'int256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:13:16
+   │
+13 │         return uint256(era * 146097 + doe - 719468);
+   │                ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+   ╭▸ src/lib/DateLib.sol:19:26
+   │
+19 │         int256 doe = z - era * 146097;
+   │                          ━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+   ╭▸ src/lib/DateLib.sol:21:27
+   │
+21 │         int256 yy = yoe + era * 400;
+   │                           ━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+   ╭▸ src/lib/DateLib.sol:22:29
+   │
+22 │         int256 doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+   │                             ━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[divide-before-multiply]: division before multiplication may lose precision
+   ╭▸ src/lib/DateLib.sol:24:28
+   │
+24 │         d = uint256(doy - (153 * mp + 2) / 5 + 1);
+   │                            ━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/divide-before-multiply
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:17:20
+   │
+17 │         int256 z = int256(dayNumber) + 719468;
+   │                    ━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'int256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:24:13
+   │
+24 │         d = uint256(doy - (153 * mp + 2) / 5 + 1);
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:25:13
+   │
+25 │         m = uint256(mp < 10 ? mp + 3 : mp - 9);
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/DateLib.sol:26:13
+   │
+26 │         y = uint256(m <= 2 ? yy + 1 : yy);
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+   ╭▸ src/lib/PriceLib.sol:15:50
+   │
+15 │             if (answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp) return (false, 0, 0);
+   │                                                  ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/PriceLib.sol:16:27
+   │
+16 │             return (true, uint256(answer), block.timestamp - updatedAt);
+   │                           ━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'uint256' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[unsafe-typecast]: typecast can truncate values
+   ╭▸ src/lib/PriceLib.sol:30:26
+   │
+30 │             int24 tick = int24(delta / w);
+   │                          ━━━━━━━━━━━━━━━━
+   │
+   ├ note: consider disabling this lint if you're certain the cast is safe
+   │       
+   │       // casting to 'int24' is safe because [explain why]
+   │       // forge-lint: disable-next-line(unsafe-typecast)
+   │       
+   │       
+   ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/MandateVault.sol:718:13
+    │
+718 │         try ICLPool(c.pool).token0() returns (address a) {
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/MandateVault.sol:723:13
+    │
+723 │         try ICLPool(c.pool).token1() returns (address b) {
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/MandateVault.sol:706:27
+    │
+706 │             uint256 cur = IB20Asset(token).uiMultiplier();
+    │                           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+    ╭▸ src/MandateVault.sol:695:34
+    │
+695 │         if (token == address(0)) revert ZeroAddress();
+    │                                  ━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+    ╭▸ src/MandateVault.sol:697:37
+    │
+697 │         if (token.code.length == 0) revert InvalidConfig();
+    │                                     ━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+    ╭▸ src/MandateVault.sol:715:65
+    │
+715 │         if (c.feed.code.length == 0 || c.pool.code.length == 0) revert InvalidConfig();
+    │                                                                 ━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+    ╭▸ src/MandateVault.sol:721:13
+    │
+721 │             revert InvalidConfig();
+    │             ━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+    ╭▸ src/MandateVault.sol:726:13
+    │
+726 │             revert InvalidConfig();
+    │             ━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+    ╭▸ src/MandateVault.sol:729:23
+    │
+729 │         if (!matches) revert InvalidConfig();
+    │                       ━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[require-revert-in-loop]: `require` or `revert` inside a loop
+   ╭▸ src/MandateVault.sol:94:43
+   │
+94 │             if (payees_[i] == address(0)) revert ZeroAddress();
+   │                                           ━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/require-revert-in-loop
+
+warning[reentrancy-no-eth]: external call can be reentered before `recordedUsdc` is updated
+    ╭▸ src/MandateVault.sol:621:26
+    │
+621 │               (bool ok,) = ca.call(
+    │ ┏━━━━━━━━━━━━━━━━━━━━━━━━━━┛
+622 │ ┃                 a == Action.SUPPLY
+623 │ ┃                     ? abi.encodeCall(ICreditAdapter.supply, (token, amount))
+624 │ ┃                     : abi.encodeCall(ICreditAdapter.repay, (amount))
+625 │ ┃             );
+    │ ┗━━━━━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/reentrancy-no-eth
+
+warning[reentrancy-no-eth]: external call can be reentered before `spentOnDay` is updated
+    ╭▸ src/MandateVault.sol:581:17
+    │
+581 │               try ISwapAdapter(adapter).swapExactIn(
+    │ ┏━━━━━━━━━━━━━━━━━┛
+582 │ ┃                 tokenConfig[intent.token].pool, tokenIn, intent.amount, minOut, address(this)
+583 │ ┃             ) returns (uint256) {
+    │ ┗━━━━━━━━━━━━━┛
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/reentrancy-no-eth
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+    ╭▸ src/MandateVault.sol:128:13
+    │
+128 │             emit RevenueReceived(amount);
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[reentrancy-events]: event emitted after an external call; reentrancy can reorder or fabricate logs that off-chain consumers rely on
+    ╭▸ src/MandateVault.sol:112:9
+    │
+112 │         emit Decision(intent.id, intent.action, intent.token, intent.amount, allowed, reason, intent.rationaleHash);
+    │         ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/reentrancy-events
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/MandateVault.sol:464:13
+    │
+464 │         try ca.suppliedOf(token) returns (uint256 s) {
+    │             ━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+   ╭▸ src/GuardLib.sol:66:13
+   │
+66 │         try IB20Asset(token).isPaused(B20Constants.FEATURE_TRANSFER) returns (bool p) {
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+   ╭▸ src/lib/PriceLib.sol:14:13
+   │
+14 │         try IAggregatorV3(feed).latestRoundData() returns (uint80, int256 answer, uint256, uint256 updatedAt, uint80) {
+   │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   │
+   ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/GuardLib.sol:124:17
+    │
+124 │             try t.uiMultiplier() returns (uint256 m) {
+    │                 ━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/GuardLib.sol:133:13
+    │
+133 │         try t.effectiveAt() returns (uint256 e) {
+    │             ━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[unsafe-typecast]: typecast can truncate values
+    ╭▸ src/MandateVault.sol:424:33
+    │
+424 │         if (err.length == 68 && bytes4(err) == ICreditAdapter.HealthFactorTooLow.selector) {
+    │                                 ━━━━━━━━━━━
+    │
+    ├ note: consider disabling this lint if you're certain the cast is safe
+    │       
+    │       // casting to 'bytes4' is safe because [explain why]
+    │       // forge-lint: disable-next-line(unsafe-typecast)
+    │       
+    │       
+    ╰ help: https://getfoundry.sh/forge/linting/unsafe-typecast
+
+warning[uninitialized-local]: local variable is read before being initialized
+    ╭▸ src/MandateVault.sol:458:85
+    │
+458 │             ? GuardLib.transferable(token, policyRegistry, _pair(self, a), _pair(a, custodian), _pair(a, operator))
+    │                                                                                     ━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+
+warning[uninitialized-local]: local variable is read before being initialized
+    ╭▸ src/MandateVault.sol:458:106
+    │
+458 │             ? GuardLib.transferable(token, policyRegistry, _pair(self, a), _pair(a, custodian), _pair(a, operator))
+    │                                                                                                          ━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+
+warning[uninitialized-local]: local variable is read before being initialized
+    ╭▸ src/MandateVault.sol:541:17
+    │
+541 │         return (tokenValue + usdIn) * BPS / total;
+    │                 ━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/MandateVault.sol:518:27
+    │
+518 │             uint256 bal = IB20Asset(t).balanceOf(address(this));
+    │                           ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[calls-loop]: external call inside a loop
+    ╭▸ src/MandateVault.sol:506:46
+    │
+506 │         return raw * price8 / 10 ** (uint256(IB20Asset(token).decimals()) + 2);
+    │                                              ━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/calls-loop
+
+warning[uninitialized-local]: local variable is read before being initialized
+    ╭▸ src/MandateVault.sol:728:40
+    │
+728 │         bool matches = (t0 == token && t1 == usdc) || (t0 == usdc && t1 == token);
+    │                                        ━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+
+warning[uninitialized-local]: local variable is read before being initialized
+    ╭▸ src/MandateVault.sol:728:25
+    │
+728 │         bool matches = (t0 == token && t1 == usdc) || (t0 == usdc && t1 == token);
+    │                         ━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/uninitialized-local
+
+warning[block-timestamp]: usage of `block.timestamp` in a comparison may be manipulated by validators
+    ╭▸ src/MandateVault.sol:771:13
+    │
+771 │         if (block.timestamp < t + TIMELOCK) revert ChangeNotReady(changeHash, t + TIMELOCK);
+    │             ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    │
+    ╰ help: https://getfoundry.sh/forge/linting/block-timestamp
+

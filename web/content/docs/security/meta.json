@@ -1,4 +1,4 @@
 {
   "title": "Security",
-  "pages": ["model", "threat-model", "not-claimed", "testing", "report-a-vulnerability"]
+  "pages": ["model", "threat-model", "not-claimed", "testing", "static-analysis", "report-a-vulnerability"]
 }

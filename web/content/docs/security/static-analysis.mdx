@@ -1,0 +1,200 @@
+---
+title: Static analysis
+description: "Slither and forge lint run over the contracts, every high and medium finding checked against the code, and why Aderyn was not run."
+type: reference
+audience: [evaluator, developer]
+status: fork-tested
+lastReviewed: 2026-11-28
+sources:
+  - docs/security/static-analysis/README.md
+  - docs/security/static-analysis/slither.txt
+  - docs/security/static-analysis/forge-lint.txt
+  - contracts/foundry.toml
+  - contracts/src/MandateVault.sol
+  - contracts/src/GuardLib.sol
+  - contracts/src/MarketCalendar.sol
+  - contracts/src/lib/DateLib.sol
+  - contracts/src/lib/PriceLib.sol
+  - contracts/src/lib/TokenTransfer.sol
+  - contracts/src/adapters/AaveV4CreditAdapter.sol
+  - contracts/src/adapters/AerodromeSwapAdapter.sol
+next: [security/report-a-vulnerability, security/not-claimed]
+---
+
+This page records two static analyzers run over the Maat contracts, and what each high and medium finding means once it is read against the code. Static analysis is not an audit. The tools match code against known patterns: they report many findings that do not apply, and they miss bugs that fit no pattern. The contracts are unaudited ([What Maat does not claim](/docs/security/not-claimed#unaudited)), and the deployed contracts cannot be changed, so this page changes no code: it says what each finding is.
+
+<Callout type="note" title="The result in one line">
+
+By the reading below, none of the 2 high and 35 medium Slither findings in `contracts/src`, and none of the 2 high and 32 medium forge lint findings, is a bug in Maat's code. Each is a false positive or a choice the code makes on purpose, and the reason is given with its file and line. This is the project's own reading, not an independent review, and it does not show that the code has no bugs.
+
+</Callout>
+
+## The run
+
+| | |
+| --- | --- |
+| **Commit** | `main` at `9553d31`. `contracts/src` there is the same as at `a373515` (2026-11-25), the commit that added `MaatInbox.sol`. The files of the four core contracts have not changed since `ef1d96e` (2026-11-16), before the owner deployed them on 2026-11-24 |
+| **Date** | 2026-11-27, about 20:03 UTC, on Windows 10 |
+| **Scope** | `contracts/src`, compiled with the Uniswap v4-core files it imports. Slither leaves the tests and scripts out of the build. The agent and the website were not analyzed |
+| **Compiler** | solc 0.8.28 with `via_ir`, the optimizer at 200 runs and EVM `cancun`, as [`foundry.toml`](https://github.com/duongnq2798/maat/blob/main/contracts/foundry.toml) sets |
+| **Slither** | 0.11.6, with crytic-compile 0.4.2, on Python 3.14.0, in a virtual environment outside the repository: 102 detectors over 25 contracts |
+| **forge lint** | Foundry's `forge` 1.9.0 (commit `6056c58`), which lints the source files |
+| **Aderyn** | Not run. [Aderyn was not run](#aderyn-was-not-run) says why |
+| **Raw output** | [`docs/security/static-analysis/`](https://github.com/duongnq2798/maat/tree/main/docs/security/static-analysis): the report Slither printed, what `forge lint src` printed, and the commands to run both again |
+
+| Tool, scope | High | Medium | Low | Informational | Optimization |
+| --- | --- | --- | --- | --- | --- |
+| **Slither, `contracts/src`** | 2 | 35 | 30 | 9 | 3 |
+| **Slither, the v4-core files** | 3 | 12 | 0 | 18 | 0 |
+| **forge lint, `contracts/src`** | 2 | 32 | 27 | 118 | 7 gas, 3 code size |
+
+Slither reported 112 results in all. One of the informational ones, `pragma`, names files of both scopes and is counted under `contracts/src`. No finding names `MaatInbox.sol`, except that `pragma` result, which lists every file. The verdicts below use three words: a **false positive** is a pattern match that does not hold in this code; **accepted by design** is behavior the code chooses, with the trust it rests on named; a **real issue** would be a bug, and there is none in this list.
+
+## Run it again
+
+From the repository root, with the submodules checked out (`git submodule update --init`), and a virtual environment outside the repository:
+
+```bash
+python -m venv ../slither-venv
+../slither-venv/bin/pip install slither-analyzer==0.11.6
+cd contracts
+../../slither-venv/bin/slither . --json ../../slither.json
+forge lint src
+forge lint src --severity info --severity gas --severity code-size
+```
+
+On Windows the two programs are in `..\slither-venv\Scripts`. Slither first runs `forge clean`, which deletes `contracts/out` and `contracts/cache`, then `forge build --build-info --deny never --skip ./test/** ./script/** --force`, and prints its report to stderr. Its JSON report was 4.6 MB and is not committed. `forge lint src` prints the high, medium and low lints, and the last command the other groups.
+
+## Slither: high
+
+| Finding | Where | Verdict | Why |
+| --- | --- | --- | --- |
+| `arbitrary-send-erc20` | [`AaveV4CreditAdapter.sol#L76`](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L76), in `supply` | False positive | The `from` is `vault`, an immutable set at line 64, and `supply` is `onlyVault` (lines 35 to 38), so the adapter only ever pulls tokens from its caller, the [vault](/docs/help/glossary#vault). The vault approves the exact amount right before the call and sets the allowance back to 0 after it ([`MandateVault.sol#L617-L627`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L617-L627)). [`test_onlyVaultCanMovePosition`](https://github.com/duongnq2798/maat/blob/main/contracts/test/AaveV4CreditAdapter.t.sol) shows that no one else can call it |
+| `arbitrary-send-erc20` | [`AaveV4CreditAdapter.sol#L109`](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L109), in `repay` | False positive | The same: `repay` is `onlyVault` and the `from` is the vault. It pulls at most the debt (line 107), and sends back whatever USDC the spoke did not take (lines 115 and 116) |
+
+## Slither: medium
+
+### divide-before-multiply (6)
+
+| Where | Verdict | Why |
+| --- | --- | --- |
+| [`DateLib.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/src/lib/DateLib.sol): line 8 with lines 9 and 13, in the function that turns a date into a day number; line 18 with lines 19 and 21, line 20 with line 22, and line 23 with line 24, in the one that turns a day number back into a date | False positive | These are Howard Hinnant's civil-date algorithms, as the comment at line 4 says. Each division is meant to round down: the era of 400 years, the year of the era, the month index. The rounding is the computation, not a loss of precision. [`MarketCalendarVectors.t.sol`](https://github.com/duongnq2798/maat/blob/main/contracts/test/MarketCalendarVectors.t.sol) checks the calendar built on them against dates computed outside Solidity, at every DST change from 2007 to 2100 and on each 2026 and 2027 closure date |
+
+### incorrect-equality (7)
+
+| Where | Verdict | Why |
+| --- | --- | --- |
+| [`MandateVault.sol#L110-L111`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L110-L111), `reason == Reason.OK`, twice | False positive | An enum compared with one of its values. Slither flags a strict equality on a value that depends on the clock or on a balance, which `reason` does, but OK is exactly what the vault means |
+| [`MandateVault.sol#L770`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L770), `t == 0` in `_consume` | False positive | `queuedAt` is 0 for a change that was never queued, or was applied or cancelled. Queueing stores `block.timestamp` (line 764), which is never 0 |
+| [`MandateVault.sol#L524`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L524), `bal == 0` in `_weightAfterBuyBps` | False positive | Skips a listed token the vault holds none of, in its own balance or through the credit adapter. A token anyone sends to the vault is then valued like any other holding, because the vault does hold it |
+| [`MandateVault.sol#L540`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L540), `total == 0` in `_weightAfterBuyBps` | False positive | A guard against dividing by zero that a buy never reaches with 0: `_check` calls the function only after the balance check at line 274, so the USDC balance in `total` is above 0, and debt at or above the total returns early at line 533 |
+| [`MandateVault.sol#L409-L410`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L409-L410), `wd == FRIDAY`, then `wd == 0` or `wd == 6`, in `_inDeriskWindow` | False positive | `wd` is the weekday, 0 to 6, from `MarketCalendar.localTime`. Comparing it with one day is the point |
+
+### reentrancy-no-eth (2)
+
+| Where | Verdict | Why |
+| --- | --- | --- |
+| [`MandateVault.sol#L150-L155`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L150-L155), `withdraw`: `recordedUsdc` is written at line 153, after the transfer at line 152 | Accepted by design | Only the [owner](/docs/help/glossary#owner) can call `withdraw`, and line 153 runs only when the token is USDC, which the vault fixed at construction. A call back into the vault during the transfer can reach only the functions open to anyone, which only record: `notifyRevenue` would set `recordedUsdc` to the balance, and line 153 sets it to the balance again |
+| [`MandateVault.sol#L557-L593`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L557-L593), `_perform`: `recordedUsdc` is written at line 591, after the payment (line 563) or the approval and the swap (lines 577 to 588) | Accepted by design | `execute` marks the intent id used at line 105, before any external call, and only the [executor](/docs/help/glossary#executor) may call it (line 103), so a call back into it from USDC, the stock, the swap adapter or the pool reverts with `NotExecutor`. A `notifyRevenue` in the middle can emit a `RevenueReceived` event, but line 591 sets `recordedUsdc` back to the balance. The vault has no reentrancy guard on purpose: [Reentrancy](/docs/security/model#reentrancy) gives the reasons |
+
+### uninitialized-local (5)
+
+| Where | Verdict | Why |
+| --- | --- | --- |
+| [`MandateVault.sol#L443-L444`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L443-L444), `custodian` and `operator` in `_creditPathAuthorized` | False positive | Each is set in the `try` branch of its call (lines 445 to 454), and each `catch` returns before either is read |
+| [`MandateVault.sol#L716-L717`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L716-L717), `t0` and `t1` in `_requireValidTokenConfig` | False positive | Each is set in the `try` branch of its call (lines 718 to 727), and each `catch` reverts with `InvalidConfig` |
+| [`MandateVault.sol#L514`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L514), `tokenValue` in `_weightAfterBuyBps` | False positive | It starts at 0 on purpose: when the vault holds none of the token it buys, the loop skips that token and its value before the buy is 0 |
+
+### unused-return (15)
+
+| Where | Verdict | Why |
+| --- | --- | --- |
+| `MandateVault.sol` lines [578](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L578), [584](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L584), [586](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L586), [618](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L618) and [627](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L627): the result of `tryApprove` to 0 | Accepted by design | Setting an allowance back to 0 is best effort, so that a token whose `approve` fails cannot make `execute` [revert](/docs/help/glossary#revert) (the comment at lines 575 and 576). [`invariant_noAllowanceOutlivesACall`](https://github.com/duongnq2798/maat/blob/main/contracts/test/invariant/MandateVaultInvariants.t.sol) checks that no allowance outlives a call, on the mocks and once a day on a fork of the deployed vault. If a reset ever failed, the adapter the owner set would keep that allowance |
+| [`MandateVault.sol#L581-L588`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MandateVault.sol#L581-L588): the amount `swapExactIn` returns | Accepted by design, on a trusted adapter | The vault does not read the amount out, and does not compare its balances before and after the swap. The [slippage floor](/docs/help/glossary#slippage-floor) holds because the swap adapter enforces `minOut`: the deployed `AerodromeSwapAdapter` reverts at [line 41](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol#L41) when the pool pays less. A swap adapter switched in through the [timelock](/docs/help/glossary#timelock) that ignored `minOut` would not be caught, as [Trust boundaries](/docs/security/model#trust-boundaries) says |
+| [`GuardLib.sol#L87`](https://github.com/duongnq2798/maat/blob/main/contracts/src/GuardLib.sol#L87): the price from `readFeed` | False positive | A collateral check needs the feed to be valid and fresh, not its price |
+| [`MarketCalendar.sol#L61`](https://github.com/duongnq2798/maat/blob/main/contracts/src/MarketCalendar.sol#L61): the month and day that `DateLib` returns with the year | False positive | Only the year is needed, to find that year's DST change dates |
+| [`PriceLib.sol#L14`](https://github.com/duongnq2798/maat/blob/main/contracts/src/lib/PriceLib.sol#L14): `latestRoundData` | Accepted by design | The vault reads the answer and `updatedAt`. An answer at or below 0, and an `updatedAt` of 0 or in the future, are refused at line 15, and the caller compares the age with `maxStaleness`. The round ids and `startedAt` are not used |
+| [`PriceLib.sol#L27`](https://github.com/duongnq2798/maat/blob/main/contracts/src/lib/PriceLib.sol#L27): `observe` | False positive | The TWAP needs only the tick cumulatives, not the second array |
+| `AaveV4CreditAdapter.sol` lines [78](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L78) (`supply`), [92](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L92) (`withdraw`), [100](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L100) (`borrow`) and [111](https://github.com/duongnq2798/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L111) (`repay`) | False positive | The adapter measures balances instead of using what the spoke returns: `withdraw` and `borrow` send the vault the balance increase (lines 91 to 95 and 99 to 102), and `repay` sends back whatever USDC is left (lines 115 and 116). `supply` needs nothing back: `suppliedOf` reads the position from the spoke |
+| [`AaveV4CreditAdapter.sol#L81`](https://github.com/duongnq2797/maat/blob/main/contracts/src/adapters/AaveV4CreditAdapter.sol#L81): the second value of `getUserReserveStatus` | False positive | Only the collateral flag is needed, to turn collateral on after a supply |
+
+## Slither: low, informational and optimization
+
+| Detector | Count | Note |
+| --- | --- | --- |
+| `timestamp` | 10 | The calendar, the feed [staleness](/docs/help/glossary#staleness), the multiplier cooldown, the timelock and the daily cap read `block.timestamp` by design, over windows of minutes to days. Some flagged comparisons do not read the clock at all, such as `intent.minOut > floorOut` at line 572: Slither follows values that depend on it |
+| `calls-loop` | 11 | The loop over the listed tokens in `_weightAfterBuyBps`, the credit adapter's loop over its collateral tokens in `hasPosition`, and loops that run only at construction. A listed token whose read reverts makes `execute` revert, which [Fail closed](/docs/security/model#fail-closed) lists. Only the owner adds a token, behind the timelock, and the vault checks at line 697 that it has code |
+| `reentrancy-benign` | 5 | Writes after an external call: `spentOnDay` (line 590) and `recordedUsdc` (line 637) in the vault, which `execute` protects as above, `recordedUsdc` in `fund` (line 161), an owner call that pulls USDC, and `_activePool` in the swap adapter, which only that swap's pool can use |
+| `reentrancy-events` | 3 | `Decision`, `Funded` and `Withdrawn` are emitted after external calls, with values that a call back into the vault cannot change |
+| `missing-zero-check` | 1 | `_activePool = pool` in `AerodromeSwapAdapter.sol` (line 30): with a zero `pool`, the call to `token0()` at line 23 reverts first, and the callback refuses a zero sender (line 48) |
+| `assembly` | 2 | `MandateVault.sol` lines 426 to 428 read the health factor from an adapter's revert data, and `TokenTransfer.sol` lines 44 to 46 pass a token's revert on |
+| `low-level-calls` | 3 | The two helpers of `TokenTransfer.sol` (lines 35 and 42), so that tokens with no return value work, and `_performCredit`, on purpose: the comment at lines 606 to 610 says why |
+| `costly-loop` | 2 | `_setPayee`, which the constructor calls in a loop, can delete and pop. The constructor only adds payees, so it never takes that branch |
+| `naming-convention` | 1 | `IAaveV4Spoke.ORACLE()`, the spoke's own function name |
+| `pragma` | 1 | `contracts/src` pins 0.8.28 and v4-core asks for `^0.8.0`. The build compiles everything with 0.8.28 |
+| `cache-array-length` | 3 | Gas only: loops that read a storage array's length on each pass |
+
+## The v4-core findings
+
+Slither also reports on the Uniswap v4-core files that `PriceLib` and `AerodromeSwapAdapter` import, from the submodule pinned at `e50237c` (tag v4.0.0). Maat's code calls `TickMath.getSqrtPriceAtTick` and `FullMath.mulDiv` and reads the constants `MIN_SQRT_PRICE` and `MAX_SQRT_PRICE` of `TickMath`. It uses nothing else of v4-core directly.
+
+| Finding | Where | Verdict | Why |
+| --- | --- | --- | --- |
+| `incorrect-exp` (high) | `FullMath.sol` line 81, `(3 * denominator) ^ 2` | False positive | An XOR on purpose: the seed of a Newton-Raphson inverse, correct to four bits, as the comment above it says |
+| `incorrect-shift` (high, 2) | `BitMath.sol` lines 21 to 23 and 39 to 42 | False positive, and not reached | Lookup-table bit tricks in assembly, with the shifts in the order meant. Of the files compiled, only `TickMath.getTickAtSqrtPrice` uses `BitMath`, and Maat does not call it |
+| `divide-before-multiply` (medium, 12) | `FullMath.mulDiv` (8), `TickMath.getSqrtPriceAtTick` (lines 99 and 103), `TickMath.minUsableTick` and `maxUsableTick`, `CustomRevert.bubbleUpAndRevertWith` | False positive | `mulDiv` divides out the powers of two to make the denominator odd, then inverts it modulo 2^256, where the result is exact. `getSqrtPriceAtTick` inverts the ratio for a positive tick. The other three round to a tick spacing or up to whole 32-byte words, and Maat calls none of them |
+
+The informational v4-core results are 13 `assembly`, 3 `too-many-digits`, 1 `cyclomatic-complexity` for `getSqrtPriceAtTick`, and 1 `solc-version` for `^0.8.0`, which lists bugs of compilers older than the 0.8.28 the build uses.
+
+## forge lint
+
+`forge lint src` reports these counts after the `forge-lint` comments in the sources, which switch off a named lint at `GuardLib.sol` lines 130, 138 and 140, and in `MandateVault.sol` from line 732 to line 743 and at line 772.
+
+| Severity | Count | Lints |
+| --- | --- | --- |
+| **High** | 2 | `arbitrary-send-erc20` (2) |
+| **Medium** | 32 | `unsafe-typecast` (14), `divide-before-multiply` (6), `unused-return` (5), `uninitialized-local` (5), `reentrancy-no-eth` (2) |
+| **Low** | 27 | `calls-loop` (14), `require-revert-in-loop` (8), `block-timestamp` (2), `reentrancy-events` (2), `missing-zero-check` (1) |
+| **Info** | 118 | `literal-instead-of-constant` (81), `screaming-snake-case-immutable` (10), `multi-contract-file` (9), `internal-function-used-once` (8), `low-level-calls` (4), `cyclomatic-complexity` (3), `inline-assembly` (2), `mixed-case-function` (1) |
+| **Gas** | 7 | `asm-keccak256` (5), `cache-array-length` (1), `costly-loop` (1) |
+| **Code size** | 3 | `unwrapped-modifier-logic` (3) |
+
+Most high and medium lints are the Slither findings above, with the same verdicts, though forge lint does not always point at the same line: `arbitrary-send-erc20` (2, at the same lines), `divide-before-multiply` (6, in `DateLib.sol`, each at the line that multiplies: 9, 13, 19, 21, 22 and 24), `uninitialized-local` (5, the same five variables, each where it is read: `MandateVault.sol` lines 458, 541 and 728) and `unused-return` (5, `AaveV4CreditAdapter.sol` lines 78, 81, 92, 100 and 111). The rest:
+
+| Finding | Where | Verdict | Why |
+| --- | --- | --- | --- |
+| `reentrancy-no-eth` | [`MandateVault.sol#L581`](https://github.com/duongnq2797/maat/blob/main/contracts/src/MandateVault.sol#L581): `spentOnDay` is written at line 590, after the swap | Accepted by design | Slither files this one as `reentrancy-benign`, a low. `execute` cannot be entered again during the swap, as above, so no second trade can read the old `spentOnDay` |
+| `reentrancy-no-eth` | [`MandateVault.sol#L621`](https://github.com/duongnq2797/maat/blob/main/contracts/src/MandateVault.sol#L621): `recordedUsdc` is written at line 637, after the credit call | Accepted by design | As in `_perform`: a call back into the vault can reach only the functions open to anyone, which only record. `notifyRevenue` can write `recordedUsdc`, and line 637 sets it back to the balance; `syncMultiplier` does not touch it |
+| `unsafe-typecast` | [`AerodromeSwapAdapter.sol#L34`](https://github.com/duongnq2797/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol#L34), `int256(amountIn)` | False positive | An amount above `type(int256).max` would turn negative, which a pool reads as an exact-output swap. The vault never sends one: its amount is at most its own balance (line 274 of `MandateVault.sol`). Any other caller swaps its own tokens, which the `transferFrom` at line 28 must first collect |
+| `unsafe-typecast` | [`AerodromeSwapAdapter.sol#L40`](https://github.com/duongnq2797/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol#L40), `uint256(-(zeroForOne ? a1 : a0))` | Accepted by design, on a trusted pool | The pool reports what it paid out as a negative amount, and the minus sign makes it positive. A pool that reported a positive amount there would turn `amountOut` into a huge number that passes the `minOut` check. The vault swaps only in the pool its token config names, which the owner sets behind the timelock and the vault checks is a pool of that stock and USDC ([`MandateVault.sol#L715-L729`](https://github.com/duongnq2797/maat/blob/main/contracts/src/MandateVault.sol#L715-L729)) |
+| `unsafe-typecast` | [`AerodromeSwapAdapter.sol#L50`](https://github.com/duongnq2797/maat/blob/main/contracts/src/adapters/AerodromeSwapAdapter.sol#L50), the amount owed in the callback | False positive | `swapExactIn` is open to anyone, so its caller picks the pool, and the callback pays only that pool (line 48). A pool that reported a negative amount on the input side would turn `owed` into 2^255 or more, and the transfer at line 51 would revert: the adapter holds only the input its current caller sent, and sends any leftover on at the end of each swap (line 44), so it keeps nothing between calls |
+| `unsafe-typecast` | [`DateLib.sol`](https://github.com/duongnq2797/maat/blob/main/contracts/src/lib/DateLib.sol) lines 7, 10, 11, 13, 17, 24, 25 and 26, between `uint256` and `int256` | False positive | The inputs are day numbers and dates from 1970 on, far below 2^255, and every value cast back to `uint256` is not negative for them. The calendar's owner can pass any date to `addHoliday` or `setEarlyClose`; one before 1970 would mark a day the calendar never reaches, so it can only add a closure |
+| `unsafe-typecast` | [`PriceLib.sol#L16`](https://github.com/duongnq2797/maat/blob/main/contracts/src/lib/PriceLib.sol#L16), `uint256(answer)` | False positive | Line 15 has already refused an answer at or below 0 |
+| `unsafe-typecast` | [`PriceLib.sol#L30`](https://github.com/duongnq2797/maat/blob/main/contracts/src/lib/PriceLib.sol#L30), `int24(delta / w)` | Accepted by design, on a trusted pool | A real pool's mean tick lies in the tick range, which fits in `int24`. A pool that returned cumulatives far outside it could be cut to a wrong tick instead of failing. The pool is the one the owner set behind the timelock |
+| `unsafe-typecast` | [`MandateVault.sol#L424`](https://github.com/duongnq2797/maat/blob/main/contracts/src/MandateVault.sol#L424), `bytes4(err)` | False positive | It takes the first four bytes, the error selector, after the same line checks that the data is exactly 68 bytes long |
+
+## Aderyn was not run
+
+Aderyn, Cyfrin's static analyzer, is retired. Its repository, [Cyfrin/aderyn](https://github.com/Cyfrin/aderyn), is archived, and its README says that it has no supported installation or upgrade paths. On 2026-11-27 the npm registry answered 404 for the package `@cyfrin/aderyn`. The latest release, `aderyn-v0.6.8`, held checksum files, the source and an installer script that only prints that Aderyn has been retired and exits, with no binary for Windows or any other system. Building it from source needs a Rust toolchain, which was not installed for this run. So this page has no Aderyn results. forge lint, which ships with Foundry, is the second tool instead. Many of its lints carry the names of Slither detectors, so it is a second implementation of much the same checks, not a different method.
+
+## Known compiler bugs
+
+Not a static analyzer, but the same kind of check: the Solidity team's [bug list](https://github.com/ethereum/solidity/blob/develop/docs/bugs_by_version.json), read on 2026-11-27, gives ten known bugs for solc 0.8.28. Whether each can affect these contracts:
+
+| Bug | Severity | Applies | Why |
+| --- | --- | --- | --- |
+| `TransientStorageClearingHelperCollision` | High | No | It needs `delete` on a transient variable, with `via_ir`. The only transient variable, `_activePool` in `AerodromeSwapAdapter`, is cleared by assigning `address(0)` (line 38), which the Solidity team's [announcement](https://blog.soliditylang.org/2026/02/18/transient-storage-clearing-helper-collision-bug/) says does not trigger the bug, and the adapter has no persistent storage |
+| `OverlappingRecursiveStorageStructCopyCorruptionViaIR` | Medium | No | It needs a recursive struct. No struct in `contracts/src` has a struct member |
+| `UnsoundSpillInMutualRecursion`, `SpillSlotCollisionAcrossMutualRecursion` | Medium, low to medium | No | They need mutual recursion. In Slither's call graph of the 25 contracts, no function calls itself, directly or through another |
+| `YulOptimizerKnowledgeBaseStaleBookkeeping` | Low | Not ruled out | Any code compiled with `via_ir` and the optimizer may be affected. The Solidity team's [announcement](https://blog.soliditylang.org/2026/10/22/yul-optimizer-knowledge-base-stale-bookkeeping-bug/) says its conditions cannot be checked from the source, and that a rebuild of about 283,000 verified via-IR compilations gave no indication of affected contracts, which it says does not rule out that a contract is affected |
+| `MisorderedNamedParametersInRequireWithCustomErrors` | Very low | No | It needs a `require` with a custom error. `contracts/src` has no `require`: it uses `if` and `revert`. The v4-core files compiled with it have plain `require`s with no error, in `FullMath` and `BitMath` |
+| `LostStorageArrayWriteOnSlotOverflow` | Low | No | It needs a storage array that crosses the last storage slot. The three storage arrays, the vault's `_tokens` and `_payees` and the credit adapter's `_collaterals`, start at hashed slots that begin with `0x6e15`, `0x0175` and `0xb10e`, and hold a few addresses each |
+| `OverlappingRecursiveStorageStructCopyCorruption`, `MemoryByteArrayElementDeleteClearsWholeWord`, `ABIDecodeStaticArrayMemoryAliasing` | Medium, low to medium, very low | No | Each needs the legacy pipeline, and the last also ABI coder v1. The contracts compile with `via_ir` and ABI coder v2 |
+
+## What this does not show
+
+- **No audit.** The verdicts are the project's own, written with Claude Code by the team that wrote the code. Nobody independent has checked them.
+- **No proof.** A detector that finds nothing has only failed to match a pattern. Bugs in the logic, the economics or the trust between contracts fit no detector: a limit that is too loose passes every one.
+- **One run.** This is one commit, run by hand on one machine. No analyzer runs in CI, so a later change to `contracts/src` is not covered until someone runs them again.
+- **No other method.** No symbolic execution, no formal verification and no fuzzer beyond the Foundry suites ([How it is tested](/docs/security/testing)) was run, and Aderyn could not be.
+- **Only the contracts.** The agent and the website were not analyzed, and the v4-core files were read only as far as Maat uses them.
