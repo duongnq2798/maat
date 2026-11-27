@@ -3,8 +3,8 @@
   "chainId": 8453,
   "vault": "0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
   "floor": "61698517",
-  "block": "63092173",
-  "blockHash": "0xa35ee1168811ab29076afeb05a709f5d43fcf950adbe821568668c36e4d191a2",
+  "block": "63141969",
+  "blockHash": "0x18c2881456bff27e86c2bbb44c15915566ebe52eda441de06e3aec1f9d9232a9",
   "logs": [
     {
       "blockNumber": "61698517",
