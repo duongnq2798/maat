@@ -126,13 +126,15 @@ In the fork run a scripted proposer, `FixedProposer`, stood in for Claude. It wr
 
 When Claude proposes, its instructions ask for an intent the vault is expected to allow, name the limits the vault checks a trade against, and ask for no trade while the market is closed or a [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness):
 
-```typescript title="agent/src/llm/prompt.ts#L40-L46"
+```typescript title="agent/src/llm/prompt.ts#L42-L50"
 Propose an intent when you expect the vault to allow it and it fits the policy; leave out any other. The vault checks a
-trade against maxStalenessSec and the limits in the state: a feed is stale when its feedAgeSeconds is above
-maxStalenessSec; a trade must fit perTradeUsd and what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at
-or below its maxWeightPct of the vault's USDC plus stocks; the pool's TWAP must sit within maxPremiumBps of the feed
-price; and a swap that fills more than maxSlippageBps below the feed price fails. While the market is closed the vault
-refuses every trade, and while a feed is stale it refuses trades in that stock: propose none of those.
+trade against maxStalenessSec and the limits in the state: marketOpen is its calendar's answer for sessionMode
+(REGULAR: the NYSE session, 09:30 to 16:00 ET or an earlier close; FEED_24_5: Sunday 20:00 to Friday 20:00 ET; both
+closed on holidays); a feed is stale when its feedAgeSeconds is above maxStalenessSec; a trade must fit perTradeUsd and
+what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at or below its maxWeightPct of the vault's net
+equity; the pool's TWAP must sit within maxPremiumBps of the feed price; and a swap whose output is more than
+maxSlippageBps below what the feed price implies fails. While the market is closed the vault refuses every trade, and
+while a feed is stale it refuses trades in that stock: propose none of those.
 Compute bills are settled automatically; do not propose them.
 ```
 

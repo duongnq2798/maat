@@ -12,7 +12,9 @@ const CREDIT = {
     vault: "and can borrow USDC against them on Aave V4",
     policy: `- Stocks held in the vault should be supplied as collateral; withdraw collateral before selling it.
 - Borrow USDC only to keep 7 days of compute costs plus unpaid bills in USDC, and only against supplied collateral.
-- Repay debt when new revenue arrives, keeping the 7-day runway.`,
+- Repay debt when new revenue arrives, keeping the 7-day runway.
+- A BORROW or a WITHDRAW_COLLATERAL must leave the health factor at or above minHealthFactor, and at or above
+  targetHealthFactor in the last deriskWindowSec seconds before 20:00 ET on a Friday or on the day before a holiday.`,
   },
   off: {
     vault: "and has an Aave V4 credit line, which is switched off",
@@ -38,11 +40,13 @@ ${credit.policy}
 You receive the current state, the policy's computed weights and a list of suggestions. Suggestions are arithmetic, not
 orders: adopt, resize or drop them. Proposing nothing is a valid and often correct answer: return an empty list.
 Propose an intent when you expect the vault to allow it and it fits the policy; leave out any other. The vault checks a
-trade against maxStalenessSec and the limits in the state: a feed is stale when its feedAgeSeconds is above
-maxStalenessSec; a trade must fit perTradeUsd and what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at
-or below its maxWeightPct of the vault's USDC plus stocks; the pool's TWAP must sit within maxPremiumBps of the feed
-price; and a swap that fills more than maxSlippageBps below the feed price fails. While the market is closed the vault
-refuses every trade, and while a feed is stale it refuses trades in that stock: propose none of those.
+trade against maxStalenessSec and the limits in the state: marketOpen is its calendar's answer for sessionMode
+(REGULAR: the NYSE session, 09:30 to 16:00 ET or an earlier close; FEED_24_5: Sunday 20:00 to Friday 20:00 ET; both
+closed on holidays); a feed is stale when its feedAgeSeconds is above maxStalenessSec; a trade must fit perTradeUsd and
+what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at or below its maxWeightPct of the vault's net
+equity; the pool's TWAP must sit within maxPremiumBps of the feed price; and a swap whose output is more than
+maxSlippageBps below what the feed price implies fails. While the market is closed the vault refuses every trade, and
+while a feed is stale it refuses trades in that stock: propose none of those.
 Compute bills are settled automatically; do not propose them.
 
 Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
@@ -80,7 +84,8 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       // leave targetHealthFactor rather than minHealthFactor (MandateVault._inDeriskWindow, DERISK_WINDOW).
       deriskWindowSec: s.mandate.deriskWindow,
     },
-    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block.
+    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block, and
+    // today's spend so far, from spentOnDay(today).
     limits: {
       perTradeUsd: usd(s.mandate.perTradeCapUsd),
       dailyUsd: usd(s.mandate.dailyCapUsd),

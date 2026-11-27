@@ -5,6 +5,7 @@ import { readVaultState } from "../src/chain/state.js";
 import { briefSystemPrompt, renderBriefMessage, renderUserMessage, SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
 import { ClaudeProposer, type CreateMessage, type ProposerInput } from "../src/llm/proposer.js";
 import { evaluatePolicy } from "../src/policy.js";
+import { SESSION_MODES } from "../src/types.js";
 import { FEEDS, MANDATE, POOL, VAULT, standardScene, type FakeChain } from "./fakes/fakeChain.js";
 
 /*
@@ -124,9 +125,19 @@ describe("the mandate's limits in the user message", () => {
       expect(content).toContain(line);
     }
   });
+
+  it("show a feed's age next to the vault's limit, as in the 15:15 UTC round of 27 Nov", async () => {
+    // AAPLc's feed 36 minutes old in an open market: under 90,000 s, so the vault does not call it stale.
+    const f = standardScene();
+    f.set(FEEDS[2]!, "latestRoundData", [1n, 27000000000n, 0n, f.block.timestamp - 2160n, 1n]);
+    const msg = renderUserMessage(await inputFrom(f));
+    expect(view(msg).marketOpen).toBe(true);
+    expect(view(msg).maxStalenessSec).toBe(90_000);
+    expect(msg).toContain('"feedAgeSeconds": 2160');
+  });
 });
 
-describe("the system prompt on refusals", () => {
+describe("the system prompt on refusals and the vault's thresholds", () => {
   const prompts = {
     "credit off": systemPrompt({ creditActions: false }),
     "credit on": systemPrompt({ creditActions: true }),
@@ -148,11 +159,12 @@ describe("the system prompt on refusals", () => {
       const flat = p.replace(/\s+/g, " ");
       for (const rule of [
         "Propose an intent when you expect the vault to allow it and it fits the policy; leave out any other.",
+        "marketOpen is its calendar's answer for sessionMode (REGULAR: the NYSE session, 09:30 to 16:00 ET or an earlier close; FEED_24_5: Sunday 20:00 to Friday 20:00 ET; both closed on holidays);",
         "a feed is stale when its feedAgeSeconds is above maxStalenessSec;",
         "a trade must fit perTradeUsd and what spentTodayUsd leaves of dailyUsd;",
-        "a buy must leave the stock at or below its maxWeightPct of the vault's USDC plus stocks;",
+        "a buy must leave the stock at or below its maxWeightPct of the vault's net equity;",
         "the pool's TWAP must sit within maxPremiumBps of the feed price;",
-        "a swap that fills more than maxSlippageBps below the feed price fails.",
+        "a swap whose output is more than maxSlippageBps below what the feed price implies fails.",
         "While the market is closed the vault refuses every trade, and while a feed is stale it refuses trades in that stock: propose none of those.",
         "Compute bills are settled automatically; do not propose them.",
       ]) {
@@ -161,13 +173,21 @@ describe("the system prompt on refusals", () => {
     }
   });
 
-  it("puts a feed's age next to the vault's limit, as in the 15:15 UTC round of 27 Nov", async () => {
-    // AAPLc's feed 36 minutes old in an open market: under 90,000 s, so the vault does not call it stale.
-    const f = standardScene();
-    f.set(FEEDS[2]!, "latestRoundData", [1n, 27000000000n, 0n, f.block.timestamp - 2160n, 1n]);
-    const msg = renderUserMessage(await inputFrom(f));
-    expect(view(msg).marketOpen).toBe(true);
-    expect(view(msg).maxStalenessSec).toBe(90_000);
-    expect(msg).toContain('"feedAgeSeconds": 2160');
+  it("says what each session mode means, as MarketCalendar.isOpen reads it", () => {
+    for (const [name, p] of Object.entries(prompts)) {
+      for (const mode of SESSION_MODES) expect(p, `${name}: ${mode}`).toContain(`${mode}:`);
+    }
+  });
+
+  it("with credit actions on, says what the credit block's health factors and derisk window mean", async () => {
+    const rule =
+      "A BORROW or a WITHDRAW_COLLATERAL must leave the health factor at or above minHealthFactor, and at or above targetHealthFactor in the last deriskWindowSec seconds before 20:00 ET on a Friday or on the day before a holiday.";
+    for (const [name, p] of Object.entries(prompts)) {
+      const flat = p.replace(/\s+/g, " ");
+      if (name.endsWith("credit on")) expect(flat, name).toContain(rule);
+      else expect(flat, name).not.toContain("deriskWindowSec");
+    }
+    const credit = view(renderUserMessage(await inputFrom(standardScene(), true))).credit as Record<string, unknown> | null;
+    for (const key of ["minHealthFactor", "targetHealthFactor", "deriskWindowSec"]) expect(typeof credit?.[key], key).toBe("number");
   });
 });

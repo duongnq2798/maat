@@ -176,7 +176,7 @@ With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to tha
 
 The agent sends Claude a system prompt and one user message, both built in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts): `systemPrompt`, fixed text apart from its credit lines, which follow `MAAT_CREDIT_ACTIONS`, and `renderUserMessage`. The request gives Claude no tools. This is the whole user message of a round without briefs:
 
-```typescript title="agent/src/llm/prompt.ts#L58-L106"
+```typescript title="agent/src/llm/prompt.ts#L62-L111"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
@@ -202,7 +202,8 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       // leave targetHealthFactor rather than minHealthFactor (MandateVault._inDeriskWindow, DERISK_WINDOW).
       deriskWindowSec: s.mandate.deriskWindow,
     },
-    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block.
+    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block, and
+    // today's spend so far, from spentOnDay(today).
     limits: {
       perTradeUsd: usd(s.mandate.perTradeCapUsd),
       dailyUsd: usd(s.mandate.dailyCapUsd),
