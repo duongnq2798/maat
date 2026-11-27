@@ -203,7 +203,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "guides/verify-by-hand",
         "Verify Maat by hand",
-        "Five read-only cast commands to check the mainnet vault yourself: its source, owner, executor and mandate, both Decisions, the calendar and a rationale hash.",
+        "Five read-only commands to check the mainnet vault: its source, owner, executor and mandate, its first three Decisions, the calendar and the rationale hashes.",
       ),
       page(
         "guides/brief-the-agent",

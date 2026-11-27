@@ -15,7 +15,7 @@ import {
   titleCardHtml,
 } from "../../film/lib/cards.mjs";
 import { FORMATS } from "../../film/lib/formats.mjs";
-import { ciFigures, deploymentRows, fileSources, verifiedNote } from "../../film/lib/sources.mjs";
+import { ciFigures, deploymentRows, fileSources } from "../../film/lib/sources.mjs";
 import { BRIEF_TOPIC, persuasionCardHtml, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
 import { BRIEF_TX, CONTRACTS, OWNER, briefData as strangerBrief, verdict } from "../test/helpers/film-persuasion";
 
@@ -173,10 +173,11 @@ for (const format of ["wide", "tall"] as const) {
       expect(problems).toEqual([]);
     });
 
-    test("leave no caption with one word alone on its last line", async ({ page }, info) => {
+    test("leave no caption with one word alone on its last line, and in 9:16 no caption box narrower than 524 px", async ({ page }, info) => {
       const dir = info.outputPath();
       mkdirSync(dir, { recursive: true });
       const lonely: string[] = [];
+      const narrow: string[] = [];
       for (const [id, entry] of Object.entries(captions)) {
         // Each entry's own text, whether or not its `when` holds here: an `else` caption is an entry of its own.
         const text = renderCaption(typeof entry === "string" ? entry : (entry as { text: string }).text, values).text;
@@ -185,22 +186,30 @@ for (const format of ["wide", "tall"] as const) {
         await page.goto(pathToFileURL(file).href);
         await page.evaluate(() => document.fonts.ready);
         for (const words of await page.evaluate(lonelyLastWords, ".cap")) lonely.push(`${id}: ${words}`);
+        // The box covers the phone layout's 16 px text gutter, so no cut glyph of the page shows beside it.
+        const width = (await page.locator(".cap").boundingBox())?.width ?? 0;
+        if (format === "tall" && width < 524) narrow.push(`${id}: ${width} px`);
       }
       expect(Object.keys(captions).length).toBeGreaterThan(0);
       expect(lonely).toEqual([]);
+      expect(narrow).toEqual([]);
     });
 
     test("keep the receipts cards above their captions, with one more contract than the table holds", async ({ page }, info) => {
       const dir = info.outputPath();
       const rows = deploymentRows(read("deployments/README.md")).filter((r) => r.network === "Base mainnet" && r.address);
       const more = [...rows, { ...rows[rows.length - 1]!, contract: "MaatInbox" }];
-      const note = verifiedNote(read("deployments/README.md"));
-      expect(note, "the line under the contracts card").not.toBe("");
+      const figures = ciFigures(read("README.md"));
       const problems = [
-        ...(await measure(page, dir, "contracts", deploymentsCardHtml({ format, rows: more, verifiedNote: note, fontsDir }), ["receipts-contracts", "receipts-contracts-listed"], format)),
-        ...(await measure(page, dir, "ci", ciCardHtml({ format, figures: ciFigures(read("README.md")), fontsDir }), ["receipts-ci"], format)),
+        ...(await measure(page, dir, "contracts", deploymentsCardHtml({ format, rows: more, fontsDir }), ["receipts-contracts", "receipts-contracts-listed"], format)),
+        ...(await measure(page, dir, "ci", ciCardHtml({ format, figures, fontsDir }), ["receipts-ci"], format)),
       ];
       expect(problems).toEqual([]);
+      // The caption says which contracts Basescan showed verified; the card does not say it a second time.
+      expect(deploymentsCardHtml({ format, rows: more, fontsDir })).not.toMatch(/verified/);
+      // The CI card's heading names the day of the run it reads, from the README.
+      await page.setContent(ciCardHtml({ format, figures, fontsDir }));
+      await expect(page.locator("h2")).toHaveText(`CI on main, ${figures["readme.ciDate"]}, all passed`);
     });
   });
 }

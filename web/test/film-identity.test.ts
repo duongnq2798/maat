@@ -7,8 +7,9 @@ import { plainBriefText } from "@/lib/chain/inbox";
 import { JOURNAL_RAW_URL as SITE_JOURNAL_RAW_URL } from "@/lib/chain/ledger";
 import { BEATS, TARGET_SECONDS, timeline, validateBeats } from "../../film/lib/beats.mjs";
 import { pickCaption, renderCaption } from "../../film/lib/captions.mjs";
-import { LINES, READ_PACE, captionHtml, endCardHtml, esc, fitProblem, paceProblem, titleCardHtml } from "../../film/lib/cards.mjs";
+import { CARD_READING, LINES, READ_PACE, TALL_CAPTION_SIDE, TITLE_DESCRIPTOR, captionHtml, endCardHtml, esc, fitProblem, paceProblem, titleCardHtml } from "../../film/lib/cards.mjs";
 import { finalArgs } from "../../film/lib/ffmpeg.mjs";
+import { FORMATS } from "../../film/lib/formats.mjs";
 import { JOURNAL_RAW_URL, briefReply, readJournal } from "../../film/lib/journal.mjs";
 import { fileSources } from "../../film/lib/sources.mjs";
 import { persuasionCardHtml, persuasionProblems, persuasionReading, plainText, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
@@ -141,6 +142,22 @@ describe("the identity rules on both cards", () => {
     }
   });
 
+  it("draws each caption in an opaque box, so the page under it cannot show through", () => {
+    for (const format of ["wide", "tall"]) {
+      const css = /\.cap\{[^}]*\}/.exec(captionHtml({ format, text: "Claude proposes. The vault decides.", fontsDir: undefined }))?.[0] ?? "";
+      expect(css).toMatch(/background:var\(--chassis\)/);
+      expect(css).not.toMatch(/rgba\(/);
+    }
+  });
+
+  it("spans the 9:16 caption box over the phone layout's 16 px text gutter, so no cut glyph shows beside it", () => {
+    const css = /\.cap\{[^}]*\}/.exec(captionHtml({ format: "tall", text: "Short.", fontsDir: undefined }))?.[0] ?? "";
+    expect(css).toMatch(new RegExp(`width:calc\\(100% - ${2 * TALL_CAPTION_SIDE}px\\)`));
+    expect(css).not.toMatch(/max-content|max-width/);
+    expect(TALL_CAPTION_SIDE).toBeLessThan(16);
+    expect(FORMATS.tall.viewport.width - 2 * TALL_CAPTION_SIDE).toBeGreaterThanOrEqual(524);
+  });
+
   it("balances the lines of every text on them and of every caption, so none ends on one word alone (web/e2e/film-cards.spec.ts measures it)", () => {
     for (const format of ["wide", "tall"]) {
       for (const html of [titleCardHtml({ format, mark: MARK }), endCardHtml({ format, mark: MARK })]) expect(html).toMatch(/\.frame>h1,\.frame>p\{text-wrap:balance\}/);
@@ -184,16 +201,20 @@ describe("the film's captions", () => {
 
   it("call the AI Maat's agent in the persuasion beat, and invite people to try to talk it into a bad trade", () => {
     expect(LINES.invitation).toBe("Try to talk Maat's agent into a bad trade. The vault has the last word.");
-    const open = pickCaption(captions, "brief-ask", { "deployments.inbox": INBOX });
+    // The invitation line shows only while the live /ask takes briefs; with the inbox on Base and /ask closed, the
+    // caption says the inbox is there and the invitation waits for /ask to open.
+    const open = pickCaption(captions, "brief-ask", { "deployments.inbox": INBOX, "ask.open": "open" });
     expect(open).toEqual({ id: "brief-ask", text: LINES.invitation });
+    expect(pickCaption(captions, "brief-ask", { "deployments.inbox": INBOX }).id).toBe("brief-ask-soon");
     const shot = BEATS.find((b) => b.id === "stranger-brief")?.shots.find((s) => s.kind === "tx");
-    const ids = ["brief-ask", "brief-ask-soon", shot?.caption, shot?.placeholderCaption];
+    const ids = ["brief-ask", "brief-ask-soon", "brief-ask-later", shot?.caption, shot?.placeholderCaption];
     for (const id of ids) {
       const text = textOf(String(id));
       expect(text, String(id)).toContain("Maat's agent");
       expect(text.replace(/Maat's agent/g, ""), String(id)).not.toMatch(/\bagent\b/);
     }
-    expect(textOf("brief-ask-soon")).toMatch(/^Once the inbox contract is on Base, .*Maat's agent into a bad trade\. The vault has the last word\.$/);
+    expect(textOf("brief-ask-soon")).toMatch(/^The inbox contract is on Base\. Once \/ask opens, any wallet can try to talk Maat's agent into a bad trade\.$/);
+    expect(textOf("brief-ask-later")).toMatch(/^Once the inbox contract is on Base, .*Maat's agent into a bad trade\. The vault has the last word\.$/);
     expect(textOf(String(shot?.placeholderCaption))).toMatch(/^Placeholder: /);
   });
 
@@ -241,6 +262,8 @@ describe("the persuasion beat (beat 7)", () => {
       expect(reply.kind).toBe("missing");
       const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply, answer: answer() }));
       expect(body).toContain("NOT IN THE JOURNAL YET");
+      // A shipped cut prints no repository instruction.
+      expect(body).not.toContain("agent-journal branch");
       expect(body).not.toContain("Maat&#39;s agent replied");
       expect(body).toContain("Refused · Market closed (MARKET_CLOSED)");
     }
@@ -348,14 +371,30 @@ describe("the film's pace", () => {
           const cues: { id: string; at: number }[] = shot.captions ?? [];
           cues.forEach((cue, i) => {
             const seconds = (cues[i + 1]?.at ?? shot.duration) - cue.at;
-            const c = captions[cue.id];
-            // A caption with `when` shows its else caption otherwise: both must read in the cue's time.
-            for (const id of [cue.id, ...(typeof c === "object" ? [c.else] : [])]) check(`${beat.id}/${shot.id}`, id, seconds);
+            // A caption with `when` shows its else caption otherwise, which may have its own: each must read in the cue's time.
+            for (let id: string | undefined = cue.id; id !== undefined; ) {
+              check(`${beat.id}/${shot.id}`, id, seconds);
+              const c: string | { text: string; else: string } | undefined = captions[id];
+              id = typeof c === "object" ? c.else : undefined;
+            }
           });
         }
       }
     }
     expect(fast).toEqual([]);
+  });
+
+  it("gives the title and end cards the time their words take", () => {
+    expect(CARD_READING.title).toEqual([LINES.positioning, LINES.mechanism, TITLE_DESCRIPTOR]);
+    expect(CARD_READING.end).toEqual([LINES.signOff, LINES.mythShort, LINES.builder]);
+    for (const card of ["title", "end"] as const) {
+      const shot = BEATS.flatMap((b) => b.shots).find((s) => s.kind === "card" && s.card === card);
+      expect(shot, card).toBeDefined();
+      expect(paceProblem(card, CARD_READING[card].join(" ").length, shot?.duration ?? 0)).toBeNull();
+    }
+    // v0's 3 s title card asked for 48 characters a second.
+    expect(paceProblem("title", CARD_READING.title.join(" ").length, 3)).toMatch(/needs 5\.8 s/);
+    expect(bodyOf(titleCardHtml({ format: "wide", mark: MARK }))).toContain(`>${TITLE_DESCRIPTOR}<`);
   });
 
   it("gives beat 7's card the time its brief, reply, verdict and caption take, and says so when a pick needs more", () => {

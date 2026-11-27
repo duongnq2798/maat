@@ -1,6 +1,24 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { BEATS, CLIPS, FPS, TARGET_SECONDS, TOLERANCE_SECONDS, effectiveShot, scrollGoal, shotCues, timeline, txKeys, txState, validateBeats } from "../../film/lib/beats.mjs";
+import {
+  BEATS,
+  CLIPS,
+  FPS,
+  TARGET_SECONDS,
+  TOLERANCE_SECONDS,
+  effectiveShot,
+  forFormat,
+  keepClearProblem,
+  scrollFrames,
+  scrollGoal,
+  shotCues,
+  timeline,
+  txKeys,
+  txState,
+  unsliceGoal,
+  validateBeats,
+} from "../../film/lib/beats.mjs";
+import { FRAME_CSS, HIDDEN_IN_FILM } from "../../film/lib/frame.mjs";
 
 // film/ renders the demo film from the live site with ffmpeg, on the owner's PC only. CI has no ffmpeg and no network,
 // so these tests check the plan itself: the beats, their order and the arithmetic of the timeline.
@@ -116,6 +134,8 @@ describe("the film's beat plan", () => {
           { id: "pair", kind: "tx", txs: ["a", "b"], duration: 1, caption: "c", placeholderCaption: "p" },
           { id: "poster", kind: "tx", txs: ["a"], duration: 1, caption: "c", placeholderCaption: "p", layout: "poster" },
           { id: "lone", kind: "tx", txs: ["a"], duration: 1, caption: "c", placeholderCaption: "p", layout: "persuasion" },
+          { id: "goon", kind: "card", card: "end", duration: 1, captions: [], continue: true },
+          { id: "peek", kind: "page", path: "/", duration: 1, steps: [{ probe: "ask.closed" }], captions: [] },
         ],
       },
     ];
@@ -127,7 +147,137 @@ describe("the film's beat plan", () => {
     expect(problems).toMatch(/b\/odd: duration 1.01 is not a positive whole number of frames/);
     expect(problems).toMatch(/b\/poster: unknown layout poster/);
     expect(problems).toMatch(/b\/lone: the persuasion layout needs two txs, a brief and the vault's Decision/);
+    expect(problems).toMatch(/b\/goon: only a page shot can continue or keep an element clear/);
+    expect(problems).toMatch(/b\/peek: unknown probe ask\.closed/);
     expect(problems).toMatch(/the cut lasts .* s, not 100 ± 2 s/);
+  });
+});
+
+describe("the cut's pace (film v0 review, 2026-11-27)", () => {
+  const len = (beat: string, slot: string) => timeline(BEATS, NO_CLIPS).shots.find((s) => s.beat === beat && s.slot === slot)?.duration;
+
+  it("gives the title card its reading time, shortens the mandate, holds the decision trail longer and keeps 100 s", () => {
+    expect(len("frozen-feed", "title")).toBe(6);
+    expect(len("mandate", "mandate")).toBe(10.5);
+    expect(len("sourced-proposal", "trail")).toBe(7.5);
+    expect(len("receipts", "ci")).toBe(3);
+    expect(len("receipts", "proof")).toBe(3.5);
+    expect(len("receipts", "end")).toBe(6.5);
+    expect(timeline(BEATS, NO_CLIPS).total).toBe(TARGET_SECONDS);
+  });
+
+  it("does not load a page again from its top between consecutive shots of the same page", () => {
+    const pages = timeline(BEATS, NO_CLIPS).shots.filter((s) => s.shot.kind === "page");
+    pages.forEach((s, i) => {
+      const before = pages[i - 1];
+      if (before && before.shot.path === s.shot.path) expect(s.shot.continue, `${s.beat}/${s.slot}`).toBe(true);
+      if (s.shot.continue) expect(before?.shot.path, `${s.beat}/${s.slot} continues the page shot before it`).toBe(s.shot.path);
+    });
+    expect(pages.filter((s) => s.shot.continue).map((s) => `${s.beat}/${s.slot}`)).toEqual([
+      "proposes-decides/decision-log",
+      "sourced-proposal/trail",
+      "sourced-proposal/input-utf8",
+      "early-close/sim",
+    ]);
+  });
+
+  it("films /proof only once its counts are read", () => {
+    const proof = BEATS.find((b) => b.id === "receipts")?.shots.find((s) => s.id === "proof");
+    expect(proof?.steps).toContainEqual({ wait: '[data-proof-state="read"]' });
+  });
+
+  it("keeps /proof's counts clear of the caption, and in 9:16 opens on \"Counted to block\", not midway through a sentence", () => {
+    const proof = BEATS.find((b) => b.id === "receipts")?.shots.find((s) => s.id === "proof");
+    expect(proof?.keepClear).toBe('[data-proof-state="read"] dl');
+    const scroll = proof?.steps?.find((s: { scroll?: unknown }) => s.scroll);
+    expect(forFormat(scroll?.scroll, "wide")).toBe("#counts-title");
+    expect(forFormat(scroll?.scroll, "tall")).toBe('[data-proof-state="read"]');
+    expect(forFormat(scroll?.top, "tall")).toBeLessThan(88);
+  });
+});
+
+describe("the frame the capture films", () => {
+  it("hides per-viewer and relative lines and the phone layout's bottom bar, and wraps code blocks", () => {
+    for (const selector of HIDDEN_IN_FILM) expect(FRAME_CSS).toContain(selector);
+    // The desktop nav's live readout: a block and a market session ("Friday · opens 09:30 ET") stale the day after.
+    expect(HIDDEN_IN_FILM).toContain("[data-nav-dock]");
+    expect(FRAME_CSS).toMatch(/\[data-thumb-bar\]\{display:none !important\}/);
+    expect(FRAME_CSS).toMatch(/pre,pre code\{white-space:pre-wrap !important/);
+  });
+
+  it("takes a step's per-format value, or the value itself", () => {
+    expect(forFormat({ wide: "#a", tall: "#b" }, "tall")).toBe("#b");
+    expect(forFormat("#a", "tall")).toBe("#a");
+    expect(forFormat({ wide: 160, tall: 88 }, "wide")).toBe(160);
+    expect(forFormat(undefined, "wide")).toBeUndefined();
+    // Given for one format only: nothing in the other, so that step does not run there.
+    expect(forFormat({ tall: "#b" }, "wide")).toBeUndefined();
+    expect(forFormat({ tall: "#b" }, "tall")).toBe("#b");
+    // An object that is not keyed by format is a value of its own.
+    expect(forFormat({ hold: 1 }, "wide")).toEqual({ hold: 1 });
+  });
+
+  it("films no frame for a scroll of over: 0, and at least one for any other", () => {
+    expect(scrollFrames(0)).toBe(0);
+    expect(scrollFrames(0.01)).toBe(1);
+    expect(scrollFrames(1.5)).toBe(1.5 * FPS);
+  });
+
+  it("refuses a scroll that jumps after the shot's first frame, or has no length", () => {
+    const shot = (steps: object[]) => [{ id: "b", title: "B", shots: [{ id: "s", kind: "page", path: "/", duration: TARGET_SECONDS, steps, captions: [] }] }];
+    expect(validateBeats(shot([{ scroll: "#a", over: 0 }, { hold: 1 }]))).toEqual([]);
+    expect(validateBeats(shot([{ hold: 1 }, { scroll: "#a", over: 0 }]))).toEqual(["b/s: a scroll with over: 0 jumps, so it must come before the shot's first frame"]);
+    expect(validateBeats(shot([{ scroll: "#a" }]))).toEqual(["b/s: a scroll needs over, in seconds, 0 or more"]);
+  });
+
+  it("goes to the NVDAc panel in 9:16, so the chart's drop is not under the caption, and keeps the chart clear", () => {
+    const gap = BEATS.find((b) => b.id === "frozen-feed")?.shots.find((s) => s.id === "gap");
+    expect(gap?.keepClear).toBe("#gap-panel-2026-11-06-NVDAc svg");
+    const steps = (gap?.steps ?? []) as { scroll?: unknown; over?: number; hold?: number }[];
+    const first = (format: string) => steps.find((s) => s.scroll !== undefined && forFormat(s.scroll, format) !== undefined);
+    expect(forFormat(first("tall")?.scroll, "tall")).toBe("#gap-panel-2026-11-06-NVDAc");
+    expect(forFormat(first("wide")?.scroll, "wide")).toBe("#window-2026-11-06");
+    // 9:16 jumps to the panel before the first frame, so gap-held opens over the panel, not over the window's heading.
+    expect(first("tall")?.over).toBe(0);
+    expect(steps.indexOf(first("tall")!)).toBeLessThan(steps.findIndex((s) => s.hold));
+    expect(gap?.captions?.[0]).toEqual({ id: "gap-held", at: 0 });
+  });
+
+  it("moves a scroll stop so that no line of text is cut by the top edge or the nav bar", () => {
+    const lines = [
+      { top: 100, bottom: 120 },
+      { top: 130, bottom: 150 },
+      { top: 300, bottom: 320 },
+    ];
+    // Nothing crosses the edge: the stop stays.
+    expect(unsliceGoal({ y: 125, lines, limit: 1000 })).toBe(125);
+    // A line crosses the top edge at 110: scroll up 10 px to show it whole, rather than 10 px down to hide it (a tie).
+    expect(unsliceGoal({ y: 110, lines, limit: 1000 })).toBe(100);
+    // Nearer to its bottom: scroll down to hide it.
+    expect(unsliceGoal({ y: 118, lines, limit: 1000 })).toBe(120);
+    // Under an 82 px nav bar, the edge is 82 px into the frame.
+    expect(unsliceGoal({ y: 222, lines, edge: 82, limit: 1000 })).toBe(218);
+    // Inside the page only.
+    expect(unsliceGoal({ y: 5, lines: [{ top: 0, bottom: 20 }], limit: 1000 })).toBe(0);
+    expect(unsliceGoal({ y: 995, lines: [{ top: 990, bottom: 1010 }], limit: 1000 })).toBe(990);
+    // Text packed tighter than the reach: the stop stays.
+    const dense = Array.from({ length: 50 }, (_, i) => ({ top: i * 10, bottom: i * 10 + 11 }));
+    expect(unsliceGoal({ y: 200, lines: dense, limit: 1000, reach: 20 })).toBe(200);
+  });
+
+  it("names a caption band that would cover an element a shot keeps clear", () => {
+    expect(keepClearProblem("ask", { top: 500, bottom: 656 }, 670, 960)).toBeNull();
+    expect(keepClearProblem("ask", { top: 1000, bottom: 1300 }, 670, 960)).toBeNull();
+    expect(keepClearProblem("ask", { top: 500, bottom: 790 }, 670, 960)).toBe(
+      "ask: the caption band starts at 670 px and would cover the element it keeps clear, which ends at 790 px",
+    );
+  });
+
+  it("ends the /ask shot with its form, or its not-open notice, above the caption", () => {
+    const ask = BEATS.find((b) => b.id === "stranger-brief")?.shots.find((s) => s.id === "ask");
+    expect(ask?.keepClear).toBe('section[aria-labelledby="send-title"] > :last-child');
+    const scroll = ask?.steps?.find((s: { scroll?: unknown }) => s.scroll);
+    expect(forFormat(scroll?.top, "tall")).toBe(400);
   });
 });
 

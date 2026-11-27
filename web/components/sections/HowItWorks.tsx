@@ -1,9 +1,10 @@
 import { CodePanel } from "@/components/ui/CodePanel";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { getDecisions, SOURCE_LABEL } from "@/content/decisions";
 import { FACTS } from "@/content/facts";
 import { numberWord } from "@/content/format";
 import { REASON_LABEL } from "@/content/reasons";
+import { basescanDecision, basescanRefusalNote } from "@/lib/live/basescan";
+import { RECORDED_ROWS } from "./vault-rows";
 
 const STEPS = [
   {
@@ -32,18 +33,29 @@ const STEPS = [
   },
 ] as const;
 
+/** "0xb8552684…a6c1", as cast's outputs on /ledger shorten a hash. */
+const shortHash = (h: string) => `${h.slice(0, 10)}…${h.slice(-4)}`;
+
+/** The first refusal of Maat's agent on Base mainnet, as this build records it (content/facts.ts mainnetDecisions). */
+function agentRefusal() {
+  const row = [...RECORDED_ROWS].reverse().find((r) => r.sender === "agent" && !r.allowed);
+  const log = FACTS.mainnetDecisions.value.find((l) => l.transactionHash === row?.txHash);
+  if (!row || !log || row.reason === "OK") throw new Error("this build records no refusal of Maat's agent to decode");
+  // The Decision log's data, one word each: action, amount, allowed, reason, rationaleHash.
+  const amount = BigInt(`0x${log.data.slice(2 + 64, 2 + 128)}`);
+  return { row, reason: row.reason, amount: `${(Number(amount) / 1e6).toFixed(6)} USDC` };
+}
+
 export function HowItWorks() {
-  const refused = getDecisions().find((r) => !r.allowed);
-  if (!refused) throw new Error("the ledger has no refusal to decode");
-  const decoded: readonly { k: string; v: string; tone?: "hot" | "muted"; note?: string }[] = [
-    { k: "action", v: refused.action },
-    { k: "token", v: refused.symbol },
-    { k: "amount", v: `${refused.amountUsd.toFixed(2)} USDC` },
-    { k: "allowed", v: String(refused.allowed), tone: "hot" },
+  const { row, reason, amount } = agentRefusal();
+  const decoded: readonly { k: string; v: string; title?: string; tone?: "hot" | "muted"; note?: string }[] = [
+    { k: "action", v: row.action },
+    { k: "token", v: row.symbol },
+    { k: "amount", v: amount },
+    { k: "allowed", v: String(row.allowed), tone: "hot" },
     // The card shows the decoded log, so the value stays the code; its plain label follows as a comment.
-    { k: "reason", v: refused.reason, tone: "hot", note: REASON_LABEL[refused.reason] },
-    // Exists only once the decision is a mainnet tx (spec §3): a placeholder, never a made-up hash.
-    { k: "rationaleHash", v: "[from mainnet tx]", tone: "muted" },
+    { k: "reason", v: reason, tone: "hot", note: REASON_LABEL[reason] },
+    { k: "rationaleHash", v: shortHash(row.rationaleHash), title: row.rationaleHash, tone: "muted" },
   ];
   const toneClass = { hot: "font-semibold text-refuse", muted: "text-ink-2" } as const;
 
@@ -72,14 +84,14 @@ export function HowItWorks() {
           <CodePanel />
           <div className="card flex flex-col gap-4 p-7">
             <span className="font-mono text-xs text-ink-2">
-              DECODED · {refused.timeLabel.toUpperCase()} · {SOURCE_LABEL[refused.source].toUpperCase()}
+              DECODED · {row.timeLabel.toUpperCase()} ET · BASE MAINNET · SENT BY MAAT&apos;S AGENT
             </span>
             <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-6 gap-y-3 font-mono text-sm">
               {/* Every dt/dd pair sits in its own div: a <dl> may not mix bare pairs with wrapped ones. */}
               {decoded.map((d) => (
                 <div key={d.k} className="contents">
                   <dt className="text-ink-2">{d.k}</dt>
-                  <dd className={`m-0 [overflow-wrap:anywhere] ${d.tone ? toneClass[d.tone] : ""}`}>
+                  <dd title={d.title} className={`m-0 [overflow-wrap:anywhere] ${d.tone ? toneClass[d.tone] : ""}`}>
                     {d.v}
                     {/* One inline block after a plain space: when the line runs out, "//" moves down with its label. */}
                     {d.note ? (
@@ -92,6 +104,12 @@ export function HowItWorks() {
                 </div>
               ))}
             </dl>
+            <p className="m-0 text-sm leading-[1.6] text-ink-2">
+              <a href={basescanDecision(row.txHash)} className="font-medium">
+                See it on Basescan, on the Logs tab<span aria-hidden="true"> ↗</span>
+              </a>{" "}
+              {basescanRefusalNote(reason)}
+            </p>
             <p className="m-0 mt-auto text-sm leading-[1.6] text-ink-2">
               Every transaction carries a Base Builder Code (ERC-8021), so each decision is attributable to Maat onchain.
             </p>

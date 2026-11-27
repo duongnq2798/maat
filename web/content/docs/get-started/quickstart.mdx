@@ -4,7 +4,7 @@ description: Clone the repo, watch the vault refuse a Saturday buy, run the cont
 type: guide
 audience: [developer, evaluator]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-27
 sources:
   - README.md
   - contracts/test/MandateVault.t.sol
@@ -12,10 +12,11 @@ sources:
   - contracts/test/invariant/MandateVaultInvariants.t.sol
   - contracts/.env.example
   - contracts/test/fork/MandateVaultFork.t.sol
+  - contracts/test/fork/LiveVault.t.sol
 next: [guides/run-the-tests, guides/reproduce-the-fork-run, security/testing]
 ---
 
-By the end of this page you will have watched the vault refuse a Saturday buy without reverting, and run the contract, agent and website tests on your own machine. It is written for developers and evaluators, and it lets you check Maat's claims against its code yourself. You need no wallet, no RPC URL and no API key: every test runs against mocks and fakes, so nothing touches a chain. You do need network access to clone the repository and install packages. The first compile in step 2 also downloads solc <Fact name="solidityVersion" />, the compiler version `contracts/foundry.toml` pins, if Foundry does not have it yet.
+By the end of this page you will have watched the vault refuse a Saturday buy without reverting, and run the contract, agent and website tests on your own machine. It is written for developers and evaluators, and it lets you check Maat's claims against its code yourself. You need no wallet, no RPC URL and no API key: every test runs against mocks and fakes, so nothing touches a chain. So this page checks the code, not the vault on Base mainnet. To check what that vault did, the agent's first `Decision` included, without trusting this site, run the read-only commands of [Verify Maat by hand](/docs/guides/verify-by-hand), or open the [mainnet ledger](/ledger). You do need network access to clone the repository and install packages. The first compile in step 2 also downloads solc <Fact name="solidityVersion" />, the compiler version `contracts/foundry.toml` pins, if Foundry does not have it yet.
 
 Not a developer? [What is Maat](/docs/get-started/what-is-maat) explains the idea without code, and [Status and roadmap](/docs/get-started/status) says what is real today.
 
@@ -92,7 +93,7 @@ Your full trace shows two things that the ellipses hide here. First, an `emit De
 
 ### Run every contract unit test
 
-This covers the vault, the guards, the calendar, the price math, both adapters and the deploy script's payee list, and it also runs the [invariant suite](/docs/security/testing#invariant-tests), which takes most of the run's time, about 30 to 40 seconds. Run it in the same `contracts` folder.
+This covers the vault, the guards, the calendar, the price math, both adapters, the briefs inbox (`MaatInbox`) and the deploy script's payee list, and it also runs the [invariant suite](/docs/security/testing#invariant-tests), which takes most of the run's time, about 30 to 40 seconds. Run it in the same `contracts` folder.
 
 ```bash title="contracts/"
 forge test --no-match-path "test/fork/*"
@@ -184,10 +185,10 @@ Expected output, from README.md, How to evaluate Maat in 5 minutes, with the cou
 Ran … test suites in …: … tests passed, 0 failed, 0 skipped (… total tests)
 ```
 
-To run only the fork test that plays a compromised [executor](/docs/help/glossary#executor) against real Base state, use the same filter as step 2, in the same shell:
+To run only the fork test that plays a compromised [executor](/docs/help/glossary#executor) against real Base state, use the same filter as step 2 with its file, in the same shell. `test/fork/LiveVault.t.sol` has a test of the same name, run against the deployed vault, so the name alone runs both:
 
 ```bash title="contracts/"
-forge test --match-test test_compromisedExecutorIsBounded
+forge test --match-path test/fork/MandateVaultFork.t.sol --match-test test_compromisedExecutorIsBounded
 ```
 
 It has the executor try to pay an address that is not a [payee](/docs/help/glossary#payee), buy above the per-trade cap and call `withdraw`. The vault refuses the first two, the third reverts, and the vault keeps its USDC.

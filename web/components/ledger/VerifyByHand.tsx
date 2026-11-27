@@ -1,9 +1,9 @@
 import type { Address, Hash } from "viem";
 
 /**
- * Five read-only `cast` commands that check the vault without this page, with the output each printed on 2026-11-25
- * (cast from Foundry 1.9.0, against https://base-rpc.publicnode.com). The commands and outputs are those of the
- * verify-by-hand guide; long hashes and the owner's address are shortened with an ellipsis, as there.
+ * Six read-only steps of `cast` commands that check the vault without this page, with the output each printed (cast
+ * from Foundry 1.9.0, against https://base-rpc.publicnode.com): steps 1 to 5 on 2026-11-25, as in the verify-by-hand
+ * guide, and step 6, the agent's first Decision, on 2026-11-27. Long hashes and addresses are shortened with an ellipsis.
  */
 export interface VerifyTargets {
   vault: Address;
@@ -14,6 +14,8 @@ export interface VerifyTargets {
 /** The Decision blocks and the default rationale text the commands read (deployments/README.md, agent/scripts/first-decision.ts). */
 const DECISION_BLOCKS = ["61700601", "61745836"] as const;
 const OWNER_TEXT = "Owner-sent first decision: BUY 5 USD of NVDAc";
+/** The first Decision of Maat's agent, sent through its CDP executor on 2026-11-27 (content/facts.ts mainnetDecisions). */
+export const AGENT_DECISION = { tx: "0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6", block: "62776552" } as const;
 
 interface Step {
   title: string;
@@ -57,8 +59,8 @@ function steps(t: VerifyTargets): Step[] {
       ].join("\n"),
     },
     {
-      title: "Read the two Decisions",
-      body: "The vault's Decision logs in the blocks of its two mainnet Decisions: a BUY refused with reason 6 (MARKET_CLOSED), then the same BUY allowed with reason 0 (OK), both with the same rationaleHash.",
+      title: "Read the owner's two smoke-test Decisions",
+      body: "The vault's Decision logs in the blocks of the owner's two smoke-test Decisions of 2026-11-24, sent by hand: a BUY refused with reason 6 (MARKET_CLOSED), then the same BUY allowed with reason 0 (OK), both with the same rationaleHash. Step 6 reads the agent's first Decision.",
       command: [
         "DECISION='Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)'",
         `for b in ${DECISION_BLOCKS.join(" ")}; do`,
@@ -105,6 +107,32 @@ function steps(t: VerifyTargets): Step[] {
       command: `printf '%s' '${OWNER_TEXT}' | cast keccak`,
       output: "0x0baa4c52…57f6",
     },
+    {
+      title: "The agent's first Decision",
+      body: `Since 2026-11-27 the executor is the agent's CDP account, and its first Decision is transaction ${AGENT_DECISION.tx.slice(0, 10)}…${AGENT_DECISION.tx.slice(-4)}. The first two lines check who sent it: the transaction's sender and the vault's executor() are the same address. The log, read with DECISION from step 3, shows the vault refused a BUY of 4.680721 USDC of GOOGLc on Thanksgiving: allowed false, reason 6 (MARKET_CLOSED). The last line takes the maat:v1 blob from the transaction's calldata and hashes it; it prints the log's rationaleHash. It needs xxd, which Git Bash ships.`,
+      command: [
+        `TX=${AGENT_DECISION.tx}`,
+        'cast tx "$TX" from --rpc-url "$RPC"',
+        'cast call "$VAULT" "executor()(address)" --rpc-url "$RPC"',
+        `cast logs --rpc-url "$RPC" --address "$VAULT" --from-block ${AGENT_DECISION.block} --to-block ${AGENT_DECISION.block} "$DECISION" | grep -A 9 transactionHash`,
+        `cast tx "$TX" input --rpc-url "$RPC" | sed 's/^0x//' | xxd -r -p | grep -ao 'maat:v1:.*}' | tr -d '\\n' | cast keccak`,
+      ].join("\n"),
+      output: [
+        "0x9bC6E49d…115A",
+        "0x9bC6E49d…115A",
+        "  transactionHash: 0xca9e2dfe…bed6",
+        "  transactionIndex: 9",
+        "  decoded:",
+        "  \tintentId: 0x22b5b771…b4ed",
+        "  \taction: 0",
+        "  \ttoken: 0xb2000000000000000000002D0BA3164cc74f58B7",
+        "  \tamount: 4680721 [4.68e6]",
+        "  \tallowed: false",
+        "  \treason: 6",
+        "  \trationaleHash: 0xb8552684…a6c1",
+        "0xb8552684…a6c1",
+      ].join("\n"),
+    },
   ];
 }
 
@@ -122,7 +150,7 @@ function Code({ label, children, tone }: { label: string; children: string; tone
   );
 }
 
-/** The "Verify it by hand" panel: five read-only cast commands, each with the output it printed. */
+/** The "Verify it by hand" panel: six steps of read-only cast commands, each with the output it printed. */
 export function VerifyByHand({ targets }: { targets: VerifyTargets }) {
   const list = steps(targets);
   return (
@@ -134,10 +162,11 @@ export function VerifyByHand({ targets }: { targets: VerifyTargets }) {
             Verify it by hand
           </h2>
           <p className="text-[15px] leading-relaxed text-ink-body">
-            Five commands check the vault without this page. None needs a key, a wallet or an account, and none sends a
-            transaction. Each output below was printed on 2026-11-25 by cast from Foundry 1.9.0 against
-            base-rpc.publicnode.com; long hashes and the owner&apos;s address are shortened, and your terminal prints them
-            in full. The commands are written for bash (Git Bash on Windows).
+            Six steps of commands check the vault without this page, the agent&apos;s first Decision included. None needs a
+            key, a wallet or an account, and none sends a transaction. Each output below was printed by cast from Foundry
+            1.9.0 against base-rpc.publicnode.com, on 2026-11-25 for steps 1 to 5 and on 2026-11-27 for step 6; long
+            hashes and addresses are shortened, and your terminal prints them in full. The commands are written for bash
+            (Git Bash on Windows).
           </p>
           <p className="text-[15px] leading-relaxed text-ink-body">
             For a Decision whose calldata carries a maat:v1 blob, Basescan shows the words too: open the transaction, then
@@ -147,7 +176,7 @@ export function VerifyByHand({ targets }: { targets: VerifyTargets }) {
         <Code label="Set the RPC and the addresses" tone="command">
           {[`export RPC=https://base-rpc.publicnode.com`, `export VAULT=${targets.vault}      # MandateVault`, `export CALENDAR=${targets.calendar}   # MarketCalendar`].join("\n")}
         </Code>
-        <ol aria-label="Five read-only commands" className="m-0 flex list-none flex-col gap-8 p-0">
+        <ol aria-label="Six read-only steps" className="m-0 flex list-none flex-col gap-8 p-0">
           {list.map((s, i) => (
             <li key={s.title} className="flex min-w-0 flex-col gap-3">
               <h3 className="text-base font-semibold text-ink">

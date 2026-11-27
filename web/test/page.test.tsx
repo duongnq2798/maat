@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
+import { FACTS } from "@/content/facts";
 import { REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
@@ -116,10 +117,13 @@ describe("landing page", () => {
     expect(screen.getByText(SITE.tagline)).toBeInTheDocument();
   });
 
-  it("never shows a made-up hash and keeps the mainnet tx placeholder", () => {
+  it("never shows a made-up hash: How it works decodes the agent's recorded Decision, its rationaleHash shortened", () => {
     const text = setup().textContent ?? "";
     expect(text).not.toMatch(/0x[0-9a-fA-F]{40,}/);
-    expect(text).toContain("[from mainnet tx]");
+    expect(text).not.toContain("[from mainnet tx]");
+    const agent = FACTS.mainnetDecisions.value.find((l) => l.sender === "agent")!;
+    const rationaleHash = `0x${agent.data.slice(2 + 4 * 64)}`;
+    expect(text).toContain(`rationaleHash${rationaleHash.slice(0, 10)}…${rationaleHash.slice(-4)}`);
   });
 
   it("uses no raster images", () => {

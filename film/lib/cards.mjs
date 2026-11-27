@@ -23,6 +23,18 @@ export const LINES = Object.freeze({
   builder: "Built by one developer with Claude Code.",
 });
 
+/** The title card's last line: what Maat is, in one sentence. */
+export const TITLE_DESCRIPTOR = "A treasury of tokenized stocks on Base, kept to a written mandate.";
+
+/**
+ * The words a viewer reads on the title and end cards, in order, for the pace check: the end card's links and footer
+ * stay on screen as reference and are not counted.
+ */
+export const CARD_READING = Object.freeze({
+  title: Object.freeze([LINES.positioning, LINES.mechanism, TITLE_DESCRIPTOR]),
+  end: Object.freeze([LINES.signOff, LINES.mythShort, LINES.builder]),
+});
+
 /** The footer any asset that shows a stock token or a trade carries (voice.md, full form). */
 export const FOOTER = "Own treasury only. No investment advice. Not offered to US persons.";
 
@@ -99,6 +111,8 @@ export const CAPTION_BOTTOM = Object.freeze({ wide: 56, tall: 150 });
  * render when one would cover a row (overlapProblem); web/e2e/film-cards.spec.ts does the same with the longest txs.
  */
 export const CAPTION_BAND = Object.freeze({ wide: 240, tall: 290 });
+/** CSS px between the 9:16 caption box and each side of the frame: half the phone layout's 16 px text gutter. */
+export const TALL_CAPTION_SIDE = 8;
 /** CSS px kept clear between a card's content and the top of a caption box. */
 export const CAPTION_CLEARANCE = 16;
 
@@ -125,9 +139,10 @@ export function fitProblem(where, contentBottom, frameHeight) {
 }
 
 /**
- * The most characters a second a caption asks anyone to read: about the pace of the film's busiest caption (the CI
- * figures, 98 characters in 4 s). web/test/film-identity.test.ts holds every caption to it, and the capture warns when
- * a caption with the numbers it read, or beat 7's card with its caption, would go faster.
+ * The most characters a second a caption or a card asks anyone to read: about the pace of v0's busiest caption (the CI
+ * figures, 98 characters in 4 s). web/test/film-identity.test.ts holds every caption, and the title and end cards'
+ * words (CARD_READING), to it, and the capture warns when a caption with the numbers it read, or beat 7's card with its
+ * caption, would go faster.
  */
 export const READ_PACE = 25;
 
@@ -138,16 +153,20 @@ export function paceProblem(where, chars, seconds) {
 }
 
 /**
- * The caption overlay: a clear frame with the caption in a dark box near the bottom. Its lines are balanced, so a
- * caption that wraps never leaves one word alone on its last line.
+ * The caption overlay: a clear frame with the caption in an opaque dark box near the bottom, so the page under it
+ * cannot show through and ghost its words. Its lines are balanced, so a caption that wraps never leaves one word alone
+ * on its last line. In 9:16 the box spans the frame less TALL_CAPTION_SIDE px each side, whatever the caption's length:
+ * the phone layout's text column starts 16 px from the edge, so a narrower box would leave the cut-off glyphs of the
+ * page's lines showing beside it.
  */
 export function captionHtml({ format, text, fontsDir }) {
   const wide = format === "wide";
   const placeholder = /^Placeholder:/.test(text);
   const body = placeholder ? text.replace(/^Placeholder:\s*/, "") : text;
+  const width = wide ? "max-width:1560px;width:max-content" : `width:calc(100% - ${2 * TALL_CAPTION_SIDE}px)`;
   const css = `
-.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${CAPTION_BOTTOM[format]}px;max-width:${wide ? 1560 : 500}px;width:max-content;
-background:rgba(11,13,18,.9);color:#fff;border-radius:${wide ? 18 : 12}px;padding:${wide ? "22px 34px" : "13px 18px"};
+.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${CAPTION_BOTTOM[format]}px;${width};
+background:var(--chassis);color:#fff;border-radius:${wide ? 18 : 12}px;padding:${wide ? "22px 34px" : "13px 18px"};
 font-size:${wide ? 40 : 21}px;line-height:1.3;font-weight:500;text-align:center;letter-spacing:-.005em;text-wrap:balance}
 .cap .tag{font-size:${wide ? 22 : 12}px;padding:${wide ? "4px 10px" : "2px 6px"};margin-right:${wide ? 14 : 8}px;vertical-align:${wide ? "6px" : "3px"}}`;
   return documentHtml({
@@ -188,12 +207,15 @@ ${BALANCED}`;
     format,
     fontsDir,
     css,
-    body: `<div class="frame">${lockupHtml(mark)}<h1>${esc(LINES.positioning)}</h1><p class="mech">${esc(LINES.mechanism)}</p><p>A treasury of tokenized stocks on Base, kept to a written mandate.</p></div>`,
+    body: `<div class="frame">${lockupHtml(mark)}<h1>${esc(LINES.positioning)}</h1><p class="mech">${esc(LINES.mechanism)}</p><p>${esc(TITLE_DESCRIPTOR)}</p></div>`,
   });
 }
 
-/** The verified contracts, from the deployments table and the day Basescan showed each one's source verified. */
-export function deploymentsCardHtml({ format, rows, verifiedNote, fontsDir }) {
+/**
+ * The contracts on Base mainnet, from the deployments table. The caption burned in over it says which ones Basescan
+ * showed verified and when, so the card does not say it a second time.
+ */
+export function deploymentsCardHtml({ format, rows, fontsDir }) {
   const s = SIZE[format];
   const wide = format === "wide";
   const css = `${captionedFrame(format)}
@@ -201,16 +223,22 @@ h2{font-size:${s.h2}px;letter-spacing:-.02em;font-weight:600}
 .eyebrow{font-size:${s.small}px}
 table{border-collapse:collapse;width:100%;font-size:${s.row}px}
 td{padding:${wide ? 18 : 10}px 0;border-top:1px solid var(--line);vertical-align:top}
-td.addr{text-align:right;color:var(--ink2)}
-p{font-size:${s.small}px;color:var(--ink2);line-height:1.4}`;
+td.addr{text-align:right;color:var(--ink2)}`;
   const trs = rows.map((r) => `<tr><td>${esc(r.contract)}</td><td class="addr mono">${esc(shortHex(r.address))}</td></tr>`).join("");
   return documentHtml({
     format,
     fontsDir,
     css,
-    body: `<div class="frame"><div class="eyebrow">Base mainnet · deployments/README.md</div><h2>The contracts</h2><table>${trs}</table><p>${esc(verifiedNote)}</p></div>`,
+    body: `<div class="frame"><div class="eyebrow">Base mainnet · deployments/README.md</div><h2>The contracts</h2><table>${trs}</table></div>`,
   });
 }
+
+/**
+ * The README's CI figures, each with its label, under a heading dated with the day of the run the README read them
+ * from ("CI on main, 27 Nov 2026, all passed"); without that day the heading claims nothing about when.
+ */
+export const ciHeading = (/** @type {Record<string, string>} */ figures) =>
+  figures["readme.ciDate"] ? `CI on main, ${figures["readme.ciDate"]}, all passed` : "CI on main";
 
 /** The README's CI figures, each with its label. */
 export function ciCardHtml({ format, figures, fontsDir }) {
@@ -235,7 +263,7 @@ p{font-size:${s.small}px;color:var(--ink2)}`;
     format,
     fontsDir,
     css,
-    body: `<div class="frame"><div class="eyebrow">README · Tested, in numbers</div><h2>CI on main, all passed</h2><div class="grid">${cells}</div><p class="mono">GitHub Actions run ${esc(figures["readme.ciRun"])} · ${esc(figures["readme.ciDateIso"])}</p></div>`,
+    body: `<div class="frame"><div class="eyebrow">README · Tested, in numbers</div><h2>${esc(ciHeading(figures))}</h2><div class="grid">${cells}</div><p class="mono">GitHub Actions run ${esc(figures["readme.ciRun"])} · ${esc(figures["readme.ciDateIso"])}</p></div>`,
   });
 }
 

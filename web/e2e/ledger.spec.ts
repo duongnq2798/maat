@@ -180,7 +180,7 @@ test.describe("/ledger reading a fake Base mainnet", () => {
     const decisions = page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem");
     await expect(decisions).toHaveCount(3);
     await expect(page.getByText(/Reading Base mainnet/)).toContainText(`block ${Number(HEAD).toLocaleString("en-US")}`);
-    await expect(decisions.first().getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${hash32(3)}`);
+    await expect(decisions.first().getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${hash32(3)}#eventlog`);
     await expect(page.getByText("Hash verified", { exact: true })).toBeVisible();
     await expect(page.getByText("Hash mismatch", { exact: true })).toBeVisible();
     await expect(page.getByText("Rationale not exported yet", { exact: true })).toBeVisible();
@@ -309,7 +309,7 @@ test.describe("/ledger reading the vault's two mainnet Decisions with the commit
     // Newest first: the allowed BUY, then the refusal.
     for (const [i, m] of [...MAINNET].reverse().entries()) {
       const row = decisions.nth(i);
-      await expect(row.getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${m.tx}`);
+      await expect(row.getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${m.tx}#eventlog`);
       await expect(row).toContainText(m.allowed ? "Allowed" : "Refused");
       await expect(row.getByText("Hash verified", { exact: true })).toBeVisible();
       await expect(row.locator("blockquote")).toHaveText(OWNER_TEXT);
@@ -327,7 +327,8 @@ test.describe("/ledger since your last look", () => {
   const FIRST = Date.UTC(2026, 10, 28, 15, 0); // Sat 28 Nov 2026 10:00 ET
   const SECOND = Date.UTC(2026, 10, 30, 14, 45); // Mon 30 Nov 2026 09:45 ET
   const LATER = HEAD + 500n;
-  const LATER_TX = `https://basescan.org/tx/${hash32(4)}`;
+  // A Decision's link opens Basescan's Logs tab, where its verdict shows.
+  const LATER_TX = `https://basescan.org/tx/${hash32(4)}#eventlog`;
   let chain: FakeScenario;
   let sent: { url: string; body: string; cookie: string | undefined }[];
 

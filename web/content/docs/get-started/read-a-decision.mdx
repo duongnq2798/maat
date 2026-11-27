@@ -4,7 +4,7 @@ description: What each field of a Decision event means, how to read a refusal, a
 type: concept
 audience: [watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-21
+lastReviewed: 2026-11-27
 sources:
   - contracts/src/IMandateVaultEvents.sol
   - contracts/src/Types.sol
@@ -16,10 +16,13 @@ sources:
   - agent/src/loop/runOnce.ts
   - agent/src/llm/prompt.ts
   - agent/test/integration/agent.fork.test.ts
+  - agent/src/rationale/blob.ts
+  - docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md
+  - web/components/ledger/AgentTrail.tsx
 next: [concepts/refusal-codes, guides/watch-decisions-onchain]
 ---
 
-A [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/glossary#vault)'s public record of one verdict. This page shows how to read a row of the ledger, explains the event field by field, shows how to read a [refusal](/docs/help/glossary#refusal), and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. Every example here is a row from the [fork run](/docs/help/glossary#fork-test). The same steps apply to the events of Maat's vault on [Base](/docs/help/glossary#base) mainnet, whose address is in [Status and roadmap](/docs/get-started/status#next-mainnet).
+A [Decision](/docs/help/glossary#decision) event is the [vault](/docs/help/glossary#vault)'s public record of one verdict. This page shows how to read a row of the ledger, explains the event field by field, shows how to read a [refusal](/docs/help/glossary#refusal), and shows how to get from a row in the ledger to its transaction and to the reasoning behind it. The main example is the first `Decision` of Maat's agent on [Base](/docs/help/glossary#base) mainnet, as the site's [mainnet ledger](/ledger) shows it, and the rows of the [fork run](/docs/help/glossary#fork-test) are a second. The address of Maat's vault is in [Status and roadmap](/docs/get-started/status#next-mainnet).
 
 ## Read a ledger row
 
@@ -29,7 +32,7 @@ Each row of the ledger is one `Decision`: the vault's verdict on one [intent](/d
 - **Refused, then the reason.** For example, Refused · Market closed (`MARKET_CLOSED`): a plain label, then the reason's code. The vault said no, or the action failed inside it. The intent moved no funds, and the [reason](/docs/help/glossary#reason) is on the public record. [Reading a refusal](#reading-a-refusal) explains the reasons.
 - **Allowed does not mean a good trade.** It only means the intent stayed inside the [mandate](/docs/help/glossary#mandate).
 
-The ledger holds only the intents that were sent. The agent is built to [preview](/docs/help/glossary#preview) each intent first and to send a refusal only for some reasons, at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in a [dry run](/docs/help/glossary#dry-run), the default, it sends nothing ([How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts)). A quiet ledger therefore does not mean the agent did nothing. The fork run's four rows are under [From a ledger row to its reasoning](#from-a-ledger-row-to-its-reasoning).
+The ledger holds only the intents that were sent. The agent is built to [preview](/docs/help/glossary#preview) each intent first and to send a refusal only for some reasons, at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in a [dry run](/docs/help/glossary#dry-run), the default, it sends nothing ([How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts)). A quiet ledger therefore does not mean the agent did nothing. [The agent's first Decision](#the-agents-first-decision) reads one mainnet row field by field, and the fork run's four rows are under [From a ledger row to its reasoning](#from-a-ledger-row-to-its-reasoning).
 
 ## The Decision event
 
@@ -64,6 +67,30 @@ Every `execute` call that does not [revert](/docs/help/glossary#revert) emits on
 | 6 | `PAY_EXPENSE` | USDC. The amount to pay to an allowlisted [payee](/docs/help/glossary#payee), which is in the intent and not in the event. |
 
 `Reason` works the same way. `OK` is 0, and the <Fact name="refusalCount" /> refusals have the ids 1 to <Fact name="refusalCount" />, in an enum that only ever grows. In the fork run you meet only two of them: `OK` (0) and `MARKET_CLOSED` (6). [Refusal codes](/docs/concepts/refusal-codes) lists every id with its meaning.
+
+## The agent's first Decision
+
+The first `Decision` that Maat's agent sent on Base mainnet came at 02:14:46 UTC on 2026-11-27, 21:14 on Thursday 2026-11-26 in New York, in block `62776552`, in transaction [`0xca9e2dfe...bed6`](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6#eventlog). The link opens the Logs tab on Basescan, where the event is: the Overview tab shows the transaction as a success, because the vault logged the refusal instead of reverting. These are its fields, as the log holds them:
+
+| Field | In the log | Reads as |
+| --- | --- | --- |
+| `intentId` | `0x22b5b771...b4ed` | The agent's id for the intent, from its run and the intent's place in the round |
+| `action` | `0` | `BUY` |
+| `token` | `0xb2000000...58B7` | GOOGLc, the `GOOGLC` constant of `contracts/script/BaseAddresses.sol` |
+| `amount` | `4680721` | 4.68 USDC, because a `BUY` spends USDC, which has <Fact name="usdcDecimals" /> |
+| `allowed` | `false` | Refused: no funds moved |
+| `reason` | `6` | `MARKET_CLOSED`: NYSE was closed for Thanksgiving |
+| `rationaleHash` | `0xb8552684...a6c1` | `keccak256` of the [rationale blob](/docs/help/glossary#rationale-blob) in the transaction's input |
+
+On 2026-11-27 the mainnet ledger showed this row as Refused · Market closed (`MARKET_CLOSED`), with the sender label agent: the transaction came from `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, the agent's CDP Server Wallet and the vault's [executor](/docs/help/glossary#executor), not from the vault's [owner](/docs/help/glossary#owner). Under the row the page decodes the blob it reads from the transaction's input, and shows:
+
+- **Hash verified.** Your browser hashed the blob, and its `keccak256` equals the `rationaleHash` in the log. Only then does the page show the blob's text.
+- **The text.** What Claude wrote: GOOGLc sat at 0% against a 23.3% target, the amount fit what the vault could spend, and the market was closed, so the vault might refuse, and the refusal was worth recording. The agent appended the closed phase, `(market closed, NYSE holiday: Thanksgiving)`.
+- **Where the text came from.** The model, the block the round read the vault at (State block), the run id, the agent's git commit and, for each stock, the feed round and the pool's premium the round read.
+- **The journal head**, `0x1a06543b...4fb6`, the hash of the agent's last [journal](/docs/help/glossary#journal) row when it built the blob, marked found in the published journal once the public `agent-journal` branch holds a row with that hash.
+- **The Builder Code** of the calldata's ERC-8021 suffix, checked against the code on the vault's first `Decision`, which the owner sent.
+
+[Verify Maat by hand](/docs/guides/verify-by-hand) checks the same row without the site: the log, the sender against `executor()`, the calendar at that block, the blob's hash and the journal row.
 
 ## Reading a refusal
 

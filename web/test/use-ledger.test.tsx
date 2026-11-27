@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useLedger, type LedgerDeps } from "@/components/ledger/useLedger";
 import { cacheKey, memoryStorage } from "@/lib/chain/cache";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
+import { decodeVaultLogs } from "@/lib/chain/events";
 import type { LedgerClient } from "@/lib/chain/load";
 import type { RationaleSource } from "@/lib/chain/rationale";
 import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
@@ -120,6 +121,32 @@ describe("useLedger", () => {
     expect(s.snapshot.scan.fromSnapshot?.block).toBe(SNAP_BLOCK);
     expect(client.logCalls.reduce((m, c) => (c.from < m ? c.from : m), SNAP_BLOCK)).toBe(SNAP_BLOCK - SNAPSHOT_REORG_WINDOW);
     expect(s.snapshot.decisions).toHaveLength(4);
+  });
+
+  it("shows the committed snapshot's Decisions at once, newest first, while Base has not answered yet", async () => {
+    // Base never answers: the vault check, and so every read, waits.
+    const hang = () => new Promise<never>(() => {});
+    const methods = ["getBlockNumber", "getBytecode", "readContract", "multicall", "getBlock", "getLogs", "getTransactionReceipt", "getTransaction"] as const;
+    const client = Object.fromEntries(methods.map((m) => [m, vi.fn(hang)])) as unknown as LedgerClient;
+    const { result } = hook({ client, fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX }), fetchSnapshot: async () => snapshotFixture });
+    await waitFor(() => expect(result.current.mode === "loading-config" && result.current.preview).toBeTruthy());
+    const preview = result.current.mode === "loading-config" ? result.current.preview! : null;
+    const inFile = decodeVaultLogs(snapshotFixture.logs as never).filter((e) => e.name === "Decision");
+    expect(inFile.length).toBeGreaterThan(1);
+    expect(preview!.block).toBe(SNAP_BLOCK);
+    expect(preview!.decisions.map((d) => d.txHash)).toEqual(inFile.map((e) => e.txHash).reverse());
+    // Nothing Base would give is made up: no time and no gas for a Decision this build does not record.
+    expect(preview!.decisions.every((d) => d.timestamp === null && d.gasUsed === null)).toBe(true);
+  });
+
+  it("shows no preview for a snapshot of another vault", async () => {
+    const hang = () => new Promise<never>(() => {});
+    const client = { getBytecode: vi.fn(hang), readContract: vi.fn(hang) } as unknown as LedgerClient;
+    const other = { ...snapshotFixture, vault: "0x00000000000000000000000000000000000000aa" };
+    const { result } = hook({ client, fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX }), fetchSnapshot: async () => other });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(result.current).toMatchObject({ mode: "loading-config" });
+    expect(result.current.mode === "loading-config" && result.current.preview).toBeFalsy();
   });
 
   it("asks for no snapshot while the deployments file has no vault", async () => {

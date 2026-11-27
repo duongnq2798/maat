@@ -26,6 +26,15 @@ const LABEL: Record<SenderLabel, { className: string; title: string }> = {
   },
 };
 
+/** The §4 sender label alone, as the Decision rows show it. */
+export function SenderChip({ label }: { label: SenderLabel }) {
+  return (
+    <span data-sender-label={label} title={LABEL[label].title} className={`${CHIP} ${LABEL[label].className}`}>
+      {label}
+    </span>
+  );
+}
+
 /** The blob status the page shows beside the sender label (spec §4). */
 export function blobStatusText(trail: DecisionTrail): string {
   const blob = trail.call?.blob;

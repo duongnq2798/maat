@@ -1,6 +1,6 @@
 import { getAddress, type Address, type Hex } from "viem";
 import type { LedgerSnapshot } from "@/lib/chain/load";
-import { toVaultRow, type VaultRow } from "./vault-rows";
+import { recordedSender, toVaultRow, type VaultRow } from "./vault-rows";
 
 // The landing's live rows, with what its read of Base tells about a bill. Loaded with VaultReader, in the chunk that
 // carries viem and the ledger's loader, never in the landing's first load.
@@ -19,15 +19,17 @@ export function intentPayee(input: Hex): Address | null {
  * The read's Decisions as rows, newest first. A PAY_EXPENSE is a compute bill when its trail holds a maat:v1 blob of
  * kind "bill" whose keccak256 is the Decision's rationaleHash; its payee is read from the intent only when the
  * transaction is a direct `execute` call to the vault (the trail's `call`), since the vault pays exactly that payee.
+ * Each row carries the sender label of its trail, or the one this build records for its transaction.
  */
 export function liveRows(snapshot: Pick<LedgerSnapshot, "decisions" | "txs" | "trails" | "treasury">): VaultRow[] {
   const owner = snapshot.treasury?.owner ?? null;
   return snapshot.decisions.map((d) => {
-    if (d.action !== "PAY_EXPENSE") return toVaultRow(d);
     const trail = snapshot.trails.get(d.key);
+    const sender = trail?.label ?? recordedSender(d.txHash);
+    if (d.action !== "PAY_EXPENSE") return toVaultRow(d, {}, sender);
     const blob = trail?.call?.blob;
     const compute = trail?.blobHashOk === true && blob?.status === "v1" && blob.fields.k === "bill";
     const tx = trail?.call ? snapshot.txs.get(d.txHash.toLowerCase()) : undefined;
-    return toVaultRow(d, { compute, payee: tx ? intentPayee(tx.input) : null, owner });
+    return toVaultRow(d, { compute, payee: tx ? intentPayee(tx.input) : null, owner }, sender);
   });
 }
