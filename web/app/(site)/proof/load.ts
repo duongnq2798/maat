@@ -1,6 +1,6 @@
 import type { Address, Hex, PublicClient } from "viem";
 import { browserStorage, loadCache } from "@/lib/chain/cache";
-import { readBriefs, type InboxDeployment } from "@/lib/chain/inbox";
+import { readBriefs, type BriefRead, type InboxDeployment } from "@/lib/chain/inbox";
 import { errorText, type LedgerClient } from "@/lib/chain/load";
 import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
 import { countBriefs, countDecisions, type DecisionCount, type ProofCount, type ProofLists } from "./count";
@@ -24,6 +24,8 @@ export interface ProofRead {
   problems: string[];
   /** The block the briefs were read to; the team set, the vault's Decisions and the column are read at this block too. */
   head: bigint;
+  /** The blocks whose Brief logs came from the committed Brief snapshot, once Base confirmed it, or null. */
+  briefsFrom: BriefRead["fromSnapshot"];
   team: TeamTrace;
   /** The Decision lines, from the vault's Decision logs the trace read, or null when it read no vault. */
   decisions: DecisionCount | null;
@@ -35,10 +37,15 @@ export const clientRpc =
   (method, params) =>
     client.request({ method, params } as never) as Promise<unknown>;
 
-/** Vault logs /proof may start from instead of reading every block from the vault's deploy. */
+/** Logs /proof may start from instead of reading every block from the vault's and the inbox's deploy. */
 export interface ProofSeeds {
   /** The committed snapshot, as /data/decisions-snapshot.json serves it (parsed JSON), or a promise of it. */
   snapshot?: unknown;
+  /**
+   * The committed Brief snapshot, as /data/briefs-snapshot.json serves it (parsed JSON), or a promise of it. readBriefs
+   * takes its logs below the reorg window once Base confirms each one, and reads only the blocks after them.
+   */
+  briefs?: unknown;
   /** Where the ledger keeps its cache of the vault's logs: this browser's localStorage unless given. */
   storage?: Storage | null;
 }
@@ -66,8 +73,8 @@ export async function vaultSeed(vault: string, seeds: ProofSeeds): Promise<Vault
  * Everything /proof shows, from the chain: every Brief log of the inbox up to the head (the /ask reader), the team set
  * traced at the head from those logs, the vault's and the committed lists, the briefs counted by the rule, the vault's
  * Decisions the trace read, each on its line, then the Verified Account of each outside wallet, read at the head block
- * and judged at its timestamp. An incomplete read gives no column, since its lines show no number. The vault's logs may
- * start from `seeds` (ProofSeeds); both scans read LOG_WORKERS windows at a time.
+ * and judged at its timestamp. An incomplete read gives no column, since its lines show no number. The vault's and the
+ * inbox's logs may start from `seeds` (ProofSeeds); both scans read LOG_WORKERS windows at a time.
  */
 export async function readProof(
   client: ProofClient,
@@ -78,7 +85,14 @@ export async function readProof(
 ): Promise<ProofRead> {
   // The head first, so the trace reads the vault's logs to it while the Brief logs are read.
   const head = await client.getBlockNumber();
-  const scan = readBriefs(client, { inbox: config.inbox.inbox, deployTx: config.inbox.deployTx, head, signal, concurrency: LOG_WORKERS });
+  const scan = readBriefs(client, {
+    inbox: config.inbox.inbox,
+    deployTx: config.inbox.deployTx,
+    head,
+    signal,
+    concurrency: LOG_WORKERS,
+    snapshot: seeds.briefs,
+  });
   const vault = config.deployments.find((r) => r.contract === "MandateVault" && r.address.trim() !== "")?.address.trim();
   // The trace takes a team wallet's briefs as its sends from the Brief logs read here, so it reads none twice.
   const inputs = {
@@ -92,7 +106,7 @@ export async function readProof(
   const [read, team] = await Promise.all([scan, traceTeam(clientRpc(client), inputs, head, signal)]);
   const count = countBriefs(read.briefs, { ...lists, team: team.members });
   const problems = [...(read.complete ? [] : [SCAN_GAP]), ...team.gaps];
-  const base = { count, complete: problems.length === 0, problems, head: read.head, team, decisions: countDecisions(team) };
+  const base = { count, complete: problems.length === 0, problems, head: read.head, briefsFrom: read.fromSnapshot, team, decisions: countDecisions(team) };
   if (!base.complete || count.outsideWallets.length === 0) return { ...base, verified: new Map(), verifiedError: null };
   try {
     const block = await client.getBlock({ blockNumber: read.head });
