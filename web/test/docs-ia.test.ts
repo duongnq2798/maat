@@ -62,6 +62,7 @@ const SHIPPED: readonly string[] = [
   "security/threat-model",
   "security/not-claimed",
   "security/testing",
+  "security/static-analysis",
   "security/report-a-vulnerability",
   "help/faq",
   "help/glossary",

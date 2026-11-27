@@ -23,15 +23,32 @@ describe("landing page", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
     // The nav lists pages, not the landing's sections, so the in-page links are the skip link, the home link and the
-    // hero's and the sections' own links.
-    expect([...ids].sort()).toEqual(["main", "reasons", "top", "try"]);
+    // hero's and the sections' own links. The hero's three steps open How it works (spec 2026-11-27 section 1); its first
+    // CTA and the footer's "Watch the film" open the film band (section 2).
+    expect([...ids].sort()).toEqual(["film", "how", "main", "reasons", "top", "try"]);
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
   });
 
-  it("orders the sections like the comp", () => {
+  it("defines the mandate where the page's prose first names it (spec 2026-11-27 section 4)", () => {
     const c = setup();
-    const ids = [...c.querySelectorAll("#top, #how, #reasons, #try, #ledger, #mandate")].map((el) => el.id);
-    expect(ids).toEqual(["top", "how", "reasons", "try", "ledger", "mandate"]);
+    // The text a reader sees, in order: not a hidden tab panel, not the noscript line, and not the agent's note, which
+    // is quoted verbatim.
+    let text = "";
+    const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.parentElement?.closest("[hidden], noscript, [data-hero-note]")) continue;
+      text += `${n.textContent} `;
+    }
+    const at = text.search(/\bmandate\b/i);
+    expect(at).toBeGreaterThan(-1);
+    expect(text.slice(at)).toMatch(/^mandate \(the vault's public rule set\)/);
+  });
+
+  it("orders the sections like the comp, with the film band directly under the hero (spec 2026-11-27 section 2)", () => {
+    const c = setup();
+    const ids = [...c.querySelectorAll("#top, #film, #how, #reasons, #try, #ledger, #mandate")].map((el) => el.id);
+    expect(ids).toEqual(["top", "film", "how", "reasons", "try", "ledger", "mandate"]);
+    expect(c.querySelector("#top")!.nextElementSibling).toBe(c.querySelector("#film"));
   });
 
   it("lists all nineteen refusals once, each titled by its plain label, and highlights only MARKET_CLOSED", () => {
@@ -100,6 +117,8 @@ describe("landing page", () => {
   it("closes with the CTA, disclaimer and tagline verbatim", () => {
     setup();
     expect(screen.getByRole("link", { name: "Follow @maatonbase" })).toHaveAttribute("href", SITE.xUrl);
+    // Spec 2026-11-27 section 2: "Watch it say no." gains the film, in the page on the landing.
+    expect(screen.getByRole("link", { name: "Watch the film" })).toHaveAttribute("href", "#film");
     expect(screen.getByRole("link", { name: "Read the code" })).toHaveAttribute("href", SITE.repoUrl);
     const links = within(screen.getByRole("list", { name: "Project links" }))
       .getAllByRole("link")
@@ -127,6 +146,7 @@ describe("landing page", () => {
   });
 
   it("uses no raster images", () => {
+    // The film's poster is its <video>'s own attribute, not an <img> (spec 2026-11-27 section 2).
     expect(setup().querySelectorAll("img")).toHaveLength(0);
   });
 });

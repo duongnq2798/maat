@@ -1,8 +1,11 @@
+import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
 import { encodeFunctionData, getAddress, keccak256, toBytes, toHex, type Address, type Hex } from "viem";
 import { ASK_OPEN } from "../content/ask-open";
 import { NAV_TOKENS } from "../content/b20-nav";
 import { FACTS } from "../content/facts";
+import { HERO_CTAS, HERO_DEFINITION } from "../content/hero";
+import agentNote from "../content/generated/agent-note.json" with { type: "json" };
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { REASON_LABEL, REASONS } from "../content/reasons";
@@ -15,7 +18,7 @@ import { SITE } from "../lib/site";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
 import { fixtureResults, routeLiveRpc, type Scenario, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
-import { collectErrors, lineCount } from "./helpers";
+import { collectErrors } from "./helpers";
 
 // The landing's first screen leads with the mainnet vault (plan 2026-11-25 Move 4). The live strip reads the recorded
 // weekend of e2e/fake-live-rpc.ts. The vault's read is /ledger's loader, whose batched calls go to the fake chain of
@@ -141,8 +144,9 @@ async function routeVault(page: Page, chain: FakeScenario = scenario) {
   );
 }
 
-const plate = (page: Page) => page.locator("#top [data-vault-plate]");
 const vaultCard = (page: Page) => page.locator("#top [data-vault-card]");
+/** The link of the card's newest row: its transaction on Basescan's Logs tab. */
+const firstRowLink = (page: Page) => vaultCard(page).getByRole("list", { name: "Recent decisions" }).getByRole("listitem").first().getByRole("link");
 const bottom = async (l: Locator) => {
   const box = await l.boundingBox();
   return box!.y + box!.height;
@@ -168,31 +172,30 @@ function forkWordsInFirstScreen(page: Page) {
 }
 
 for (const vp of VIEWPORTS) {
-  test(`at ${vp.width}x${vp.height} the first screen leads with the mainnet vault and names the fork only on the replay tab`, async ({
+  test(`at ${vp.width}x${vp.height} the first screen says what Maat is and names the fork only on the replay tab`, async ({
     page,
   }) => {
     const errors = collectErrors(page);
     await page.setViewportSize(vp);
     await routeLiveRpc(page, "weekend");
     await page.goto("/");
-    await expect(plate(page)).toHaveAttribute("data-vault-plate", "recorded");
+    await expect(vaultCard(page)).toHaveAttribute("data-vault-card", "recorded");
 
-    // The plate is the hero's first line, above the H1, and links the latest recorded Decision's transaction on
-    // Basescan's Logs tab: the agent's refusal, labelled as /ledger labels its sender.
-    const p = plate(page);
-    await expect(p).toBeVisible();
-    await expect(p).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
-    await expect(p).toContainText("BASE MAINNET");
+    // Spec 2026-11-27 section 1: no plate above the H1 any more; the definition is the first line under it, and the
+    // card keeps the latest mainnet Decision, linked to its transaction on Basescan's Logs tab.
+    await expect(page.locator("#top [data-vault-plate]")).toHaveCount(0);
+    const h1 = page.getByRole("heading", { level: 1 });
+    await expect(page.locator("#top [data-hero-definition]")).toHaveText(HERO_DEFINITION);
+    expect(await bottom(page.locator("#top [data-hero-definition]"))).toBeLessThanOrEqual(vp.height);
+    expect(await bottom(h1)).toBeLessThanOrEqual((await page.locator("#top [data-hero-definition]").boundingBox())!.y);
     expect(NEWEST.sender).toBe("agent");
-    await expect(p).toContainText(/Recorded Decision: Refused · Market closed · BUY GOOGLc · \$4\.68 · agent · \w{3} \d{1,2} \w{3} \d{2}:\d{2} ET/);
-    expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
-    const h1 = await page.getByRole("heading", { level: 1 }).boundingBox();
-    expect(await bottom(p)).toBeLessThanOrEqual(h1!.y);
+    await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
 
-    // The primary CTA opens the ledger.
+    // The primary CTA opens the film band directly under the hero (spec 2026-11-27 section 2); never a dead link.
     const primary = page.locator("[data-hero-cta]").first();
-    await expect(primary).toHaveText("See the vault's last decision");
-    await expect(primary).toHaveAttribute("href", "/ledger");
+    await expect(primary).toHaveText(HERO_CTAS[0].label);
+    await expect(primary).toHaveAttribute("href", "#film");
+    await expect(page.locator("#top + #film")).toHaveCount(1);
 
     const words = await forkWordsInFirstScreen(page);
     expect(words.filter((w) => !w.tab)).toEqual([]);
@@ -202,13 +205,16 @@ for (const vp of VIEWPORTS) {
       await expect(page.locator("#top").getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
       await expect(vaultCard(page)).toBeVisible();
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
+      // The one live proof: the card's latest mainnet Decision and its verdict, whole, in the first screen.
+      expect(await bottom(vaultCard(page).locator("[data-latest-line]"))).toBeLessThanOrEqual(vp.height);
+      expect(await bottom(vaultCard(page).locator("[data-verdict]"))).toBeLessThanOrEqual(vp.height);
     }
     expect(errors).toEqual([]);
   });
 }
 
 for (const vp of VIEWPORTS) {
-  test(`at ${vp.width}x${vp.height} the plate and the card show the vault's latest Decision read from Base`, async ({ page }) => {
+  test(`at ${vp.width}x${vp.height} the card shows the vault's latest Decision read from Base, with its own time`, async ({ page }) => {
     const errors = collectErrors(page);
     await page.setViewportSize(vp);
     await page.clock.setFixedTime(NOW_MS);
@@ -217,13 +223,19 @@ for (const vp of VIEWPORTS) {
     await page.goto("/");
 
     await expect(vaultCard(page)).toHaveAttribute("data-vault-card", "live");
-    const p = plate(page);
-    await expect(p).toHaveAttribute("data-vault-plate", "live");
-    await expect(p).toHaveAttribute("href", basescanDecision(hash32(9)));
-    await expect(p).toContainText(`Last Decision: Refused · ${REASON_LABEL[LONGEST]} · BUY NVDAc · $50.00 · ${AGE} ago`);
-    expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
-
     const card = vaultCard(page);
+    // The card's newest Decision says its own time, so it never reads as the live line's "Right now" (spec 2026-11-27
+    // section 1), and names its ticker the first time it appears (section 4).
+    await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(hash32(9)));
+    await expect(card.locator("[data-latest-line]")).toHaveText("BUY NVDAc · $50.00");
+    await expect(card.locator("[data-latest-when]")).toContainText(`· ${AGE} ago`);
+    // Its own date first, "Thu 26 Nov 22:07 ET", never only an age.
+    await expect(card.locator("[data-latest-when]")).toHaveText(/^\w{3} \d{1,2} \w{3} \d{2}:\d{2} ET · block /);
+    await expect(card.locator("[data-ticker-gloss]")).toHaveText("NVDAc (NVIDIA, a B20 token on Base)");
+    // The note under the card is newer than this Decision, so its quote stays.
+    await expect(page.locator("#top [data-hero-note]")).toHaveAttribute("data-hero-note", "recorded");
+    await expect(card.locator("[data-verdict]")).toContainText(REASON_LABEL[LONGEST]);
+
     await expect(card).toContainText(`${RECORDED.length + 1} Decisions on Base mainnet, read from Base by your browser.`);
     const rows = card.getByRole("list", { name: "Recent decisions" }).getByRole("listitem");
     await expect(rows).toHaveCount(3);
@@ -233,10 +245,11 @@ for (const vp of VIEWPORTS) {
 
     if (vp.width === 1440) {
       await expect(page.locator("[data-vault-bar]")).toHaveText(`Last Decision ${AGE} ago.`);
-      // The longest plate keeps to one line, its whole text in its title, and both CTAs stay in the first screen.
-      expect(await lineCount(p.locator(":scope > span").last())).toBe(1);
-      await expect(p).toHaveAttribute("title", `Last Decision: Refused · ${REASON_LABEL[LONGEST]} · BUY NVDAc · $50.00 · ${AGE} ago`);
+      // With the longest refusal on the card, both CTAs stay in the first screen, and so do the card's latest Decision
+      // and its verdict.
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
+      expect(await bottom(card.locator("[data-latest-line]"))).toBeLessThanOrEqual(vp.height);
+      expect(await bottom(card.locator("[data-verdict]"))).toBeLessThanOrEqual(vp.height);
     } else {
       await expect(page.locator("[data-vault-bar]")).toBeHidden();
     }
@@ -245,7 +258,7 @@ for (const vp of VIEWPORTS) {
 }
 
 for (const vp of VIEWPORTS) {
-  test(`at ${vp.width}x${vp.height} a compute bill reads as a bill on a neutral plate, never as a trade or as Allowed`, async ({ page }) => {
+  test(`at ${vp.width}x${vp.height} a compute bill reads as a bill on a neutral verdict plate, never as a trade or as Allowed`, async ({ page }) => {
     const errors = collectErrors(page);
     await page.setViewportSize(vp);
     await page.clock.setFixedTime(NOW_MS);
@@ -255,11 +268,10 @@ for (const vp of VIEWPORTS) {
 
     const card = vaultCard(page);
     await expect(card).toHaveAttribute("data-vault-card", "live");
-    const p = plate(page);
-    await expect(p).toHaveAttribute("href", basescanDecision(hash32(9)));
-    await expect(p).toContainText(`Last Decision: ${BILL_LINE} · ${AGE} ago`);
-    expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
-
+    await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(hash32(9)));
+    await expect(card.locator("[data-latest-when]")).toContainText(`· ${AGE} ago`);
+    // A bill names no ticker to explain.
+    await expect(card.locator("[data-ticker-gloss]")).toHaveCount(0);
     await expect(card.locator("[data-latest-line]")).toHaveText(BILL_LINE);
     const verdict = card.locator("[data-verdict]");
     await expect(verdict).toHaveAttribute("data-verdict", "bill");
@@ -275,10 +287,68 @@ for (const vp of VIEWPORTS) {
     await page.screenshot({ path: `test-results/screens/landing-bill-${vp.width}.png` });
 
     if (vp.width === 1440) {
-      expect(await lineCount(p.locator(":scope > span").last())).toBe(1);
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
     }
     expect(errors).toEqual([]);
+  });
+}
+
+/** The time of the Decision read after the note recorded in this build: an hour after the note's round. */
+const AFTER_NOTE = Math.ceil(agentNote.note.ts) + 3600;
+/** The same vault, its newest Decision an hour after the agent's recorded note: the agent acted since it. */
+const afterNoteScenario: FakeScenario = {
+  ...scenario,
+  headTime: AFTER_NOTE + 20,
+  times: { ...scenario.times, [String(NEW_BLOCK)]: AFTER_NOTE },
+};
+
+for (const vp of VIEWPORTS) {
+  test(`at ${vp.width}x${vp.height} the note under the card gives way to one dated line once the card's Decision is newer`, async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize(vp);
+    await page.clock.setFixedTime((AFTER_NOTE + 3 * 3600 + 5 * 60) * 1000);
+    await routeLiveRpc(page, "weekend");
+    await routeVault(page, afterNoteScenario);
+    await page.goto("/");
+
+    const card = vaultCard(page);
+    const note = page.locator("#top [data-hero-note]");
+    // The static page quotes the note (every Decision recorded in this build is older); the read brings a newer one.
+    await expect(card).toHaveAttribute("data-vault-card", "live");
+    await expect(card.locator("[data-latest-when]")).toContainText(`· ${AGE} ago`);
+    await expect(note).toHaveAttribute("data-hero-note", "superseded");
+    await expect(note).toHaveText(
+      `The vault's latest Decision is newer than the last note from Maat's agent in this build (${agentNote.note.when}). Newer rounds on /now →`,
+    );
+    await expect(note.locator("blockquote")).toHaveCount(0);
+    await expect(note.getByRole("link", { name: "Newer rounds on /now" })).toHaveAttribute("href", "/now");
+    await page.screenshot({ path: `test-results/screens/landing-note-superseded-${vp.width}.png` });
+    const { violations } = await new AxeBuilder({ page }).include("#top [data-hero-note]").analyze();
+    expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")) }))).toEqual([]);
+    expect(errors).toEqual([]);
+  });
+}
+
+/** The gap between the last line of the last section and the footer's heading, "Watch it say no.", in px. */
+function gapAboveFooter(page: Page) {
+  return page.evaluate(() => {
+    const sections = document.querySelectorAll("#main > section");
+    const last = sections[sections.length - 1]!.firstElementChild!.lastElementChild!;
+    const heading = document.querySelector("footer h2")!;
+    return heading.getBoundingClientRect().top - last.getBoundingClientRect().bottom;
+  });
+}
+
+for (const vp of VIEWPORTS) {
+  test(`at ${vp.width}x${vp.height} no empty band opens above "Watch it say no."`, async ({ page }) => {
+    await page.setViewportSize(vp);
+    await routeLiveRpc(page, "weekend");
+    await page.goto("/");
+    await page.locator("footer h2").scrollIntoViewIfNeeded();
+    // Spec 2026-11-27 section 4: the last section ends on the footer's own padding, not on a section's full one too.
+    const gap = await gapAboveFooter(page);
+    expect(gap).toBeGreaterThan(0);
+    expect(gap).toBeLessThan(140);
   });
 }
 
@@ -361,7 +431,7 @@ for (const vp of VIEWPORTS) for (const reading of READINGS) {
     expect(runs.filter((r) => r.in === "block").every((r) => r.px < largest)).toBe(true);
 
     const line = strip.locator("[data-verdict-line]");
-    // A mixed line keeps its reasons at the strip's 13 px; its verb, REFUSE, is set at the verdict size.
+    // A mixed line keeps its reasons at the strip's 13 px; its verb, Refused, is set at the verdict size.
     const verdict = reading.kind === "mixed" ? line.locator("[data-verdict-word]") : line;
     const block = strip.locator(".readout-figure");
     const size = (l: Locator) => l.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
@@ -388,8 +458,7 @@ test("when Base does not answer, the landing shows the recorded Decisions and re
 
   const card = vaultCard(page);
   await expect(card).toHaveAttribute("data-vault-card", "recorded", { timeout: 20_000 });
-  await expect(plate(page)).toHaveAttribute("data-vault-plate", "recorded");
-  await expect(plate(page)).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
+  await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
   await expect(card).toContainText("recorded · could not read Base");
   await expect(card).toContainText(`Could not read the vault on Base, so this shows the ${RECORDED.length} Decisions recorded in this build.`);
   const rows = card.getByRole("list", { name: "Recent decisions" }).getByRole("listitem");

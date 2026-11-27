@@ -1,12 +1,12 @@
 #!/usr/bin/env node
-// Rebuilds the brief lines of the site's /proof page from Base mainnet alone, by the counting rule of
+// Rebuilds the brief and Decision lines of the site's /proof page from Base mainnet alone, by the counting rule of
 // docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5. It reads the deployments table from
 // deployments/README.md and the five lists from web/content/ (the team list, the team sends that no vault or inbox log
 // the trace reads gives, the hop stops, the hide-list and the bounty claimants), then every Brief log of the inbox, the
-// team set traced at the block counted to, and the Coinbase Verified Account of each outside wallet, over a keyless
-// JSON-RPC. The Decision lines of the rule are not rebuilt yet, and it says so.
+// team set traced at the block counted to, the vault's Decision logs that trace reads, each labelled by the rule, and
+// the Coinbase Verified Account of each outside wallet, over a keyless JSON-RPC.
 //
-//   node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>] [--snapshot]
+//   node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>] [--snapshot] [--csv]
 //   node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 //
 // No dependency: Node's built-ins and fetch only. It reads the TypeScript lists, and the team trace
@@ -47,10 +47,12 @@ const ZERO32 = `0x${"0".repeat(64)}`;
 const RULE = "docs/superpowers/specs/2026-11-25-maat-inbox-design.md, section 5";
 /** The committed snapshot of the vault's logs (web/lib/chain/snapshot.ts), which --snapshot reads. */
 const SNAPSHOT_FILE = "web/content/generated/decisions-snapshot.json";
+/** The header row of --csv. */
+export const CSV_HEAD = "line,count,allowed,refused";
 
-const USAGE = `Rebuilds the /proof brief lines from Base mainnet alone.
+const USAGE = `Rebuilds the /proof brief and Decision lines from Base mainnet alone.
 
-  node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>] [--snapshot]
+  node scripts/recount.mjs [--rpc <url>] [--logs-rpc <url>] [--to-block <n>] [--root <dir>] [--snapshot] [--csv]
   node scripts/recount.mjs --sends <wallet> --rpc <archive url> [--logs-rpc <url>] [--to-block <n>] [--root <dir>]
 
   --rpc <url>        a Base mainnet JSON-RPC (default ${DEFAULT_RPC}); when it rate-limits, fewer requests go
@@ -64,6 +66,9 @@ const USAGE = `Rebuilds the /proof brief lines from Base mainnet alone.
                      wallet then has fewer sends than its nonce, read the file's blocks from the RPC as well. Without
                      it, every log is read from the RPC, from the vault's deploy block on, and the recount depends on
                      no file but the deployments table and the five lists.
+  --csv              print only the ten lines of the rule, as CSV with the columns ${CSV_HEAD}: count
+                     is a number, or the word the line gives in place of one; allowed and refused are filled
+                     on the Decision lines once they are read. The exit code is the same as without it.
   --sends <wallet>   print the entry of web/content/proof-sends.ts the wallet needs at block n: the transactions it
                      sent that left no vault log the team trace reads (it skips RevenueReceived, which anyone can
                      make the vault emit) and no Brief of MaatInbox, in nonce order. It reads the wallet's nonce at
@@ -185,20 +190,48 @@ const briefsText = (n) => `${formatCount(n)} ${n === 1 ? "brief" : "briefs"}`;
 const STATE_TEXT = { incomplete: "incomplete", "not-deployed": "not deployed" };
 
 /**
- * The lines /proof shows, in its words: the six lines; when `state` is "counted", the rows behind them; the bounty
- * claimants; then `teamText`, the trace's lines. Otherwise each brief line gives the state's word in place of a number.
+ * The ten lines of the rule, in the order its table lists them, each with its number `n` or, when it has none, the
+ * `word` it gives: a brief line the state's word, a Decision line "not read" until `decisions` is given. `split` is a
+ * Decision line's Decisions the vault allowed and refused, once read. The same lines as count.ts proofLines.
  */
-export function reportLines(count, verified, state = "counted", teamText = []) {
+export function countLines(count, verified, state = "counted", decisions = null) {
   const counted = state === "counted";
-  const brief = (n) => (counted ? formatCount(n) : STATE_TEXT[state]);
-  const holders = count.outsideWallets.filter((w) => verified.get(w.address)).length;
+  const brief = (label, n) => (counted ? { label, n, word: null, split: null } : { label, n: null, word: STATE_TEXT[state], split: null });
+  const decision = (label, t) => (t ? { label, n: t.allowed + t.refused, word: null, split: t } : { label, n: null, word: "not read", split: null });
+  const t = decisions?.tally;
   return [
-    `Outside briefs: ${brief(count.outsideBriefs)}`,
-    `Outside wallets: ${brief(count.outsideWallets.length)}`,
-    `Outside wallets with a Verified Account: ${brief(holders)}`,
-    `Team briefs: ${brief(count.teamBriefs)}`,
-    `Hidden briefs: ${brief(count.hidden.length)}`,
-    `Bounty claimants: ${formatCount(count.bounty.length)}`,
+    decision("Owner by hand Decisions", t?.["owner, by hand"]),
+    decision("Agent Decisions", t?.agent),
+    decision("Probe Decisions", t?.probe),
+    brief("Outside briefs", count.outsideBriefs),
+    brief("Outside wallets", count.outsideWallets.length),
+    brief("Outside wallets with a Verified Account", count.outsideWallets.filter((w) => verified.get(w.address)).length),
+    decision("Brief-driven Decisions", t?.["brief-driven"]),
+    brief("Team briefs", count.teamBriefs),
+    brief("Hidden briefs", count.hidden.length),
+    { label: "Bounty claimants", n: count.bounty.length, word: null, split: null },
+  ];
+}
+
+/** Each label in the rule's words, as a Decision's row in the report gives it (count.ts ROW_LABEL). */
+const ROW_LABEL = { "owner, by hand": "owner by hand", agent: "agent", probe: "probe", "brief-driven": "brief-driven" };
+
+/**
+ * The lines /proof shows, in its words: the ten lines; every Decision with its label; when `state` is "counted", the
+ * rows behind the brief lines; the bounty claimants; then `teamText`, the trace's lines. Otherwise each brief line gives
+ * the state's word in place of a number.
+ */
+export function reportLines(count, verified, state = "counted", teamText = [], decisions = null) {
+  const counted = state === "counted";
+  return [
+    ...countLines(count, verified, state, decisions).map((l) => {
+      const value = l.n === null ? l.word : formatCount(l.n);
+      return `${l.label}: ${l.split ? `${value} (${formatCount(l.split.allowed)} allowed, ${formatCount(l.split.refused)} refused)` : value}`;
+    }),
+    ...(decisions?.rows ?? []).map((r) => {
+      const cites = r.briefs.length > 0 ? ` citing ${r.briefs.map((id) => `#${id}`).join(", ")}` : "";
+      return `Decision ${r.txHash} log ${r.logIndex} in block ${r.block.toLocaleString("en-US")}: ${ROW_LABEL[r.label]}${cites}, vault ${r.allowed ? "allowed" : "refused"}`;
+    }),
     ...(counted ? count.outsideWallets : []).map((w) => {
       const uid = verified.get(w.address);
       return `Outside wallet ${w.address}: ${briefsText(w.briefs)}, ${uid ? `Verified Account ${uid}` : "no Verified Account"}`;
@@ -208,6 +241,168 @@ export function reportLines(count, verified, state = "counted", teamText = []) {
     ...count.bounty.map((c) => `Bounty claimant ${c.address}: ${c.evidence}`),
     ...teamText,
   ];
+}
+
+/** A CSV cell: quoted, with its quotes doubled, when it holds a comma, a quote or a line break. */
+const csvCell = (v) => (/[",\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+
+/** --csv: CSV_HEAD, then the ten lines of countLines, with plain digits for a number and the line's word for none. */
+export function csvLines(count, verified, state = "counted", decisions = null) {
+  return [
+    CSV_HEAD,
+    ...countLines(count, verified, state, decisions).map((l) =>
+      [l.label, l.n === null ? l.word : String(l.n), l.split ? String(l.split.allowed) : "", l.split ? String(l.split.refused) : ""].map(csvCell).join(","),
+    ),
+  ];
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// The Decision lines: each Decision log of the vault gets the label /ledger gives it (web/lib/chain/ledger.ts
+// senderLabel), first match wins, from its transaction's sender and the maat:v1 blob that web/lib/chain/rationale.ts
+// decodes from the calldata of a transaction sent to the vault, by
+// docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md (§1 the calldata, §2.6 the validation, §4 the
+// labels). Node has no keccak, and a label needs none: only whether the blob is v1, and its k and q.
+// web/test/proof-recount.test.ts checks this decoder against the page's on the spec's vectors and broken blobs.
+
+/** The selector of execute((bytes32,uint8,address,uint256,uint256,address,bytes32)). */
+export const EXECUTE_SELECTOR = "0x4ad3993f";
+/** `execute(Intent)` calldata is always this long: the selector and seven static words. */
+const EXECUTE_BYTES = 228;
+const BLOB_PREFIX = "maat:v1:";
+const MAX_BLOB_BYTES = 1024;
+/** The 16 bytes that end an ERC-8021 suffix. */
+const ERC8021_MARKER = "80218021802180218021802180218021";
+const PROBE_TEXT_PREFIX = "PROBE v1, not a Claude proposal";
+const BILL_TEXT_PREFIX = "Compute bill: ";
+const BLOB_KEYS = new Set(["b", "c", "j", "k", "m", "q", "r", "s", "t"]);
+const COMMIT_RE = /^(?:[0-9a-f]{40}(?:-dirty)?|unknown)$/;
+const HASH_RE = /^0x[0-9a-f]{64}$/;
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/;
+const RUN_RE = /^[A-Za-z0-9._:-]{1,64}$/;
+// The spec's URL_RE and KEY_RE (§2.3), without the g flag so that test() keeps no state between calls.
+const URL_RE = /\b[a-z][a-z0-9+.-]*:\/\/\S*|\bwww\.\S*|\b(?:[a-z0-9-]+\.)+[a-z]{2,}\b(?:\/\S*)?/i;
+const KEY_RE = /\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}|\bgh[pousr]_[A-Za-z0-9]{20,}|\bgithub_pat_[A-Za-z0-9_]{20,}|\bxox[abprs]-[A-Za-z0-9-]{10,}|\bAKIA[0-9A-Z]{16}\b|-----BEGIN[A-Z ]*-----/;
+const denied = (v) => URL_RE.test(v) || KEY_RE.test(v);
+const SYM_RE = /^(?:[A-Za-z0-9]{1,16}|0x[0-9a-f]{40})$/;
+const ROUND_RE = /^(?:0|[1-9][0-9]{0,24})$/;
+const isNat = (v) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+
+/** The spec's canonical JSON (§2.2). Throws on a number that is not a safe integer. */
+function canon(v) {
+  if (v === null || typeof v === "string" || typeof v === "boolean") return JSON.stringify(v);
+  if (typeof v === "number") {
+    if (!Number.isSafeInteger(v)) throw new Error("integers only");
+    return JSON.stringify(v);
+  }
+  if (Array.isArray(v)) return `[${v.map(canon).join(",")}]`;
+  if (typeof v !== "object") throw new Error(`no canonical form for a ${typeof v}`);
+  const keys = Object.keys(v)
+    .filter((k) => v[k] !== undefined)
+    .sort();
+  return `{${keys.map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(",")}}`;
+}
+
+/** One `s` entry (§2.1): [symbol, round id, updatedAt, premium]. */
+function isSource(e) {
+  if (!Array.isArray(e) || e.length !== 4) return false;
+  const [sym, roundId, updatedAt, premiumBps] = e;
+  if (typeof sym !== "string" || !SYM_RE.test(sym)) return false;
+  if (roundId !== null && (typeof roundId !== "string" || !ROUND_RE.test(roundId))) return false;
+  if (updatedAt !== null && !isNat(updatedAt)) return false;
+  return premiumBps === null || (typeof premiumBps === "number" && Number.isSafeInteger(premiumBps));
+}
+
+/** The §2.1 rules for the parsed object: its `k` and `q` when it keeps them all, or null. */
+function blobFields(o) {
+  if (Object.keys(o).some((k) => !BLOB_KEYS.has(k))) return null;
+  if (!isNat(o.b)) return null;
+  if (typeof o.c !== "string" || !COMMIT_RE.test(o.c)) return null;
+  if (typeof o.j !== "string" || !HASH_RE.test(o.j)) return null;
+  const hasK = "k" in o;
+  if (hasK && o.k !== "probe" && o.k !== "bill") return null;
+  if (hasK && "m" in o) return null;
+  if (!hasK && (typeof o.m !== "string" || !MODEL_RE.test(o.m) || denied(o.m))) return null;
+  if ("q" in o) {
+    const v = o.q;
+    if (hasK || !Array.isArray(v) || v.length < 1 || v.length > 3 || !v.every(isNat) || v.some((x, i) => i > 0 && x <= v[i - 1])) return null;
+  }
+  if (typeof o.r !== "string" || !RUN_RE.test(o.r) || denied(o.r)) return null;
+  if (!Array.isArray(o.s) || o.s.length > 16 || !o.s.every(isSource)) return null;
+  if (typeof o.t !== "string" || o.t.length < 1 || o.t.length > 600) return null;
+  if (o.k === "probe" && !o.t.startsWith(PROBE_TEXT_PREFIX)) return null;
+  if (o.k === "bill" && !o.t.startsWith(BILL_TEXT_PREFIX)) return null;
+  return { ...(hasK ? { k: o.k } : {}), ...("q" in o ? { q: [...o.q] } : {}) };
+}
+
+/** The bytes of a blob that starts with `maat:v1:`, validated (§2.6): v1 with its `k` and `q`, or invalid. */
+function validateBlob(bytes) {
+  const invalid = { status: "invalid" };
+  if (bytes.length > MAX_BLOB_BYTES || bytes.some((x) => x < 0x20 || x > 0x7e)) return invalid;
+  const text = bytes.toString("latin1");
+  let parsed;
+  try {
+    parsed = JSON.parse(text.slice(BLOB_PREFIX.length));
+  } catch {
+    return invalid;
+  }
+  if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return invalid;
+  const fields = blobFields(parsed);
+  if (fields === null) return invalid;
+  try {
+    if (BLOB_PREFIX + canon(parsed) !== text) return invalid;
+  } catch {
+    return invalid;
+  }
+  return { status: "v1", fields };
+}
+
+/**
+ * The blob in the input of a transaction sent to the vault (§1): { status: "none" }, { status: "v1", fields: { k?, q? } },
+ * { status: "invalid" } or { status: "foreign" }; null when the input is not a direct `execute` call, which carries no
+ * blob. The end of the blob is the start of the ERC-8021 suffix, read from the end of the input.
+ */
+export function decisionBlob(input) {
+  let hex = String(input).replace(/^0x/i, "");
+  if (!/^[0-9a-fA-F]*$/.test(hex)) return null;
+  // As viem's hexToBytes, which the page decodes with, reads an odd number of digits.
+  if (hex.length % 2 === 1) hex = `0${hex}`;
+  const d = Buffer.from(hex, "hex");
+  const len = d.length;
+  if (len < EXECUTE_BYTES || `0x${d.subarray(0, 4).toString("hex")}` !== EXECUTE_SELECTOR) return null;
+  let end = len;
+  if (len >= EXECUTE_BYTES + 18 && d.subarray(len - 16).toString("hex") === ERC8021_MARKER && d[len - 17] === 0) {
+    const start = len - 18 - d[len - 18];
+    if (start >= EXECUTE_BYTES) end = start;
+  }
+  const b = d.subarray(EXECUTE_BYTES, end);
+  if (b.length === 0) return { status: "none" };
+  return b.length >= BLOB_PREFIX.length && b.subarray(0, BLOB_PREFIX.length).toString("latin1") === BLOB_PREFIX ? validateBlob(b) : { status: "foreign" };
+}
+
+/** §4, first match wins: as web/lib/chain/ledger.ts senderLabel. */
+export function senderLabel(from, owner, blob) {
+  if (from.toLowerCase() === owner.toLowerCase()) return "owner, by hand";
+  if (blob.status === "v1" && blob.fields.k === "probe") return "probe";
+  if (blob.status === "v1" && blob.fields.q !== undefined) return "brief-driven";
+  return "agent";
+}
+
+/**
+ * The Decision lines from the trace's Decisions (team.ts VaultDecision): each labelled, the blob read only from a
+ * transaction sent to the vault, and tallied as the vault allowed or refused it. Null when the trace read no vault. The
+ * same steps as count.ts countDecisions.
+ */
+export function countDecisions(trace) {
+  if (trace.vault === null || trace.owner === null) return null;
+  const tally = Object.fromEntries(["owner, by hand", "agent", "probe", "brief-driven"].map((l) => [l, { allowed: 0, refused: 0 }]));
+  const rows = trace.decisions.map((d) => {
+    const blob = (d.to === trace.vault ? decisionBlob(d.input) : null) ?? { status: "none" };
+    const label = senderLabel(d.from, trace.owner, blob);
+    tally[label][d.allowed ? "allowed" : "refused"] += 1;
+    const briefs = label === "brief-driven" ? [...blob.fields.q] : [];
+    return { txHash: d.txHash, logIndex: d.logIndex, block: d.block, label, allowed: d.allowed, briefs };
+  });
+  return { tally, rows };
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -471,10 +666,12 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
         root: { type: "string" },
         sends: { type: "string" },
         snapshot: { type: "boolean" },
+        csv: { type: "boolean" },
         help: { type: "boolean" },
       },
       strict: true,
     }).values;
+    if (args.csv && args.sends !== undefined) throw new Error("--csv prints the lines of the count, so it does not go with --sends");
   } catch (e) {
     err.write(`${e instanceof Error ? e.message : String(e)}\n\n${USAGE}`);
     return 2;
@@ -483,7 +680,12 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     out.write(USAGE);
     return 0;
   }
-  const say = (line) => out.write(`${line}\n`);
+  const write = (line) => out.write(`${line}\n`);
+  // With --csv, only the CSV goes to stdout: the lines around the count are left out.
+  const say = args.csv ? () => {} : write;
+  const report = (count, verified, state, teamText, decisions) => {
+    for (const line of args.csv ? csvLines(count, verified, state, decisions) : reportLines(count, verified, state, teamText, decisions)) write(line);
+  };
   try {
     if (!process.features.typescript) throw new Error("this Node.js cannot read the TypeScript lists in web/content/: run it with Node.js 24");
     // The page prints the block with thousands separators; digits with commas or underscores are taken as it prints it.
@@ -568,7 +770,7 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
       say("MaatInbox is not recorded in deployments/README.md yet, so there is no brief to count. Counting starts when the inbox is recorded.");
       say(TEAM_SET_NOTE);
       say(DECISION_NOTE);
-      for (const line of reportLines(countBriefs([], lists), new Map(), "not-deployed")) say(line);
+      report(countBriefs([], lists), new Map(), "not-deployed", [], null);
       return 0;
     }
 
@@ -595,6 +797,11 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     say(
       `MaatInbox ${record.inbox}: Brief logs from block ${from.toLocaleString("en-US")} to block ${head.toLocaleString("en-US")}, team set and Verified Accounts read at block ${head.toLocaleString("en-US")}.`,
     );
+    say(
+      trace.vault !== null
+        ? `MandateVault ${trace.vault}: its Decision logs to block ${head.toLocaleString("en-US")}, from the vault logs the team trace reads, and its owner() at that block.`
+        : "deployments/README.md gives no MandateVault with a mined deploy transaction, so no Decision is read.",
+    );
     if (args.snapshot && trace.seed) {
       say(
         `Vault logs to block ${trace.seed.to.toLocaleString("en-US")} from ${SNAPSHOT_FILE}, the snapshot of block ${trace.seed.anchor.toLocaleString("en-US")}: the RPC gives that block the same hash, and each log's transaction receipt holds it. The vault's other blocks, to block ${head.toLocaleString("en-US")}, are read from the RPC.`,
@@ -611,7 +818,7 @@ export async function main(argv, out = process.stdout, err = process.stderr) {
     }
     say(TEAM_SET_NOTE);
     say(DECISION_NOTE);
-    for (const line of reportLines(count, verified, complete ? "counted" : "incomplete", teamLines(trace))) say(line);
+    report(count, verified, complete ? "counted" : "incomplete", teamLines(trace), countDecisions(trace));
     if (!complete) {
       err.write(`recount: the count is incomplete: ${trace.gaps.join(" ")}\n`);
       return 1;

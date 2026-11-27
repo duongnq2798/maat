@@ -11,7 +11,7 @@ import { browserStorage } from "@/lib/chain/cache";
 import type { InboxDeployment } from "@/lib/chain/inbox";
 import { errorText } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
-import { fetchSnapshotJson } from "@/lib/chain/snapshot";
+import { fetchBriefsSnapshotJson, fetchSnapshotJson } from "@/lib/chain/snapshot";
 import { fetchProofConfig, sameProofConfig, type ProofConfig } from "./config";
 import { countBriefs, formatCount, type ProofLists } from "./count";
 import { readProof, type ProofClient, type ProofRead } from "./load";
@@ -29,6 +29,8 @@ export interface ProofDeps {
   lists?: ProofLists;
   /** The committed snapshot of the vault's logs, as /data/decisions-snapshot.json serves it. */
   fetchSnapshot?: () => Promise<unknown>;
+  /** The committed snapshot of the inbox's Brief logs, as /data/briefs-snapshot.json serves it. */
+  fetchBriefsSnapshot?: () => Promise<unknown>;
   /** Where the ledger keeps its cache of the vault's logs (default: this browser's localStorage). */
   storage?: Storage | null;
 }
@@ -39,6 +41,11 @@ function seedText(seed: NonNullable<TeamTrace["seed"]>): string {
   return seed.source === "snapshot" && seed.anchor !== null
     ? `The vault's logs to block ${to} are from the committed snapshot of block ${formatCount(Number(seed.anchor))}: Base gave that block the same hash, and each log's transaction receipt holds it. The rest were read from Base.`
     : `The vault's logs to block ${to} are from this browser's ledger cache, and each log's transaction receipt on Base holds it. The rest were read from Base.`;
+}
+
+/** Where the Brief logs came from, when they were not all read from Base. */
+function briefsText(from: NonNullable<ProofRead["briefsFrom"]>): string {
+  return `The Brief logs to block ${formatCount(Number(from.to))} are from the committed Brief snapshot of block ${formatCount(Number(from.block))}: Base gave that block the same hash, and each log's transaction receipt holds it. The rest were read from Base.`;
 }
 
 function Section({ id, title, lead, children }: { id: string; title: string; lead: ReactNode; children: ReactNode }) {
@@ -67,6 +74,7 @@ function RecordedCounts({
   client,
   lists,
   fetchSnapshot,
+  fetchBriefsSnapshot,
   storage,
 }: {
   inbox: InboxDeployment;
@@ -74,6 +82,7 @@ function RecordedCounts({
   client: ProofClient;
   lists: ProofLists;
   fetchSnapshot: () => Promise<unknown>;
+  fetchBriefsSnapshot: () => Promise<unknown>;
   storage: Storage | null;
 }) {
   const [read, setRead] = useState<Read>({ state: "reading" });
@@ -82,14 +91,14 @@ function RecordedCounts({
   useEffect(() => {
     const controller = new AbortController();
     setRead({ state: "reading" });
-    // The snapshot is fetched while the head and the Brief logs are read; the trace waits for it only at the vault.
-    readProof(client, { inbox, deployments }, lists, controller.signal, { snapshot: fetchSnapshot(), storage })
+    // The snapshots are fetched while the head is read: the Brief read waits for its own, the trace for the vault's.
+    readProof(client, { inbox, deployments }, lists, controller.signal, { snapshot: fetchSnapshot(), briefs: fetchBriefsSnapshot(), storage })
       .then((proof) => setRead({ state: "read", proof }))
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setRead({ state: "error", message: errorText(e) });
       });
     return () => controller.abort();
-  }, [client, inbox, deployments, lists, fetchSnapshot, storage, attempt]);
+  }, [client, inbox, deployments, lists, fetchSnapshot, fetchBriefsSnapshot, storage, attempt]);
 
   const again = (
     <button type="button" onClick={() => setAttempt((n) => n + 1)} className="pill-line cursor-pointer bg-white">
@@ -116,27 +125,54 @@ function RecordedCounts({
       {proof.complete ? (
         <p className="m-0 text-[15px] text-ink-2">
           Counted to block {formatCount(Number(proof.head))} of Base mainnet, from the Brief logs of MaatInbox{" "}
-          <code className="font-mono text-[0.9em] [overflow-wrap:anywhere]">{inbox.inbox.toLowerCase()}</code>.
+          <code className="font-mono text-[0.9em] [overflow-wrap:anywhere]">{inbox.inbox.toLowerCase()}</code>
+          {proof.team.vault ? (
+            <>
+              {" "}
+              and the Decision logs of MandateVault <code className="font-mono text-[0.9em] [overflow-wrap:anywhere]">{proof.team.vault}</code>
+            </>
+          ) : null}
+          .
         </p>
       ) : (
-        <div className="flex flex-col gap-2 text-[15px] text-refuse">
-          <p className="m-0 flex flex-wrap items-center gap-3">The count is incomplete, so no brief line has a number. {again}</p>
-          <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
-            {proof.problems.map((p) => (
-              <li key={p} className="[overflow-wrap:anywhere]">
-                {p}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <>
+          <div className="flex flex-col gap-2 text-[15px] text-refuse">
+            <p className="m-0 flex flex-wrap items-center gap-3">The count is incomplete, so no brief line has a number. {again}</p>
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
+              {proof.problems.map((p) => (
+                <li key={p} className="[overflow-wrap:anywhere]">
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* The Decision lines keep their number, so they keep the block and the vault they were counted from. */}
+          {proof.team.vault ? (
+            <p data-proof-decisions-head="" className="m-0 text-[15px] text-ink-2">
+              The Decision lines are counted to block {formatCount(Number(proof.team.block))} of Base mainnet, from the Decision
+              logs of MandateVault <code className="font-mono text-[0.9em] [overflow-wrap:anywhere]">{proof.team.vault}</code>.
+            </p>
+          ) : null}
+        </>
       )}
+      {proof.briefsFrom ? (
+        <p data-proof-briefs-snapshot="" className="m-0 max-w-[720px] text-[13px] leading-normal text-ink-2">
+          {briefsText(proof.briefsFrom)}
+        </p>
+      ) : null}
       {proof.team.seed ? <p className="m-0 max-w-[720px] text-[13px] leading-normal text-ink-2">{seedText(proof.team.seed)}</p> : null}
       {proof.verifiedError ? (
         <p className="m-0 flex flex-wrap items-center gap-3 text-[15px] text-refuse">
           The Verified Account column could not be read: {proof.verifiedError} {again}
         </p>
       ) : null}
-      <ProofCounts count={proof.count} verified={proof.verified} state={proof.complete ? "counted" : "incomplete"} team={proof.team} />
+      <ProofCounts
+        count={proof.count}
+        verified={proof.verified}
+        state={proof.complete ? "counted" : "incomplete"}
+        team={proof.team}
+        decisions={proof.decisions}
+      />
     </div>
   );
 }
@@ -166,9 +202,10 @@ export const COUNTS_START_NOTE =
   "No brief yet: no page on this site sends one until /ask opens. A brief sent to MaatInbox directly is counted now.";
 
 /**
- * /proof: the counting rule of inbox spec §5, word for word, and the brief lines it gives, counted in the browser
- * from MaatInbox's Brief logs. `initial` is the build's deployments table; the page then reads /data/deployments.json,
- * keeps `initial` when that read fails or gives the same inputs, and reads Base again only when it gives others.
+ * /proof: the counting rule of inbox spec §5, word for word, and the lines it gives, counted in the browser from
+ * MaatInbox's Brief logs and the vault's Decision logs. `initial` is the build's deployments table; the page then reads
+ * /data/deployments.json, keeps `initial` when that read fails or gives the same inputs, and reads Base again only when
+ * it gives others.
  */
 export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: ProofConfig; deps?: ProofDeps; askOpen?: boolean }) {
   const [config, setConfig] = useState(initial);
@@ -176,6 +213,7 @@ export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: 
   const [client] = useState<ProofClient>(() => deps.client ?? (createLedgerClient() as ProofClient));
   const [fetchConfig] = useState(() => deps.fetchConfig ?? (() => fetchProofConfig()));
   const [fetchSnapshot] = useState(() => deps.fetchSnapshot ?? (() => fetchSnapshotJson()));
+  const [fetchBriefsSnapshot] = useState(() => deps.fetchBriefsSnapshot ?? (() => fetchBriefsSnapshotJson()));
   const [storage] = useState(() => (deps.storage === undefined ? browserStorage() : deps.storage));
   const lists = deps.lists ?? LISTS;
 
@@ -223,6 +261,7 @@ export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: 
             client={client}
             lists={lists}
             fetchSnapshot={fetchSnapshot}
+            fetchBriefsSnapshot={fetchBriefsSnapshot}
             storage={storage}
           />
         ) : (
@@ -233,7 +272,7 @@ export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: 
       <Section
         id="recount-title"
         title="Recount it yourself"
-        lead="The script reads the deployments table from deployments/README.md and the five lists from web/content/, then every Brief log, the team trace and the Verified Accounts from a keyless Base RPC. It has no dependency, runs the team trace this page runs, and prints the lines above in the same words."
+        lead="The script reads the deployments table from deployments/README.md and the five lists from web/content/, then every Brief log, the team trace, the vault's Decision logs and the Verified Accounts from a keyless Base RPC. It has no dependency, runs the team trace this page runs, and prints the lines above in the same words."
       >
         <pre className="card m-0 overflow-x-auto p-5 font-mono text-[13px] leading-relaxed text-ink">
           <code>{`git clone ${REPO}\ncd maat\n`}</code>
@@ -245,7 +284,7 @@ export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: 
           It reads every vault log from the vault&apos;s deploy block, while this page may take the older ones from the
           committed snapshot, or from this browser&apos;s ledger cache, once Base confirms each one;{" "}
           <code className="font-mono text-[0.9em]">--snapshot</code> makes the script take them from the snapshot the same
-          way, and say so.
+          way, and say so. <code className="font-mono text-[0.9em]">--csv</code> prints only the lines, as CSV.
         </p>
       </Section>
 

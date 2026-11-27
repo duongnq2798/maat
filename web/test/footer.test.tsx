@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Footer } from "@/components/sections/Footer";
 import type { Deployment } from "@/lib/docs/docs-data";
+import { SITE } from "@/lib/site";
 
 /** The lines the footer gave before the deploy, which no longer hold on any page it closes. */
 const BEFORE_THE_DEPLOY = /goes live|will be posted|as they happen|first weekend/i;
@@ -16,6 +17,19 @@ describe("Footer", () => {
     );
     // The lead names the ledger, and /now and /gap-index have no other link to it, so the footer carries one.
     expect(screen.getByRole("link", { name: "Mainnet ledger" })).toHaveAttribute("href", "/ledger");
+  });
+
+  it('opens the film band under "Watch it say no.": in the page on the landing, and on the landing from other pages', () => {
+    const { unmount } = render(<Footer />);
+    expect(screen.getByRole("link", { name: "Watch the film" })).toHaveAttribute("href", "/#film");
+    unmount();
+    render(<Footer onLanding />);
+    const ctas = screen.getByRole("heading", { level: 2, name: "Watch it say no." }).parentElement!.querySelectorAll("a");
+    expect([...ctas].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      [`Follow ${SITE.xHandle}`, SITE.xUrl],
+      ["Watch the film", "#film"],
+      ["Read the code ↗", SITE.repoUrl],
+    ]);
   });
 
   it("no longer calls mainnet the future", () => {

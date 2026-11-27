@@ -5,13 +5,15 @@ import { BuiltOn } from "@/components/sections/BuiltOn";
 import { Hero } from "@/components/sections/Hero";
 import { Nav } from "@/components/sections/Nav";
 import { ASK_OPEN } from "@/content/ask-open";
+import { HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 
 describe("announcement bar", () => {
-  it("says the vault is live on Base mainnet and unaudited, and names no fork run", () => {
+  it("says the vault is live on Base mainnet, unaudited and small on purpose, and names no fork run", () => {
     const { container } = render(<AnnouncementBar />);
     expect(screen.getByText("Live on Base mainnet")).toBeInTheDocument();
-    expect(screen.getByText("Unaudited.")).toBeInTheDocument();
+    // Spec 2026-11-27 section 4: a small treasury reads as a choice, not as a dormant project.
+    expect(screen.getByText("Unaudited · small treasury on purpose")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Follow the build" })).toHaveAttribute("href", "https://x.com/maatonbase");
     // The age of the last Decision shows only once a live read has landed; none runs here.
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
@@ -98,17 +100,37 @@ describe("nav", () => {
 });
 
 describe("hero", () => {
-  it("states the pitch, the three stats from facts, and leads to the ledger", () => {
+  it("states the pitch, what Maat is, its three steps and the three stats from facts", () => {
     render(<Hero />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("The AI agent that knows when not to trade.");
-    expect(screen.getByText(SITE.description)).toBeInTheDocument();
+    // Spec 2026-11-27 section 1, word for word.
+    expect(HERO_DEFINITION).toBe(
+      "Maat is a vault on Base. Maat's agent proposes trades in tokenized US stocks; the vault checks each one against public rules and records yes or no onchain.",
+    );
+    expect(screen.getByText(HERO_DEFINITION)).toBeInTheDocument();
+    const steps = within(screen.getByRole("list", { name: "How a trade is weighed" })).getAllByRole("link");
+    expect(steps.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["1Maat's agent proposes a trade", "#how"],
+      ["2The vault checks 9 public rules", "#how"],
+      ["3Yes or no is recorded on Base", "#how"],
+    ]);
+    expect(HERO_STEPS).toHaveLength(3);
+    // The site's description is the page's meta description, no longer a line in the hero.
+    expect(screen.queryByText(SITE.description)).toBeNull();
     const stat = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
     expect(stat("CHECKS PER TRADE")).toBe("9");
     expect(stat("TYPED REFUSALS")).toBe("19");
     expect(stat("RULE TIMELOCK")).toBe("24h");
-    expect(screen.getByRole("link", { name: "See the vault's last decision" })).toHaveAttribute("href", "/ledger");
-    expect(screen.getByRole("link", { name: "Try to make it say no" })).toHaveAttribute("href", "#try");
-    expect(screen.getByRole("link", { name: "Run the tests in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
+    // Spec 2026-11-27 section 1: the film first (its band is directly under the hero, section 2), then the simulator.
+    const ctas = [...document.querySelectorAll<HTMLAnchorElement>("[data-hero-cta]")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(ctas).toEqual([
+      ["Watch the film (1:40)", "#film"],
+      ["Try to make it say no", "#try"],
+    ]);
+    expect(screen.queryByRole("link", { name: "See the vault's last decision" })).toBeNull();
+    // The vault card opens the ledger instead.
+    expect(screen.getByRole("link", { name: "Open the ledger" })).toHaveAttribute("href", "/ledger");
+    expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
     // The engine card opens on the mainnet vault; the fork replay is the other tab, its moments in the hidden panel.
     expect(screen.getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Fork replay" })).toHaveAttribute("aria-selected", "false");

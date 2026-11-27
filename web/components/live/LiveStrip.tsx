@@ -4,18 +4,28 @@ import { type MouseEvent, type RefObject, useRef } from "react";
 import { Digits } from "@/components/instrument/Digits";
 import { Ghost } from "@/components/instrument/Ghost";
 import { HoldKey, KEY_CLASS } from "@/components/instrument/HoldKey";
-import { Lamp } from "@/components/instrument/Lamp";
 import { liveAttrs } from "@/components/instrument/Live";
-import { Meter } from "@/components/instrument/Meter";
 import { Readout, ReadoutKeys } from "@/components/instrument/Readout";
 import { useScan } from "@/components/instrument/useScan";
 import { NAV_TOKENS } from "@/content/b20-nav";
-import { FACTS } from "@/content/facts";
-import { countdownText } from "@/lib/live/countdown";
-import type { LiveState, Reading } from "@/lib/live/freshness";
-import { formatAge, formatBlock, formatEt, formatUtc } from "@/lib/live/format";
+import type { LiveState } from "@/lib/live/freshness";
+import { formatAge, formatBlock, formatEt } from "@/lib/live/format";
 import type { LiveReader } from "@/lib/live/rpc";
-import { BlockLink, FAILED, LiveAnnouncer, LivePill, NotLiveWhy, READING, ReadButton, Sep, STRIP_TAP, useRetry } from "./LiveStatus";
+import { buyLead, buyLineText, lineGloss, OTHER_CHECKS, REFUSED } from "@/lib/live/verdict";
+import {
+  BlockLink,
+  FAILED,
+  LiveAnnouncer,
+  LivePill,
+  NotLiveWhy,
+  READING,
+  ReadButton,
+  Sep,
+  type Sentence,
+  type ShownState,
+  STRIP_TAP,
+  useRetry,
+} from "./LiveStatus";
 import { LiveSnapshotProvider, type LiveSnapshotValue, useLive, useLiveIfAny } from "./LiveSnapshotProvider";
 import { VerdictLine } from "./VerdictLine";
 
@@ -24,65 +34,71 @@ const GHOST_BLOCK = "88,888,888";
 
 /**
  * The Readout's height per breakpoint (spec 2026-11-23 sections 3.5 and 6.2): the tallest frame of
- * e2e/instrument-states.spec.ts at that breakpoint's narrowest width (360, 640, 1000, and 1280 to 1920 px) on any
- * engine and OS measured, plus 20 px, rounded up to 4 px. Every state fits, so the lead never moves when a reading
- * lands. 62.5rem (1000 px), where the hero's grid takes two columns, is in rem so Tailwind sorts it between sm (40rem)
- * and xl (80rem).
+ * e2e/instrument-states.spec.ts at that breakpoint's narrowest width (360, 640, 1000, and 1280 to 1920 px), plus room
+ * for the engines and platforms that lay the same Geist files out wider, rounded up to 4 px. Every state fits, so
+ * nothing under the line moves when a reading lands. 62.5rem (1000 px), where the hero's grid takes two columns, is in
+ * rem so Tailwind sorts it between sm (40rem) and xl (80rem).
  *
- * The same Geist files lay out at different widths per platform: Chromium on Linux rounds each glyph advance to a whole
- * pixel (11 px Geist Mono 7 px a glyph, not 6.6), Windows does not. Measured 2026-11-24, the three-refusal frame is the
- * tallest everywhere: 408 px at 360 and 262 px at 1000 on Linux (Chromium in CI), against 366 and 234 on Windows
- * Chromium and 368 and 236 on Windows Firefox and WebKit; 195 px at 640 (Firefox, WebKit). xl keeps 268: its tallest
- * frame is 249.70 px at 1920 and 250 px rounded up at 1440, both on Firefox and WebKit (248 px on Chromium, Windows and
- * Linux), which 268 clears by 18 px, and the rule's 272 would move the 1440x900 CTAs from 880.23 to 884.23 px.
+ * Since 2026-11-27 (landing "explain in 10 seconds", section 1) the strip is one labelled line: the verdict a buy would
+ * get, the block it was read at, and the bezel keys; the basket's lamps and the session moved to /now. Its tallest
+ * frame is the three-refusal one: 310 px at 360, 152 px at 640, 220 px at 1000 and 154 px at 1280 to 1920 (the
+ * weekend refusal a visitor sees most: 246, 116, 164 and 122). Chromium on Linux, in CI's run of the states spec (each
+ * test logs its "readout-height"), and on Windows measure the same on 2026-11-27, so each reserve keeps only 8 px over
+ * them for the engines no test measures, rounded up to 4 px: 320, 160, 228 and 164.
  *
- * The verdict has led the Readout since 2026-11-26 (culture plan Q5), at its larger size over a 12 px block number. The
- * reserves were kept: measured on Windows Chromium with a mixed headline's REFUSE at the verdict size, the tallest
- * frames are 360 px at 360 (three refusals, against 366 before), 192 px at 640 (the session's pass, against 194), and
- * 206 px at 1000 and 208 px at 1280 to 1920 (three refusals, against 234 and 248).
- *
- * Since 2026-11-27 (judge rehearsal m4) the block link and "All 13 B20s" each sit on a 44 px line below sm, a tap target
- * of their own, which adds 48 px to a frame there: measured on Windows Chromium, the three-refusal frame is 408 px at
- * 360, against 360 before. The phone reserve rose by the same 48 px, from 428 to 476.
+ * The line and its keys always sit together, never with a blank band between them (judge rehearsal m5). Below sm they
+ * sit at the top of the window and the room a shorter frame leaves is under the keys, so a phone's first screen shows
+ * the label and the verdict right under the steps, with no dark band above them (review of PR #105). From sm the room
+ * is smaller, and they sit in the middle of the window.
  *
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
- * measures (at 320 px the three-refusal frame needs 450 px on Windows), grows the window and moves the lead down
- * instead of running over it.
+ * measures, grows the window and moves what is under it down instead of running over it.
  */
-export const STRIP_RESERVE = "min-h-[476px] sm:min-h-[216px] min-[62.5rem]:min-h-[284px] xl:min-h-[268px]";
+export const STRIP_RESERVE = "min-h-[320px] sm:min-h-[160px] min-[62.5rem]:min-h-[228px] xl:min-h-[164px]";
+
+/** Below sm the link takes a line of its own, so no separator is left hanging at the end of the line above it. */
+function NowLinkAfter() {
+  return (
+    <>
+      <span className="max-sm:hidden">
+        <Sep />
+      </span>
+      <br className="sm:hidden" />
+      <NowLink />
+    </>
+  );
+}
 
 function NowLink() {
   return (
     <a href="/now" className={`whitespace-nowrap font-medium text-pass-lit ${STRIP_TAP}`}>
-      All {NAV_TOKENS.length} B20s <span aria-hidden="true">→</span>
+      All {NAV_TOKENS.length} tokenized stocks <span aria-hidden="true">→</span>
     </a>
   );
 }
 
+/** The line's sentence, as the live region reads it too: the verdict a buy of each basket token would get. */
+const buySentence: Sentence = (state) => buyLineText(state.reading.headline, state.reading.verdicts, { live: state.status === "live" });
+
 /**
- * The three basket tokens on the last row: each one's lamp (PASS or REFUSE, what the default mandate does with a BUY) and its
- * pool premium on a meter scaled to FACTS.mandate.value.maxPremiumBps, with the number written. No reason tag: the
- * reasons are the verdict line's.
+ * The line's verdict, its words split for VerdictLine: its label, its verb, the first ticker's gloss, and, when nothing
+ * is refused, the checks the vault runs on a real trade, linked to the method on /now. Its reasons are running text, so
+ * "Refused · Market closed" stays on one line and only the code wraps.
  */
-function Basket({ reading }: { reading: Reading }) {
-  const limit = FACTS.mandate.value.maxPremiumBps;
+function BuyLine({ state, className }: { state: ShownState; className?: string }) {
+  const live = state.status === "live";
+  const h = state.reading.headline;
   return (
-    <span data-basket="" className="mt-1 grid grid-cols-1 gap-x-4 gap-y-2 max-sm:flex-1 max-sm:content-evenly sm:grid-cols-3">
-      {FACTS.basket.value.map((symbol) => {
-        const v = reading.verdicts.find((t) => t.symbol === symbol);
-        return (
-          <span key={symbol} data-basket-token={symbol} className="flex flex-wrap items-center gap-x-2 leading-4">
-            <span className="font-mono text-[12px] font-medium text-lcd">{symbol}</span>
-            <Lamp state={v === undefined ? "reading" : v.mandate === "OK" ? "pass" : "refuse"} on="chassis" />
-            {v !== undefined && v.premiumBps !== null ? (
-              <Meter value={Number(v.premiumBps)} limit={limit} unit="bps" on="chassis" />
-            ) : (
-              <span className="font-mono text-[11px] text-lcd-2">premium not read</span>
-            )}
-          </span>
-        );
-      })}
-    </span>
+    <VerdictLine
+      headline={h}
+      grammar={{ text: buySentence(state), lead: buyLead(h, live), verb: REFUSED, gloss: lineGloss(h), method: OTHER_CHECKS }}
+      tone={live ? "ink" : "muted"}
+      palette="chassis"
+      methodHref="/now#method"
+      className={className}
+      lead={live}
+      tagLayout="text"
+    />
   );
 }
 
@@ -121,20 +137,14 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
         </p>
       );
     case "live": {
-      const { snapshot, session, headline, wallAtReadSec } = state.reading;
+      const { snapshot } = state.reading;
       const block = formatBlock(snapshot.block);
-      // The visitor's clock as it stood at this frame: HOLD freezes the age, so it freezes the countdown too.
-      const countdown = countdownText(session, snapshot.timestamp, wallAtReadSec + state.ageMs / 1000);
-      // The verdict leads, set larger than the block number under its own small lead (culture plan Q5), then the block
-      // it was read at, the session, and the basket's lamps. Below sm the basket takes the height the reserve leaves
-      // over and spreads its three rows across it, so a frame shorter than the tallest one shows no blank band above
-      // the bezel (judge rehearsal 2026-11-27, m5).
+      // The label and the verdict lead, the verdict set larger than the block number (culture plan Q5); then the block
+      // it was read at, its time in New York, and the way to every token on /now.
       return (
-        <p className="m-0 max-sm:flex max-sm:flex-1 max-sm:flex-col" {...liveAttrs(snapshot)}>
+        <p className="m-0" {...liveAttrs(snapshot)}>
           <span className="block">
-            <VerdictLine headline={headline} tone="ink" palette="chassis" methodHref="/now#method" className="readout-verdict" lead />
-            <Sep />
-            <NowLink />
+            <BuyLine state={state} className="readout-verdict" />
           </span>
           <span className="block">
             <LivePill live palette="chassis" />{" "}
@@ -142,23 +152,8 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
               Base block <Digits value={block} className="readout-figure readout-digits" />
             </BlockLink>
             <Sep />
-            <span className="whitespace-nowrap font-mono text-[12px]">
-              {formatUtc(snapshot.timestamp)} · {formatEt(snapshot.timestamp)}
-            </span>
-          </span>
-          <span className="block">
-            <span>{session.detail}</span>
-            {countdown === null ? null : (
-              <>
-                <Sep />
-                <span data-countdown="" className="whitespace-nowrap">
-                  {countdown}
-                </span>
-              </>
-            )}
-          </span>
-          <span className="block max-sm:flex max-sm:flex-1 max-sm:flex-col">
-            <Basket reading={state.reading} />
+            <span className="whitespace-nowrap font-mono text-[12px]">{formatEt(snapshot.timestamp)}</span>
+            <NowLinkAfter />
           </span>
         </p>
       );
@@ -170,11 +165,9 @@ function Body({ state, refreshing, onRetry }: BodyProps) {
           <span className="block">
             <LivePill live={false} palette="chassis" /> <NotLiveWhy state={state} palette="chassis" />
           </span>
-          <span className="block text-lcd-2">{state.reading.session.detail}</span>
           <span className="block">
-            <VerdictLine headline={state.reading.headline} tone="muted" palette="chassis" methodHref="/now#method" />
-            <Sep />
-            <NowLink />
+            <BuyLine state={state} />
+            <NowLinkAfter />
           </span>
         </p>
       );
@@ -190,17 +183,17 @@ interface KeysProps {
 }
 
 /**
- * The bottom bezel, outside the <p> (spec 6.1, amendment A7): the scan line, then the read age and the RPC host once
- * a reading is shown, then HOLD in every state, and Refresh once a reading is shown.
+ * The bezel keys, outside the <p> (spec 6.1, amendment A7) and right under it: the scan line, then the read age and the RPC host once
+ * a reading is shown, then Pause in every state, and Read again once a reading is shown.
  */
 function Keys({ state, refreshing, hold, onRefresh, scanLine }: KeysProps) {
   const shown = state.status === "reading" || state.status === "error" ? null : state;
   return (
-    <ReadoutKeys className="mt-auto">
+    <ReadoutKeys>
       <span ref={scanLine} aria-hidden="true" data-scan="" className="readout-scan" />
       {shown === null ? null : (
         <span data-read-age="">
-          {hold ? "held" : `read ${formatAge(shown.ageMs / 1000)} ago`} · {new URL(shown.reading.snapshot.endpoint).host}
+          {hold ? "paused" : `read ${formatAge(shown.ageMs / 1000)} ago`} · {new URL(shown.reading.snapshot.endpoint).host}
         </span>
       )}
       <span className="ml-auto flex items-center gap-2">
@@ -215,7 +208,7 @@ function Keys({ state, refreshing, hold, onRefresh, scanLine }: KeysProps) {
             }}
             className={KEY_CLASS}
           >
-            {refreshing ? "Refreshing…" : "Refresh"}
+            {refreshing ? "Reading…" : "Read again"}
           </button>
         )}
       </span>
@@ -237,9 +230,9 @@ function Strip({ live }: { live: LiveSnapshotValue }) {
       tabIndex={-1}
       data-live-strip={state.status}
       reserve={STRIP_RESERVE}
-      className="relative flex flex-col pt-2 pb-2 text-[13px] leading-5"
+      className="relative flex flex-col justify-start gap-2 pt-2 pb-2 text-[13px] leading-5 sm:justify-center"
     >
-      <LiveAnnouncer state={state} />
+      <LiveAnnouncer state={state} sentence={buySentence} />
       <Body state={state} refreshing={refreshing} onRetry={onRetry} />
       <Keys state={state} refreshing={refreshing} hold={hold} onRefresh={refresh} scanLine={scanLine} />
       <noscript>
@@ -261,11 +254,11 @@ function SharedStrip() {
 }
 
 /**
- * The live Readout under the landing H1: the Base block this browser read, its NYSE session and the countdown to the
- * next open, what an agent under the default mandate would do with a BUY of each basket token, and the bezel keys. The
- * static HTML holds the reading state only; no chain value is ever baked in. Under a LiveSnapshotProvider it reads the
- * page's snapshot, and `reader` is not used; with none above it (a test that renders the Hero alone), it runs a
- * provider of its own with `reader`.
+ * The live line in the landing hero (spec 2026-11-27, landing "explain in 10 seconds", section 1): what the vault's
+ * default mandate would answer, right now, to a buy of each basket token, the Base block this browser read it at, and
+ * the bezel keys, Pause and Read again. The static HTML holds the reading state only; no chain value is ever baked in.
+ * Under a LiveSnapshotProvider it reads the page's snapshot, and `reader` is not used; with none above it (a test that
+ * renders the Hero alone), it runs a provider of its own with `reader`.
  */
 export function LiveStrip({ reader }: { reader?: LiveReader }) {
   const live = useLiveIfAny();

@@ -1,0 +1,104 @@
+{
+  "rule": "The film's voice-over, word for word: the ElevenLabs narration mixed onto the cut after the render (README.md, 'On the landing'). film/vtt.mjs writes the landing's captions track from it. Each line names the shot it is spoken over, as beat id/slot id of lib/beats.mjs; each cue's from and to are seconds from that shot's start: from the first to the last sound of the line in the mix, held 0.3 s longer (never past the shot's end), and a long line of two sentences splits at the pause between them. A line moves with its shot, so a new shot list needs new times here and a new mix.",
+  "lines": [
+    {
+      "shot": "frozen-feed/gap",
+      "cues": [
+        { "from": 0.4, "to": 3.6, "text": "Over a weekend, the feed is held for days without an update." },
+        { "from": 3.6, "to": 6.7, "text": "So the vault keeps the exchange's hours." }
+      ]
+    },
+    {
+      "shot": "proposes-decides/how",
+      "cues": [
+        { "from": 0.4, "to": 4.2, "text": "Maat's agent runs on Claude, and only proposes." }
+      ]
+    },
+    {
+      "shot": "proposes-decides/decision-log",
+      "cues": [
+        { "from": 0.4, "to": 3.7, "text": "On Basescan, a refusal reads Success." }
+      ]
+    },
+    {
+      "shot": "mandate/mandate",
+      "cues": [
+        { "from": 0.4, "to": 6.7, "text": "This is the owner's own treasury, and the vault holds its limits: per trade, per day, per stock." },
+        { "from": 6.7, "to": 9.6, "text": "Maat's agent cannot move them." }
+      ]
+    },
+    {
+      "shot": "sourced-proposal/trail",
+      "cues": [
+        { "from": 0.4, "to": 4.9, "text": "Change one word of the rationale, and the hash stops matching." }
+      ]
+    },
+    {
+      "shot": "sourced-proposal/input-utf8",
+      "cues": [
+        { "from": 0.4, "to": 2.7, "text": "You need not take our word for it." }
+      ]
+    },
+    {
+      "shot": "thanksgiving/sim",
+      "cues": [
+        { "from": 0.5, "to": 3.4, "text": "The exchange was shut for Thanksgiving." }
+      ]
+    },
+    {
+      "shot": "thanksgiving/tx",
+      "cues": [
+        { "from": 0.4, "to": 4.5, "text": "On a market holiday, the vault refuses every trade." }
+      ]
+    },
+    {
+      "shot": "early-close/sim",
+      "cues": [
+        { "from": 0.4, "to": 2.6, "text": "Friday: an early close." }
+      ]
+    },
+    {
+      "shot": "early-close/tx",
+      "cues": [
+        { "from": 0.4, "to": 6.9, "text": "The plan: ask the vault twice that day, once before the close and once after." }
+      ]
+    },
+    {
+      "shot": "stranger-brief/ask",
+      "cues": [
+        { "from": 0.5, "to": 3.6, "text": "A brief is a short public message on Base." }
+      ]
+    },
+    {
+      "shot": "stranger-brief/tx",
+      "cues": [
+        { "from": 0.4, "to": 2.2, "text": "Maat's agent can be persuaded." },
+        { "from": 2.2, "to": 8.1, "text": "The vault cannot: whatever a brief talks it into is weighed by the same rules." }
+      ]
+    },
+    {
+      "shot": "receipts/contracts",
+      "cues": [
+        { "from": 0.4, "to": 3.2, "text": "Each address is public. Read it yourself." }
+      ]
+    },
+    {
+      "shot": "receipts/ci",
+      "cues": [
+        { "from": 0.4, "to": 2.5, "text": "The tests run in the open." }
+      ]
+    },
+    {
+      "shot": "receipts/proof",
+      "cues": [
+        { "from": 0.4, "to": 2.8, "text": "Zero is shown as zero." }
+      ]
+    },
+    {
+      "shot": "receipts/end",
+      "cues": [
+        { "from": 0.4, "to": 3.8, "text": "Maat. Every trade is weighed." }
+      ]
+    }
+  ]
+}

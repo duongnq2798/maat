@@ -25,11 +25,23 @@ function lead(deployments: readonly Deployment[]): string {
   return `The vault has been on Base mainnet since ${dayLabel(date)} ${date.slice(0, 4)}, with a small treasury. Every decision it makes, refusals included, is public on the mainnet ledger.`;
 }
 
-export function Footer({ deployments = docsData.deployments }: { deployments?: readonly Deployment[] }) {
+/**
+ * The footer: "Watch it say no.", its lead and CTAs, then the project links. Its top padding is less than a section's,
+ * since the section above already ends in its own (spec 2026-11-27 section 4: no empty band above the heading). Under
+ * the heading, "Watch the film" opens the landing's film band (spec 2026-11-27 section 2): in the page on the landing
+ * (`onLanding`), and on the landing from every other page the footer closes.
+ */
+export function Footer({
+  deployments = docsData.deployments,
+  onLanding = false,
+}: {
+  deployments?: readonly Deployment[];
+  onLanding?: boolean;
+}) {
   return (
     <footer className="relative overflow-hidden border-t border-line">
       <div aria-hidden="true" className="grid-bg absolute inset-0" />
-      <div className="wrap relative flex flex-col gap-[72px] pb-12 pt-20 md:pt-32">
+      <div className="wrap relative flex flex-col gap-[72px] pb-12 pt-12 md:pt-16">
         <div className="flex flex-col items-center gap-7 text-center">
           <h2 className="m-0 text-[clamp(56px,8vw,120px)] font-semibold leading-[0.95] tracking-[-0.055em]">
             Watch it <span className="text-accent">say no.</span>
@@ -38,6 +50,9 @@ export function Footer({ deployments = docsData.deployments }: { deployments?: r
           <div className="flex flex-wrap justify-center gap-3">
             <a className="pill-dark" href={SITE.xUrl}>
               Follow {SITE.xHandle}
+            </a>
+            <a className="pill-line" href={onLanding ? "#film" : "/#film"}>
+              Watch the film
             </a>
             <a className="pill-line" href={SITE.repoUrl}>
               Read the code

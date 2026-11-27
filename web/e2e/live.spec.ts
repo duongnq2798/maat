@@ -1,13 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
-import { NAV_TOKENS } from "../content/b20-nav";
+import { NAV_TOKENS, tickerGloss } from "../content/b20-nav";
 import { FACTS } from "../content/facts";
 import { andList } from "../content/format";
 import { REASON_LABEL } from "../content/reasons";
 import { REFRESH_MS } from "../lib/live/freshness";
 import { LIVE_RPCS } from "../lib/live/rpc";
-import { headlineText } from "../lib/live/verdict";
-import { SITE } from "../lib/site";
+import { BUY_LEAD, buyLineText, OTHER_CHECKS, PASS_LEAD, VAULT_NOT_RUN } from "../lib/live/verdict";
 import { fixtureResults, routeLiveRpc, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { collectErrors, measureFit, serveEmptyJournal } from "./helpers";
 
@@ -57,7 +56,7 @@ async function withoutVaultRead(page: Page) {
   );
 }
 
-test("the landing's strip reads a weekend block as LIVE, refuses with Market closed, and links /now", async ({ page }) => {
+test("the landing's live line reads a weekend block as LIVE, says a buy would be refused with Market closed, and links /now", async ({ page }) => {
   const errors = collectErrors(page);
   await clockAfter(page, WEEKEND_TS);
   const rpc = await routeLiveRpc(page, "weekend");
@@ -67,15 +66,15 @@ test("the landing's strip reads a weekend block as LIVE, refuses with Market clo
   await expect(s).toHaveAttribute("data-live-strip", "live");
   await expect(s.getByText("LIVE", { exact: true })).toBeVisible();
   await expect(s.getByRole("link", { name: BLOCK_TEXT })).toHaveAttribute("href", BLOCK_URL);
-  await expect(s).toContainText("15:00:00 UTC · 10:00 ET");
-  await expect(s).toContainText("Saturday · NYSE closed");
-  await expect(s).toContainText("An agent under Maat's default mandate would REFUSE");
+  // Spec 2026-11-27 section 1: one labelled line, the verdict a buy would get, then the block and its New York time.
+  await expect(s).toContainText("10:00 ET");
+  await expect(s).toContainText(`${BUY_LEAD} Refused · Market closed`);
   await expect(s.locator("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "MARKET_CLOSED");
   await expect(s.locator("[data-reason-tag]")).toHaveText(/^Market closed\s*MARKET_CLOSED$/);
-  await expect(s.getByRole("status")).toHaveText(`Live. ${headlineText({ kind: "refuse-all", reason: "MARKET_CLOSED" })}`);
+  await expect(s.getByRole("status")).toHaveText(`Live. ${buyLineText({ kind: "refuse-all", reason: "MARKET_CLOSED" }, [])}`);
   expect(rpc.calls()).toBeGreaterThanOrEqual(1);
 
-  const all = s.getByRole("link", { name: `All ${NAV_TOKENS.length} B20s` });
+  const all = s.getByRole("link", { name: `All ${NAV_TOKENS.length} tokenized stocks` });
   await expect(all).toHaveAttribute("href", "/now");
   await all.click();
   await expect(page).toHaveURL(/\/now$/);
@@ -84,7 +83,7 @@ test("the landing's strip reads a weekend block as LIVE, refuses with Market clo
   expect(errors).toEqual([]);
 });
 
-test("in session the strip passes the market checks for two basket tokens and refuses the third on its pool premium", async ({
+test("in session the live line passes the market checks for two basket tokens and refuses the third on its pool premium", async ({
   page,
 }) => {
   const errors = collectErrors(page);
@@ -106,15 +105,52 @@ test("in session the strip passes the market checks for two basket tokens and re
 
   const s = strip(page);
   await expect(s).toHaveAttribute("data-live-strip", "live");
-  await expect(s).toContainText("16:43:08 UTC · 11:43 ET");
-  await expect(s).toContainText("Friday · open until 16:00 ET");
-  await expect(s).toContainText(`would REFUSE ${refused}:`);
+  await expect(s).toContainText("11:43 ET");
+  // The first ticker the line names is glossed (spec 2026-11-27 section 4): on a phone this line is where one first appears.
+  const glossed = tickerGloss(refused)!;
+  await expect(s).toContainText(`${BUY_LEAD} Refused for ${glossed}:`);
+  // The premium in plain words: what it compares, in bps, against the limit (spec 2026-11-27 section 4).
+  await expect(s).toContainText(new RegExp(`pool vs Chainlink \\d+ bps · limit ${maxPremiumBps}`));
   await expect(s.locator("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "PREMIUM_TOO_HIGH");
   await expect(s.locator("[data-reason-tag]")).toHaveText(new RegExp(`^${REASON_LABEL.PREMIUM_TOO_HIGH}\\s*PREMIUM_TOO_HIGH$`));
   await expect(s).toContainText(`Market checks pass for ${andList(passed)}.`);
   await expect(s.getByRole("status")).toHaveText(
-    `Live. ${headlineText({ kind: "mixed", refused: [{ symbol: refused, reason: "PREMIUM_TOO_HIGH" }], passed: [...passed] })}`,
+    new RegExp(
+      `^Live\\. ${BUY_LEAD} Refused for ${glossed.replace(/[()]/g, "\\$&")}: ${REASON_LABEL.PREMIUM_TOO_HIGH} \\(PREMIUM_TOO_HIGH\\) · pool vs Chainlink \\d+ bps · limit ${maxPremiumBps}\\. Market checks pass for ${andList(passed)}\\.$`,
+    ),
   );
+  expect(errors).toEqual([]);
+});
+
+test("in session with every market check passing, the live line names what passes and links the checks the vault runs on a real trade", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const { twapWindowSec } = FACTS.mandate.value;
+  let results = fixtureResults(SESSION_TS);
+  for (const symbol of FACTS.basket.value) results = withFeed(results, symbol, twapOf(results, symbol, twapWindowSec), SESSION_TS - 10);
+  await clockAfter(page, SESSION_TS);
+  await routeLiveRpc(page, { results, open: true });
+  await page.goto("/");
+
+  const s = strip(page);
+  await expect(s).toHaveAttribute("data-live-strip", "live");
+  const line = s.locator("[data-verdict-line]");
+  await expect(line).toHaveAttribute("data-verdict-line", "pass-all");
+  // Review of PR #105: a label of its own, the tokens with the first one glossed, then a small link to the method.
+  await expect(line.locator("[data-verdict-lead]")).toHaveText(PASS_LEAD);
+  const [first, ...rest] = FACTS.basket.value;
+  await expect(line).toContainText(`${tickerGloss(first)}, ${andList(rest)}.`);
+  const method = line.locator("[data-verdict-method]").getByRole("link", { name: OTHER_CHECKS });
+  await expect(method).toHaveAttribute("href", "/now#method");
+  await expect(s).not.toContainText(VAULT_NOT_RUN);
+  await expect(s).not.toContainText("Allowed");
+  // The method row sits under the tokens, in the strip's small type.
+  const [tokens, row] = await Promise.all([line.locator("[data-ticker-gloss]").boundingBox(), method.boundingBox()]);
+  expect(row!.y).toBeGreaterThan(tokens!.y);
+  expect(await method.evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
+  const { violations } = await new AxeBuilder({ page }).include("#top").analyze();
+  expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }))).toEqual([]);
   expect(errors).toEqual([]);
 });
 
@@ -294,7 +330,7 @@ test("the simulator's Now chip says the fork rows are not now, and links /now", 
 });
 
 // Spec 5: the strip reserves its height, so the landing does not move when the reading arrives. The fake holds the
-// answer until the lead paragraph has been measured in the reading state. The weekend line is the shortest common one;
+// answer until the hero's CTAs, the first thing under the line, have been measured in the reading state. The weekend line is the shortest common one;
 // the in-session line, which passes the market checks for the three basket tokens, is the tallest common one.
 for (const { scenario, name, blockTs, kind } of [
   { scenario: "weekend", name: "a weekend", blockTs: WEEKEND_TS, kind: "refuse-all" },
@@ -307,7 +343,7 @@ for (const { scenario, name, blockTs, kind } of [
     test(`the landing does not move when ${name} reading arrives, at ${width} × ${height}`, async ({ page }) => {
       const errors = collectErrors(page);
       await page.setViewportSize({ width, height });
-      // Reduced motion shows the hero's intro in its final state at once, so nothing but the strip can move the lead.
+      // Reduced motion shows the hero's intro in its final state at once, so nothing but the strip can move the CTAs.
       await page.emulateMedia({ reducedMotion: "reduce" });
       await clockAfter(page, blockTs);
       const rpc = await routeLiveRpc(page, scenario, { hold: true });
@@ -315,9 +351,10 @@ for (const { scenario, name, blockTs, kind } of [
       await page.evaluate(() => document.fonts.ready);
 
       const s = strip(page);
-      const lead = page.locator("#top [data-live-strip] + p");
-      await expect(lead).toHaveText(SITE.description);
-      const top = () => lead.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+      // Spec 2026-11-27 section 1: the two CTAs sit right under the live line.
+      const ctas = page.locator("#top [data-live-strip] + div");
+      await expect(ctas.locator("[data-hero-cta]")).toHaveCount(2);
+      const top = () => ctas.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
 
       await expect(s).toHaveAttribute("data-live-strip", "reading");
       await expect(s).toContainText("Reading Base mainnet…");
@@ -333,7 +370,7 @@ for (const { scenario, name, blockTs, kind } of [
       const line = await s.locator(":scope > p").evaluate((el) => el.getBoundingClientRect().height);
       const box = await s.evaluate((el) => el.getBoundingClientRect().height);
       test.info().annotations.push({
-        type: "lead paragraph top",
+        type: "CTA row top",
         description: `reading ${reading} px, live ${live} px; the live line ${line} px in the strip's ${box} px`,
       });
       expect(Math.abs(live - reading)).toBeLessThanOrEqual(1);

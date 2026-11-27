@@ -5,6 +5,7 @@ import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
 import { OG_IMAGE_SIZE, ogImageUrl } from "./docs/og";
+import { noteSuperseded } from "./live/hero-note";
 import { SITE } from "./site";
 
 /** Problems with the exported landing page; an empty list means it is ready to ship. */
@@ -62,7 +63,42 @@ export function checkExport(html: string): string[] {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+
+  // The film band (spec 2026-11-27 section 2): the site serves the cut, its poster and its captions itself, and the
+  // browser fetches no byte of the cut before the visitor presses play. An embed would load a third party on arrival.
+  // Attribute names are matched in any case: React writes some in camelCase (playsInline=""), and HTML reads them so.
+  const media = [...html.matchAll(/<(video|audio|source|track)\b[^>]*>/gi)];
+  const videos = media.filter(([, tag]) => tag?.toLowerCase() === "video").map(([el]) => el);
+  need(videos.length > 0, "the film band's <video> is missing");
+  for (const video of videos) {
+    need(/\spreload="none"/i.test(video), `a <video> without preload="none" loads the film before play: ${video.slice(0, 80)}`);
+    need(!/\sautoplay\b/i.test(video), `a <video> plays on its own: ${video.slice(0, 80)}`);
+  }
+  for (const [el] of media) {
+    for (const [, attr, url] of el.matchAll(/\s(src|poster)="([^"]+)"/gi)) {
+      need(/^\/(?!\/)/.test(url ?? ""), `a media ${attr} loads from outside the site: ${url}`);
+    }
+  }
+  need(!/<(?:iframe|embed|object)\b/i.test(html), "the page embeds an iframe, embed or object, which loads before a click");
   return problems;
+}
+
+/**
+ * Warnings, not problems: the landing still ships. The hero quotes the agent's note recorded in this build
+ * (content/generated/agent-note.json) and hides the quote while the vault's latest Decision is newer than the note's
+ * round (components/sections/HeroNote.tsx). When a Decision recorded in this build already is, every visitor sees the
+ * one line that points to /now instead of the note, until a data PR records a newer note.
+ */
+export function checkAgentNote(
+  note: { ts: number; when: string } | null,
+  decisions: readonly { blockNumber: string; blockTime: number }[],
+): string[] {
+  if (note === null) return ["the build records no note of Maat's agent, so the hero shows none (npm run agent-note)"];
+  const newest = [...decisions].sort((a, b) => b.blockTime - a.blockTime)[0];
+  if (newest === undefined || !noteSuperseded(note.ts, newest.blockTime)) return [];
+  return [
+    `the agent's note recorded in this build (${note.when}) is older than the Decision recorded at block ${newest.blockNumber}, so the hero hides it: run npm run agent-note -- --git origin/agent-journal and commit content/generated/agent-note.json`,
+  ];
 }
 
 /** Records `problem` when `ok` is false. Each page's check passes its own, which puts the page's name before it. */
@@ -432,10 +468,12 @@ export function docsLocalhostUrls(mdx: Iterable<string>): Set<string> {
  * Gzipped bytes the search index may take. The budget was set at 760,000, 691,009 plus about 10%. A local build of the
  * merge that added the docs on the invariant suite, the malformed-ABI tests and the calendar vectors measured 773,483,
  * so it was raised to that plus about 10%. The CI build of the branch that makes the agent read its Claude key from
- * agent/.env measured 850,415, so it is now that plus about 10%. A bigger index is a choice to make here, not an
- * accident: every reader downloads it before their first result, often on a phone.
+ * agent/.env measured 850,415, so it was raised to 935,000. The CI build of the branch that adds the Static analysis
+ * page, whose per-finding verdict tables are meant to be found by search, measured 951,985 at a405b2f against 920,790
+ * on main before it, so it is now that plus about 10%. A bigger index is a choice to make here, not an accident: every
+ * reader downloads it before their first result, often on a phone.
  */
-export const SEARCH_INDEX_GZIP_BUDGET = 935_000;
+export const SEARCH_INDEX_GZIP_BUDGET = 1_047_000;
 
 /**
  * Problems with the exported search index (out/api/search.json): over its gzipped budget, empty, or with a result
@@ -513,12 +551,14 @@ const PROOF_HEADING = "Proof";
 const PROOF_RULE_MARK = "No line is ever added to another.";
 /** The brief lines, by the data-testid of their value; the bounty line comes from a committed list, not the chain. */
 const PROOF_BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+/** The Decision lines, by the data-testid of their value, read from the vault's Decision logs in the browser. */
+const PROOF_DECISION_LINES = ["owner-decisions", "agent-decisions", "probe-decisions", "brief-decisions"];
 
 /**
  * Problems with out/proof.html. It is a public page, so it may not ask not to be indexed and the sitemap lists it. Its
- * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then and
- * every brief line says "not deployed", with no number and no wallet or brief row; after, it shows the reading state
- * and no count, since the browser reads the logs. Its markup holds the counting rule.
+ * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then,
+ * every brief line says "not deployed" and every Decision line "not read", with no number and no wallet or brief row;
+ * after, it shows the reading state and no count, since the browser reads the logs. Its markup holds the counting rule.
  */
 export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sitemap: string; url: string }): string[] {
   const { html, inboxRecorded, sitemap, url } = opts;
@@ -536,16 +576,19 @@ export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sit
 
   const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   need(markup.includes(PROOF_RULE_MARK), " does not hold the counting rule in its markup");
-  const values = PROOF_BRIEF_LINES.map((key) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1]);
+  const valueOf = (key: string) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1];
+  const values = PROOF_BRIEF_LINES.map(valueOf);
+  const decisions = PROOF_DECISION_LINES.map(valueOf);
   if (inboxRecorded) {
     const reading = markup.includes('data-proof-state="reading"');
     need(reading, " does not show the reading state, but a MaatInbox is recorded");
-    if (reading) need(values.every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
+    if (reading) need([...values, ...decisions].every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
   } else {
     const waiting = markup.includes('data-proof-state="not-recorded"') && markup.includes("Counting starts when the inbox is recorded.");
     need(waiting, " does not say counting starts when the inbox is recorded, but no MaatInbox is recorded");
     if (waiting) {
       need(values.every((v) => v === undefined || v === "not deployed"), " shows a brief line other than not deployed, but no MaatInbox is recorded");
+      need(decisions.every((v) => v === undefined || v === "not read"), " shows a Decision line other than not read, but no MaatInbox is recorded");
       need(!/data-proof-row="(?:outside|team|hidden)"/.test(markup), " lists a wallet or a brief, but no MaatInbox is recorded");
     }
   }

@@ -97,7 +97,21 @@ async function serious(page: Page): Promise<string[]> {
     .map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
 }
 
-const LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs", "bounty-claimants"];
+/** The lines of the rule, in its order, by the data-testid of their value. */
+const LINES = [
+  "owner-decisions",
+  "agent-decisions",
+  "probe-decisions",
+  "outside-briefs",
+  "outside-wallets",
+  "verified",
+  "brief-decisions",
+  "team-briefs",
+  "hidden-briefs",
+  "bounty-claimants",
+];
+const BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+const DECISION_LINES = ["owner-decisions", "agent-decisions", "probe-decisions", "brief-decisions"];
 
 test.describe("/proof with the committed deployments table", () => {
   // The nav links /proof, in the bar and in the phone menu, once the owner's switch has opened /ask.
@@ -117,12 +131,17 @@ test.describe("/proof with the committed deployments table", () => {
 
     if (RECORDED === null) {
       await expect(page.locator('[data-proof-state="not-recorded"]')).toContainText("Counting starts when the inbox is recorded.");
-      for (const key of LINES.slice(0, 5)) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not deployed");
+      for (const key of BRIEF_LINES) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not deployed");
+      for (const key of DECISION_LINES) await expect(page.getByTestId(`proof-${key}`)).toHaveText("not read");
       await expect(page.locator("[data-proof-row]")).toHaveCount(0);
       expect(seen.methods).not.toContain("eth_getLogs");
     } else {
       await expect(page.locator('[data-proof-state="read"]')).toBeVisible();
       await expect(page.getByTestId("proof-outside-briefs")).toHaveText("0");
+      // In this fake chain, not on mainnet: the executor's three Decisions carry no rationale blob, so each is an agent
+      // Decision, and the vault allowed all.
+      await expect(page.getByTestId("proof-agent-decisions")).toHaveText("3");
+      await expect(page.getByTestId("proof-agent-decisions-split")).toHaveText("3 allowed, 0 refused");
     }
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);
@@ -157,6 +176,10 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
 
     await expect(page.locator('[data-proof-state="read"]')).toBeVisible({ timeout: 15_000 });
     const expected: Record<string, string> = {
+      "owner-decisions": "0",
+      "agent-decisions": "3",
+      "probe-decisions": "0",
+      "brief-decisions": "0",
       "outside-briefs": "3",
       "outside-wallets": "2",
       verified: "1",
@@ -165,7 +188,13 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
       "bounty-claimants": "0",
     };
     for (const key of LINES) await expect(page.getByTestId(`proof-${key}`)).toHaveText(expected[key]!);
+    const shown = page.locator("dl dd[data-testid^='proof-']:not([data-testid$='-split'])");
+    expect(await shown.evaluateAll((els) => els.map((e) => e.getAttribute("data-testid")))).toEqual(LINES.map((key) => `proof-${key}`));
+    for (const key of DECISION_LINES) {
+      await expect(page.getByTestId(`proof-${key}-split`)).toHaveText(key === "agent-decisions" ? "3 allowed, 0 refused" : "0 allowed, 0 refused");
+    }
     await expect(page.getByText("Counted to block 62,120,000 of Base mainnet")).toBeVisible();
+    await expect(page.getByText("and the Decision logs of MandateVault")).toBeVisible();
 
     const wallets = page.getByRole("table", { name: "Outside wallets" });
     await expect(wallets.locator("tbody tr")).toHaveCount(2);
