@@ -20,11 +20,16 @@ const CHECKS = [
   },
 ] as const;
 
+/**
+ * For agent builders: the market-guard skill and its two chain checks. It is the last section above the footer, so it
+ * ends on the footer's own top padding rather than a section's full one, and no empty band opens above "Watch it say
+ * no." (spec 2026-11-27 section 4; e2e/landing-mainnet.spec.ts bounds the gap).
+ */
 export function AgentBuilders() {
   const refusals = numberWord(FACTS.refusalCount.value).toLowerCase();
   return (
     <section id="agents" aria-labelledby="agents-title" className="border-t border-line">
-      <div className="wrap flex flex-col gap-10 py-20 md:py-32">
+      <div className="wrap flex flex-col gap-10 pb-14 pt-20 md:pb-16 md:pt-32">
         <SectionHeading
           id="agents-title"
           layout="split"

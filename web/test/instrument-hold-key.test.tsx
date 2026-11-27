@@ -24,9 +24,9 @@ async function mount() {
 }
 
 describe("HoldKey (spec 2026-11-23 section 5.1, WCAG 2.2.2)", () => {
-  it("is a toggle button named Hold, not pressed at first", async () => {
+  it("is a toggle button named Pause, not pressed at first (spec 2026-11-27 section 4: HOLD became Pause)", async () => {
     await mount();
-    const key = screen.getByRole("button", { name: "Hold" });
+    const key = screen.getByRole("button", { name: "Pause" });
     expect(key.tagName).toBe("BUTTON");
     expect(key).toHaveAttribute("type", "button");
     expect(key).toHaveAttribute("aria-pressed", "false");
@@ -36,7 +36,7 @@ describe("HoldKey (spec 2026-11-23 section 5.1, WCAG 2.2.2)", () => {
 
   it("holds the page's reading while pressed, with no read and no timer, and a second press reads on", async () => {
     const fake = await mount();
-    const key = screen.getByRole("button", { name: "Hold" });
+    const key = screen.getByRole("button", { name: "Pause" });
     fireEvent.click(key);
     expect(key).toHaveAttribute("aria-pressed", "true");
     expect(vi.getTimerCount()).toBe(0);

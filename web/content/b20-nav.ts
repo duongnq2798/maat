@@ -39,3 +39,24 @@ export const NAV_TOKENS: readonly NavToken[] = [
   { symbol: "SPCXc", name: "Space Exploration Technologies Corp.", token: "0xb2000000000000000000007b9fcbd005511aCBd5", feed: "0x6A634B235903C4ad6376892180d6fF8612e3Fa68", pool: "0x880dB7Dda4407D99508574E680d067D1164B3cFE" },
   { symbol: "TSLAc", name: "Tesla Inc.", token: "0xb2000000000000000000001e800a7f5189430cD0", feed: "0xFaf869185383a24F8cb00e27BdA6b63B9905DCb4", pool: "0x7A33000372f3F028f074182CCb9d16cBEEfBF920" },
 ];
+
+/** The company a NAV token stands for, without its legal suffix: "Alphabet" for GOOGLc; null for any other symbol. */
+export function companyName(symbol: string): string | null {
+  const name = NAV_TOKENS.find((t) => t.symbol === symbol)?.name;
+  return name === undefined ? null : name.replace(/,?\s+(?:Inc\.|Corporation|Corp\.|PBC)$/, "");
+}
+
+/** What a ticker stands for, in brackets: "(Alphabet, a B20 token on Base)" for GOOGLc; null for any other symbol. */
+export function companyGloss(symbol: string): string | null {
+  const company = companyName(symbol);
+  return company === null ? null : `(${company}, a B20 token on Base)`;
+}
+
+/**
+ * A ticker the first time the landing names it (spec 2026-11-27, landing "explain in 10 seconds", section 4):
+ * "GOOGLc (Alphabet, a B20 token on Base)"; null for a symbol that is not a NAV token.
+ */
+export function tickerGloss(symbol: string): string | null {
+  const gloss = companyGloss(symbol);
+  return gloss === null ? null : `${symbol} ${gloss}`;
+}

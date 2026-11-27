@@ -37,22 +37,22 @@ test("the landing's small links are 44 px targets, its strip has no blank band, 
   await expect(strip).toHaveAttribute("data-live-strip", "live");
   await page.evaluate(() => document.fonts.ready);
 
-  // m5: the basket's last row sits close to the bezel's read age, whatever room the reserve leaves.
-  const last = (await strip.locator("[data-basket-token]").last().boundingBox())!;
+  // m5: the line's last row, its link to /now, sits close to the bezel's read age, whatever room the reserve leaves.
+  const last = (await strip.getByRole("link", { name: /^All \d+ tokenized stocks/ }).boundingBox())!;
   const age = (await strip.locator("[data-read-age]").boundingBox())!;
   expect(age.y - (last.y + last.height)).toBeLessThan(48);
   await strip.screenshot({ path: "test-results/screens/phone-strip-390.png" });
 
   await expectTapTargets([
     page.getByRole("link", { name: "Follow the build" }),
-    strip.getByRole("link", { name: /^All \d+ B20s/ }),
+    strip.getByRole("link", { name: /^All \d+ tokenized stocks/ }),
     strip.getByRole("link", { name: /^Base block/ }),
-    page.locator("#top").getByRole("link", { name: "Run the tests in 5 minutes" }),
+    page.locator("#top").getByRole("link", { name: "Verify it in 5 minutes" }),
     page.locator("[data-vault-card]").getByRole("link", { name: /Open the ledger/ }),
     ...(await page.locator("[data-vault-card]").getByRole("link", { name: /on Basescan$/ }).all()),
     ...(await page.getByRole("list", { name: "Project links" }).getByRole("link").all()),
   ]);
-  await expect(page.locator("#top").getByRole("link", { name: "Run the tests in 5 minutes" })).toHaveAttribute("href", "/docs/get-started/quickstart");
+  await expect(page.locator("#top").getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", "/docs/get-started/quickstart");
 
   const ledger = await menuToLedger(page);
   await expect(ledger).toHaveAttribute("href", "/ledger");

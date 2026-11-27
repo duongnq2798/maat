@@ -1,7 +1,10 @@
 import { SITE } from "@/lib/site";
 import { VaultBarStatus } from "./Vault";
 
-/** The bar over the nav: the vault is live on Base mainnet and unaudited; from sm, once read, its last Decision's age. */
+/**
+ * The bar over the nav: the vault is live on Base mainnet, unaudited and kept small on purpose; from sm, once read, its
+ * last Decision's age.
+ */
 export function AnnouncementBar() {
   return (
     <div className="relative z-40 border-b border-line bg-surface-soft">
@@ -11,7 +14,7 @@ export function AnnouncementBar() {
           Live on Base mainnet
         </span>
         <VaultBarStatus />
-        <span>Unaudited.</span>
+        <span>Unaudited · small treasury on purpose</span>
         <a href={SITE.xUrl} className="tap font-medium">
           Follow the build
         </a>
