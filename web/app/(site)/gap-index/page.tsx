@@ -290,7 +290,7 @@ export default function GapIndexPage() {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <Nav onLanding={false} plate={<DockedPlate className="mr-2 hidden md:inline-flex" />} />
+      <Nav onLanding={false} plate={<DockedPlate className="mr-2 hidden min-[900px]:inline-flex" />} />
       <main id="main" tabIndex={-1} className="outline-none">
         <div className="wrap flex flex-col gap-6 pb-16 pt-8 sm:pt-14 md:pb-20">
           <h1 className="m-0 text-[clamp(40px,5.4vw,72px)] font-semibold leading-none tracking-[-0.045em]">{HEADING}</h1>
