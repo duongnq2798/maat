@@ -23,12 +23,13 @@ export const AGENT_ABI_FILE = "agent/src/abi/generated.ts";
 /**
  * The ABIs the docs publish, by contract, each with its export in AGENT_ABI_FILE. Maat's own contracts only: the
  * third-party interfaces in that file (IB20Asset, IAggregatorV3, IERC20Minimal) are left out, and it holds no ABI for
- * the swap adapter.
+ * the swap adapter. MaatInbox, the fifth Base mainnet contract, has been published since 2026-11-27.
  */
 export const PUBLISHED_ABIS = {
   MandateVault: "mandateVaultAbi",
   ICreditAdapter: "creditAdapterAbi",
   MarketCalendar: "marketCalendarAbi",
+  MaatInbox: "maatInboxAbi",
 } as const;
 
 export type AbiName = keyof typeof PUBLISHED_ABIS;

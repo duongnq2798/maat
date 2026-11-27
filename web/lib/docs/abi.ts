@@ -11,7 +11,7 @@ export function abiUrl(name: AbiName): string {
 }
 
 export const ABI_NOTE =
-  "ABI of contracts that are built and fork-tested. The four Maat contracts are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.";
+  "ABI of contracts that are built and fork-tested. The four core Maat contracts and MaatInbox (five in all) are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.";
 
 /**
  * The file /data/abi/<name>.json serves: where the ABI comes from, what it is not, and the ABI itself. The build reads

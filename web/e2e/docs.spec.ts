@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { ASK_OPEN } from "../content/ask-open";
 import { FACT_TEXT } from "../lib/docs/fact-text";
 import { HEALTH_FACTOR_SCALE, MULTIPLIER_FLOW } from "../lib/docs/flows";
 import { DOCS_IA } from "../lib/docs/ia";
@@ -778,7 +779,14 @@ test.describe("files for tools", () => {
     request,
   }) => {
     const llms = await (await request.get("/llms.txt")).text();
-    expect(llms).toMatch(/^> .+\n\nStatus: built and fork-tested, and the four Maat contracts are deployed to Base mainnet\. The contracts are unaudited, /m);
+    expect(llms).toMatch(
+      /^> .+\n\nStatus: built and fork-tested, and the four core Maat contracts and MaatInbox \(five in all\) are deployed to Base mainnet\. The contracts are unaudited, /m,
+    );
+    // The site's pages that show Maat on Base come before the docs pages, each linked as the static host serves it.
+    const site = [...(llms.split("\n## Site\n")[1]?.split("\n## Pages\n")[0] ?? "").matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\): /gm)];
+    expect(site.map(([, url]) => new URL(url!).pathname)).toEqual(["/ledger", "/now", "/proof", "/gap-index", ...(ASK_OPEN ? ["/ask"] : [])]);
+    for (const [, url] of site) expect((await request.get(new URL(url!).pathname)).status(), url).toBe(200);
+    expect(llms).toContain("/data/abi/MaatInbox.json): ");
     const copies = [...llms.matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+\/md\/docs[^)]*\.md)\): .*Web page: (\S+)$/gm)];
     expect(copies).toHaveLength(DOCS_IA.flatMap((s) => s.pages).length);
     for (const [, md = "", web] of copies) {
