@@ -18,6 +18,15 @@ describe("the For agent builders section", () => {
     expect(agents.nextElementSibling?.id).toBe("try");
   });
 
+  it("points its link to the refusals the way they lie on the page: down, since they follow this section", () => {
+    const main = render(<Page />).container.querySelector("main")!;
+    const agents = main.querySelector(":scope > #agents")!;
+    const reasons = main.querySelector(":scope > #reasons")!;
+    expect(agents.compareDocumentPosition(reasons) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const link = within(agents as HTMLElement).getByRole("link", { name: /See the nineteen refusals/ });
+    expect(link.querySelector('[aria-hidden="true"]')?.textContent).toBe(" ↓");
+  });
+
   it("names the skill, says it is read-only, and links /skill.md, the reasons and the source", () => {
     const section = render(<AgentBuilders />).container.querySelector("#agents") as HTMLElement;
     expect(within(section).getByRole("heading", { level: 2 })).toHaveTextContent("Ask the vault before you trade.");

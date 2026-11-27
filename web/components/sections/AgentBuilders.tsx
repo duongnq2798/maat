@@ -51,9 +51,10 @@ export function AgentBuilders() {
             Read /skill.md
             <span aria-hidden="true"> →</span>
           </a>
+          {/* The Refusals section comes after this one, below the simulator (spec 2026-11-27 section 3). */}
           <a href="#reasons">
             See the {refusals} refusals
-            <span aria-hidden="true"> ↑</span>
+            <span aria-hidden="true"> ↓</span>
           </a>
           <a href={`${SITE.repoUrl}/tree/main/skills/${SKILL}`}>
             The skill on GitHub
