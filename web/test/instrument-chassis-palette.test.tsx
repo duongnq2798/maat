@@ -69,7 +69,7 @@ describe("the live pieces on the faceplate and on the chassis (spec 2026-11-23 s
     );
     const link = screen.getByRole("link", { name: "Base block 60,013,066" });
     expect(link).toHaveAttribute("href", "https://basescan.org/block/60013066");
-    expect(link.className).toBe("tap whitespace-nowrap font-mono text-[12px] text-pass-lit");
+    expect(link.className).toBe("whitespace-nowrap font-mono text-[12px] text-pass-lit max-sm:inline-block max-sm:leading-[44px]");
   });
 
   it("says why a reading is not live in the same words on either surface", () => {
@@ -81,7 +81,7 @@ describe("the live pieces on the faceplate and on the chassis (spec 2026-11-23 s
     unmount();
     render(<NotLiveWhy state={state} palette="chassis" />);
     expect(document.body).toHaveTextContent(words);
-    expect(screen.getByRole("link", { name: "60,013,066" }).className).toBe("tap whitespace-nowrap font-mono text-[12px] text-pass-lit");
+    expect(screen.getByRole("link", { name: "60,013,066" }).className).toBe("whitespace-nowrap font-mono text-[12px] text-pass-lit max-sm:inline-block max-sm:leading-[44px]");
   });
 
   it("keeps data-tone and the sentence on the chassis, with its own tones", () => {
