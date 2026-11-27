@@ -6,7 +6,7 @@ import deployments from "../content/generated/deployments.json" with { type: "js
 import { deploymentConfig } from "../lib/chain/config";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
 import { blockBase, installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
-import { collectErrors, measureFit, tapSize } from "./helpers";
+import { collectErrors, expectTapTargets, measureFit } from "./helpers";
 
 const addr = (name: string) => getAddress(addresses.find((a) => a.name === name)!.value);
 const USDC = addr("USDC");
@@ -223,12 +223,7 @@ test.describe("/ledger reading a fake Base mainnet", () => {
       ...(await page.locator("summary", { hasText: "Show as table" }).all()),
     ];
     expect(targets.length).toBeGreaterThan(3);
-    for (const t of targets) {
-      const size = await tapSize(t);
-      const name = (await t.textContent()) ?? "";
-      expect(size.width, name).toBeGreaterThanOrEqual(44);
-      expect(size.height, name).toBeGreaterThanOrEqual(44);
-    }
+    await expectTapTargets(targets);
     const fit = await measureFit(page);
     expect(fit.overflow).toBeLessThanOrEqual(0);
     expect(fit.clipped).toEqual([]);

@@ -15,7 +15,7 @@ import { countdownText } from "@/lib/live/countdown";
 import type { LiveState, Reading } from "@/lib/live/freshness";
 import { formatAge, formatBlock, formatEt, formatUtc } from "@/lib/live/format";
 import type { LiveReader } from "@/lib/live/rpc";
-import { BlockLink, FAILED, LiveAnnouncer, LivePill, NotLiveWhy, READING, ReadButton, Sep, useRetry } from "./LiveStatus";
+import { BlockLink, FAILED, LiveAnnouncer, LivePill, NotLiveWhy, READING, ReadButton, Sep, STRIP_TAP, useRetry } from "./LiveStatus";
 import { LiveSnapshotProvider, type LiveSnapshotValue, useLive, useLiveIfAny } from "./LiveSnapshotProvider";
 import { VerdictLine } from "./VerdictLine";
 
@@ -41,15 +41,19 @@ const GHOST_BLOCK = "88,888,888";
  * frames are 360 px at 360 (three refusals, against 366 before), 192 px at 640 (the session's pass, against 194), and
  * 206 px at 1000 and 208 px at 1280 to 1920 (three refusals, against 234 and 248).
  *
+ * Since 2026-11-27 (judge rehearsal m4) the block link and "All 13 B20s" each sit on a 44 px line below sm, a tap target
+ * of their own, which adds 48 px to a frame there: measured on Windows Chromium, the three-refusal frame is 408 px at
+ * 360, against 360 before. The phone reserve rose by the same 48 px, from 428 to 476.
+ *
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
  * measures (at 320 px the three-refusal frame needs 450 px on Windows), grows the window and moves the lead down
  * instead of running over it.
  */
-export const STRIP_RESERVE = "min-h-[428px] sm:min-h-[216px] min-[62.5rem]:min-h-[284px] xl:min-h-[268px]";
+export const STRIP_RESERVE = "min-h-[476px] sm:min-h-[216px] min-[62.5rem]:min-h-[284px] xl:min-h-[268px]";
 
 function NowLink() {
   return (
-    <a href="/now" className="tap whitespace-nowrap font-medium text-pass-lit">
+    <a href="/now" className={`whitespace-nowrap font-medium text-pass-lit ${STRIP_TAP}`}>
       All {NAV_TOKENS.length} B20s <span aria-hidden="true">→</span>
     </a>
   );

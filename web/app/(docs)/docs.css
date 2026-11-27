@@ -71,6 +71,16 @@
   --color-fd-muted-foreground: #a0a6b4;
 }
 
+/* On a phone each icon button is a 44 px target (judge rehearsal 2026-11-27, m4): search and the sidebar toggle in the
+   header, and the GitHub link, the theme toggle and the close button in the sidebar. The header is 56 px tall. */
+@media (width < 48rem) {
+  #nd-subnav > button,
+  #nd-sidebar-mobile :is(a, button)[aria-label] {
+    min-width: 44px;
+    min-height: 44px;
+  }
+}
+
 /* An owner may print a runbook (the deploy checklist, the emergency playbook) before signing: print the article only,
    across the page, with long commands wrapped instead of clipped and the address of every external link but an
    excerpt's title, which already names its file and lines. */

@@ -1,6 +1,6 @@
-import { expect, type Locator, type Page, test } from "@playwright/test";
+import { expect, type Page, test } from "@playwright/test";
 import { routeLiveRpc, WEEKEND_TS } from "./fake-live-rpc";
-import { collectErrors, measureFit, tapSize } from "./helpers";
+import { collectErrors, expectTapTargets, measureFit } from "./helpers";
 
 // The judge's path on a phone (judge rehearsal 2026-11-27): the landing, then the Menu to /ledger, or /now and the Gap
 // Index from the landing's links. At 390 px every page there has the site's nav with its Menu (M5), the small links on
@@ -9,25 +9,16 @@ import { collectErrors, measureFit, tapSize } from "./helpers";
 
 const PHONE = { width: 390, height: 844 } as const;
 
-async function expectTargets(targets: readonly Locator[]) {
-  for (const t of targets) {
-    const size = await tapSize(t);
-    const name = ((await t.getAttribute("aria-label")) ?? (await t.textContent()) ?? "").trim();
-    expect(size.width, name).toBeGreaterThanOrEqual(44);
-    expect(size.height, name).toBeGreaterThanOrEqual(44);
-  }
-}
-
 /** The nav's Menu, opened, and the link to the ledger in it. */
 async function menuToLedger(page: Page) {
   const nav = page.getByRole("navigation", { name: "Main" });
   const summary = nav.locator("[data-phone-menu] > summary");
   await expect(summary).toBeVisible();
-  await expectTargets([summary]);
+  await expectTapTargets([summary]);
   await summary.click();
   const pages = nav.getByRole("list", { name: "Pages" });
   await expect(pages).toBeVisible();
-  await expectTargets(await pages.getByRole("link").all());
+  await expectTapTargets(await pages.getByRole("link").all());
   return pages.getByRole("link", { name: "Ledger", exact: true });
 }
 
@@ -52,7 +43,7 @@ test("the landing's small links are 44 px targets, its strip has no blank band, 
   expect(age.y - (last.y + last.height)).toBeLessThan(48);
   await strip.screenshot({ path: "test-results/screens/phone-strip-390.png" });
 
-  await expectTargets([
+  await expectTapTargets([
     page.getByRole("link", { name: "Follow the build" }),
     strip.getByRole("link", { name: /^All \d+ B20s/ }),
     strip.getByRole("link", { name: /^Base block/ }),
@@ -80,12 +71,27 @@ for (const path of ["/now", "/gap-index"] as const) {
       await expect(page.locator("[data-live-strip], [data-now-board], main").first()).toBeVisible();
       const refresh = page.getByRole("button", { name: "Refresh" });
       await expect(refresh).toBeVisible();
-      await expectTargets([refresh]);
+      await expectTapTargets([refresh]);
     }
-    await expectTargets(await page.getByRole("list", { name: "Project links" }).getByRole("link").all());
+    await expectTapTargets(await page.getByRole("list", { name: "Project links" }).getByRole("link").all());
     expect((await measureFit(page)).overflow).toBeLessThanOrEqual(0);
     await ledger.click();
     await expect(page).toHaveURL(/\/ledger$/);
     expect(errors).toEqual([]);
   });
 }
+
+test("the docs' icon buttons are 44 px targets on a phone, in the header and in the sidebar", async ({ page }) => {
+  await page.goto("/docs");
+  await page.evaluate(() => document.fonts.ready);
+  const header = page.locator("#nd-subnav");
+  await expectTapTargets([header.getByRole("button", { name: "Open Search" }), header.getByRole("button", { name: "Open Sidebar" })]);
+  await header.getByRole("button", { name: "Open Sidebar" }).click();
+  const sidebar = page.locator("#nd-sidebar-mobile");
+  await expect(sidebar.getByRole("link", { name: "GitHub" })).toBeVisible();
+  await expectTapTargets([
+    sidebar.getByRole("link", { name: "GitHub" }),
+    sidebar.getByRole("button", { name: "Toggle Theme" }),
+    sidebar.getByRole("button", { name: "Close Sidebar" }),
+  ]);
+});
