@@ -131,7 +131,7 @@ describe("hero", () => {
     expect(screen.queryByRole("link", { name: "See the vault's last decision" })).toBeNull();
     // The vault card opens the ledger instead.
     expect(screen.getByRole("link", { name: "Open the ledger" })).toHaveAttribute("href", "/ledger");
-    expect(screen.getByRole("link", { name: "Run the tests in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
+    expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
     // The engine card opens on the mainnet vault; the fork replay is the other tab, its moments in the hidden panel.
     expect(screen.getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
     expect(screen.getByRole("tab", { name: "Fork replay" })).toHaveAttribute("aria-selected", "false");

@@ -47,12 +47,12 @@ test("the landing's small links are 44 px targets, its strip has no blank band, 
     page.getByRole("link", { name: "Follow the build" }),
     strip.getByRole("link", { name: /^All \d+ tokenized stocks/ }),
     strip.getByRole("link", { name: /^Base block/ }),
-    page.locator("#top").getByRole("link", { name: "Run the tests in 5 minutes" }),
+    page.locator("#top").getByRole("link", { name: "Verify it in 5 minutes" }),
     page.locator("[data-vault-card]").getByRole("link", { name: /Open the ledger/ }),
     ...(await page.locator("[data-vault-card]").getByRole("link", { name: /on Basescan$/ }).all()),
     ...(await page.getByRole("list", { name: "Project links" }).getByRole("link").all()),
   ]);
-  await expect(page.locator("#top").getByRole("link", { name: "Run the tests in 5 minutes" })).toHaveAttribute("href", "/docs/get-started/quickstart");
+  await expect(page.locator("#top").getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", "/docs/get-started/quickstart");
 
   const ledger = await menuToLedger(page);
   await expect(ledger).toHaveAttribute("href", "/ledger");

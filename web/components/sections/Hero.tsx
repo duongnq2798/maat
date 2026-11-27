@@ -64,8 +64,9 @@ export function Hero() {
               </a>
             ))}
           </div>
+          {/* Spec 2026-11-27 section 1, word for word: the quickstart runs the vault's tests. */}
           <a href={SITE.quickstartUrl} className="tap self-start text-[15px] font-medium">
-            Run the tests in 5 minutes
+            Verify it in 5 minutes
             <span aria-hidden="true"> →</span>
           </a>
           <dl className="m-0 mt-2 grid max-w-[560px] grid-cols-3 border-t border-line">
