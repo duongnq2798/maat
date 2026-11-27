@@ -25,7 +25,7 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 > Claude proposes. The vault decides.
 
 > [!IMPORTANT]
-> **On Base mainnet now** (read from Base on 2026-11-28). Since 2026-11-27 at 01:04 UTC the vault's executor has been
+> **On Base mainnet now** (read from Base on 2026-11-27, 17:34 UTC). Since 2026-11-27 at 01:04 UTC the vault's executor has been
 > the Coinbase CDP Server Wallet account of Maat's agent, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, and the agent
 > runs in live mode with the real Claude API.
 >
@@ -127,7 +127,7 @@ Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Ri
 ## By track: Agentic Stock Finance
 
 The quest page describes the track as "Build agents that research, earn or trade around tokenized stocks in
-novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-28:
+novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-27:
 
 | Idea (quest page) | What Maat does | Status | Where |
 | --- | --- | --- | --- |
@@ -230,9 +230,10 @@ links; the docs show the same table on
   whose keccak256 is the `rationaleHash`
   (`0x95696cf56c271cd3c34db96f578e1dec94da7cb802b39e64d13067c542fe8f87` and
   `0x090ac5b4aab31b23b17dd934e2fa563dcf81f0d8a74c169a6fbc5b2ecf6b8118`), and the Builder Code `bc_w7i5vjdv`.
-- **Mainnet `Decision` events.** This README keeps no running count: when it was last read from Base, on 2026-11-28,
-  the vault had emitted five, the owner's two smoke-test buys and the agent's three above. Every `Decision` the vault
-  emits is public in its events on Basescan, at the `MandateVault` address in [`deployments/README.md`](deployments/README.md). The
+- **Mainnet `Decision` events.** This README keeps no running count: when it was last read from Base, at 17:34 UTC
+  on 2026-11-27, the vault had emitted five, the owner's two smoke-test buys and the agent's three above. Every
+  `Decision` the vault emits is public in its events on Basescan, at the `MandateVault` address in
+  [`deployments/README.md`](deployments/README.md). The
   [mainnet ledger](https://maatonbase.xyz/ledger) reads them from Base in your browser, with the vault's
   treasury and mandate. [Watch decisions onchain](https://maatonbase.xyz/docs/guides/watch-decisions-onchain)
   shows how to read and decode the events yourself.
@@ -777,10 +778,10 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
   Neither package ships in the static site.
 
 **The case against Maat.** It is unaudited, and its live record is short: Maat's agent has run on Base mainnet only
-since 2026-11-27, and when this README was last read against Base, on 2026-11-28, that record was one refusal while NYSE
-was closed and two allowed buys of $4.64 each. Its sells and credit actions have run only in fork tests, with a scripted
-proposer in place of Claude, so nothing here yet shows how the real model trades over many sessions or through a
-sell. Its session check is only as good as a calendar the owner must keep current;
+since 2026-11-27, and when this README was last read against Base, at 17:34 UTC that day, that record was one refusal
+while NYSE was closed and two allowed buys of $4.64 each. Its sells and credit actions have run only in fork tests, with
+a scripted proposer in place of Claude, so nothing here yet shows how the real model trades over many sessions or
+through a sell. Its session check is only as good as a calendar the owner must keep current;
 its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
 counters; and one immutable owner key, with no multisig, controls the vault.
 
