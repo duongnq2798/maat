@@ -19,6 +19,7 @@ const s = script as unknown as {
   erc8021Suffix(code: string): string;
   suffixCode(input: string): string | null;
   briefFromLogs(logs: { address: string; topics: string[]; data: string }[]): { id: bigint; from: string; text: string } | null;
+  clean(text: string): string;
   readBuilderCode(url: string): Promise<{ code?: string; why?: string }>;
   main(argv: string[]): Promise<number>;
 };
@@ -69,6 +70,46 @@ describe("scripts/brief.mjs", () => {
     const data = encodeAbiParameters([{ type: "string" }], ["Why hold NVDAc?"]);
     expect(s.briefFromLogs([{ address: s.INBOX.toLowerCase(), topics, data }])).toEqual({ id: 7n, from, text: "Why hold NVDAc?" });
     expect(s.briefFromLogs([{ address: s.VAULT, topics, data }])).toBeNull();
+  });
+
+  it("shows escapes from the chain or an RPC as U+FFFD", async () => {
+    const ESC = String.fromCharCode(0x1b);
+    const R = String.fromCodePoint(0xfffd);
+    const raw = ["ok", ESC, "[2J", ESC, "]8;;https://x", String.fromCharCode(0x07), String.fromCharCode(0x9b), "31m", String.fromCharCode(0x200b)].join("");
+    expect(s.clean(raw)).toBe(["ok", R, "[2J", R, "]8;;https://x", R, R, "31m", R].join(""));
+    const from = "0x00000000000000000000000000000000000000a1";
+    const topics = encodeEventTopics({ abi: inboxAbi, eventName: "Brief", args: { id: 1n, from } }) as string[];
+    const data = encodeAbiParameters([{ type: "string" }], ["x"]);
+    expect(s.briefFromLogs([{ address: s.INBOX, topics: [topics[0]!, topics[1]!, `0x${ESC}[2J`], data }])).toBeNull();
+
+    const out: string[] = [];
+    const err = vi.spyOn(console, "error").mockImplementation((m: string) => void out.push(m));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: { body: string }) => {
+        const { method } = JSON.parse(init.body) as { method: string };
+        if (method === "eth_chainId") return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x2105" }));
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code: -1, message: `boom ${ESC}[2J` } }), { status: 403 });
+      }),
+    );
+    expect(await s.main(["--status", `0x${"ab".repeat(32)}`])).toBe(1);
+    expect(out).toEqual([`eth_getTransactionReceipt: boom ${R}[2J (HTTP 403)`]);
+    err.mockRestore();
+  });
+
+  it("says a hash with no receipt is pending or unknown", async () => {
+    const out: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((m: string) => void out.push(m));
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (_url: string, init: { body: string }) => {
+        const { method } = JSON.parse(init.body) as { method: string };
+        return new Response(JSON.stringify({ jsonrpc: "2.0", id: 1, result: method === "eth_chainId" ? "0x2105" : null }));
+      }),
+    );
+    expect(await s.main(["--status", `0x${"ab".repeat(32)}`])).toBe(1);
+    expect(out.join(" ")).toMatch(/has no receipt yet: it is pending or unknown/);
+    log.mockRestore();
   });
 
   it("takes the code only from a first Decision the owner sent", async () => {
