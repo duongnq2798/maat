@@ -52,7 +52,8 @@ export function HeroCard() {
               aria-controls={`engine-panel-${t.id}`}
               tabIndex={on ? 0 : -1}
               onClick={() => setTab(t.id)}
-              className={`min-h-9 cursor-pointer rounded-full border-0 px-3.5 py-2 text-xs font-medium ${
+              // .tap (app/globals.css) draws a 44 px target around the 36 px tab, so the pill keeps its size.
+              className={`tap min-h-9 cursor-pointer rounded-full border-0 px-3.5 py-2 text-xs font-medium ${
                 on
                   ? "bg-white text-ink shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_12%,transparent)]"
                   : "bg-transparent text-ink-2 hover:text-ink"
