@@ -469,9 +469,9 @@ export function docsLocalhostUrls(mdx: Iterable<string>): Set<string> {
  * merge that added the docs on the invariant suite, the malformed-ABI tests and the calendar vectors measured 773,483,
  * so it was raised to that plus about 10%. The CI build of the branch that makes the agent read its Claude key from
  * agent/.env measured 850,415, so it was raised to 935,000. The CI build of the branch that adds the Static analysis
- * page, whose per-finding verdict tables are meant to be found by search, measured 952,013 against 920,790 on main
- * before it, so it is now that plus about 10%. A bigger index is a choice to make here, not an accident: every reader
- * downloads it before their first result, often on a phone.
+ * page, whose per-finding verdict tables are meant to be found by search, measured 951,985 at a405b2f against 920,790
+ * on main before it, so it is now that plus about 10%. A bigger index is a choice to make here, not an accident: every
+ * reader downloads it before their first result, often on a phone.
  */
 export const SEARCH_INDEX_GZIP_BUDGET = 1_047_000;
 

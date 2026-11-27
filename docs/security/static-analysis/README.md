@@ -7,7 +7,7 @@ why Aderyn was not run, is on the docs page
 
 | File | What it holds |
 | --- | --- |
-| [`slither.txt`](slither.txt) | Everything Slither printed: 112 results from 102 detectors over 25 contracts, the Maat sources and the Uniswap v4-core libraries they import |
+| [`slither.txt`](slither.txt) | Everything Slither wrote to stderr, with LF line endings: 112 results from 102 detectors over 25 contracts, the Maat sources and the Uniswap v4-core libraries they import. With `--json`, Slither prints its report through a bare log handler, so the lines carry no `INFO:` prefix. Its stdout held only three lines naming the forge commands crytic-compile ran: `forge clean`, `forge config --json` and the build that [Run it again](#run-it-again) gives |
 | [`forge-lint.txt`](forge-lint.txt) | What `forge lint src` printed: 61 lints, the high, medium and low ones |
 
 ## The run
