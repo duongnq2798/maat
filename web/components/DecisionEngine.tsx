@@ -3,8 +3,8 @@
 import { type PointerEvent, useEffect, useRef, useState } from "react";
 import { BALANCE, Balance } from "@/components/instrument/Balance";
 import { factAttr } from "@/components/instrument/Fig";
-import { SourcePlate } from "@/components/instrument/SourcePlate";
 import type { TipDrag } from "@/components/instrument/useTipDrag";
+import { DataBadge } from "@/components/ui/DataBadge";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { type CheckMark, MOMENT_ORDER, type MomentId, MOMENTS } from "@/content/engine";
 import { FACTS } from "@/content/facts";
@@ -94,9 +94,8 @@ export function DecisionEngine() {
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface-head px-5 py-4">
         <div className="flex flex-col gap-0.5">
           <span className="font-mono text-xs font-semibold">DECISION ENGINE</span>
-          <SourcePlate kind="replay" data-fact={factAttr("forkBlock")}>
-            {`replay · Base fork · block ${formatInt(FACTS.forkBlock.value)}`}
-          </SourcePlate>
+          {/* The fork test's badge (spec 2026-11-27 section 3), with the block the test forked Base at. */}
+          <DataBadge kind="fork" detail={`block ${formatInt(FACTS.forkBlock.value)}`} fact={factAttr("forkBlock")} className="self-start" />
         </div>
         <div role="group" aria-label="Choose a moment" className="flex rounded-full bg-line-soft p-[3px]">
           {MOMENT_ORDER.map((id) => {

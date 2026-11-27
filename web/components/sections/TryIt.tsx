@@ -31,7 +31,7 @@ export function TryIt() {
   ];
 
   return (
-    <section id="try" aria-labelledby="try-title" className="border-t border-line bg-surface-soft">
+    <section id="try" aria-labelledby="try-title" className="border-y border-line bg-surface-soft">
       <div className="wrap flex flex-col gap-12 py-20 md:py-32">
         <SectionHeading
           id="try-title"

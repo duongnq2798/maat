@@ -201,7 +201,8 @@ for (const vp of VIEWPORTS) {
     expect(words.filter((w) => !w.tab)).toEqual([]);
     if (vp.width === 1440) {
       // The engine card shares the hero's row: its mainnet face is on, the replay one tab away.
-      expect(words).toEqual([{ text: "Fork replay", tab: true }]);
+      // Spec 2026-11-27 section 3: the tab says when the replay ran and what it was.
+      expect(words).toEqual([{ text: "Before mainnet (fork test)", tab: true }]);
       await expect(page.locator("#top").getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
       await expect(vaultCard(page)).toBeVisible();
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);

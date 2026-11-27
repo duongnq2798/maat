@@ -2,6 +2,7 @@
 
 import { type CSSProperties, Fragment, type ReactNode, useEffect, useMemo, useState } from "react";
 import { RealVault, type RealVaultDeps } from "@/components/RealVault";
+import { DataBadge } from "@/components/ui/DataBadge";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
 import type { CheckMark } from "@/content/engine";
@@ -71,7 +72,7 @@ interface RowProps {
   mark: CheckMark;
   check: string;
   fixed?: boolean;
-  /** Under Now, a fixed row's tag says it holds a fork value, not one read now. */
+  /** Under Now, a fixed row's badge says it holds a fork value, not one read now: "fork value · 5-7 Nov". */
   forkTag?: "fork" | "fork value";
 }
 
@@ -92,8 +93,9 @@ function Row({ n, label, detail, mark, check, fixed = false, forkTag = "fork" }:
         <span className={`text-sm font-medium ${mark === "SKIP" ? "text-ink-2" : ""}`}>
           {label}
           {fixed ? (
-            <span data-fork-tag className="ml-2 rounded border border-line px-1.5 py-px font-mono text-[10px] font-normal text-ink-2">
-              {forkTag}
+            // The fork badge (spec 2026-11-27 section 3): the row holds a value of the fork test, not one computed here.
+            <span data-fork-tag={forkTag} className="ml-2 inline-block align-middle">
+              <DataBadge kind="fork" word={forkTag} />
             </span>
           ) : null}
         </span>
@@ -328,7 +330,10 @@ export function Simulator({ vaultDeps }: { vaultDeps?: RealVaultDeps } = {}) {
 
       <div className="card overflow-hidden">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-surface-head px-5 py-4">
-          <span className="font-mono text-xs font-semibold">SIMULATOR</span>
+          <span className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-xs font-semibold">SIMULATOR</span>
+            <DataBadge kind="simulated" />
+          </span>
           <span className="font-mono text-[11px] text-ink-2">default mandate · not the contract</span>
         </div>
         <div className="flex flex-wrap items-end justify-between gap-3 px-5 pb-2 pt-5">
@@ -429,7 +434,11 @@ export function Simulator({ vaultDeps }: { vaultDeps?: RealVaultDeps } = {}) {
 
         <div className="border-t border-line px-5 py-4">
           <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="font-mono text-[11px] text-ink-2">TODAY · {dayLabel(isoOfDay(s.etDay)).toUpperCase()}</span>
+            {/* The day's tape, spend and weights are the simulator's own sums: the simulated badge. */}
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="font-mono text-[11px] text-ink-2">TODAY · {dayLabel(isoOfDay(s.etDay)).toUpperCase()}</span>
+              <DataBadge kind="simulated" />
+            </span>
             <button
               type="button"
               onClick={() => {

@@ -4,10 +4,13 @@ import { type KeyboardEvent, useRef, useState } from "react";
 import { DecisionEngine } from "@/components/DecisionEngine";
 import { VaultCard } from "./Vault";
 
-/** The engine card's two faces: the mainnet vault first, the scripted fork run as a labeled replay. */
+/**
+ * The engine card's two faces: the mainnet vault first, then the scripted fork run, named for when it ran and what it was
+ * (spec 2026-11-27, landing "explain in 10 seconds", section 3): before mainnet, a fork test.
+ */
 const TABS = [
   { id: "mainnet", label: "Base mainnet" },
-  { id: "fork", label: "Fork replay" },
+  { id: "fork", label: "Before mainnet (fork test)" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 

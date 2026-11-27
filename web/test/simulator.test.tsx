@@ -313,12 +313,13 @@ describe("Simulator", () => {
     expect(status).not.toContainElement(shown);
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(fixedRows()).toBeGreaterThan(0);
-    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork value"));
+    // Each fixed row carries the fork badge of spec 2026-11-27 section 3; under Now its first word says it is a value.
+    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork value · 5-7 Nov"));
 
     await ui.user.click(ui.button("Thu 5 Nov · 10:30"));
     expect(note()).toBeNull();
     expect(fixedRows()).toBeGreaterThan(0);
-    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork"));
+    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork · 5-7 Nov"));
   });
 
   it("drops the Now note once the time moves off the clock's minute", async () => {
@@ -330,7 +331,7 @@ describe("Simulator", () => {
     fireEvent.change(screen.getByLabelText("Time"), { target: { value: "901" } });
     expect(ui.button("Now")).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByText(/^Now sets the time only\./)).toBeNull();
-    expect([...document.querySelectorAll("[data-fork-tag]")].every((t) => t.textContent === "fork")).toBe(true);
+    expect([...document.querySelectorAll("[data-fork-tag]")].every((t) => t.textContent === "fork · 5-7 Nov")).toBe(true);
   });
 });
 

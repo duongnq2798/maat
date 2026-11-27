@@ -9,11 +9,13 @@ import { SITE } from "@/lib/site";
 // reasons on this page and the skill's folder on GitHub. Its two commands are the skill's own.
 
 describe("the For agent builders section", () => {
-  it("comes last in the landing's main, after the treasury loop", () => {
+  // Spec 2026-11-27, landing "explain in 10 seconds", section 3: the builder section moves up from the end of the page
+  // to right after How it works, before the simulator.
+  it("follows How it works in the landing's main, before the simulator", () => {
     const main = render(<Page />).container.querySelector("main")!;
-    const sections = [...main.querySelectorAll(":scope > section")];
-    expect(sections.at(-1)?.id).toBe("agents");
-    expect(sections.at(-2)?.getAttribute("aria-labelledby")).toBe("loop-title");
+    const agents = main.querySelector(":scope > #agents")!;
+    expect(agents.previousElementSibling?.id).toBe("how");
+    expect(agents.nextElementSibling?.id).toBe("try");
   });
 
   it("names the skill, says it is read-only, and links /skill.md, the reasons and the source", () => {
