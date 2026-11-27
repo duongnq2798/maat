@@ -38,7 +38,7 @@ Maat is an onchain [vault](/docs/help/glossary#vault) on [Base](/docs/help/gloss
 
 ### Is Maat live?
 
-Partly. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why most pages of the docs carry the Fork-tested label; the pages about the deployed contracts carry Live on mainnet. There a scripted proposer stood in for Claude and a local sender for the CDP wallet. Since 2026-11-27 the agent runs in live mode on Base mainnet, on the owner's PC, with the real Claude API, and the CDP Server Wallet is the vault's executor. The vault's first two mainnet `Decision` events were the owner's smoke-test buys of 2026-11-24. The agent's first came at 02:14 UTC on 2026-11-27: Claude proposed a buy of 4.68 USDC of GOOGLc while NYSE was closed for Thanksgiving, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). See [Status and roadmap](/docs/get-started/status).
+Partly. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet, and they are unaudited. The contracts and the agent's send path have run on a local fork of Base mainnet, which is why most pages of the docs carry the Fork-tested label; the pages that give the deployed contracts' addresses, functions and events, or record and read what they did on Base mainnet, carry Live on mainnet. There a scripted proposer stood in for Claude and a local sender for the CDP wallet. Since 2026-11-27 the agent runs in live mode on Base mainnet, on the owner's PC, with the real Claude API, and the CDP Server Wallet is the vault's executor. The vault's first two mainnet `Decision` events were the owner's smoke-test buys of 2026-11-24. The agent's first came at 02:14 UTC on 2026-11-27: Claude proposed a buy of 4.68 USDC of GOOGLc while NYSE was closed for Thanksgiving, and the vault refused it with `MARKET_CLOSED` ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). See [Status and roadmap](/docs/get-started/status).
 
 ### Whose money does Maat trade?
 
@@ -62,7 +62,7 @@ No. The repository has no Maat token. No contract in `contracts/src` or `contrac
 **From the table in `deployments/README.md`, which the Status page shows under [Next: mainnet](/docs/get-started/status#next-mainnet).**
 
 - That table lists the four Maat contracts and `MaatInbox` with their addresses and deploy transactions ([`deployments/README.md`](https://github.com/duongnq2798/maat/blob/main/deployments/README.md)). [Base addresses](/docs/reference/base-addresses) shows it too, and each address there links to Basescan.
-- The pages about the deployed contracts, Base addresses among them, carry the Live on mainnet label ([What the three labels mean](/docs/get-started/status#what-the-three-labels-mean)).
+- The pages that give the deployed contracts' addresses, functions and events, Base addresses among them, carry the Live on mainnet label ([What the three labels mean](/docs/get-started/status#what-the-three-labels-mean)).
 - Treat a vault address from any other source as unverified.
 
 ### Can Claude move funds on its own?
