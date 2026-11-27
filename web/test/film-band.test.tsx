@@ -127,6 +127,10 @@ describe("the film's files in web/public/film", () => {
     // The cut's sixteen shots with a caption, two of them with two cues and one with three.
     expect(cues).toHaveLength(18);
     expect(cues.map((c) => c.id)).toContain("thanksgiving-tx");
+    // The cut shows the early-close probes of Fri 27 Nov from Base (film/txs.json sets both hashes), as the hero's
+    // latest Decisions do, never their placeholder.
+    expect(cues.find((c) => c.id === "early-tx")).toMatchObject({ start: 59.5, end: 66.5 });
+    expect(cues.map((c) => c.id)).not.toContain("early-placeholder");
     // The file is what webvtt() writes, so film/vtt.mjs can write it again.
     expect(webvtt(cues)).toBe(vtt.replace(/\r\n/g, "\n"));
   });

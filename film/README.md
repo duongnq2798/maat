@@ -252,7 +252,7 @@ The landing's film band, `#film` directly under the hero (`web/components/sectio
 
 | File | What it is |
 | --- | --- |
-| `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,109,414 bytes |
+| `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,129,355 bytes |
 | `maat-film-poster.webp` | The poster: the frame at 53.5 s, the tx card of Maat's agent's Thanksgiving Decision, "Refused · Market closed (MARKET_CLOSED)", at 1280x720; 43,408 bytes |
 | `maat-film.en.vtt` | The cut's 18 burned-in captions as WebVTT, at the cut's times, written by `vtt.mjs` |
 
@@ -266,8 +266,16 @@ size, weight and index, the poster's size and weight, and that every cue says th
 `FILM.youtubeUrl` in `web/content/film.ts` is null. Once the owner has uploaded the film to YouTube, set it to the
 video's URL, and the band shows a plain "Watch on YouTube" link under the player. The landing never embeds a player.
 
-The cut there today is the v1 cut of 27 Nov 2026. Beats 6 and 7 show their labelled placeholders: the early-close probes
-and an outside brief were not on Base when its picture was rendered.
+The cut there today is the v1 cut of 27 Nov 2026 with beat 6 rendered again on 28 Nov: its tx shot (59.5 to 66.5 s)
+shows the two early-close probes of Fri 27 Nov from Base, both hashes set in `txs.json`, under the caption `early-tx`.
+Every other segment is the v1 file as `assemble.mjs` wrote it on 27 Nov, joined with the 28 Nov segment by the same
+concat step, and the sound is the v1 mix, unchanged, since the shot list is the same. Beat 7 still shows its labelled
+placeholders: no outside brief was on Base yet.
+
+Only beat 6 was taken from the 28 Nov render because that render warned about beat 8: `/proof` now also counts the
+Decision lines, so its counts run lower on the page, and the `/proof` shot's caption would cover a row of them.
+Before the next full render, move that shot's scroll stop so the counts end above the caption band (`keepClear` in
+`lib/beats.mjs`).
 
 To put a new cut on the landing, run from the repository root, with `<cut>` the 16:9 MP4 with its sound and `<work>` the
 work folder of the render its picture comes from:
