@@ -1,8 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { CACHE_SAFETY_BLOCKS, cacheKey, loadCache } from "@/lib/chain/cache";
+import { CACHE_SAFETY_BLOCKS, cacheKey, loadCache, saveCache } from "@/lib/chain/cache";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
-import { loadLedger, verifyVault, VaultCheckError, type LedgerSnapshot } from "@/lib/chain/load";
+import { loadLedger, MAX_FAILED, verifyVault, VaultCheckError, type LedgerSnapshot } from "@/lib/chain/load";
 import type { RationaleSource } from "@/lib/chain/rationale";
 import { DEFAULT_RPCS, rpcUrls } from "@/lib/chain/rpc";
 import { decisionLog, FAKE_VAULT, fakeLedgerClient, hash32, memoryStorage } from "./helpers/fake-ledger";
@@ -144,5 +144,54 @@ describe("loadLedger", () => {
     );
     const s = await load(chain(), storage);
     expect(s.decisions).toHaveLength(3);
+  });
+});
+
+describe("loadLedger when log chunks keep failing", () => {
+  // 31 chunks of 50,000 blocks from the deploy block to the head, as a cold read of the vault from its deploy block is
+  // today without a snapshot: the four newest answer, and every older one fails, as an RPC that went down would.
+  const LONG_HEAD = DEPLOY + 1_500_000n;
+  const CUT = LONG_HEAD - 199_999n;
+  const longChain = (over: Partial<Parameters<typeof fakeLedgerClient>[0]> = {}) =>
+    fakeLedgerClient({
+      head: LONG_HEAD,
+      logs: [decisionLog(1, DEPLOY + 5n), decisionLog(2, CUT + 20_000n), decisionLog(3, LONG_HEAD - 10n)],
+      times: { [String(DEPLOY + 5n)]: T0, [String(CUT + 20_000n)]: T0 + 3600, [String(LONG_HEAD - 10n)]: T0 + 7200, [String(LONG_HEAD)]: T0 + 7300 },
+      gas: { [hash32(1)]: 1n, [hash32(2)]: 2n, [hash32(3)]: 3n },
+      deployTx: { hash: hash32(42), block: DEPLOY },
+      failLogsBelow: CUT,
+      ...over,
+    });
+  const lowestCall = (calls: readonly { from: bigint }[]) => calls.reduce((m, c) => (c.from < m ? c.from : m), LONG_HEAD);
+
+  it("reads the newest chunk first and stops after MAX_FAILED chunks fail, keeping the newest Decisions and naming the older blocks", async () => {
+    const client = longChain();
+    const s = await load(client);
+    expect(client.logCalls[0]).toEqual({ from: LONG_HEAD - 49_999n, to: LONG_HEAD });
+    expect(s.decisions.map((d) => d.txHash)).toEqual([hash32(3), hash32(2)]);
+    // Never complete while a chunk failed: the blocks below the cut are one gap, and the head side is read.
+    expect(s.scan).toMatchObject({ done: false, scannedFrom: CUT, gaps: [{ from: DEPLOY, to: CUT - 1n }] });
+    // It gave up long before the oldest chunks: of the 27 that would fail, it asked for the few in flight when the
+    // MAX_FAILED-th failed, and never for the deploy block.
+    const failed = new Set(client.logCalls.filter((c) => c.from < CUT).map((c) => c.from));
+    expect(failed.size).toBeGreaterThanOrEqual(MAX_FAILED);
+    expect(failed.size).toBeLessThan(27);
+    expect(lowestCall(client.logCalls)).toBeGreaterThan(DEPLOY + 900_000n);
+  });
+
+  it("counts failures across the gaps of one load, so an older gap is not asked for once a newer one gave up", async () => {
+    // The browser cache holds a middle range, which leaves a gap above it and one below it; every log request fails.
+    const storage = memoryStorage();
+    const kept = { from: DEPLOY + 100_000n, to: DEPLOY + 200_000n };
+    saveCache({ v: 1, vault: FAKE_VAULT, from: String(kept.from), to: String(kept.to), logs: [], blockTimes: {}, gasUsed: {} }, storage);
+    const client = longChain({ failLogs: true });
+    const s = await load(client, storage);
+    expect(s.scan.gaps).toEqual([
+      { from: kept.to + 1n, to: LONG_HEAD },
+      { from: DEPLOY, to: kept.from - 1n },
+    ]);
+    expect(s.scan.done).toBe(false);
+    expect(client.logCalls.length).toBeGreaterThan(0);
+    expect(client.logCalls.every((c) => c.from > kept.to)).toBe(true);
   });
 });
