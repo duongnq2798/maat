@@ -124,14 +124,19 @@ Each column comes from the event or from the transaction around it:
 
 In the fork run a scripted proposer, `FixedProposer`, stood in for Claude. It wrote these rationales for the four intents in the ledger, in order: `NVDAc underweight`, `use as collateral`, `compute runway` and `GOOGLc underweight`. The agent is built to append the closed phase when it logs the Saturday `MARKET_CLOSED` refusal, so the fourth intent's text is `GOOGLc underweight (market closed, weekend)` (`agent/test/integration/agent.fork.test.ts`). [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) shows the hash of the first.
 
-When Claude proposes, its instructions let it propose a trade the vault will refuse while the market is closed or a [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness), if the refusal itself is worth recording, and tell it to say so in the rationale:
+When Claude proposes, its instructions ask for an intent the vault is expected to allow, name the limits the vault checks a trade against, and ask for no trade while the market is closed or a [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness):
 
-```typescript title="agent/src/llm/prompt.ts#L39-L40"
-When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
-itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
+```typescript title="agent/src/llm/prompt.ts#L40-L46"
+Propose an intent when you expect the vault to allow it and it fits the policy; leave out any other. The vault checks a
+trade against maxStalenessSec and the limits in the state: a feed is stale when its feedAgeSeconds is above
+maxStalenessSec; a trade must fit perTradeUsd and what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at
+or below its maxWeightPct of the vault's USDC plus stocks; the pool's TWAP must sit within maxPremiumBps of the feed
+price; and a swap that fills more than maxSlippageBps below the feed price fails. While the market is closed the vault
+refuses every trade, and while a feed is stale it refuses trades in that stock: propose none of those.
+Compute bills are settled automatically; do not propose them.
 ```
 
-No unit or fork test uses the real Claude API. Maat's agent has called it in live mode on Base mainnet since 2026-11-27. The agent's first `Decision`, at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)), carries in its calldata a [rationale blob](/docs/help/glossary#rationale-blob) that Claude wrote: it proposed a GOOGLc buy while NYSE was closed for Thanksgiving, said the vault might refuse it and that the refusal was worth recording, and the vault refused it with `MARKET_CLOSED`. The Saturday buy in the fork ledger came from the scripted proposer.
+No unit or fork test uses the real Claude API. Maat's agent has called it in live mode on Base mainnet since 2026-11-27. The agent's first `Decision`, at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)), carries in its calldata a [rationale blob](/docs/help/glossary#rationale-blob) that Claude wrote: it proposed a GOOGLc buy while NYSE was closed for Thanksgiving, said the vault might refuse it and that the refusal was worth recording, and the vault refused it with `MARKET_CLOSED`. The prompt in the tag `agent-r2`, which that round ran, let Claude propose a trade the vault would refuse while the market was closed or a feed was stale, if the refusal itself was worth recording; the wording above replaced it. The Saturday buy in the fork ledger came from the scripted proposer.
 
 The fork rows have no mainnet transaction, because they ran on a local fork. The agent's journal is a file on the operator's machine, so only the operator holds all of it. Since 2026-11-27 a publisher beside Maat's agent pushes the public fields of its new rows to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch every 15 minutes, which `/now` and the Rounds tab of `/ledger` read. The [mainnet ledger](/ledger) shows a rationale's text only after the operator exports it from the journal (`npm run rationales` in `web/`) and commits it, and only when its hash matches the `rationaleHash` onchain; a store the agent writes as it runs is [planned, not built](/docs/get-started/status#planned-not-built). This is how to match a decision of a vault on mainnet to the reasoning behind it. Only the operator, or someone the operator shares the file with, can do steps 2 and 3:
 

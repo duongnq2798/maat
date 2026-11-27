@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { ProposerInput } from "./proposer.js";
 import { usdc6ToUsd } from "../units.js";
+import { SESSION_MODES } from "../types.js";
 import { MAX_BRIEFS_PER_INTENT, MAX_REPLY_CHARS } from "../briefs/caps.js";
 import { promptText } from "../briefs/text.js";
 import { MAX_INTENTS, MAX_RATIONALE_CHARS, MAX_SUMMARY_CHARS } from "./schema.js";
@@ -36,8 +37,13 @@ ${credit.policy}
 
 You receive the current state, the policy's computed weights and a list of suggestions. Suggestions are arithmetic, not
 orders: adopt, resize or drop them. Proposing nothing is a valid and often correct answer: return an empty list.
-When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
-itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
+Propose an intent when you expect the vault to allow it and it fits the policy; leave out any other. The vault checks a
+trade against maxStalenessSec and the limits in the state: a feed is stale when its feedAgeSeconds is above
+maxStalenessSec; a trade must fit perTradeUsd and what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at
+or below its maxWeightPct of the vault's USDC plus stocks; the pool's TWAP must sit within maxPremiumBps of the feed
+price; and a swap that fills more than maxSlippageBps below the feed price fails. While the market is closed the vault
+refuses every trade, and while a feed is stale it refuses trades in that stock: propose none of those.
+Compute bills are settled automatically; do not propose them.
 
 Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
 and in English. Hard limits (an answer that breaks one is rejected whole): at most ${MAX_INTENTS} intents, each rationale
@@ -54,6 +60,7 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
     block: s.blockNumber.toString(),
     utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
     marketOpen: s.marketOpen,
+    maxStalenessSec: s.mandate.maxStaleness,
     vaultPaused: s.paused,
     creditActions: creditActions ? "on" : "off",
     usdc: usd(s.usdcBalance),
@@ -69,8 +76,20 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       healthFactor: s.credit.debt === 0n ? null : Number(s.credit.healthFactor) / 1e18,
       minHealthFactor: Number(s.mandate.minHealthFactor) / 1e18,
       targetHealthFactor: Number(s.mandate.targetHealthFactor) / 1e18,
+      // The last seconds before 20:00 ET on a Friday or before a holiday, in which a credit action that adds risk must
+      // leave targetHealthFactor rather than minHealthFactor (MandateVault._inDeriskWindow, DERISK_WINDOW).
+      deriskWindowSec: s.mandate.deriskWindow,
     },
-    limits: { perTradeUsd: usd(s.mandate.perTradeCapUsd), dailyUsd: usd(s.mandate.dailyCapUsd), spentTodayUsd: usd(s.spentToday) },
+    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block.
+    limits: {
+      perTradeUsd: usd(s.mandate.perTradeCapUsd),
+      dailyUsd: usd(s.mandate.dailyCapUsd),
+      spentTodayUsd: usd(s.spentToday),
+      sessionMode: SESSION_MODES[s.mandate.sessionMode] ?? s.mandate.sessionMode,
+      maxPremiumBps: s.mandate.maxPremiumBps,
+      maxSlippageBps: s.mandate.maxSlippageBps,
+      maxWeightPct: Object.fromEntries(s.tokens.map((t) => [t.symbol ?? t.address, t.config.maxWeightBps / 100])),
+    },
     tokens: s.tokens.map((t) => ({
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,

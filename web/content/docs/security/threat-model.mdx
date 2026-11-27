@@ -176,12 +176,13 @@ With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to tha
 
 The agent sends Claude a system prompt and one user message, both built in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts): `systemPrompt`, fixed text apart from its credit lines, which follow `MAAT_CREDIT_ACTIONS`, and `renderUserMessage`. The request gives Claude no tools. This is the whole user message of a round without briefs:
 
-```typescript title="agent/src/llm/prompt.ts#L52-L87"
+```typescript title="agent/src/llm/prompt.ts#L58-L106"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
     utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
     marketOpen: s.marketOpen,
+    maxStalenessSec: s.mandate.maxStaleness,
     vaultPaused: s.paused,
     creditActions: creditActions ? "on" : "off",
     usdc: usd(s.usdcBalance),
@@ -197,8 +198,20 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       healthFactor: s.credit.debt === 0n ? null : Number(s.credit.healthFactor) / 1e18,
       minHealthFactor: Number(s.mandate.minHealthFactor) / 1e18,
       targetHealthFactor: Number(s.mandate.targetHealthFactor) / 1e18,
+      // The last seconds before 20:00 ET on a Friday or before a holiday, in which a credit action that adds risk must
+      // leave targetHealthFactor rather than minHealthFactor (MandateVault._inDeriskWindow, DERISK_WINDOW).
+      deriskWindowSec: s.mandate.deriskWindow,
     },
-    limits: { perTradeUsd: usd(s.mandate.perTradeCapUsd), dailyUsd: usd(s.mandate.dailyCapUsd), spentTodayUsd: usd(s.spentToday) },
+    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block.
+    limits: {
+      perTradeUsd: usd(s.mandate.perTradeCapUsd),
+      dailyUsd: usd(s.mandate.dailyCapUsd),
+      spentTodayUsd: usd(s.spentToday),
+      sessionMode: SESSION_MODES[s.mandate.sessionMode] ?? s.mandate.sessionMode,
+      maxPremiumBps: s.mandate.maxPremiumBps,
+      maxSlippageBps: s.mandate.maxSlippageBps,
+      maxWeightPct: Object.fromEntries(s.tokens.map((t) => [t.symbol ?? t.address, t.config.maxWeightBps / 100])),
+    },
     tokens: s.tokens.map((t) => ({
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,
@@ -217,7 +230,7 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
 
 It holds three kinds of input, all numbers, flags, addresses, fixed names or text the agent builds from them, and no text from outside the agent. Briefs, below, are the one exception:
 
-- **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the market and pause flags, the caps and today's spend, and the Aave position.
+- **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the market and pause flags, the caps and today's spend, the session mode, the staleness, premium and slippage limits, each stock's concentration limit, and the Aave position with the derisk window.
 - **The agent's own unpaid Claude bill**, from its data folder.
 - **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers and from the Claude costs its data folder records for the week before today (`MAAT_DEFAULT_DAILY_COMPUTE_USD` when there are none). Each suggestion's `why` is built from numbers and fixed symbols.
 

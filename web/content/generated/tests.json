@@ -380,6 +380,19 @@
     "finds the refusal in a viem error's details and causes": 130,
     "does not take a rate limit or anything else for a range error": 137
   },
+  "agent/test/mandateLimits.test.ts": {
+    "the mandate's limits in the user message": 54,
+    "carry the thresholds the vault checks a trade against, at the standard scene's mandate": 55,
+    "are read from the vault's mandate() and tokenConfig(), not typed into the agent": 70,
+    "name the session mode as the vault's SessionMode enum does, and keep a number the enum does not have": 86,
+    "are the same in the user message of a round that carries briefs": 91,
+    "hold every threshold the system prompt names, as a number": 96,
+    "reach a fake model in the request's user message": 108,
+    "the system prompt on refusals": 129,
+    "no longer invites a trade the vault would refuse because the refusal is worth recording": 137,
+    "asks for intents the vault is expected to allow and that fit the policy, and none while a refusal is certain": 146,
+    "puts a feed's age next to the vault's limit, as in the 15:15 UTC round of 27 Nov": 164
+  },
   "agent/test/policy.test.ts": {
     "evaluatePolicy": 60,
     "all cash: buys each token toward 23.33%, capped by spendable cash": 61,
