@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
 import { BriefsPanel } from "@/app/(site)/ask/BriefsPanel";
 import type { JournalRead } from "@/lib/chain/ledger";
 import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
@@ -35,5 +36,23 @@ describe("/ask's Brief feed and the committed Brief snapshot", () => {
     await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(4), { timeout: 10_000 });
     expect(document.querySelector("[data-briefs-snapshot]")).toBeNull();
     expect(lowest(client.logCalls)).toBe(BRIEFS_DEPLOY);
+  });
+
+  it("fetches the file in an effect, never while rendering, and once for every read the panel makes", async () => {
+    const fetchFile = vi.fn(async () => fixture);
+    const client = fakeLedgerClient(briefsChain());
+    const props = { inbox: INBOX, vault: FAKE_VAULT, deployments: [], client, journal: never, team: noTeam, briefsSnapshot: fetchFile };
+    // A server render, as the static export prerenders /ask, runs no effect: it must not fetch the file.
+    renderToString(<BriefsPanel {...props} reloadKey={0} />);
+    expect(fetchFile).not.toHaveBeenCalled();
+
+    const { rerender } = render(<BriefsPanel {...props} reloadKey={0} />);
+    await waitFor(() => expect(screen.getAllByRole("listitem")).toHaveLength(4), { timeout: 10_000 });
+    const first = client.logCalls.length;
+    rerender(<BriefsPanel {...props} reloadKey={1} />);
+    await waitFor(() => expect(client.logCalls.length).toBeGreaterThan(first), { timeout: 10_000 });
+    expect(fetchFile).toHaveBeenCalledTimes(1);
+    // The second read started from the same file: it scanned only from the file's window up.
+    expect(lowest(client.logCalls.slice(first))).toBe(BRIEFS_BLOCK - SNAPSHOT_REORG_WINDOW);
   });
 });

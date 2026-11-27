@@ -5,7 +5,8 @@ import { getAddress, type Address } from "viem";
 import { describe, expect, it, vi } from "vitest";
 import { GET } from "@/app/data/briefs-snapshot.json/route";
 import { inboxDeployment, readBriefs } from "@/lib/chain/inbox";
-import { checkBriefsSnapshot, takeBriefsSnapshot } from "@/lib/chain/load";
+import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
+import { checkBriefsSnapshot, MAX_FAILED, takeBriefsSnapshot } from "@/lib/chain/load";
 import { BRIEFS_SNAPSHOT_URL, fetchBriefsSnapshotJson, parseBriefsSnapshot, parseSnapshot, SNAPSHOT_REORG_WINDOW, type BriefsSnapshot } from "@/lib/chain/snapshot";
 import deployments from "@/content/generated/deployments.json";
 import fixture from "./fixtures/briefs-snapshot.json";
@@ -128,8 +129,9 @@ describe("readBriefs from a Brief snapshot", () => {
 
   it("finds a brief sent after a snapshot of no log", async () => {
     const r = await read(briefsChain(), empty()).result;
-    // Briefs 1 and 2 are below the window: a file that leaves them out hides them, which is why npm run snapshot checks
-    // every file on a second RPC before it writes it. Brief 3 is in the window and brief 4 after N, so the scan finds both.
+    // Briefs 1 and 2 are below the window: a file that leaves them out hides them, and no check of the file catches that.
+    // npm run snapshot guards against it by building the file from a scan that writes nothing while any block is unread.
+    // Brief 3 is in the window and brief 4 after N, so the scan finds both.
     expect(ids(r)).toEqual([3, 4]);
     expect(r.complete).toBe(true);
   });
@@ -139,6 +141,59 @@ describe("readBriefs from a Brief snapshot", () => {
     expect(r.complete).toBe(false);
     expect(r.fromSnapshot?.block).toBe(BRIEFS_BLOCK);
     expect(ids(r)).toEqual([1, 2]);
+  });
+
+  describe("with a file whose floor is above the block the read starts from", () => {
+    // The fixture cut at DEPLOY + 10: brief 1 (DEPLOY + 5) is below its floor, so only a scan of the older gap finds it.
+    const FLOOR = BRIEFS_DEPLOY + 10n;
+    const cut = () => {
+      const snap = fixtureCopy();
+      return { ...snap, floor: String(FLOOR), logs: snap.logs.filter((l) => BigInt(l.blockNumber) >= FLOOR) };
+    };
+
+    it("scans the gap above the file, then the gap below its floor, and finds the brief there", async () => {
+      const { client, result } = read(briefsChain(), cut());
+      const r = await result;
+      expect(ids(r)).toEqual([1, 2, 3, 4]);
+      expect(r.complete).toBe(true);
+      expect(r.fromSnapshot).toEqual({ block: BRIEFS_BLOCK, from: FLOOR, to: BRIEFS_BLOCK - W - 1n });
+      expect(client.logCalls).toEqual([
+        { from: BRIEFS_BLOCK - W, to: BRIEFS_HEAD },
+        { from: BRIEFS_DEPLOY, to: FLOOR - 1n },
+      ]);
+    });
+
+    it("scans from SCAN_FLOOR_BLOCK up to the file's floor when the deploy receipt cannot be read", async () => {
+      const { client, result } = read(briefsChain({ failReceipts: [BRIEFS_DEPLOY_TX] }), fixture);
+      const r = await result;
+      expect(ids(r)).toEqual([1, 2, 3, 4]);
+      expect(r.complete).toBe(true);
+      expect(r.fromSnapshot).toEqual({ block: BRIEFS_BLOCK, from: BRIEFS_DEPLOY, to: BRIEFS_BLOCK - W - 1n });
+      expect(client.logCalls).toEqual([
+        { from: BRIEFS_BLOCK - W, to: BRIEFS_HEAD },
+        { from: SCAN_FLOOR_BLOCK, to: BRIEFS_DEPLOY - 1n },
+      ]);
+    });
+
+    it("never says complete when the gap below the floor fails, and keeps what the file and the newer gap gave", async () => {
+      const r = await read(briefsChain({ failLogsBelow: FLOOR }), cut()).result;
+      expect(r.complete).toBe(false);
+      expect(r.fromSnapshot?.from).toBe(FLOOR);
+      expect(ids(r)).toEqual([2, 3, 4]);
+    });
+
+    it("counts failed chunks across both gaps, so the older gap is not asked for once the newer one spent MAX_FAILED", async () => {
+      // A head 100,000 blocks past N makes the gap above the file three chunks; every log request fails.
+      const head = BRIEFS_BLOCK + 100_000n;
+      const { client, result } = read(briefsChain({ head, failLogs: true }), cut());
+      const r = await result;
+      expect(r.complete).toBe(false);
+      expect(r.fromSnapshot?.block).toBe(BRIEFS_BLOCK);
+      expect(ids(r)).toEqual([2]);
+      const ranges = new Set(client.logCalls.map((c) => `${c.from}-${c.to}`));
+      expect(ranges.size).toBe(MAX_FAILED);
+      expect(client.logCalls.every((c) => c.from >= BRIEFS_BLOCK - W)).toBe(true);
+    });
   });
 
   const unusable: [string, () => FakeChain, () => unknown][] = [
@@ -335,8 +390,9 @@ describe("npm run snapshot", () => {
     expect(script).toContain('new URL("../content/generated/briefs-snapshot.json", import.meta.url)');
     expect(script).toMatch(/takeBriefsSnapshot\(\{\s*\.\.\.tuning,/);
     expect(script).toMatch(/takeSnapshot\(\{\s*\.\.\.tuning,/);
-    // Both checks come before the first write.
-    const firstWrite = script.indexOf("writeJson(OUT");
+    // Both checks come before the one call that writes both files.
+    const firstWrite = script.indexOf("writeJsonFiles(briefs ? [[OUT, snapshot], [BRIEFS_OUT, briefs]]");
+    expect(firstWrite).toBeGreaterThan(0);
     expect(script.indexOf("checkSnapshot(checker")).toBeLessThan(firstWrite);
     expect(script.indexOf("checkBriefsSnapshot(checker")).toBeLessThan(firstWrite);
   });

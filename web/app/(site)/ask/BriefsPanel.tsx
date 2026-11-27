@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { Address } from "viem";
 import { formatCount } from "@/app/(site)/proof/count";
 import type { ProofClient } from "@/app/(site)/proof/load";
@@ -74,18 +74,21 @@ export function BriefsPanel({
   const [attempt, setAttempt] = useState(0);
   const [verdicts, setVerdicts] = useState<VerdictSource>({ state: "reading" });
   const [team, setTeam] = useState<TeamSource>({ state: "reading" });
-  // The file does not change while the page is open, so every read of the Brief logs starts from the same fetch.
-  const [committed] = useState(() => briefsSnapshot().catch(() => null));
+  // The file does not change while the page is open, so every read of the Brief logs starts from the same fetch. The
+  // fetch starts in the effect, not during render, so neither the static prerender nor a second render fetches it.
+  const committed = useRef<Promise<unknown> | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
-    readBriefs(client, { inbox: inbox.inbox, deployTx: inbox.deployTx, signal: controller.signal, snapshot: committed })
+    committed.current ??= briefsSnapshot().catch(() => null);
+    readBriefs(client, { inbox: inbox.inbox, deployTx: inbox.deployTx, signal: controller.signal, snapshot: committed.current })
       .then((r) => setRead({ state: "read", briefs: r.briefs, complete: r.complete, head: r.head, fromSnapshot: r.fromSnapshot }))
       .catch((e: unknown) => {
         if (!controller.signal.aborted) setRead({ state: "error", message: errorText(e) });
       });
     return () => controller.abort();
-  }, [client, inbox, reloadKey, attempt, committed]);
+    // briefsSnapshot is called once, on the first run: a new function does not fetch the file again.
+  }, [client, inbox, reloadKey, attempt]);
 
   // The verdicts and the team set, for the briefs just read, at the block they were read to.
   useEffect(() => {

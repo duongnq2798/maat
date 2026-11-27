@@ -60,16 +60,23 @@ async function onBase(url: URL): Promise<ReturnType<typeof client>> {
 /** The committed file at `path`, as parsed JSON, to build on; undefined with --fresh or when there is none. */
 const committed = (path: string, fresh: boolean): unknown => (!fresh && existsSync(path) ? (JSON.parse(readFileSync(path, "utf8")) as unknown) : undefined);
 
-/** Writes `value` to `path` through a temporary file, so a failed write leaves the committed file as it was. */
-function writeJson(path: string, value: unknown): void {
-  const tmp = `${path}.tmp`;
+/**
+ * Writes each value to a temporary file beside its path, and only once all are written renames them into place. So a
+ * failed write leaves every committed file as it was, rather than one file at the new block and the other at the old.
+ */
+function writeJsonFiles(files: readonly (readonly [path: string, value: unknown])[]): void {
+  const staged: string[] = [];
   try {
-    writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
-    renameSync(tmp, path);
+    for (const [path, value] of files) {
+      const tmp = `${path}.tmp`;
+      staged.push(tmp);
+      writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`);
+    }
   } catch (e) {
-    rmSync(tmp, { force: true });
+    for (const tmp of staged) rmSync(tmp, { force: true });
     throw e;
   }
+  for (const [path] of files) renameSync(`${path}.tmp`, path);
 }
 
 /** After each chunk, a line every 10% of the blocks of [floor, N]. */
@@ -143,19 +150,21 @@ async function main(): Promise<void> {
     console.error(`snapshot: ${checkRpc.origin} gives the same hash for block ${briefs.block} and the same inbox logs in all ${n} receipts`);
   }
 
-  writeJson(OUT, snapshot);
+  writeJsonFiles(briefs ? [[OUT, snapshot], [BRIEFS_OUT, briefs]] : [[OUT, snapshot]]);
   const decisions = decodeVaultLogs(snapshot.logs).filter((e) => e.name === "Decision").length;
   const seconds = Math.round((Date.now() - started) / 1000);
   console.log(
     `wrote content/generated/decisions-snapshot.json: ${snapshot.logs.length} logs (${decisions} Decision${decisions === 1 ? "" : "s"}) of ${snapshot.vault}, blocks ${snapshot.floor} to ${snapshot.block}, block hash ${snapshot.blockHash}, in ${seconds} s`,
   );
   if (briefs) {
-    writeJson(BRIEFS_OUT, briefs);
     console.log(
       `wrote content/generated/briefs-snapshot.json: ${briefs.logs.length} Brief log${briefs.logs.length === 1 ? "" : "s"} of ${briefs.inbox}, blocks ${briefs.floor} to ${briefs.block}, block hash ${briefs.blockHash}`,
     );
   } else {
-    console.log("deployments/README.md records no Base mainnet MaatInbox: no Brief snapshot written");
+    // A Brief snapshot left from an inbox the table no longer records would sit at another block than the decisions file.
+    const stale = existsSync(BRIEFS_OUT);
+    rmSync(BRIEFS_OUT, { force: true });
+    console.log(`deployments/README.md records no Base mainnet MaatInbox: no Brief snapshot written${stale ? ", and the old one removed" : ""}`);
   }
 }
 

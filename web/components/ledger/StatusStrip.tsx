@@ -71,7 +71,8 @@ const NAMED_GAPS = 3;
 export function missingBlocksText(scan: Pick<LedgerSnapshot["scan"], "gaps" | "scannedFrom" | "head">): string {
   const named = scan.gaps.slice(0, NAMED_GAPS).map((g) => `${formatInt(Number(g.from))} to ${formatInt(Number(g.to))}`);
   const more = scan.gaps.length - named.length;
-  const list = more > 0 ? `${named.join(", ")} and ${formatInt(more)} more ${more === 1 ? "range" : "ranges"}` : named.join(named.length === 2 ? " and " : ", ");
+  const items = more > 0 ? [...named, `${formatInt(more)} more ${more === 1 ? "range" : "ranges"}`] : named;
+  const list = items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}` : (items[0] ?? "");
   const read =
     scan.scannedFrom === null
       ? ""

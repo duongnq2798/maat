@@ -70,6 +70,9 @@ describe("the ledger names the blocks it could not read", () => {
     expect(missingBlocksText({ gaps: gaps.slice(0, 2), scannedFrom: 5_100n, head: 9_000n })).toBe(
       "Blocks 5,000 to 5,099 and 4,000 to 4,099 could not be read, so decisions in them are missing here. Every block from 5,100 to the head, block 9,000, was read, so the newest decisions are shown.",
     );
+    expect(missingBlocksText({ gaps: gaps.slice(0, 3), scannedFrom: null, head: 9_000n })).toBe(
+      "Blocks 5,000 to 5,099, 4,000 to 4,099 and 3,000 to 3,099 could not be read, so decisions in them are missing here.",
+    );
   });
 
   it("does not say the newest blocks were read when the chunk at the head failed", () => {
