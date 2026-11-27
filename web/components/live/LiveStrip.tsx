@@ -40,11 +40,11 @@ const GHOST_BLOCK = "88,888,888";
  * rem so Tailwind sorts it between sm (40rem) and xl (80rem).
  *
  * Since 2026-11-27 (landing "explain in 10 seconds", section 1) the strip is one labelled line: the verdict a buy would
- * get, the block it was read at, and the bezel keys; the basket's lamps and the session moved to /now. Measured on
- * Windows Chromium, its tallest frame is the three-refusal one: 310 px at 360, 152 px at 640, 220 px at 1000 and
- * 154 px at 1280 to 1920 (the weekend refusal a visitor sees most: 246, 116, 164 and 122). Chromium on Linux rounds
- * each glyph advance to a whole pixel and wraps sooner (about 12% taller on 2026-11-24), so each reserve keeps about
- * 40 px, or 12% where that is more, over those, rounded up to 4 px: 352, 192, 260 and 196.
+ * get, the block it was read at, and the bezel keys; the basket's lamps and the session moved to /now. Its tallest
+ * frame is the three-refusal one: 310 px at 360, 152 px at 640, 220 px at 1000 and 154 px at 1280 to 1920 (the
+ * weekend refusal a visitor sees most: 246, 116, 164 and 122). Chromium on Linux, in CI's run of the states spec (each
+ * test logs its "readout-height"), and on Windows measure the same on 2026-11-27, so each reserve keeps only 8 px over
+ * them for the engines no test measures, rounded up to 4 px: 320, 160, 228 and 164.
  *
  * The line and its keys always sit together, never with a blank band between them (judge rehearsal m5). Below sm they
  * sit at the top of the window and the room a shorter frame leaves is under the keys, so a phone's first screen shows
@@ -54,7 +54,7 @@ const GHOST_BLOCK = "88,888,888";
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
  * measures, grows the window and moves what is under it down instead of running over it.
  */
-export const STRIP_RESERVE = "min-h-[352px] sm:min-h-[192px] min-[62.5rem]:min-h-[260px] xl:min-h-[196px]";
+export const STRIP_RESERVE = "min-h-[320px] sm:min-h-[160px] min-[62.5rem]:min-h-[228px] xl:min-h-[164px]";
 
 /** Below sm the link takes a line of its own, so no separator is left hanging at the end of the line above it. */
 function NowLinkAfter() {
