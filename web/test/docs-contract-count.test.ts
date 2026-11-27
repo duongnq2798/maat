@@ -17,11 +17,11 @@ const FRONTMATTER = /^---\n[\s\S]*?\n---\n/;
 const FENCE = /^(```|~~~)[^\n]*\n[\s\S]*?^\1[^\n]*$/gm;
 
 /**
- * "<number> Maat contracts" followed by a present-tense verb or a place: "are deployed", "is on", "are on Base",
- * "deployed on" (as in "the four Maat contracts deployed on Base mainnet") or "at the addresses". A count right after
- * "deployed" or "deployed the" is the past-tense deploy itself, so it is not matched.
+ * "<number> Maat contracts" or "<number> core Maat contracts" followed by a present-tense verb or a place: "are
+ * deployed", "is on", "are on Base", "deployed on" (as in "the four Maat contracts deployed on Base mainnet") or "at the
+ * addresses". A count right after "deployed" or "deployed the" is the past-tense deploy itself, so it is not matched.
  */
-const PRESENT_COUNT = /(?<!\bdeployed )(?<!\bdeployed the )\b(one|two|three|four|five|six|seven|eight|nine) Maat contracts,?\s+(?:are|is|deployed on|at the address)/gi;
+const PRESENT_COUNT = /(?<!\bdeployed )(?<!\bdeployed the )\b(one|two|three|four|five|six|seven|eight|nine) (?:core )?Maat contracts,?\s+(?:are|is|deployed on|at the address)/gi;
 
 /** An ISO date earlier than `latest` ("2026-11-24" < "2026-11-27"): the sentence then dates what it says. */
 const earlierDate = (sentence: string, latest: string) => (sentence.match(/\b\d{4}-\d{2}-\d{2}\b/g) ?? []).some((d) => d < latest);
@@ -69,6 +69,7 @@ describe("the docs count every contract deployments.json records", () => {
       "Treat them as unaudited, including the four Maat contracts deployed on Base mainnet.",
       "The four Maat contracts are deployed on it.",
       "The four core Maat contracts and `MaatInbox` are deployed on Base mainnet.",
+      "The four core Maat contracts are deployed on Base mainnet.",
       "The four Maat contracts and `MaatInbox` are deployed, and Status lists them.",
       "The five Maat contracts are deployed on Base mainnet.",
       "On 2026-11-24 the four Maat contracts were deployed, and the four Maat contracts are verified since 2026-11-24.",
@@ -83,6 +84,7 @@ describe("the docs count every contract deployments.json records", () => {
       "6 four Maat contracts at the address",
       "7 four Maat contracts deployed on",
       "8 four Maat contracts are",
+      "10 four core Maat contracts are",
     ]);
     // With four rows the four are every deployed contract, so nothing is short.
     expect(undercounts(source, 4, "2026-11-24")).toEqual([]);
