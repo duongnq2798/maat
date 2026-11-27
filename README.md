@@ -158,6 +158,7 @@ BankrBot's skills repository.
 | Contract fork tests | 14 passed (7 files), run by hand | recorded at `4492eed`, 2026-11-07 | [`contracts/test/fork/`](contracts/test/fork) |
 | Agent fork integration tests | 3 passed, run by hand | recorded at `4492eed`, 2026-11-07 | [`agent.fork.test.ts`](agent/test/integration/agent.fork.test.ts) |
 | Gas used in the agent fork run | BUY 758,192 · SUPPLY 286,707 · BORROW 484,173 · refusal log 111,116 | run by hand, 2026-11-07 | [`fork-gas.json`](agent/test/integration/fork-gas.json) |
+| Static analysis of `contracts/src` (Slither 0.11.6, forge lint from Foundry 1.9.0, solc 0.8.28) | Slither: 2 high and 35 medium; forge lint: 2 high and 32 medium. Each checked against the code: none is a bug in Maat's code, by the project's own reading. Aderyn was not run: it is retired | run by hand at `9553d31`, 2026-11-27 | [Static analysis](https://maatonbase.xyz/docs/security/static-analysis), raw output in [`docs/security/static-analysis/`](docs/security/static-analysis) |
 
 The CI figures are from push run [45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120) on
 `e578733`, 2026-11-27, the latest green CI run on `main` when this table was read; each figure is the count its
@@ -659,7 +660,7 @@ it has not been re-timed.
     Test Files  164 passed (164)
          Tests  3719 passed (3719)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and 53 docs pages checked)
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and 54 docs pages checked)
    search index: … bytes gzipped, budget 935000
    ```
 
@@ -887,6 +888,7 @@ film/                      the demo film: captures the live site with Playwright
 docs/superpowers/          design specs and implementation plans
 docs/brand/lexicon.md      the approved lines, names and words, and the variants they retired
 docs/assets/readme/        the screenshots in this README
+docs/security/static-analysis/  the raw Slither and forge lint output that the Static analysis docs page triages
 SECURITY.md                how to report a security problem privately
 ```
 
