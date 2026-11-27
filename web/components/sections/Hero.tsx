@@ -6,6 +6,7 @@ import { HERO_CTAS, HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 import { HeroCard } from "./HeroCard";
 import { HeroNote } from "./HeroNote";
+import { HeroReason } from "./HeroReason";
 
 /** The spec plate: the pinned labels (spec 2026-11-23 section 3.1), each figure marked with the fact it comes from. */
 const SPECS: readonly { label: string; fact: FactKey; value: string; pad: string }[] = [
@@ -22,7 +23,8 @@ const CTA_LOOK = ["pill-dark", "pill-line"] as const;
  * H1, then what Maat is in one sentence and the three steps of every trade, each linked to How it works. Then the one
  * live line, "Right now, a buy would be: ...", both CTAs (52 px and stacked on phones, 44 px in a row from sm) and the
  * spec plate. On the right, the engine card on its mainnet face holds the vault's latest Decision, dated, and under it
- * the agent's last recorded round.
+ * the agent's last recorded round. Under both columns, one full-width row quotes Claude's own reason for the first
+ * trade the vault allowed (HeroReason).
  */
 export function Hero() {
   return (
@@ -84,6 +86,7 @@ export function Hero() {
           <HeroCard />
           <HeroNote />
         </div>
+        <HeroReason />
       </div>
     </header>
   );
