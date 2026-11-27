@@ -162,7 +162,7 @@ are unchanged (`git diff --stat 4492eed e578733 -- contracts/src` lists only tho
 `contracts/script`, `MaatConfig.sol` sets the 25 h staleness and 150 bps slippage defaults, which the agent fork
 test's `deploy.ts` uses, `Deploy.s.sol` can allowlist an optional second expense payee, which the fork test
 `DeployFork.t.sol` pins to unset, and two scripts were added (`DeployMaatInbox.s.sol` and
-`QueueReserveCaps.s.sol`). 38 files in `agent/src` changed, and `contracts/test/fork/` gained fork test files that
+`QueueReserveCaps.s.sol`). 38 files in `agent/src` changed, and `contracts/test/fork/` gained seven fork test files that
 the 14 above do not count. The agent fork run's vault had a 3600 s staleness and a 100 bps slippage limit. No
 figure here is rounded.
 
@@ -376,7 +376,7 @@ on `main` (`e578733`, 2026-11-27), and the fork counts from the hand run at `449
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027). **Deployed** on Base mainnet | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested. **Deployed** on Base mainnet | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
 | `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop). **Deployed** on Base mainnet | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
-| `MaatInbox`: public briefs to the agent, one zero-value transaction each, logged as `Brief` events; no owner, no funds | **Built**, unit and fork tested (`test_deployThenBriefWithSuffix`). **Deployed** on Base mainnet on 2026-11-27. The live agent (`agent-r2`) does not read briefs, so `/ask` stays closed until it restarts on a release that does | [`contracts/src/MaatInbox.sol`](contracts/src/MaatInbox.sol) |
+| `MaatInbox`: public briefs to the agent, one zero-value transaction each, logged as `Brief` events; no owner, no funds | **Built**, unit-tested, with a fork test (`test_deployThenBriefWithSuffix` in [`MaatInboxFork.t.sol`](contracts/test/fork/MaatInboxFork.t.sol)) added after the recorded fork run at `4492eed`, so not among its 14. **Deployed** on Base mainnet on 2026-11-27. The live agent (`agent-r2`) does not read briefs, so `/ask` stays closed until it restarts on a release that does | [`contracts/src/MaatInbox.sol`](contracts/src/MaatInbox.sol) |
 | Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner deployed the four Maat contracts to Base mainnet on 2026-11-24, from `main` at `66bd0d0` | [`contracts/script`](contracts/script) |
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (734 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, from tag `agent-r2` (`b8c914a`), with the real Claude API; its first live round (01:14 UTC) proposed no trade because NYSE was closed for Thanksgiving, and its first `Decision`, at 02:14 UTC, was a GOOGLc buy that the vault refused with `MARKET_CLOSED` ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6#eventlog)) | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
@@ -622,10 +622,10 @@ it has not been re-timed.
    http://localhost:3000.
 
 <details>
-<summary><b>Optional: the 14 contract fork tests</b> (needs a Base archive RPC)</summary>
+<summary><b>Optional: the contract fork tests</b> (needs a Base archive RPC)</summary>
 
-They run the real B20 tokens, feeds, pools and Aave V4 at two pinned mainnet blocks. Nothing is broadcast;
-Foundry forks the chain locally.
+The seven files in the fork test table above run the real B20 tokens, feeds, pools and Aave V4 at two pinned
+mainnet blocks. Nothing is broadcast; Foundry forks the chain locally.
 
 ```bash
 cd contracts   # from the repository root
@@ -633,9 +633,15 @@ export BASE_RPC_URL=<a Base mainnet archive RPC URL>
 forge test --match-path "test/fork/*"
 ```
 
+The hand run at `4492eed` (2026-11-07), when `test/fork/` held only those seven files, printed:
+
 ```text
 Ran 7 test suites in …: 14 tests passed, 0 failed, 0 skipped (14 total tests)
 ```
+
+On this tree the same glob also runs seven fork files added since then (`CreditSupplyWithdrawFork`, `LiveVault`,
+`LiveVaultInvariants`, `LiveVaultTrailingRationaleFork`, `MaatInboxFork`, `MandateVaultTrailingRationaleFork` and
+`QueueReserveCapsFork`), so it reports more suites and tests than the 14 recorded here.
 
 </details>
 
@@ -644,7 +650,7 @@ Ran 7 test suites in …: 14 tests passed, 0 failed, 0 skipped (14 total tests)
 | Suite | Command (in its folder) | Tests | Needs |
 | --- | --- | --- | --- |
 | Contracts, unit | `forge test --no-match-path "test/fork/*"` | 265 | nothing |
-| Contracts, fork | `forge test --match-path "test/fork/*"` | 14 (by hand) | `BASE_RPC_URL` (archive) |
+| Contracts, fork | `forge test --match-path "test/fork/*"` | 14 (by hand), in the 7 files of `4492eed`; the glob now also runs 7 later files | `BASE_RPC_URL` (archive) |
 | Agent, unit | `npm test` | 734 | nothing |
 | Agent, fork integration | `npm run test:integration` | 3 (by hand) | archive RPC, `base-anvil` v1.5.1 |
 | Web, unit, component and parity | `npm test` | 3,719 | nothing |
