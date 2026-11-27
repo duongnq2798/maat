@@ -1,12 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from "vitest";
-import { captionIds } from "../../film/lib/beats.mjs";
+import { BEATS, captionIds } from "../../film/lib/beats.mjs";
 import { captionProblems, pickCaption, renderCaption } from "../../film/lib/captions.mjs";
+import { ciHeading } from "../../film/lib/cards.mjs";
 import {
   CAPTURED,
   CI_MAX_AGE_DAYS,
   COUNT_WORDS,
   OPTIONAL_KEYS,
+  askOpenValue,
   capturedValue,
   ciAgeWarning,
   ciFigures,
@@ -18,6 +20,7 @@ import {
   reserveFigures,
   verifiedNote,
 } from "../../film/lib/sources.mjs";
+import { readTxConfig } from "../../film/lib/tx.mjs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // Every number in a film caption is read from a source at render time: a committed file (the frozen Gap Index edition,
@@ -53,11 +56,15 @@ describe("film/captions.json", () => {
 
   it("holds every caption the beat plan shows, and none it does not", () => {
     const shown = new Set(captionIds());
-    const reached = new Set(shown);
-    for (const id of shown) {
+    // An else caption may have its own when and else: follow each chain to its end.
+    const reached = new Set<string>();
+    const reach = (id: string) => {
+      if (reached.has(id)) return;
+      reached.add(id);
       const c = captionsFile.captions[id] as { else?: string } | undefined;
-      if (c?.else) reached.add(c.else);
-    }
+      if (c?.else) reach(c.else);
+    };
+    for (const id of shown) reach(id);
     expect([...shown].filter((id) => !ids.includes(id))).toEqual([]);
     expect(ids.filter((id) => !reached.has(id))).toEqual([]);
   });
@@ -98,16 +105,28 @@ describe("film/captions.json", () => {
     expect(renderCaption(withReserve.text, { ...files.values, ...CAPTURED_RESERVE }).text).toContain("25%");
   });
 
-  it("says the inbox takes briefs only once deployments/README.md records it on Base, and that it will until then", () => {
+  it("invites people to brief Maat's agent only while the live /ask takes briefs, not because the inbox is deployed", () => {
     const noInbox = Object.fromEntries(Object.entries(files.values).filter(([k]) => k !== "deployments.inbox"));
-    const before = pickCaption(captionsFile.captions, "brief-ask", noInbox);
-    const after = pickCaption(captionsFile.captions, "brief-ask", { ...noInbox, "deployments.inbox": `0x${"cd".repeat(20)}` });
-    expect(before.id).toBe("brief-ask-soon");
-    expect(before.text).toMatch(/^Once the inbox contract is on Base/);
-    expect(after.id).toBe("brief-ask");
+    const inbox = { ...noInbox, "deployments.inbox": `0x${"cd".repeat(20)}` };
+    // Before the inbox is on Base.
+    const later = pickCaption(captionsFile.captions, "brief-ask", noInbox);
+    expect(later.id).toBe("brief-ask-later");
+    expect(later.text).toMatch(/^Once the inbox contract is on Base/);
+    // On Base, with /ask closed until Maat's agent restarts with the inbox (v0 showed the invitation here, over a page
+    // that said "The inbox is not open yet.").
+    const soon = pickCaption(captionsFile.captions, "brief-ask", inbox);
+    expect(soon.id).toBe("brief-ask-soon");
+    expect(soon.text).toMatch(/^The inbox contract is on Base\. Once \/ask opens, /);
+    expect(soon.text).not.toMatch(/^Try to talk/);
+    // Open: the capture read the live page taking briefs.
+    expect(pickCaption(captionsFile.captions, "brief-ask", { ...inbox, "ask.open": "open" }).id).toBe("brief-ask");
     expect(files.values["deployments.inbox"] !== undefined).toBe(
       deploymentRows(lf("deployments/README.md")).some((r) => r.network === "Base mainnet" && r.contract === "MaatInbox" && r.address !== ""),
     );
+    // No committed file gives ask.open: only the capture does, from the live page.
+    expect(files.values["ask.open"]).toBeUndefined();
+    const step = BEATS.find((b) => b.id === "stranger-brief")?.shots[0]?.steps?.find((x: { probe?: string }) => x.probe);
+    expect(step).toEqual({ probe: "ask.open" });
   });
 
   it("says one transaction of a pair is missing while the other is already on Base", () => {
@@ -285,6 +304,9 @@ describe("the caption sources read the committed files", () => {
     expect(row("Website end-to-end tests (Playwright)")[1]).toMatch(new RegExp(`^${ci["readme.e2eTests"]} passed`));
     expect(row("Contract unit tests")[2]).toContain(ci["readme.ciDateIso"]);
     expect(row("Contract unit tests")[3]).toContain(`/actions/runs/${ci["readme.ciRun"]}/`);
+    // The CI card's heading is dated from the same row, so it never reads as a claim about today's main.
+    expect(ciHeading(ci)).toBe(`CI on main, ${ci["readme.ciDate"]}, all passed`);
+    expect(ciHeading({})).toBe("CI on main");
   });
 
   it("reads the reserve cap from QueueReserveCaps.s.sol and the basket size from MaatConfig.sol", () => {
@@ -302,6 +324,66 @@ describe("the caption sources read the committed files", () => {
       expect(from.length, key).toBeGreaterThan(0);
       expect(from.filter((f) => !known.includes(f)), key).toEqual([]);
     }
+  });
+});
+
+describe("whether the live /ask takes briefs", () => {
+  it("is open only when the page shows the form and /data/ask.json says open", () => {
+    expect(askOpenValue({ notOpenShown: false, flag: true })).toEqual({ value: "open" });
+    expect(askOpenValue({ notOpenShown: true, flag: false })).toEqual({ value: undefined });
+  });
+
+  it("claims less, and says so, when the page and the switch disagree or the switch cannot be read", () => {
+    for (const read of [
+      { notOpenShown: true, flag: true },
+      { notOpenShown: false, flag: false },
+      { notOpenShown: true, flag: null },
+      { notOpenShown: false, flag: null },
+    ]) {
+      const out = askOpenValue(read);
+      expect(out.value).toBeUndefined();
+      expect(out.warning).toMatch(/beat 7 takes \/ask as closed/);
+    }
+  });
+
+  it("reads the same switch the site serves: web/content/ask-open.ts, closed today", () => {
+    expect(lf("web/content/ask-open.ts")).toMatch(/export const ASK_OPEN: boolean = false;/);
+  });
+});
+
+describe("the words of the captions, the tx labels and the beat titles", () => {
+  const texts = (): [string, string][] => [
+    ...Object.entries(captionsFile.captions).map(([id, c]): [string, string] => [id, typeof c === "string" ? c : (c as { text: string }).text]),
+    ...Object.entries(readTxConfig(REPO_ROOT).txs as Record<string, { label: string }>).map(([key, t]): [string, string] => [`txs.json ${key}`, t.label]),
+    ...BEATS.map((b): [string, string] => [`beat ${b.id}`, b.title]),
+  ];
+
+  it("call the AI Maat's agent, never the agent alone (docs/brand/lexicon.md)", () => {
+    const bare = texts().filter(([, t]) => /\bthe agent\b/i.test(t.replace(/Maat's agent/g, "")));
+    expect(bare).toEqual([]);
+  });
+
+  it("keep brief for an outside wallet's MaatInbox message, not for the owner's basket", () => {
+    const mandate = texts().filter(([id]) => /^mandate-|beat mandate/.test(id));
+    expect(mandate.length).toBeGreaterThan(0);
+    for (const [id, t] of mandate) expect(t, id).not.toMatch(/\bbrief\b/i);
+  });
+
+  it("never say the vault holds the owner's basket: it is the mandate's list, and the trail shows GOOGLc at 0%", () => {
+    const mandate = texts().filter(([id]) => /^mandate-/.test(id));
+    expect(mandate.length).toBeGreaterThan(0);
+    for (const [id, t] of mandate) expect(t, id).not.toMatch(/\b(held|holds|holding)\b/i);
+    expect(captionsFile.captions["mandate-basket"]).toMatch(/kept to a mandate the vault enforces/);
+  });
+
+  it("name the early-close pair as probes, never as Decisions or proposals of Maat's agent", () => {
+    for (const id of ["early-tx", "early-placeholder"]) {
+      const c = captionsFile.captions[id];
+      const t = typeof c === "string" ? c : "";
+      expect(t, id).toMatch(/\bprobes\b/);
+      expect(t, id).not.toMatch(/Decisions|agent's (own )?intent/);
+    }
+    expect(captionsFile.captions["early-tx"]).toMatch(/not Claude proposals/);
   });
 });
 

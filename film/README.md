@@ -16,23 +16,48 @@ ffmpeg nor the network, and one Playwright spec that lays the cards out in Chrom
 
 | # | Beat | Shots | Until its transactions exist |
 | --- | --- | --- | --- |
-| 1 | The frozen feed | title card: the mark, the positioning line, the mechanism line; `/gap-index`, the NVDAc panel of the 6 Nov window | |
+| 1 | The frozen feed | title card: the mark, the positioning line, the mechanism line, what Maat is; `/gap-index`, the NVDAc panel of the 6 Nov window | |
 | 2 | Claude proposes. The vault decides. | the landing's How it works; the owner's Basescan Decision clip, or the landing's refusal codes without it | |
-| 3 | The brief and the approved mandate | `/ledger`, the mandate the vault holds | shows the timelock line until the vault's cap equals the reserve cap |
+| 3 | The basket and the approved mandate | `/ledger`, the mandate the vault holds | shows the timelock line until the vault's cap equals the reserve cap |
 | 4 | The sourced proposal and its hash tick | `/ledger`, the decision trail with its hash tick; the owner's Basescan input clip, or `/ledger`'s verify-by-hand commands without it | |
-| 5 | Thanksgiving: `MARKET_CLOSED` from the agent | the simulator on Thanksgiving; the tx card | placeholder card |
-| 6 | The early-close pair | the simulator after the early close; the two tx cards | placeholder cards |
-| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line; one card: an outside wallet's brief, Maat's agent's reply from the published journal, then the vault's verdict on the intent that adopted the brief | the two tx cards labelled PLACEHOLDER; `/ask`'s caption says the inbox opens once it is on Base |
-| 8 | Receipts | the deployed contracts; the README's CI figures; `/proof`; the end card: the mark, the sign-off, the short myth line, the builder line | |
+| 5 | Thanksgiving: `MARKET_CLOSED` from Maat's agent | the simulator on Thanksgiving; the tx card of Maat's agent's Decision on Thanksgiving | |
+| 6 | The early-close probes | the simulator after the early close; the two tx cards of the probes sent before and after the 13:00 ET early close | placeholder cards |
+| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line while it takes briefs; one card: an outside wallet's brief, Maat's agent's reply from the published journal, then the vault's verdict on the intent that adopted the brief | the two tx cards labelled PLACEHOLDER; while `/ask` is closed, its caption says the inbox is on Base and the invitation waits for `/ask` to open |
+| 8 | Receipts | the deployed contracts; the README's CI figures under a dated heading; `/proof`; the end card: the mark, the sign-off, the short myth line, the builder line | |
 
-`lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues. The end card holds 6 s, so
-its lines can be read, and beat 7's card 11.5 s, since no card has more to read; How it works, the decision trail, the
-two simulator shots and both clip slots are kept short for it, so the cut lasts 100 s. No caption reads faster than 25
-characters a second (`READ_PACE` in `lib/cards.mjs`, about the pace of the CI caption):
-`web/test/film-identity.test.ts` checks each one, and the capture warns when a caption with the numbers it read, or
-beat 7's card with its brief, reply, verdict and caption, would go faster. A page shot's scroll stops before the site's
-footer enters the frame, so its display line never sits behind a caption (`scrollGoal` in `lib/beats.mjs`), and the
-capture warns if a shot still ends with the footer in the frame.
+`lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues. The title card holds 6 s
+and the end card 6.5 s, the time their words take (`CARD_READING` in `lib/cards.mjs`); the decision trail, the one shot
+with Claude's own words, holds 7.5 s; beat 7's card holds 11.5 s, since no card has more to read. How it works, the two
+simulator shots and both clip slots are kept short, so the cut lasts 100 s. No caption, and neither card, reads faster
+than 25 characters a second (`READ_PACE` in `lib/cards.mjs`): `web/test/film-identity.test.ts` checks each one, and the
+capture warns when a caption with the numbers it read, or beat 7's card with its brief, reply, verdict and caption,
+would go faster. A page shot's scroll stops before the site's footer enters the frame, so its display line never sits
+behind a caption (`scrollGoal` in `lib/beats.mjs`), and the capture warns if a shot still ends with the footer in the
+frame.
+
+## The frame of a page shot
+
+- **No reload between shots of one page.** A shot with `continue: true` goes on from where the page shot before it left
+  the same page (the landing's How it works to its refusal codes, `/ledger`'s mandate to its decision trail to its
+  verify-by-hand commands, the two simulator shots), so the page's top does not flash between them. The cards are
+  rendered in a page of their own, so the site's page keeps its place.
+- **No line cut at the top.** Each scroll stop moves by a few px so that no line of text is cut in two by the top edge,
+  or by the desktop nav bar that stays there (`unsliceGoal` in `lib/beats.mjs`). The 16:9 offset also leaves room for
+  the section label or tabs above a heading.
+- **Nothing per viewer, nothing relative.** The capture adds a style (`FRAME_CSS` in `lib/frame.mjs`) that hides the
+  landing's "Last Decision … ago" line and plate, `/ledger`'s "since your last look" line and "New" marks, the desktop
+  nav's live readout (a block number and the market session), and the phone layout's bottom bar, and wraps code blocks
+  so the 9:16 cut films a cast command whole.
+- **Captions on an opaque box**, so the page under a caption cannot show through it. In 9:16 the box spans the frame
+  less 8 px each side, over the phone layout's 16 px text gutter, so no cut glyph of the page shows beside it.
+- **Per-format steps.** A scroll's target and `top` may differ per format (`{ wide, tall }`); a scroll given for one
+  format only does not run in the other. A scroll with `over: 0` jumps before the shot's first frame and films none.
+- **Kept clear.** A shot's `keepClear` names what its caption must not cover: the NVDAc chart on `/gap-index` (in 9:16
+  the shot jumps to the NVDAc panel before its first frame, so the chart's drop sits above the caption and the first
+  caption never opens over the page's heading), `/ask`'s form or its notice that the inbox is not open yet, and
+  `/proof`'s six counts. The capture warns when the caption band would cover it at a scroll's stop.
+- **`/proof` is filmed only once its counts are read** ("Counted to block …"), never while it is still reading. In 9:16
+  the shot opens on that line, with the counts under it, instead of midway through the notes above them.
 
 ## The title and end cards
 
@@ -60,7 +85,7 @@ decides says the mechanism line word for word.
 | `captions.json` | Every caption. Each number in a caption is a `{placeholder}` |
 | `txs.json` | The transactions of beats 5 to 7, by hash, and what each receipt must show |
 | `input/` | Where the owner drops the two Basescan clips; git ignores everything in it but its README |
-| `lib/` | The beat plan, the caption sources, the cards, the tx decoder, the journal reader (`journal.mjs`, beat 7's reply) and the ffmpeg argument builder |
+| `lib/` | The beat plan, the caption sources, the cards, the frame style and measures (`frame.mjs`), the tx decoder, the journal reader (`journal.mjs`, beat 7's reply) and the ffmpeg argument builder |
 
 ## Commands
 
@@ -82,6 +107,7 @@ any warning. git ignores `film/out/`. Options:
 | `--input <dir>` | `film/input` | Where the owner's clips are |
 | `--formats <list>` | `wide,tall` | `wide` is 16:9, `tall` is 9:16 |
 | `--site <url>` | `https://maatonbase.xyz` | The site to capture, for example a local `npm run dev` |
+| `--final` | off | Stops before capturing while any transaction of beats 5 to 7 has no hash, so a final cut never shows a PLACEHOLDER card |
 
 `node film/capture.mjs --work <dir>` and `node film/assemble.mjs --work <dir> --out <dir>` run the two halves alone,
 for example to assemble again without capturing again.
@@ -111,6 +137,7 @@ at render time from:
 | `readme.*` | the "Tested, in numbers" table of the root `README.md` |
 | `reserve.*` | `RESERVE_CAP_BPS` in `contracts/script/QueueReserveCaps.s.sol` and the basket in `contracts/script/MaatConfig.sol` |
 | `ledger.*` | the live `/ledger` page's mandate panel, read by the capture once the panel shows the onchain mandate; a cell it cannot read, or one tagged `configured` (the panel could not read the vault), stops the render |
+| `ask.open` | the live `/ask` page, read by the capture on beat 7's `/ask` shot; set only while the page takes briefs |
 
 `web/test/film-captions.test.ts` fails on a digit typed into a caption, on a placeholder no source fills, and when a
 source no longer reads its file the way the test reads it. A change to one of those files flows into the next render.
@@ -120,7 +147,7 @@ Some captions show only while a condition holds, and another caption otherwise (
 | Caption | Shows when | Otherwise |
 | --- | --- | --- |
 | `mandate-reserve` | the vault's weight cap, as `/ledger` reads it, equals `RESERVE_CAP_BPS` | `mandate-timelock`, and the render warns |
-| `brief-ask`, the invitation line | `deployments/README.md` has a Base mainnet `MaatInbox` row | `brief-ask-soon`, which says the inbox opens once it is on Base |
+| `brief-ask`, the invitation line | the live `/ask` takes briefs: the capture finds its form, not its notice "The inbox is not open yet.", and the site's `/data/ask.json` (the owner's switch, `web/content/ask-open.ts`) says open, in both cuts (`askOpenValue` in `lib/sources.mjs`; the render warns when the two disagree) | `brief-ask-soon`: "The inbox contract is on Base. Once /ask opens, …", while `deployments/README.md` has a Base mainnet `MaatInbox` row; otherwise `brief-ask-later`, which says the inbox opens once it is on Base |
 | `receipts-contracts`, with the day Basescan showed each contract verified | `deployments/README.md` gives that day for every Base mainnet row: the note under the table for the contracts it counts, the contract's own paragraph for a later one | `receipts-contracts-listed`, which claims no verification; the contracts card leaves the note out, and the render warns |
 
 A tx shot of two transactions with only one hash set shows the real one and a placeholder card, under
@@ -145,9 +172,12 @@ and stops the render if a caption box would come within 16 px of the card's cont
      once an agent Decision with a rationale blob is on Base.
    Without a clip, its beat shows a page of the site instead, for the same length.
 3. **The transactions of beats 5 to 7.** When each is on Base mainnet, put its hash in `txs.json`:
-   - `thanksgiving`: the agent's Decision refused with `MARKET_CLOSED` on Thu 26 Nov (New York date);
-   - `earlyCloseAllowed` and `earlyCloseRefused`: the agent's Decisions on Fri 27 Nov, allowed before the 13:00 ET
-     early close and refused with `MARKET_CLOSED` at or after it (not a refusal before the open);
+   - `thanksgiving`: Maat's agent's Decision refused with `MARKET_CLOSED` on Thu 26 Nov (New York date). Set:
+     `0xca9e2dfe…bed6`, block 62,776,552, sent by the executor of Maat's agent;
+   - `earlyCloseAllowed` and `earlyCloseRefused`: the two probes on Fri 27 Nov (`agent/src/probes.ts`: fixed-time
+     intents that no Claude call wrote, with `k = "probe"` in their blob), allowed before the 13:00 ET early close and
+     refused with `MARKET_CLOSED` at or after it (not a refusal before the open). The film calls them probes, never
+     Decisions or proposals of Maat's agent;
    - `strangerBrief`: an outside wallet's `Brief` transaction to the inbox, once `deployments/README.md` records the
      `MaatInbox`. Pick a brief that `/proof` counts as an outside brief, and one that an intent adopted: Claude was
      persuaded, so the vault weighed it. `vaultAnswer`: the vault's Decision on that intent, the Decision `/ask` lists
@@ -163,9 +193,16 @@ and stops the render if a caption box would come within 16 px of the card's cont
 2. Run `node film/render.mjs`. For each hash it reads the receipt from `https://mainnet.base.org` (then
    `https://base-rpc.publicnode.com`) and stops, naming the entry, if the tx reverted, has no event of the expected
    kind from the expected contract of `deployments/README.md` (`MandateVault` for a Decision, `MaatInbox` for a
-   Brief), has another reason, falls on another New York date than `expect` says, or for the early-close pair falls
-   on the wrong side of 13:00 ET (`etBefore`, `etFrom`). A hash it cannot read stops the render too: it never shows a
-   row it did not read.
+   Brief), has another reason, was sent by someone else than `expect.sender` says, falls on another New York date than
+   `expect` says, or for the early-close pair falls on the wrong side of 13:00 ET (`etBefore`, `etFrom`). A hash it
+   cannot read stops the render too: it never shows a row it did not read.
+
+   `sender` is required in every entry. For a Decision it is `/ledger`'s sender label, read from the tx's calldata
+   (`eth_getTransactionByHash`) and the vault's `owner()` (`txSender` in `lib/tx.mjs`, held to `/ledger`'s
+   `senderLabel` by a test): `owner, by hand` when the owner sent it; otherwise `probe` when its maat:v1 blob says
+   `k = "probe"`, `brief-driven` when it adopts a brief, and `agent` for Maat's agent's own intent, each only from a
+   direct `execute` call whose blob hashes to the Decision's `rationaleHash`. For a Brief it is `outside`, or `team`
+   when a `/proof` team wallet or the vault's owner sent it. So a probe can never be shown as Claude's intent.
 3. Check the printed summary: `placeholders: none` once all five hashes are set, and each placeholder caption replaced
    by the beat's own.
 

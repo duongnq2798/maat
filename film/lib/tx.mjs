@@ -70,11 +70,30 @@ export const plainText = (/** @type {string} */ text) => String(text).replace(UN
 /** Actions whose amount is USDC with 6 decimals (as web/lib/chain/ledger.ts reads them). */
 const USDC_AMOUNT = new Set(["BUY", "BORROW", "REPAY", "PAY_EXPENSE"]);
 
-/** film/txs.json, checked for shape. */
+/**
+ * Who sent a tx, as the film names it. A Decision takes /ledger's sender label (web/lib/chain/ledger.ts senderLabel,
+ * which web/test/film-txcards.test.ts holds this to): "owner, by hand" when the vault's owner sent it, "probe" when its
+ * maat:v1 blob says k = "probe" (a fixed-time intent that no Claude call wrote, agent/src/probes.ts), "brief-driven"
+ * when the blob adopts a brief (q), and "agent" otherwise. A Brief is "team" when a team wallet sent it (the /proof
+ * team list or the vault's owner) and "outside" otherwise.
+ */
+export const SENDERS = Object.freeze({ Decision: Object.freeze(["agent", "probe", "brief-driven", "owner, by hand"]), Brief: Object.freeze(["outside", "team"]) });
+
+/** /ledger's sender label of a direct execute call to the vault; `blob` is decodeExecuteInput's blob. */
+export function senderLabel(/** @type {string} */ from, /** @type {string} */ owner, /** @type {any} */ blob) {
+  if (from.toLowerCase() === owner.toLowerCase()) return "owner, by hand";
+  if (blob.status === "v1" && blob.fields.k === "probe") return "probe";
+  if (blob.status === "v1" && blob.fields.q !== undefined) return "brief-driven";
+  return "agent";
+}
+
+/** film/txs.json, checked for shape. Every entry names who must have sent its tx (expect.sender, one of SENDERS). */
 export function readTxConfig(root) {
   const config = JSON.parse(readFileSync(join(root, "film/txs.json"), "utf8"));
   for (const [key, entry] of Object.entries(config.txs ?? {})) {
     if (entry.hash !== null && !/^0x[0-9a-fA-F]{64}$/.test(entry.hash)) throw new Error(`film/txs.json ${key}: hash must be null or a 0x tx hash`);
+    const senders = SENDERS[entry.expect?.event] ?? [];
+    if (!senders.includes(entry.expect?.sender)) throw new Error(`film/txs.json ${key}: expect.sender must be one of ${senders.map((s) => `"${s}"`).join(", ")}`);
     for (const field of ["etBefore", "etFrom"]) {
       const v = entry.expect?.[field];
       if (v !== undefined && !/^([01]\d|2[0-3]):[0-5]\d$/.test(v)) throw new Error(`film/txs.json ${key}: expect.${field} must be a New York time like 13:00`);
@@ -187,11 +206,41 @@ export function txCardModel(key, entry, data, ctx = { tokens: {}, contracts: {} 
 }
 
 /**
+ * Who sent a tx model's `event`, as SENDERS names it, or why the film cannot say. `who` holds the tx's calldata
+ * (`input`, read with lib/rpc.mjs fetchInput), the vault's owner() (`owner`) and the /proof team list (`team`). A
+ * Decision's label counts only for a direct execute call to the vault (through another contract, tx.from says nothing
+ * about who sent the intent), and, unless the owner sent it, only when its maat:v1 blob hashes to the Decision's
+ * rationaleHash: a label read from a blob the vault did not record would be made up.
+ * @param {any} model @param {any} event @param {{ input?: string, owner?: string, team?: string[] } | undefined} who
+ * @returns {{ label: string } | { why: string }}
+ */
+export function txSender(model, event, who) {
+  if (typeof who?.owner !== "string") return { why: "the vault's owner() was not read, so the film cannot say who sent it" };
+  const owner = lower(who.owner);
+  if (event.event === "Brief") {
+    const team = new Set([...(who.team ?? []).map(lower), owner]);
+    return { label: team.has(lower(event.from)) ? "team" : "outside" };
+  }
+  if (typeof who.input !== "string") return { why: "its calldata was not read, so the film cannot say who sent it" };
+  if (model.to !== event.address) return { why: "its tx is not a direct execute call to MandateVault, so its sender does not say who sent the intent" };
+  const call = decodeExecuteInput(/** @type {`0x${string}`} */ (who.input));
+  if (call === null) return { why: "its calldata is not an execute call to MandateVault" };
+  const label = senderLabel(model.from, owner, call.blob);
+  if (label !== "owner, by hand" && (call.blob.status !== "v1" || lower(call.blobHash) !== lower(event.rationaleHash))) {
+    return { why: `its calldata carries no maat:v1 blob that hashes to the Decision's rationaleHash (${call.blob.status}), so nothing says who wrote the intent` };
+  }
+  return { label };
+}
+
+/**
  * Why a tx model does not show what its entry expects, one line each; [] when it does. `expect` may name the event,
  * the contract that must emit it (by its name in `contracts`, lowercased address → name from deployments/README.md),
- * the vault's reason, the New York date, and a New York time the tx must come before (etBefore) or at or after (etFrom).
+ * the vault's reason, who sent it (`sender`, one of SENDERS, checked with `who`: see txSender), the New York date, and
+ * a New York time the tx must come before (etBefore) or at or after (etFrom).
+ * @param {any} model @param {any} expect @param {Record<string, string>} [contracts]
+ * @param {{ input?: string, owner?: string, team?: string[] }} [who]
  */
-export function txProblems(model, expect, contracts = {}) {
+export function txProblems(model, expect, contracts = {}, who = undefined) {
   if (model.kind !== "tx") return [];
   const out = [];
   if (model.status !== "0x1") out.push(`${model.key}: the tx reverted`);
@@ -201,7 +250,14 @@ export function txProblems(model, expect, contracts = {}) {
   else if (!event) {
     const from = named[0].address ? (contracts[named[0].address] ?? shortHex(named[0].address)) : "an unnamed address";
     out.push(`${model.key}: its ${expect.event} event comes from ${from}, not the ${expect.contract} of deployments/README.md`);
-  } else if (expect.reason && event.reason !== expect.reason) out.push(`${model.key}: the vault answered ${event.reason}, not ${expect.reason}`);
+  } else {
+    if (expect.reason && event.reason !== expect.reason) out.push(`${model.key}: the vault answered ${event.reason}, not ${expect.reason}`);
+    if (expect.sender) {
+      const sent = txSender(model, event, who);
+      if ("why" in sent) out.push(`${model.key}: ${sent.why}`);
+      else if (sent.label !== expect.sender) out.push(`${model.key}: it was sent as "${sent.label}", not "${expect.sender}"`);
+    }
+  }
   if (expect.etDate && model.date !== expect.etDate) out.push(`${model.key}: the tx is on ${model.date} ET, not ${expect.etDate}`);
   if (expect.etBefore && !(model.time < expect.etBefore)) out.push(`${model.key}: the tx is at ${model.time} ET, not before ${expect.etBefore}`);
   if (expect.etFrom && model.time < expect.etFrom) out.push(`${model.key}: the tx is at ${model.time} ET, before ${expect.etFrom}`);
@@ -235,7 +291,7 @@ dd.no{color:var(--refuse);font-weight:600}
 .placeholder p{font-size:${wide ? 24 : 13}px;color:var(--ink2)}`;
   const block = (m) => {
     if (m.kind === "placeholder") {
-      return `<div class="placeholder"><span class="tag ph">PLACEHOLDER</span><div class="label">${esc(m.label)}</div><p>This transaction is not on Base yet. The film shows it once its hash is in film/txs.json.</p></div>`;
+      return `<div class="placeholder"><span class="tag ph">PLACEHOLDER</span><div class="label">${esc(m.label)}</div><p>This transaction is not on Base yet.</p></div>`;
     }
     const dl = m.rows.map((r) => `<dt>${esc(r.k)}</dt><dd${r.tone ? ` class="${r.tone}"` : ""}>${esc(r.v)}</dd>`).join("");
     return `<div class="tx"><div><div class="label">${esc(m.label)}</div><dl>${dl}</dl></div><div class="link-card"><b>Open on Basescan ↗</b><span>${esc(m.url.replace(/^https:\/\//, ""))}</span></div></div>`;
@@ -272,7 +328,7 @@ const shortCommit = (c) => String(c).replace(/^([0-9a-f]{7})[0-9a-f]{33}/, "$1")
 function replyStep(reply) {
   if (reply?.kind !== "reply") {
     return `<li class="step"><div class="k">${esc("2 · Maat's agent's reply")}</div><div class="missing"><span class="tag ph">NOT IN THE JOURNAL YET</span><p>${esc(
-      "Maat's agent's reply to this brief is not in the published journal yet. The film shows it once the agent-journal branch holds its row.",
+      "Maat's agent's reply to this brief is not in the published journal yet.",
     )}</p></div></li>`;
   }
   // The row's commit is the git commit of the agent code that wrote the row (agent/src/ledger/journal.ts), which

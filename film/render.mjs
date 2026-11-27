@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // The one command: capture the live site with Playwright, then assemble both cuts with ffmpeg.
 // Local only (it needs Chromium, ffmpeg and the network). Usage, from the repository root:
-//   node film/render.mjs [--out <dir>] [--input <dir>] [--formats wide,tall] [--site <url>]
+//   node film/render.mjs [--out <dir>] [--input <dir>] [--formats wide,tall] [--site <url>] [--final]
+// --final stops before capturing while any transaction of beats 5 to 7 is still a placeholder.
 
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -9,7 +10,7 @@ import { assemble } from "./assemble.mjs";
 import { ROOT, capture } from "./capture.mjs";
 
 const { values } = parseArgs({
-  options: { out: { type: "string" }, input: { type: "string" }, formats: { type: "string" }, site: { type: "string" } },
+  options: { out: { type: "string" }, input: { type: "string" }, formats: { type: "string" }, site: { type: "string" }, final: { type: "boolean" } },
 });
 const out = resolve(values.out ?? join(ROOT, "film/out"));
 const work = join(out, "work");
@@ -19,6 +20,7 @@ await capture({
   input: resolve(values.input ?? join(ROOT, "film/input")),
   formats: (values.formats ?? "wide,tall").split(","),
   site: (values.site ?? "https://maatonbase.xyz").replace(/\/$/, ""),
+  final: values.final === true,
 });
 const report = assemble({ work, out });
 

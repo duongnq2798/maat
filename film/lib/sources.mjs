@@ -124,7 +124,28 @@ export const OPTIONAL_KEYS = Object.freeze({
   "deployments.verifiedOn": "the verification note under the deployments table counts every Base mainnet row",
   "deployments.verifiedOnIso": "the same, as an ISO date",
   "deployments.verified": "deployments/README.md gives the day Basescan showed each Base mainnet row's source verified",
+  "ask.open": "the live /ask page, as the capture reads it on beat 7's /ask shot, takes briefs (askOpenValue)",
 });
+
+/** What /ask shows in place of the send-brief form until it is open (AskApp's NotOpen block). */
+export const ASK_NOT_OPEN_SELECTOR = '[data-ask-state="not-open"]';
+
+/**
+ * Whether the live /ask takes briefs: "open" only when the page shows the send-brief form, not its notice "The inbox is
+ * not open yet." (`notOpenShown`), and the site's /data/ask.json, the owner's switch (web/content/ask-open.ts at the
+ * built commit), says open (`flag`); undefined otherwise, so the invitation caption never sits over a closed page.
+ * When the two disagree, `warning` says so and the value claims less.
+ * @param {{ notOpenShown: boolean, flag: unknown }} read
+ * @returns {{ value: "open" | undefined, warning?: string }}
+ */
+export function askOpenValue({ notOpenShown, flag }) {
+  if (!notOpenShown && flag === true) return { value: "open" };
+  if (notOpenShown && flag === false) return { value: undefined };
+  return {
+    value: undefined,
+    warning: `/ask ${notOpenShown ? "shows its not-open notice" : "shows no not-open notice"} while /data/ask.json says ${JSON.stringify(flag)}; beat 7 takes /ask as closed`,
+  };
+}
 
 const CI_ROWS = {
   "readme.contractTests": "Contract unit tests",
