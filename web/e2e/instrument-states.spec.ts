@@ -81,7 +81,7 @@ const FRAMES: readonly Frame[] = [
     clock: WEEKEND_TS + 5,
     scenario: "weekend",
     state: "live",
-    words: ["LIVE", "Saturday · NYSE closed", "opens Mon 09:30 ET · in 1 d 23 h", "would REFUSE"],
+    words: ["LIVE", "Right now, a buy would be:", "Refused · Market closed", "10:00 ET"],
     tags: ["MARKET_CLOSED"],
   },
   {
@@ -89,14 +89,14 @@ const FRAMES: readonly Frame[] = [
     clock: SESSION_TS + 5,
     scenario: { results: passAll(), open: true },
     state: "live",
-    words: ["LIVE", "Friday · open until 16:00 ET", "would pass the market checks"],
+    words: ["LIVE", "Right now, a buy would pass the market checks:", "(NVIDIA, a B20 token on Base)", "The vault runs the other checks on a real trade"],
   },
   {
     name: "live-three-refusals",
     clock: SESSION_TS + 5,
     scenario: { results: threeRefusals(), open: true },
     state: "live",
-    words: ["LIVE", "would REFUSE"],
+    words: ["LIVE", "Right now, a buy would be:", "Refused for", "pool vs Chainlink", "· limit 100"],
     tags: ["FEED_STALE", "MULTIPLIER_COOLDOWN", "PREMIUM_TOO_HIGH"],
   },
   {
@@ -109,14 +109,14 @@ const FRAMES: readonly Frame[] = [
       await page.clock.runFor(REFRESH_MS);
     },
     state: "stale",
-    words: ["NOT LIVE", "last read block", "the RPC did not answer since"],
+    words: ["NOT LIVE", "last read block", "the RPC did not answer since", "At the last read, a buy would be:"],
   },
   {
     name: "behind",
     clock: WEEKEND_TS + HEAD_MAX_LAG_SEC + 60,
     scenario: "weekend",
     state: "behind",
-    words: ["NOT LIVE", "behind your clock"],
+    words: ["NOT LIVE", "behind your clock", "At the last read, a buy would be:"],
   },
   { name: "error", clock: WEEKEND_TS + 5, scenario: "down", state: "error", words: [FAILED, "Retry"] },
 ];
@@ -153,12 +153,12 @@ for (const frame of FRAMES) {
       }
       await page.evaluate(() => document.fonts.ready);
 
-      // Every row of the one <p> holds words, and HOLD is on the bezel in every frame (amendment A7).
+      // Every row of the one <p> holds words, and Pause is on the bezel in every frame (amendment A7).
       const empty = await s.evaluate(
         (el) => [...el.querySelectorAll(":scope > p > span")].filter((row) => (row.textContent ?? "").trim() === "").length,
       );
       expect(empty).toBe(0);
-      await expect(s.locator("[data-readout-keys]").getByRole("button", { name: "Hold" })).toBeVisible();
+      await expect(s.locator("[data-readout-keys]").getByRole("button", { name: "Pause" })).toBeVisible();
 
       // The natural height: the Readout with its reserved min-height lifted for one measurement. The box itself
       // grows past the reserve rather than overflow, so the frame is checked against the reserve, not the box.
@@ -172,6 +172,8 @@ for (const frame of FRAMES) {
       });
       mkdirSync(HEIGHTS, { recursive: true });
       writeFileSync(`${HEIGHTS}/${frame.name}-${width}.txt`, `${Math.ceil(natural)}\n`);
+      // In the run's log too, so CI's Linux heights can be read without an artifact (STRIP_RESERVE comes from them).
+      console.log(`readout-height ${frame.name} ${width} ${Math.ceil(natural)}`);
       await page.screenshot({ path: `test-results/screens/states-${frame.name}-${width}.png` });
       expect(natural, `${frame.name} at ${width} px needs ${Math.ceil(natural)} px`).toBeLessThanOrEqual(reserve);
       expect(box, "the Readout keeps its reserved height").toBe(reserve);

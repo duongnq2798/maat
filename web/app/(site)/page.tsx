@@ -16,8 +16,8 @@ import { TryIt } from "@/components/sections/TryIt";
 import { VaultDecisionsProvider } from "@/components/sections/VaultDecisions";
 
 // The landing reads Base twice, each once for the whole page. LiveSnapshotProvider reads the market (spec 2026-11-23
-// section 3.8): the strip, HOLD and the ThumbBar's lamp read it. VaultDecisionsProvider reads the mainnet vault's
-// Decisions with /ledger's loader once the page has hydrated: the bar, the hero plate and the engine card read it.
+// section 3.8): the strip, its Pause key and the ThumbBar's lamp read it. VaultDecisionsProvider reads the mainnet
+// vault's Decisions with /ledger's loader once the page has hydrated: the bar and the engine card read it.
 export default function Page() {
   return (
     <LiveSnapshotProvider>

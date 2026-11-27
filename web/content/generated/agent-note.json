@@ -1,0 +1,13 @@
+{
+  "head": "0x1139895cebb198bbbeb629af9c276762c033e9738760caadc7b7b83caf280fe8",
+  "rows": 41,
+  "note": {
+    "summary": "No rebalance this round. Cash is 23.6% against a 30% target, a drift of 6.4 points, and AAPLc is 4.84 points over its target, within the 5-point band. Suggestions are empty, the market is closed, and two price feeds are stale, so I am proposing nothing.",
+    "ts": 1795802485.582,
+    "when": "Fri 27 Nov 13:01 ET",
+    "commit": "b8c914a722a8e96b91fb67dae1ef2ff6b101275f",
+    "mode": "live",
+    "file": "2026-11-27.jsonl",
+    "line": 41
+  }
+}

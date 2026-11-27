@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
 import { FACTS } from "@/content/facts";
+import { FILM } from "@/content/film";
 import { REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
@@ -23,9 +24,25 @@ describe("landing page", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
     // The nav lists pages, not the landing's sections, so the in-page links are the skip link, the home link and the
-    // hero's and the sections' own links.
-    expect([...ids].sort()).toEqual(["main", "reasons", "top", "try"]);
+    // hero's and the sections' own links. The hero's three steps open How it works (spec 2026-11-27 section 1), and its
+    // first CTA the film band only while the landing has one (content/film.ts), else How it works too.
+    expect([...ids].sort()).toEqual([...(FILM.onLanding ? ["film"] : []), "how", "main", "reasons", "top", "try"].sort());
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
+  });
+
+  it("defines the mandate where the page's prose first names it (spec 2026-11-27 section 4)", () => {
+    const c = setup();
+    // The text a reader sees, in order: not a hidden tab panel, not the noscript line, and not the agent's note, which
+    // is quoted verbatim.
+    let text = "";
+    const walker = document.createTreeWalker(c, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.parentElement?.closest("[hidden], noscript, [data-hero-note]")) continue;
+      text += `${n.textContent} `;
+    }
+    const at = text.search(/\bmandate\b/i);
+    expect(at).toBeGreaterThan(-1);
+    expect(text.slice(at)).toMatch(/^mandate \(the vault's public rule set\)/);
   });
 
   it("orders the sections like the comp", () => {

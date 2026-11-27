@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import {
   checkAbiFiles,
+  checkAgentNote,
   checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
@@ -24,6 +25,8 @@ import {
   shipsPublicly,
 } from "../lib/check-out";
 import { ASK_OPEN } from "../content/ask-open";
+import { FACTS } from "../content/facts";
+import agentNote from "../content/generated/agent-note.json";
 import { CARD_PAGES } from "../content/page-cards";
 import rationales from "../content/generated/rationales.json";
 import skill from "../content/generated/skill.json";
@@ -205,6 +208,9 @@ if (existsSync(join(OUT, "api/search.json"))) {
   const page = (path: string) => (known.has(path) ? read(`${path.slice(1)}.html`) : undefined);
   problems.push(...checkSearchIndex(searchIndex.toString("utf8"), searchGzipped, page));
 }
+
+// Warnings: the landing ships either way.
+for (const w of checkAgentNote(agentNote.note, FACTS.mainnetDecisions.value)) console.warn(`! ${w}`);
 
 if (problems.length > 0) {
   console.error(problems.map((p) => `✗ ${p}`).join("\n"));

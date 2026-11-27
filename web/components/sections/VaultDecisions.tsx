@@ -31,9 +31,9 @@ const VaultContext = createContext<VaultView | null>(null);
 const VaultReader = lazy(() => import("./VaultReader"));
 
 /**
- * Reads the mainnet vault once for the whole landing, so the bar, the hero plate and the engine card show the same
- * Decisions. The read is /ledger's own loader (useLedger, in VaultReader.tsx), loaded once the page has hydrated; until
- * it lands, and if it fails, the recorded Decisions show. `deps` is for tests.
+ * Reads the mainnet vault once for the whole landing, so the bar and the engine card show the same Decisions. The read
+ * is /ledger's own loader (useLedger, in VaultReader.tsx), loaded once the page has hydrated; until it lands, and if it
+ * fails, the recorded Decisions show. `deps` is for tests.
  */
 export function VaultDecisionsProvider({ deps, children }: { deps?: LedgerDeps; children: ReactNode }) {
   const [view, setView] = useState<VaultView>(RECORDED_VIEW);
