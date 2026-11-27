@@ -12,7 +12,7 @@ export const SITE = {
   /** The docs center, and its offline five-minute check. Plain links: /docs has its own root layout. */
   docsUrl: "/docs",
   quickstartUrl: "/docs/get-started/quickstart",
-  /** README anchor: the fork run behind the ledger rows. */
+  /** README anchor: the fork run behind the fork ledger's rows on /ledger. */
   forkEvidenceUrl: `${REPO}#base-mainnet-fork-evidence`,
   licenseUrl: `${REPO}/blob/main/LICENSE`,
   disclaimer:

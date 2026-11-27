@@ -31,7 +31,7 @@ export interface ForkLedgerData {
   readonly rows: readonly { readonly time: string; readonly intent: string; readonly decision: string; readonly code: ReasonCode; readonly gas: string; readonly note?: string }[];
 }
 
-/** The decisions the agent made in the fork run, as the landing page's ledger shows them. */
+/** The decisions the agent made in the fork run, as the fork ledger on /ledger shows them. */
 export function forkLedger(): ForkLedgerData {
   return {
     caption: `Base mainnet fork at block ${factFor("forkBlock").text}, recorded by agent/test/integration/agent.fork.test.ts.`,

@@ -8,7 +8,7 @@ import { REASON_MEANING } from "@/content/reasons";
 const NOTE = /Recorded by the agent loop on a fork of Base mainnet at block 53,551,627/;
 
 function setup(rows: readonly DecisionRow[] = getDecisions()) {
-  render(<LedgerTable rows={rows} heading={<h2>Every answer is public. Especially no.</h2>} />);
+  render(<LedgerTable rows={rows} heading={<h2>The fork run</h2>} />);
   const bodyRows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
   return {
     bodyRows,
@@ -79,10 +79,11 @@ describe("LedgerTable", () => {
     expect(items()[0]).toHaveTextContent("Refused · Market closed");
   });
 
-  it("says in the fork note that the vault's mainnet decisions are on the mainnet ledger, and promises no link", () => {
+  // The table is on /ledger only, under the mainnet ledger (spec 2026-11-27 section 3), so its note points up to it.
+  it("says in the fork note that the vault's mainnet decisions are in the mainnet ledger above, and promises no link", () => {
     setup();
     expect(screen.getByText(NOTE).textContent).toBe(
-      "Recorded by the agent loop on a fork of Base mainnet at block 53,551,627, against the real B20 tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault's mainnet decisions, each linked to Basescan, are on the mainnet ledger.",
+      "Recorded by the agent loop on a fork of Base mainnet at block 53,551,627, against the real B20 tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault's mainnet decisions, each linked to Basescan, are in the mainnet ledger above.",
     );
     expect(screen.queryByText(/will link/)).toBeNull();
   });
