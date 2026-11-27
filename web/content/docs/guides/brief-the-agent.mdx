@@ -25,6 +25,7 @@ sources:
   - web/content/proof-stops.ts
   - web/content/proof-bounty.ts
   - scripts/recount.mjs
+  - scripts/brief.mjs
 next: [guides/watch-decisions-onchain, concepts/refusal-codes]
 ---
 
@@ -69,6 +70,22 @@ The page reads the Builder Code from the vault's first [Decision](/docs/help/glo
 </Step>
 
 </Steps>
+
+## Send one without /ask
+
+The inbox takes briefs from anyone now, while `/ask` is still closed. Two ways send one from your own wallet; neither asks you for a key.
+
+**From Basescan, no code.** Open the inbox's [Write Contract tab](https://basescan.org/address/0x6a3D27f2d8a5BC991Bf4511aAA698A5B2DCDf12a#writeContract), connect your wallet on Base, write your text in `brief`, and press Write. The transaction carries no ETH; you pay only gas. A brief sent this way has no Builder Code suffix.
+
+**From a terminal.** [`scripts/brief.mjs`](https://github.com/duongnq2798/maat/blob/main/scripts/brief.mjs) is one file with no dependency; it runs with Node.js 18 or later, in a clone or copied out of one.
+
+```bash
+node scripts/brief.mjs "Should Maat hold more USDC into a long weekend?" --from <your address>
+```
+
+It checks the byte count, reads the Builder Code from the vault's first Decision as `/ask` does, simulates the brief from your address, and prints the transaction (to, value 0, data) and a `cast send` line that signs with your own Foundry keystore or `--ledger`. Once it is sent, `node scripts/brief.mjs --status <tx hash>` prints the brief's id, sender and text from its `Brief` log.
+
+The agent that runs now, from the tag `agent-r2`, reads no briefs. An agent built from `main` reads every `Brief` log from the inbox's deploy block, so a brief sent before it starts is read in turn, within the caps below.
 
 ## What the agent does with a brief
 
