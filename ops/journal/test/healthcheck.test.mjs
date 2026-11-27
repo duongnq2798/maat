@@ -1,7 +1,7 @@
 // The optional healthcheck ping: one GET after each healthy round, never the URL in a line, never a stop.
 import assert from "node:assert/strict";
 import { createServer } from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
@@ -92,7 +92,12 @@ describe("isHttpUrl and healthcheckUrl", () => {
       writeFileSync(join(agentDir, ".env"), `ANTHROPIC_API_KEY=sk-ant-fake-not-read\nMAAT_HEALTHCHECK_URL=https://hc.example.invalid/${TOKEN}\n`);
       assert.equal(healthcheckUrl({ env: {}, agentDir }), `https://hc.example.invalid/${TOKEN}`);
       assert.equal(healthcheckUrl({ env: { MAAT_HEALTHCHECK_URL: " https://env.example.invalid/x " }, agentDir }), "https://env.example.invalid/x");
+      // An environment value of only spaces counts as unset, so it does not hide the line of agent/.env.
+      assert.equal(healthcheckUrl({ env: { MAAT_HEALTHCHECK_URL: "   " }, agentDir }), `https://hc.example.invalid/${TOKEN}`);
+      assert.equal(healthcheckUrl({ env: { MAAT_HEALTHCHECK_URL: "" }, agentDir }), `https://hc.example.invalid/${TOKEN}`);
       writeFileSync(join(agentDir, ".env"), "MAAT_HEALTHCHECK_URL=\n");
+      assert.equal(healthcheckUrl({ env: {}, agentDir }), undefined);
+      writeFileSync(join(agentDir, ".env"), 'MAAT_HEALTHCHECK_URL="   "\n');
       assert.equal(healthcheckUrl({ env: {}, agentDir }), undefined);
     } finally {
       rmSync(agentDir, { recursive: true, force: true });
@@ -115,9 +120,9 @@ describe("main: the healthcheck ping in the loop", () => {
    * Runs main with fake rounds, a fake sleep and a fake fetch whose answers are `answers`, in order.
    * @param {string[]} argv
    * @param {Array<() => unknown>} rounds
-   * @param {{ env?: Record<string, string>, answers?: Array<number | Error | "stall">, abortAfterSleeps?: number }} [o]
+   * @param {{ env?: Record<string, string>, agentDir?: string, answers?: Array<number | Error | "stall">, abortAfterSleeps?: number }} [o]
    */
-  async function drive(argv, rounds, { env = { MAAT_HEALTHCHECK_URL: URL_SET }, answers = [], abortAfterSleeps = Infinity } = {}) {
+  async function drive(argv, rounds, { env = { MAAT_HEALTHCHECK_URL: URL_SET }, agentDir = resolve(tmpdir(), "maat-agent-none"), answers = [], abortAfterSleeps = Infinity } = {}) {
     const out = [];
     const err = [];
     /** @type {{ url: string, method: string | undefined }[]} */
@@ -126,7 +131,7 @@ describe("main: the healthcheck ping in the loop", () => {
     const ac = new AbortController();
     const code = await main(argv, {
       env,
-      agentDir: resolve(tmpdir(), "maat-agent-none"),
+      agentDir,
       signal: ac.signal,
       healthcheckTimeoutMs: 200,
       log: (s) => out.push(s),
@@ -218,6 +223,20 @@ describe("main: the healthcheck ping in the loop", () => {
     assert.equal(r.pings.length, 0);
     assert.ok(r.out.some((l) => /healthcheck: MAAT_HEALTHCHECK_URL is set but is not an http or https URL, so no ping is sent/.test(l)));
     assert.equal(r.all.includes(TOKEN), false);
+  });
+
+  it("publishes without a ping when agent/.env cannot be read, and names only the error's code", async () => {
+    const agentDir = mkdtempSync(join(tmpdir(), "maat-agent-hc-"));
+    try {
+      mkdirSync(join(agentDir, ".env")); // a folder where the file should be: reading it fails with EISDIR
+      const r = await drive(["--once", "--data-dir", "./data"], [pushed], { env: {}, agentDir });
+      assert.equal(r.code, 0);
+      assert.equal(r.pings.length, 0);
+      assert.ok(r.out.some((l) => /healthcheck: agent\/\.env could not be read \(E[A-Z]+\), so no ping is sent/.test(l)));
+      assert.ok(r.out.some((l) => l.endsWith(" appended 1 row")));
+    } finally {
+      rmSync(agentDir, { recursive: true, force: true });
+    }
   });
 
   it("does not ping before a stop", async () => {

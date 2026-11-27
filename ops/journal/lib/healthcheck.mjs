@@ -10,7 +10,7 @@ export const HEALTHCHECK_TIMEOUT_MS = 10_000;
  * The round statuses that ping: "pushed" and "up-to-date". A "waiting" round (no journal, or no chained row yet)
  * publishes nothing the branch can show, so it does not ping and the monitor goes late, as it should.
  */
-export const HEALTHY_STATUSES = Object.freeze(new Set(["pushed", "up-to-date"]));
+export const HEALTHY_STATUSES = /** @type {ReadonlySet<string>} */ (new Set(["pushed", "up-to-date"]));
 
 /**
  * Whether `raw` is an absolute http or https URL. Never throws, and never quotes `raw`.

@@ -61,7 +61,9 @@ node ops\journal\publish.mjs
 ```
 
 It prints one line when it starts, with the journal it reads, the remote and its checkout, then one line per round.
-Leave the window open; it runs a round at once and then every 15 minutes.
+With the [healthcheck ping](#healthcheck-ping) set, it prints a second `healthcheck: ...` line at start and a ping line
+after each round that pushed or found nothing new. Leave the window open; it runs a round at once and then every 15
+minutes.
 
 On its first run it creates its checkout, `maat-agent-journal`, in the folder that holds your clone (beside it, never
 inside it). That checkout has one branch, `agent-journal`, and its `origin` is
@@ -99,7 +101,8 @@ When no git command is running, delete `maat-agent-journal\.git\index.lock` and 
 | `will try again in 15 min: git push failed: ...` | The network or the login failed. It keeps running; a commit it could not push goes up with the next round |
 | `will try again in 15 min: git fetch did not finish within 300 s and was ended` (or `git push`, or another command within 60 s) | GitHub stalled, or a sign-in window was left open. It keeps running and tries again next round |
 | `healthcheck ping ok` | The [healthcheck ping](#healthcheck-ping) after this round got a 2xx answer |
-| `healthcheck ping failed: <REASON>` | The ping got no 2xx answer: `HTTP <STATUS>`, `no answer within 10 s`, or an error code such as `ENOTFOUND`. It keeps running; the next healthy round pings again |
+| `healthcheck ping failed: <REASON>` | The ping got no 2xx answer: `HTTP <STATUS>`, `no answer within 10 s`, an error code such as `ENOTFOUND`, `network error` for a failure with no code, or `unexpected error`. It keeps running; the next healthy round pings again |
+| `healthcheck: agent/.env could not be read (<CODE>), so no ping is sent` | `agent\.env` exists but cannot be read. It publishes without the ping; fix the file and start it again to get the ping back |
 | `STOPPED: ...` | It exited (code 1) and pushes nothing until you start it again. See below |
 
 ## When it stops
@@ -134,25 +137,28 @@ someone else changed it is for you to decide.
 
 The publisher can tell a monitor such as [healthchecks.io](https://healthchecks.io) that its rounds still run, so you
 hear about a publisher that stopped, or a PC that slept, without looking at its window. It is off unless you set
-`MAAT_HEALTHCHECK_URL`, in the environment of the window that starts it or as a line of `agent\.env`; the environment
-wins when both have a value, and a blank value counts as unset:
+`MAAT_HEALTHCHECK_URL`. Put it as a line of `agent\.env`:
 
 ```text
 MAAT_HEALTHCHECK_URL=<YOUR_CHECK_URL>
 ```
 
+The environment of the window that starts it works too, and wins when both have a value; a value that is blank or only
+spaces counts as unset. Prefer `agent\.env`: PowerShell saves each line you type, so a `$env:MAAT_HEALTHCHECK_URL = ...`
+line would stay in its history file.
+
 When it is set, each round that pushed a commit or found nothing new ends with one `GET` to that URL, with a 10-second
 timeout, then the line `healthcheck ping ok` or `healthcheck ping failed: <REASON>`. A round that waits (`no journal
 at ...` or `has no chained row yet`), a round that will try again and a stop send no ping, so the check goes late when
-the publisher has no chained journal to read, cannot reach GitHub, or has stopped. A failed ping never stops the publisher and never changes its exit code. At start it prints
-`healthcheck: a GET to MAAT_HEALTHCHECK_URL after each round that pushes or finds nothing new`, or, for a value that is
-not an `http` or `https` URL, `healthcheck: MAAT_HEALTHCHECK_URL is set but is not an http or https URL, so no ping is
-sent`.
+the publisher has no chained journal to read, cannot reach GitHub, or has stopped. A failed ping never stops the
+publisher and never changes its exit code. At start it prints `healthcheck: a GET to MAAT_HEALTHCHECK_URL after each
+round that pushes or finds nothing new`, or, for a value that is not an `http` or `https` URL, `healthcheck:
+MAAT_HEALTHCHECK_URL is set but is not an http or https URL, so no ping is sent`.
 
 A check URL is its own password: anyone who has it can ping the check. The publisher never prints it, in any line or
-error, and has no command-line option for it, so it stays out of the shell's history. Give the check a period of
-15 minutes, the interval between rounds, and a grace time of at least 15 minutes more, since a slow fetch and a slow
-push may each take up to 5 minutes before git is ended.
+error, and has no command-line option for it, so it never shows in a command line. Give the check a period of 15
+minutes, the interval between rounds, and a grace time of at least 15 minutes more, since a slow fetch and a slow push
+may each take up to 5 minutes before git is ended.
 
 ## Rehearse against a local remote
 
@@ -160,10 +166,16 @@ To see what it writes without touching GitHub, point it at a bare repository on 
 from the clone's root:
 
 ```powershell
+$env:MAAT_HEALTHCHECK_URL = 'off'
 git init --bare $env:TEMP\journal-rehearsal.git
 node ops\journal\publish.mjs --once --allow-dry-run --data-dir .\data-dryrun --checkout $env:TEMP\journal-rehearsal --remote $env:TEMP\journal-rehearsal.git
 git --git-dir $env:TEMP\journal-rehearsal.git log --stat agent-journal
 ```
+
+The first line keeps the rehearsal from sending the [healthcheck ping](#healthcheck-ping): it reads the same
+`agent\.env` as the live publisher, so without that line a rehearsal pings the real check, which can then look healthy
+while the live publisher is down. `off` is not an `http` or `https` URL, so nothing is sent. Close that window
+afterwards, or run `Remove-Item Env:MAAT_HEALTHCHECK_URL`, before you start the live publisher in it.
 
 ## Read the branch
 
@@ -185,8 +197,9 @@ fetch goes to a server on `127.0.0.1`. They cover the spec's vectors, the allowl
 line a crash cut short, a row that is never appended twice, `index.json`, two pushes, a forced remote change that stops
 the next round, a rehearsal refused on the public remote, a stalled fetch that is ended, and the guard that lets it
 push nothing but `agent-journal`, and the healthcheck ping, against a server on `127.0.0.1` and a fake fetch: when it
-is sent, its timeout, and that no line holds its URL. CI does not run them; the web unit test `web/test/journal-publisher.test.ts`, which CI runs, checks the fixture chain
-with viem's keccak256 and that the publisher writes exactly the fixture's files.
+is sent, its timeout, and that no line holds its URL. CI does not run them; the web unit test
+`web/test/journal-publisher.test.ts`, which CI runs, checks the fixture chain with viem's keccak256 and that the
+publisher writes exactly the fixture's files.
 
 | File | What it holds |
 | --- | --- |

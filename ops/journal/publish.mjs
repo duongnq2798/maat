@@ -60,14 +60,13 @@ export function agentDataDir({ flag, env = process.env, agentDir = AGENT_DIR }) 
 }
 
 /**
- * The healthcheck URL: MAAT_HEALTHCHECK_URL from the environment, else its line of agent/.env, trimmed; undefined when
- * neither has a value, which means no ping.
+ * The healthcheck URL: MAAT_HEALTHCHECK_URL from the environment, else its line of agent/.env, each trimmed first, so a
+ * value of only spaces counts as unset; undefined when neither has a value, which means no ping.
  * @param {{ env?: Record<string, string | undefined>, agentDir?: string }} o
  * @returns {string | undefined}
  */
 export function healthcheckUrl({ env = process.env, agentDir = AGENT_DIR }) {
-  const raw = (env[HEALTHCHECK_ENV] || agentEnvFileValue(agentDir, HEALTHCHECK_ENV) || "").trim();
-  return raw === "" ? undefined : raw;
+  return env[HEALTHCHECK_ENV]?.trim() || agentEnvFileValue(agentDir, HEALTHCHECK_ENV)?.trim() || undefined;
 }
 
 /** @param {readonly string[]} argv */
@@ -135,7 +134,16 @@ export async function main(argv, d = {}) {
   const target = opts.remote === undefined ? `the checkout's origin (${DEFAULT_REMOTE} for a new checkout)` : redact(opts.remote);
   say(`publishing ${journalFile} to the ${BRANCH} branch of ${target} through ${opts.checkout}${opts.once ? ", one round" : `, every ${opts.intervalMin} min; Ctrl-C stops it`}`);
   // The URL is never printed: a healthcheck URL is its own token.
-  let hcUrl = healthcheckUrl({ env, agentDir });
+  /** @type {string | undefined} */
+  let hcUrl;
+  try {
+    hcUrl = healthcheckUrl({ env, agentDir });
+  } catch (e) {
+    // agent/.env exists but cannot be read (with --data-dir it was not read before): the ping is optional, so say so
+    // with the error's code only and publish without it.
+    const code = /** @type {NodeJS.ErrnoException} */ (e)?.code;
+    say(`healthcheck: agent/.env could not be read${typeof code === "string" ? ` (${code})` : ""}, so no ping is sent`);
+  }
   if (hcUrl !== undefined && !isHttpUrl(hcUrl)) {
     say(`healthcheck: ${HEALTHCHECK_ENV} is set but is not an http or https URL, so no ping is sent`);
     hcUrl = undefined;
