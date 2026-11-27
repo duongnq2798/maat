@@ -1,73 +1,77 @@
 WEBVTT
 
-gap-held
-00:00:06.000 --> 00:00:10.500
-Fri 6 Nov 16:00 ET → Mon 9 Nov 09:30 ET. NYSE is closed, and the NVDAc price feed held one answer for 51.35 h.
+voice-01-1
+00:00:06.400 --> 00:00:09.600 line:0
+Over a weekend, the feed is held for days without an update.
 
-gap-swaps
-00:00:10.500 --> 00:00:15.000
-Its Aerodrome pool on Base kept trading: 10,138 swaps meanwhile, up to 490 bps below the held answer.
+voice-01-2
+00:00:09.600 --> 00:00:12.700 line:0
+So the vault keeps the exchange's hours.
 
-decides-how
-00:00:15.000 --> 00:00:19.500
-Claude proposes. The vault decides. It is a contract on Base that checks every intent.
+voice-02-1
+00:00:15.400 --> 00:00:19.200 line:0
+Maat's agent runs on Claude, and only proposes.
 
-decides-log
-00:00:19.500 --> 00:00:24.500
-A refusal does not revert: the vault records a typed Decision either way, with its reason code.
+voice-03-1
+00:00:19.900 --> 00:00:23.200 line:0
+On Basescan, a refusal reads Success.
 
-mandate-basket
-00:00:24.500 --> 00:00:28.000
-The owner's basket: NVDAc, GOOGLc and AAPLc, kept to a mandate the vault enforces.
+voice-04-1
+00:00:24.900 --> 00:00:31.200 line:0
+This is the owner's own treasury, and the vault holds its limits: per trade, per day, per stock.
 
-mandate-caps
-00:00:28.000 --> 00:00:31.500
-The mandate onchain: $50 per trade, $100 a day, no stock above 40% of the vault.
+voice-04-2
+00:00:31.200 --> 00:00:34.100 line:0
+Maat's agent cannot move them.
 
-mandate-timelock
-00:00:31.500 --> 00:00:35.000
-Maat's agent cannot loosen it: every rule change waits out a public timelock.
+voice-05-1
+00:00:35.400 --> 00:00:39.900 line:0
+Change one word of the rationale, and the hash stops matching.
 
-proposal-tick
-00:00:35.000 --> 00:00:42.500
-Each Decision commits to its rationale's hash. The ledger hashes the text in your browser and ticks a match.
+voice-06-1
+00:00:42.900 --> 00:00:45.200 line:0
+You need not take our word for it.
 
-proposal-verify
-00:00:42.500 --> 00:00:47.500
-Or check it by hand with read-only cast commands: no wallet, no key.
+voice-07-1
+00:00:48.000 --> 00:00:50.900 line:0
+The exchange was shut for Thanksgiving.
 
-thanksgiving-sim
-00:00:47.500 --> 00:00:51.000
-Simulated in the browser: on Thanksgiving the market-session check fails.
+voice-08-1
+00:00:51.400 --> 00:00:55.500 line:0
+On a market holiday, the vault refuses every trade.
 
-thanksgiving-tx
-00:00:51.000 --> 00:00:56.000
-On Base: Maat's agent's own intent on Thanksgiving. Refused · Market closed (MARKET_CLOSED), and recorded.
+voice-09-1
+00:00:56.400 --> 00:00:58.600 line:0
+Friday: an early close.
 
-early-sim
-00:00:56.000 --> 00:00:59.500
-Simulated: on Friday, after the early close, the same check fails.
+voice-10-1
+00:00:59.900 --> 00:01:06.400 line:0
+The plan: ask the vault twice that day, once before the close and once after.
 
-early-tx
-00:00:59.500 --> 00:01:06.500
-On Base: two probes sent by Maat's agent's executor, not Claude proposals. Allowed before the early close, refused after it.
+voice-11-1
+00:01:07.000 --> 00:01:10.100 line:0
+A brief is a short public message on Base.
 
-brief-ask-soon
-00:01:06.500 --> 00:01:11.500
-The inbox contract is on Base. Once /ask opens, any wallet can try to talk Maat's agent into a bad trade.
+voice-12-1
+00:01:11.900 --> 00:01:13.700 line:0
+Maat's agent can be persuaded.
 
-brief-placeholder
-00:01:11.500 --> 00:01:23.000
-Placeholder: no outside brief to Maat's agent, and no verdict on its answer, on Base yet.
+voice-12-2
+00:01:13.700 --> 00:01:19.600 line:0
+The vault cannot: whatever a brief talks it into is weighed by the same rules.
 
-receipts-contracts
-00:01:23.000 --> 00:01:27.000
-5 contracts on Base mainnet, verified on Basescan: four on 24 Nov 2026, MaatInbox on 27 Nov 2026.
+voice-13-1
+00:01:23.400 --> 00:01:26.200 line:0
+Each address is public. Read it yourself.
 
-receipts-ci
-00:01:27.000 --> 00:01:30.000
-Every figure links its CI job in the README.
+voice-14-1
+00:01:27.400 --> 00:01:29.500 line:0
+The tests run in the open.
 
-receipts-proof
-00:01:30.000 --> 00:01:33.500
-Every count on /proof has a written rule, and anyone can recount it from Base.
+voice-15-1
+00:01:30.400 --> 00:01:32.800 line:0
+Zero is shown as zero.
+
+voice-16-1
+00:01:33.900 --> 00:01:37.300 line:0
+Maat. Every trade is weighed.

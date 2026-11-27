@@ -58,8 +58,8 @@ test("the hero's first CTA opens the band, which loads no byte of the cut before
     buffered: 0,
     paused: true,
   });
-  // The captions are off by default, so their file waits too.
-  expect(urls.filter((u) => u.includes(FILM.captions))).toEqual([]);
+  // Both text tracks are off by default, so their files wait too.
+  expect(urls.filter((u) => u.includes(FILM.captions) || u.includes(FILM.onScreenText))).toEqual([]);
   expect(urls.map((u) => new URL(u).origin).filter((o) => !allowedOrigins(baseURL!).includes(o))).toEqual([]);
 
   // Play: the first request for the cut, from the site itself.
@@ -70,21 +70,29 @@ test("the hero's first CTA opens the band, which loads no byte of the cut before
   expect(errors).toEqual([]);
 });
 
-test("the captions track loads the cut's captions once a viewer turns it on", async ({ page }) => {
+test("the captions track loads the voice-over, and the descriptions track the on-screen text, once turned on", async ({ page }) => {
   await page.goto("/");
   const video = page.locator("#film video");
-  expect(await video.evaluate((v: HTMLVideoElement) => [v.textTracks.length, v.textTracks[0]?.kind, v.textTracks[0]?.mode])).toEqual([
-    1,
-    "captions",
-    "disabled",
+  expect(await video.evaluate((v: HTMLVideoElement) => [...v.textTracks].map((t) => [t.kind, t.label, t.mode]))).toEqual([
+    ["captions", "English", "disabled"],
+    ["descriptions", "English, on-screen text", "disabled"],
   ]);
-  // "hidden" loads the cues as a viewer's "showing" would, without drawing them over the burned-in ones.
+  // "hidden" loads the cues as a viewer's "showing" would, without drawing them.
   await video.evaluate((v: HTMLVideoElement) => {
     v.textTracks[0]!.mode = "hidden";
+    v.textTracks[1]!.mode = "hidden";
   });
-  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => v.textTracks[0]!.cues?.length ?? 0)).toBe(18);
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => [v.textTracks[0]!.cues?.length ?? 0, v.textTracks[1]!.cues?.length ?? 0])).toEqual([19, 18]);
+
+  // The captions say what the voice says, on the top line of the picture, clear of the captions burned in below.
+  const said = await video.evaluate((v: HTMLVideoElement) => {
+    const cue = [...v.textTracks[0]!.cues!].find((c) => (c as VTTCue).text.startsWith("On a market holiday")) as VTTCue;
+    return { start: cue.startTime, end: cue.endTime, text: cue.text, line: cue.line };
+  });
+  expect(said).toEqual({ start: 51.4, end: 55.5, text: "On a market holiday, the vault refuses every trade.", line: 0 });
+
   const thanksgiving = await video.evaluate((v: HTMLVideoElement) => {
-    const cue = v.textTracks[0]!.cues!.getCueById("thanksgiving-tx") as VTTCue;
+    const cue = v.textTracks[1]!.cues!.getCueById("thanksgiving-tx") as VTTCue;
     return { start: cue.startTime, end: cue.endTime, text: cue.text };
   });
   expect(thanksgiving).toEqual({

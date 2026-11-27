@@ -3,16 +3,32 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Film } from "@/components/sections/Film";
 import { FILM } from "@/content/film";
-import { TARGET_SECONDS } from "../../film/lib/beats.mjs";
-import { fills, parseVtt, vttCues, vttProblems, vttSeconds, vttTime, webvtt } from "../../film/lib/vtt.mjs";
+import { BEATS, TARGET_SECONDS, timeline } from "../../film/lib/beats.mjs";
+import {
+  fills,
+  NARRATION_SETTINGS,
+  narrationCues,
+  narrationProblems,
+  parseVtt,
+  vttCues,
+  vttProblems,
+  vttSeconds,
+  vttTime,
+  webvtt,
+} from "../../film/lib/vtt.mjs";
 
 // Spec 2026-11-27, landing "explain in 10 seconds", section 2: the film band under the hero, the files it serves from
-// web/public/film/, and the WebVTT track film/vtt.mjs writes from a render's manifest.
+// web/public/film/, and the two WebVTT tracks film/vtt.mjs writes: the captions of the sound, from film/narration.json,
+// and the on-screen text, from a render's manifest.
 
 const band = () => document.getElementById("film")!;
 // Paths from web/, where the tests run (a jsdom test has no file URL to resolve from).
 const publicFile = (url: string) => readFileSync(`public${url}`);
 const captions = (JSON.parse(readFileSync("../film/captions.json", "utf8")) as { captions: Record<string, unknown> }).captions;
+type NarrationLine = { shot: string; cues: { from: number; to: number; text: string }[] };
+const narration = (JSON.parse(readFileSync("../film/narration.json", "utf8")) as { lines: NarrationLine[] }).lines;
+// The cut's shots as the beat plan lays them out without the owner's clips, as the cut on the landing was rendered.
+const cutShots = timeline(BEATS, new Set()).shots;
 
 describe("the film band", () => {
   it("is titled by the film and its length, and the player is named by that title", () => {
@@ -38,16 +54,16 @@ describe("the film band", () => {
     expect(band().querySelectorAll("iframe, embed, object, img")).toHaveLength(0);
   });
 
-  it("carries the burned-in captions as a WebVTT track, off by default", () => {
+  it("captions the sound in one WebVTT track and carries the burned-in captions in another, both off by default", () => {
     render(<Film />);
-    const tracks = band().querySelectorAll("video > track");
-    expect(tracks).toHaveLength(1);
-    const track = tracks[0]!;
-    expect(track).toHaveAttribute("kind", "captions");
-    expect(track).toHaveAttribute("src", "/film/maat-film.en.vtt");
-    expect(track).toHaveAttribute("srclang", "en");
-    expect(track).toHaveAttribute("label", "English");
-    expect(track).not.toHaveAttribute("default");
+    const tracks = [...band().querySelectorAll("video > track")];
+    expect(tracks.map((t) => [t.getAttribute("kind"), t.getAttribute("src"), t.getAttribute("srclang"), t.getAttribute("label")])).toEqual([
+      // The voice-over: what a viewer who cannot hear the film needs, and the track the player's captions menu lists.
+      ["captions", "/film/maat-film.en.vtt", "en", "English"],
+      // The on-screen text, for screen readers and search; a player does not draw a descriptions track.
+      ["descriptions", "/film/maat-film.on-screen.en.vtt", "en", "English, on-screen text"],
+    ]);
+    for (const track of tracks) expect(track).not.toHaveAttribute("default");
   });
 
   it("says under the player what the film shows, then who made its voice and music, word for word", () => {
@@ -120,8 +136,27 @@ describe("the film's files in web/public/film", () => {
     expect(size).toEqual([1280, 720]);
   });
 
-  it("the captions: each cue says the words of its caption in film/captions.json, in order and inside the cut", () => {
+  it("the captions: the voice-over of film/narration.json, each cue at its shot's time, on the top line of the picture", () => {
     const vtt = publicFile(FILM.captions).toString("utf8");
+    const cues = parseVtt(vtt);
+    expect(narrationProblems(narration, cutShots)).toEqual([]);
+    // Sixteen spoken lines, three of them in two cues.
+    expect(narration).toHaveLength(16);
+    expect(cues).toHaveLength(19);
+    // The file is what film/vtt.mjs writes from narration.json over the cut's shots, so it can write it again.
+    expect(cues).toEqual(narrationCues(cutShots, narration));
+    expect(webvtt(cues)).toBe(vtt.replace(/\r\n/g, "\n"));
+    // Every cue sits on the top line, clear of the captions burned in at the bottom, and none overlaps the next.
+    expect(NARRATION_SETTINGS).toBe("line:0");
+    expect(new Set(cues.map((c) => c.settings))).toEqual(new Set([NARRATION_SETTINGS]));
+    for (const [i, cue] of cues.entries()) expect(cue.start).toBeGreaterThanOrEqual(cues[i - 1]?.end ?? 0);
+    expect(cues.at(-1)!.end).toBeLessThanOrEqual(TARGET_SECONDS);
+    // The Thanksgiving line, said over the tx card of Maat's agent's Decision (51 to 56 s).
+    expect(cues.find((c) => c.text === "On a market holiday, the vault refuses every trade.")).toMatchObject({ start: 51.4, end: 55.5 });
+  });
+
+  it("the on-screen text: each cue says the words of its caption in film/captions.json, in order and inside the cut", () => {
+    const vtt = publicFile(FILM.onScreenText).toString("utf8");
     const cues = parseVtt(vtt);
     expect(vttProblems(cues, captions, TARGET_SECONDS)).toEqual([]);
     // The cut's sixteen shots with a caption, two of them with two cues and one with three.
@@ -161,6 +196,66 @@ describe("film/lib/vtt.mjs", () => {
     expect(vttSeconds("01:23.500")).toBe(83.5);
     expect(parseVtt(webvtt(cues))).toEqual(cues);
     expect(vttProblems(cues, captions, TARGET_SECONDS)).toEqual([]);
+  });
+
+  it("writes a cue's settings after its timing, and reads them back", () => {
+    const cues = [{ id: "voice-01-1", start: 6.4, end: 9.6, text: "Over a weekend.", settings: "line:0" }];
+    expect(webvtt(cues)).toBe("WEBVTT\n\nvoice-01-1\n00:00:06.400 --> 00:00:09.600 line:0\nOver a weekend.\n");
+    expect(parseVtt(webvtt(cues))).toEqual(cues);
+  });
+
+  it("places each narration cue at its shot's start, names it by line and cue, and sets it on the top line", () => {
+    const tiny = [
+      { beat: "frozen-feed", slot: "title", duration: 6 },
+      { beat: "frozen-feed", slot: "gap", duration: 9 },
+      { beat: "proposes-decides", slot: "how", duration: 4.5 },
+    ];
+    const lines = [
+      {
+        shot: "frozen-feed/gap",
+        cues: [
+          { from: 0.4, to: 3.6, text: "One." },
+          { from: 3.6, to: 6.7, text: "Two." },
+        ],
+      },
+      { shot: "proposes-decides/how", cues: [{ from: 0.4, to: 4.2, text: "Three." }] },
+    ];
+    expect(narrationProblems(lines, tiny)).toEqual([]);
+    expect(narrationCues(tiny, lines)).toEqual([
+      { id: "voice-01-1", start: 6.4, end: 9.6, text: "One.", settings: "line:0" },
+      { id: "voice-01-2", start: 9.6, end: 12.7, text: "Two.", settings: "line:0" },
+      { id: "voice-02-1", start: 15.4, end: 19.2, text: "Three.", settings: "line:0" },
+    ]);
+    expect(() => narrationCues(tiny, [{ shot: "receipts/end", cues: [] }])).toThrow("the cut has no shot receipts/end");
+  });
+
+  it("names a narration line over no shot, out of order or twice, and a cue with no words, outside its shot or overlapping", () => {
+    const tiny = [
+      { beat: "a", slot: "one", duration: 5 },
+      { beat: "b", slot: "two", duration: 4 },
+    ];
+    const lines = [
+      { shot: "b/two", cues: [{ from: 0.4, to: 4.5, text: "Too long." }] },
+      {
+        shot: "a/one",
+        cues: [
+          { from: 1, to: 2, text: " " },
+          { from: 1.5, to: 1.5, text: "Overlaps." },
+        ],
+      },
+      { shot: "b/two", cues: [{ from: -1, to: 1, text: "Early." }] },
+      { shot: "c/three", cues: [{ from: 0, to: 1, text: "Nowhere." }] },
+    ];
+    expect(narrationProblems(lines, tiny)).toEqual([
+      "narration line 1 (b/two), cue 1: ends at 4.5 s, after its shot's 4 s",
+      "narration line 2 (a/one): comes before the line above it in the cut",
+      "narration line 2 (a/one), cue 1: has no words",
+      "narration line 2 (a/one), cue 2: ends at 1.5 s, not after its start at 1.5 s",
+      "narration line 2 (a/one), cue 2: starts at 1.5 s, before the cue above it ends at 2 s",
+      "narration line 3 (b/two): a second line over this shot",
+      "narration line 3 (b/two), cue 1: starts at -1 s, before its shot",
+      "narration line 4 (c/three): the cut has no such shot",
+    ]);
   });
 
   it("escapes what WebVTT cannot carry as it is, and reads it back", () => {

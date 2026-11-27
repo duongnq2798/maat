@@ -4,9 +4,11 @@ import { type Film as FilmContent, FILM } from "@/content/film";
  * The film band, `#film`, directly under the hero (spec 2026-11-27, landing "explain in 10 seconds", section 2). The site
  * serves the cut itself: the player has controls, no autoplay, and preload="none", so the browser fetches no byte of the
  * cut, and plays no sound, until the visitor presses play. Before that it shows the poster, a frame of the Thanksgiving
- * refusal; a video poster is not an <img>, so the landing still uses no raster image. The captions are burned in; the
- * WebVTT track repeats them for screen readers and search and is off by default. A YouTube link shows only once
- * `youtubeUrl` is set, as plain text: no iframe and no click-to-load facade, so nothing loads from Google before a click.
+ * refusal; a video poster is not an <img>, so the landing still uses no raster image. Two WebVTT tracks, both off by
+ * default: the captions track captions the sound, the voice-over, at the top of the picture, clear of the captions
+ * burned in at the bottom; the descriptions track repeats that on-screen text for screen readers and search. A YouTube
+ * link shows only once `youtubeUrl` is set, as plain text: no iframe and no click-to-load facade, so nothing loads from
+ * Google before a click.
  *
  * On phones the title, the player and its caption stack; from lg the title and the caption share the left column and the
  * player takes the right.
@@ -35,6 +37,7 @@ export function Film({ film = FILM }: { film?: FilmContent }) {
           className="block aspect-video h-auto w-full rounded-[20px] border border-line bg-bg lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:self-center"
         >
           <track kind="captions" src={film.captions} srcLang="en" label="English" />
+          <track kind="descriptions" src={film.onScreenText} srcLang="en" label="English, on-screen text" />
         </video>
         <div className="flex flex-col gap-3 lg:col-start-1 lg:row-start-2">
           <p id="film-caption" data-film-caption="" className="m-0 text-[17px] leading-[1.55] text-ink-body">
