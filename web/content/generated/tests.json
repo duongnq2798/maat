@@ -535,7 +535,7 @@
     "feedStale is null where no valid answer was read, as feedAgeSeconds is": 104,
     "the brief message carries the same limit and ages": 115,
     "the system prompt calls a feed stale past maxStalenessSec and no sooner, and names the closed market as the reason": 121,
-    "a fake model receives the rule in the system prompt and the limit and ages in the user message": 139
+    "a fake model receives the rule in the system prompt and the limit and ages in the user message": 142
   },
   "agent/test/proposer.test.ts": {
     "ClaudeProposer": 30,
