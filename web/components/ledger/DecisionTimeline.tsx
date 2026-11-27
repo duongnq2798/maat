@@ -4,7 +4,8 @@ import { useState } from "react";
 import type { Hash, Hex } from "viem";
 import { formatInt } from "@/content/format";
 import type { RefusalCode } from "@/content/reasons";
-import { basescanTx } from "@/lib/chain/basescan";
+import { basescanDecision } from "@/lib/chain/basescan";
+import { basescanRefusalNote } from "@/lib/live/basescan";
 import { anchorState, etLabel, type DecisionTrail, type MainnetDecision } from "@/lib/chain/ledger";
 import type { LedgerSnapshot } from "@/lib/chain/load";
 import { verifyRationale, type RationaleCheck } from "@/lib/chain/rationale";
@@ -167,13 +168,18 @@ function Row(props: RowProps & { isNew: boolean; fresh: boolean; onPrinted: (key
           <code className="font-mono text-[11px] text-ink-2">{reason.code}</code>
         </p>
         {d.allowed ? null : <p className="text-sm text-ink-2">{reason.meaning}</p>}
+        {d.allowed || d.reason === "OK" ? null : (
+          <p data-basescan-note="" className="text-xs text-ink-2">
+            {basescanRefusalNote(d.reason)}
+          </p>
+        )}
         <SenderLine trail={trail} txState={txState} />
         <Rationale {...props} />
         {trail?.call ? <BuilderCodeLine check={trail.builderCode} /> : null}
       </div>
       <div className="flex flex-row flex-wrap gap-x-4 font-mono text-[12px] text-ink-2 md:flex-col md:items-end md:text-right">
         <span>{d.gasUsed === null ? "gas unknown" : `${formatInt(Number(d.gasUsed))} gas`}</span>
-        <a href={basescanTx(d.txHash)} aria-label={`Transaction ${d.txHash.slice(0, 10)}… on Basescan`}>
+        <a href={basescanDecision(d.txHash)} aria-label={`Transaction ${d.txHash.slice(0, 10)}… on Basescan`}>
           Basescan<span aria-hidden="true"> ↗</span>
         </a>
       </div>
@@ -196,6 +202,7 @@ export function DecisionTimeline({
   onReason,
   scanning,
   since = null,
+  confirming = null,
 }: {
   decisions: readonly MainnetDecision[];
   rationales: ReadonlyMap<Hex, string>;
@@ -210,6 +217,8 @@ export function DecisionTimeline({
   scanning: boolean;
   /** The Decisions after the viewer's last look (lib/chain/since.ts); null on a first visit. */
   since?: Since | null;
+  /** The committed snapshot's block while its Decisions show before Base has confirmed the file; null once Base is read. */
+  confirming?: bigint | null;
 }) {
   const [verdict, setVerdict] = useState<Verdict>("all");
   const [shown, setShown] = useState(PAGE);
@@ -253,6 +262,11 @@ export function DecisionTimeline({
         </div>
       </div>
       <div className="card overflow-hidden">
+        {confirming === null ? null : (
+          <p data-confirming="" className="border-b border-line px-5 py-3 font-mono text-xs text-ink-2">
+            From the committed snapshot of block {formatInt(Number(confirming))} · confirming on Base…
+          </p>
+        )}
         {rows.length === 0 ? (
           <p className="px-5 py-5 text-sm text-ink-2">{decisions.length === 0 ? "The vault has recorded no decision yet." : "No decision matches this filter."}</p>
         ) : (

@@ -7,7 +7,8 @@ import { DecisionTimeline } from "@/components/ledger/DecisionTimeline";
 import { LedgerApp } from "@/components/ledger/LedgerApp";
 import { RoundsPanel } from "@/components/ledger/RoundsPanel";
 import type { LedgerState } from "@/components/ledger/useLedger";
-import { VerifyByHand } from "@/components/ledger/VerifyByHand";
+import { AGENT_DECISION, VerifyByHand } from "@/components/ledger/VerifyByHand";
+import { FACTS } from "@/content/facts";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
 import { briefMap, JOURNAL_RAW_URL, verifyJournal } from "@/lib/chain/ledger";
 import { loadLedger, type LedgerSnapshot } from "@/lib/chain/load";
@@ -289,6 +290,36 @@ describe("the Rounds tab", () => {
     expect(row).toHaveTextContent("run live · not ok · daily LLM cap reached, Claude not called · block 61800000 · proposals 0 · suggestions 2");
   });
 
+  it("opens a row's vault execute tx on Basescan's Logs tab, where its Decision shows, and any other tx on its plain page", () => {
+    let prev: Hex = GENESIS;
+    const ts = "2026-11-27T02:14:46.000Z";
+    const lines = [
+      { kind: "sent", ts, runId: "r", action: "BUY", symbol: "GOOGLc", amountUsd6: "4680721", txHash: hash32(2) },
+      { kind: "intent", ts, runId: "r", action: "BUY", symbol: "GOOGLc", amountUsd6: "4680721", txHash: hash32(2), decision: { allowed: false, reason: "MARKET_CLOSED" } },
+      { kind: "reconcile", ts, runId: "r", action: "BUY", txHash: hash32(3), outcome: "applied", decision: { allowed: true, reason: "OK" } },
+      { kind: "housekeeping", ts, runId: "r", call: "syncMultiplier", txHash: hash32(4) },
+      { kind: "brief", ts, runId: "r", briefId: 1, txHash: hash32(5), outcome: "adopted" },
+    ].map((fields) => {
+      const hash = keccak256(toBytes(canon({ ...fields, prev })));
+      const line = canon({ ...fields, prev, hash });
+      prev = hash;
+      return line;
+    });
+    const chainOk = verifyJournal([{ name: "2026-11-27.jsonl", text: lines.map((l) => `${l}\n`).join("") }]);
+    expect(chainOk.failure).toBeNull();
+    render(<RoundsPanel journal={{ state: "read", files: ["2026-11-27.jsonl"], ...chainOk }} onReload={() => {}} />);
+    const rows = within(screen.getByRole("list", { name: "Journal rows, newest first" })).getAllByRole("listitem");
+    const href = (row: HTMLElement) => within(row).getByRole("link", { name: /on Basescan/ }).getAttribute("href");
+    // Newest first: brief, housekeeping, reconcile, intent, sent.
+    expect(rows.map(href)).toEqual([
+      `https://basescan.org/tx/${hash32(5)}`,
+      `https://basescan.org/tx/${hash32(4)}`,
+      `https://basescan.org/tx/${hash32(3)}#eventlog`,
+      `https://basescan.org/tx/${hash32(2)}#eventlog`,
+      `https://basescan.org/tx/${hash32(2)}#eventlog`,
+    ]);
+  });
+
   it("names the first line that broke the chain", () => {
     const broken = verifyJournal([{ name: "2026-11-24.jsonl", text: `${JOURNAL_LINES[0]}\n${JOURNAL_LINES[0]}\n` }]);
     render(<RoundsPanel journal={{ state: "read", files: ["2026-11-24.jsonl"], ...broken }} onReload={() => {}} />);
@@ -415,8 +446,8 @@ describe("the brief-to-Decision map", () => {
     expect(adopted[0]).toHaveTextContent(/^Thu 26 Nov 10:38 ETBUY · NVDAc · \$20\.00Refused · Market closedMARKET_CLOSEDBasescan ↗$/);
     expect(adopted[1]).toHaveTextContent(/^Thu 26 Nov 10:34 ETBUY · NVDAc · \$20\.00Allowed · All checks passedOKBasescan ↗$/);
     expect(within(briefs[0]!).getAllByRole("link").map((a) => a.getAttribute("href"))).toEqual([
-      `https://basescan.org/tx/${hash32(8)}`,
-      `https://basescan.org/tx/${hash32(4)}`,
+      `https://basescan.org/tx/${hash32(8)}#eventlog`,
+      `https://basescan.org/tx/${hash32(4)}#eventlog`,
     ]);
     expect(screen.getByText(/the brief ids each Decision's maat:v1 blob names in its q field/)).toBeInTheDocument();
   });
@@ -441,12 +472,20 @@ describe("the brief-to-Decision map", () => {
 });
 
 describe("Verify it by hand", () => {
-  it("is on the page, with the five read-only commands against the recorded vault", () => {
+  it("is on the page, with the six read-only steps against the recorded vault", () => {
     hook.state = { mode: "loading-config" };
     render(<LedgerPage />);
     const panel = screen.getByRole("region", { name: "Verify it by hand" });
-    const steps = within(within(panel).getByRole("list", { name: "Five read-only commands" })).getAllByRole("listitem");
-    expect(steps).toHaveLength(5);
+    const steps = within(within(panel).getByRole("list", { name: "Six read-only steps" })).getAllByRole("listitem");
+    expect(steps).toHaveLength(6);
+    expect(steps.map((s) => s.querySelector("h3")?.textContent)).toEqual([
+      "1. Check which contract the recorded deploy created",
+      "2. Read the owner, the executor and the mandate",
+      "3. Read the owner's two smoke-test Decisions",
+      "4. Ask the calendar at each Decision's block",
+      "5. Hash the rationale text",
+      "6. The agent's first Decision",
+    ]);
     expect(within(panel).getByRole("region", { name: "Set the RPC and the addresses" })).toHaveTextContent(
       "export VAULT=0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
     );
@@ -458,10 +497,35 @@ describe("Verify it by hand", () => {
     expect(within(panel).getByRole("region", { name: "Output of command 5" })).toHaveTextContent("0x0baa4c52…57f6");
   });
 
+  it("checks the agent's first Decision: who sent it, the refusal it logged and the hash of its blob", () => {
+    render(<VerifyByHand targets={{ vault: FAKE_VAULT, deployTx: hash32(42), calendar: OTHER }} />);
+    const agent = FACTS.mainnetDecisions.value.find((l) => l.sender === "agent")!;
+    expect(AGENT_DECISION).toEqual({ tx: agent.transactionHash, block: agent.blockNumber });
+    const command = screen.getByRole("region", { name: "Command 6" }).textContent ?? "";
+    expect(command.split("\n")).toEqual([
+      `TX=${agent.transactionHash}`,
+      'cast tx "$TX" from --rpc-url "$RPC"',
+      'cast call "$VAULT" "executor()(address)" --rpc-url "$RPC"',
+      `cast logs --rpc-url "$RPC" --address "$VAULT" --from-block ${agent.blockNumber} --to-block ${agent.blockNumber} "$DECISION" | grep -A 9 transactionHash`,
+      String.raw`cast tx "$TX" input --rpc-url "$RPC" | sed 's/^0x//' | xxd -r -p | grep -ao 'maat:v1:.*}' | tr -d '\n' | cast keccak`,
+    ]);
+    // The output: the executor twice, then the refusal, then the blob's keccak256, which is the log's rationaleHash.
+    const output = (screen.getByRole("region", { name: "Output of command 6" }).textContent ?? "").split("\n");
+    const rationaleHash = `0x${agent.data.slice(2 + 4 * 64)}`;
+    const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-4)}`;
+    expect(output[0]).toBe("0x9bC6E49d…115A");
+    expect(output[1]).toBe(output[0]);
+    expect(output).toContain(`  transactionHash: ${short(agent.transactionHash)}`);
+    expect(output).toContain("  \tallowed: false");
+    expect(output).toContain("  \treason: 6");
+    expect(output).toContain(`  \trationaleHash: ${short(rationaleHash)}`);
+    expect(output.at(-1)).toBe(short(rationaleHash));
+  });
+
   it("uses only read-only cast commands: no send, no wallet, no broadcast", () => {
     const { container } = render(<VerifyByHand targets={{ vault: FAKE_VAULT, deployTx: hash32(42), calendar: OTHER }} />);
     const commands = [...container.querySelectorAll("[aria-label^='Command']")].map((c) => c.textContent ?? "");
-    expect(commands).toHaveLength(5);
+    expect(commands).toHaveLength(6);
     for (const c of commands) {
       expect(c).not.toMatch(/cast (send|wallet|mktx|publish)|--broadcast|--private-key|--account/);
       expect(c).toMatch(/\bcast (receipt|call|logs|block|keccak)\b/);

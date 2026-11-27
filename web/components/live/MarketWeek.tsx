@@ -1,7 +1,7 @@
 import type { Hash } from "viem";
 import { formatInt } from "@/content/format";
 import { type ReasonCode, reasonText } from "@/content/reasons";
-import { basescanTx } from "@/lib/live/basescan";
+import { basescanDecision } from "@/lib/live/basescan";
 import { nowMark, pct, placeTicks, type SpanKind, weekAt } from "@/lib/live/week";
 
 /** One mainnet Decision as the week draws it: plain values from /ledger's loader (NowDecisions.tsx). */
@@ -28,6 +28,12 @@ export type WeekDecisionsView =
   /** deployments/README.md records no vault, so there is nothing to read. */
   | { state: "none" }
   | { state: "error"; message: string; retry: () => void }
+  /**
+   * The Decisions known before the first whole read, newest first: the committed snapshot's (`block`, "confirming"),
+   * shown while Base confirms the file, then the ones Base has given so far ("reading") while the tail scan runs. The
+   * whole read replaces them.
+   */
+  | { state: "confirming"; status: "confirming" | "reading"; block: bigint | null; decisions: readonly WeekDecision[] }
   /** Every Decision since the deploy, newest first, and the committed snapshot the read took its oldest logs from. */
   | { state: "read"; decisions: readonly WeekDecision[]; snapshot: WeekSnapshot | null };
 
@@ -122,11 +128,19 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
   }
   if (week === null) return null;
   const placed = placeTicks(week, view.decisions);
+  const confirming = view.state === "confirming";
   return (
     <div className="flex flex-col gap-3">
       <p data-week-count="" className="m-0 font-mono text-[14px] font-medium text-ink">
         {formatInt(placed.length)} {placed.length === 1 ? "Decision" : "Decisions"} this week
       </p>
+      {confirming ? (
+        <p data-week-confirming={view.status} className="m-0 font-mono text-[12px] text-ink-2">
+          {view.status === "confirming" && view.block !== null
+            ? `From the committed snapshot of block ${formatInt(Number(view.block))} · confirming on Base…`
+            : "Read from Base so far · reading newer blocks…"}
+        </p>
+      ) : null}
       {placed.length > 0 ? (
         <ol data-week-decisions="" aria-label="The vault's Decisions this week, oldest first" className="m-0 flex list-none flex-col p-0">
           {placed.map(({ item: d }) => {
@@ -147,7 +161,7 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
                   <span className="text-ink-2">{d.sender}</span>
                   {" · "}
                   <a
-                    href={basescanTx(d.txHash)}
+                    href={basescanDecision(d.txHash)}
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`${tag === null ? "Transaction" : `${tag}, transaction`} ${d.txHash.slice(0, 10)}… on Basescan`}
@@ -161,27 +175,29 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
           })}
         </ol>
       ) : null}
-      <p data-week-source="" className="m-0 text-[13px] leading-normal text-ink-2">
-        Read from Base mainnet by your browser with the ledger&apos;s own loader: every Decision since the deploy, each with
-        its sender.{" "}
-        {view.snapshot === null ? (
-          <>Every block from the deploy to the head was scanned with eth_getLogs.</>
-        ) : (
-          <>
-            Logs up to block {formatInt(Number(view.snapshot.logsTo))} are from the{" "}
-            <a href={view.snapshot.url} className="underline underline-offset-2">
-              committed snapshot
-            </a>{" "}
-            of block {formatInt(Number(view.snapshot.block))}: Base gave the same hash for that block and the same logs in
-            their transaction receipts. The blocks after it were scanned with eth_getLogs.
-          </>
-        )}{" "}
-        All of them, with their reasons, are on{" "}
-        <a href="/ledger" className="font-medium underline underline-offset-2">
-          the ledger
-        </a>
-        .
-      </p>
+      {confirming ? null : (
+        <p data-week-source="" className="m-0 text-[13px] leading-normal text-ink-2">
+          Read from Base mainnet by your browser with the ledger&apos;s own loader: every Decision since the deploy, each with
+          its sender.{" "}
+          {view.snapshot === null ? (
+            <>Every block from the deploy to the head was scanned with eth_getLogs.</>
+          ) : (
+            <>
+              Logs up to block {formatInt(Number(view.snapshot.logsTo))} are from the{" "}
+              <a href={view.snapshot.url} className="underline underline-offset-2">
+                committed snapshot
+              </a>{" "}
+              of block {formatInt(Number(view.snapshot.block))}: Base gave the same hash for that block and the same logs in
+              their transaction receipts. The blocks after it were scanned with eth_getLogs.
+            </>
+          )}{" "}
+          All of them, with their reasons, are on{" "}
+          <a href="/ledger" className="font-medium underline underline-offset-2">
+            the ledger
+          </a>
+          .
+        </p>
+      )}
     </div>
   );
 }
@@ -197,7 +213,7 @@ function Decisions({ view, week }: { view: WeekDecisionsView; week: ReturnType<t
 export function MarketWeek({ nowSec, line, decisions }: { nowSec: number | null; line: SessionLineView | null; decisions: WeekDecisionsView }) {
   const week = nowSec === null ? null : weekAt(nowSec);
   const now = week === null || nowSec === null ? null : nowMark(week, nowSec);
-  const placed = week !== null && decisions.state === "read" ? placeTicks(week, decisions.decisions) : [];
+  const placed = week !== null && (decisions.state === "read" || decisions.state === "confirming") ? placeTicks(week, decisions.decisions) : [];
 
   return (
     <section aria-labelledby="week-title" data-market-week={week === null ? "waiting" : "drawn"} className="flex flex-col gap-6">

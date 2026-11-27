@@ -195,7 +195,7 @@ describe("/ledger reading mainnet", () => {
     render(<LedgerApp initial="loading" />);
     const items = within(screen.getByRole("list", { name: "Mainnet decisions" })).getAllByRole("listitem");
     expect(items).toHaveLength(3);
-    expect(within(items[0]!).getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${hash32(3)}`);
+    expect(within(items[0]!).getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${hash32(3)}#eventlog`);
     expect(items[0]).toHaveTextContent("SIZE_LIMIT");
   });
 
@@ -349,5 +349,51 @@ describe("how the page reads Base", () => {
     expect(container).toHaveTextContent("The sender label compares the transaction's sender with the vault's owner.");
     expect(container).toHaveTextContent("compared with the code on the vault's first Decision, which the owner sent by hand.");
     expect(container).toHaveTextContent("The Rounds tab reads the agent's journal from the repository's public agent-journal branch through raw.githubusercontent.com");
+  });
+});
+
+describe("/ledger's latest Decision, near the top", () => {
+  it("shows the newest Decision above the tiles, with its Basescan Logs tab, why Basescan says Success, and a jump to the list", () => {
+    hook.state = mainnet();
+    const { container } = render(<LedgerApp initial="loading" />);
+    const card = container.querySelector<HTMLElement>("[data-latest-decision]")!;
+    expect(card).toHaveAttribute("data-latest-decision", "read");
+    expect(card).toHaveTextContent("Latest Decision");
+    expect(card).toHaveTextContent("BUY · NVDAc · $90.00");
+    expect(card).toHaveTextContent("Refused · Over the size limit");
+    expect(within(card).getByRole("link", { name: /Basescan/ })).toHaveAttribute("href", `https://basescan.org/tx/${hash32(3)}#eventlog`);
+    expect(card).toHaveTextContent("Basescan shows Success: the vault logs a refusal (allowed=false, reason 11 = SIZE_LIMIT) instead of reverting.");
+    const jump = within(card).getByRole("link", { name: /All 3 Decisions/ });
+    expect(jump).toHaveAttribute("href", "#decisions");
+    const list = container.querySelector("#decisions")!;
+    expect(within(list as HTMLElement).getByRole("heading", { name: "Decisions and rounds" })).toBeInTheDocument();
+    // On the first screen: before the tiles, the charts and the treasury.
+    expect(card.compareDocumentPosition(screen.getByRole("heading", { name: "Treasury" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("says it is still reading newer blocks while the scan has not reached the head", () => {
+    hook.state = { ...mainnet(), loading: true, snapshot: { ...snapshot, scan: { ...snapshot.scan, done: false } } } as LedgerState;
+    const { container } = render(<LedgerApp initial="loading" />);
+    expect(container.querySelector("[data-latest-decision]")).toHaveAttribute("data-latest-decision", "reading");
+    expect(container.querySelector("[data-latest-decision]")).toHaveTextContent("Latest Decision · reading newer blocks…");
+  });
+
+  it("shows the committed snapshot's Decisions at once, labelled as confirming, while Base is read", () => {
+    hook.state = { mode: "loading-config", preview: { block: HEAD - 5n, decisions: [...snapshot.decisions] } };
+    const { container } = render(<LedgerApp initial="loading" />);
+    expect(screen.getByText("Connecting to Base…")).toBeInTheDocument();
+    const card = container.querySelector<HTMLElement>("[data-latest-decision]")!;
+    expect(card).toHaveAttribute("data-latest-decision", "confirming");
+    expect(card).toHaveTextContent("Latest Decision · from the committed snapshot, confirming on Base…");
+    expect(card).toHaveTextContent("BUY · NVDAc · $90.00");
+    const list = container.querySelector<HTMLElement>("#decisions")!;
+    expect(within(list).getByRole("heading", { name: "Decisions" })).toBeInTheDocument();
+    expect(list.querySelector("[data-confirming]")).toHaveTextContent(`From the committed snapshot of block ${formatInt(Number(HEAD - 5n))} · confirming on Base…`);
+    const items = within(within(list).getByRole("list", { name: "Mainnet decisions" })).getAllByRole("listitem");
+    expect(items).toHaveLength(3);
+    // No reading of Base is claimed: the calldata and the rationale are still to be read.
+    expect(items[0]).toHaveTextContent("Reading the calldata…");
+    expect(screen.queryByText(/Reading Base mainnet/)).toBeNull();
   });
 });

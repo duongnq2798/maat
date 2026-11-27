@@ -12,6 +12,7 @@ import type { LedgerSnapshot } from "@/lib/chain/load";
 import type { Treasury } from "@/lib/chain/treasury";
 import { DecisionTimeline } from "./DecisionTimeline";
 import { KpiTiles } from "./KpiTiles";
+import { DECISIONS_ID, LatestDecision } from "./LatestDecision";
 import { MandatePanel } from "./MandatePanel";
 import { RoundsPanel } from "./RoundsPanel";
 import { ConnectingStrip, ErrorStrip, MainnetStrip, WaitingStrip } from "./StatusStrip";
@@ -58,9 +59,9 @@ function Charts({ snapshot, reason, onReason }: { snapshot: LedgerSnapshot | nul
   );
 }
 
-function Block({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ title, id, children }: { title: string; id?: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-4">
+    <div id={id} className="flex scroll-mt-20 flex-col gap-4">
       <h2 className="text-lg font-semibold tracking-[-0.01em] text-ink">{title}</h2>
       {children}
     </div>
@@ -80,6 +81,9 @@ export function LedgerApp({ initial, look }: { initial: "waiting" | "loading"; l
   const mode = state.mode === "loading-config" ? initial : state.mode;
   const snapshot = state.mode === "mainnet" ? state.snapshot : null;
   const since = useLastLook(snapshot, state.mode === "mainnet" && state.loading, look);
+  // The committed snapshot's Decisions, shown while Base confirms the file; the first read of Base replaces them.
+  const preview = state.mode === "loading-config" ? (state.preview ?? null) : null;
+  const latest = snapshot?.decisions[0];
   // GitHub is asked for the journal only when the Rounds tab opens or a Decision carries a blob to anchor in it, and
   // asked again when a refresh brings more blobs.
   const blobs = snapshot ? [...snapshot.trails.values()].filter((t) => t.call?.blob.status === "v1").length : 0;
@@ -107,6 +111,31 @@ export function LedgerApp({ initial, look }: { initial: "waiting" | "loading"; l
         <MainnetStrip snapshot={state.snapshot} endpoints={state.endpoints} loading={state.loading} refreshError={state.refreshError} onRetry={state.retry} />
       ) : null}
 
+      {preview ? <LatestDecision decision={preview.decisions[0]!} count={preview.decisions.length} status="confirming" /> : null}
+      {snapshot && latest ? (
+        <LatestDecision
+          decision={latest}
+          trail={snapshot.trails.get(latest.key)}
+          count={snapshot.decisions.length}
+          status={snapshot.scan.done ? "read" : "reading"}
+        />
+      ) : null}
+
+      {preview ? (
+        <Block title="Decisions" id={DECISIONS_ID}>
+          <DecisionTimeline
+            decisions={preview.decisions}
+            rationales={new Map()}
+            rationaleState="checking"
+            txState="checking"
+            reason={null}
+            onReason={() => {}}
+            scanning={false}
+            confirming={preview.block}
+          />
+        </Block>
+      ) : null}
+
       {snapshot ? <KpiTiles summary={snapshot.summary} treasury={snapshot.treasury} /> : null}
 
       {mode === "waiting" || snapshot ? <Charts snapshot={snapshot} reason={reason} onReason={setReason} /> : null}
@@ -118,7 +147,7 @@ export function LedgerApp({ initial, look }: { initial: "waiting" | "loading"; l
       ) : null}
 
       {snapshot ? (
-        <Block title="Decisions and rounds">
+        <Block title="Decisions and rounds" id={DECISIONS_ID}>
           <TrailTabs
             tab={tab}
             onTab={openTab}
