@@ -549,12 +549,14 @@ const PROOF_HEADING = "Proof";
 const PROOF_RULE_MARK = "No line is ever added to another.";
 /** The brief lines, by the data-testid of their value; the bounty line comes from a committed list, not the chain. */
 const PROOF_BRIEF_LINES = ["outside-briefs", "outside-wallets", "verified", "team-briefs", "hidden-briefs"];
+/** The Decision lines, by the data-testid of their value, read from the vault's Decision logs in the browser. */
+const PROOF_DECISION_LINES = ["owner-decisions", "agent-decisions", "probe-decisions", "brief-decisions"];
 
 /**
  * Problems with out/proof.html. It is a public page, so it may not ask not to be indexed and the sitemap lists it. Its
- * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then and
- * every brief line says "not deployed", with no number and no wallet or brief row; after, it shows the reading state
- * and no count, since the browser reads the logs. Its markup holds the counting rule.
+ * static state follows the build's deployments table: before a MaatInbox is recorded it says counting starts then,
+ * every brief line says "not deployed" and every Decision line "not read", with no number and no wallet or brief row;
+ * after, it shows the reading state and no count, since the browser reads the logs. Its markup holds the counting rule.
  */
 export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sitemap: string; url: string }): string[] {
   const { html, inboxRecorded, sitemap, url } = opts;
@@ -572,16 +574,19 @@ export function checkProofPage(opts: { html: string; inboxRecorded: boolean; sit
 
   const markup = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, "");
   need(markup.includes(PROOF_RULE_MARK), " does not hold the counting rule in its markup");
-  const values = PROOF_BRIEF_LINES.map((key) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1]);
+  const valueOf = (key: string) => new RegExp(`data-testid="proof-${key}"[^>]*>([^<]*)<`).exec(markup)?.[1];
+  const values = PROOF_BRIEF_LINES.map(valueOf);
+  const decisions = PROOF_DECISION_LINES.map(valueOf);
   if (inboxRecorded) {
     const reading = markup.includes('data-proof-state="reading"');
     need(reading, " does not show the reading state, but a MaatInbox is recorded");
-    if (reading) need(values.every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
+    if (reading) need([...values, ...decisions].every((v) => v === undefined || v === "…"), " has a count in its HTML, read at build time");
   } else {
     const waiting = markup.includes('data-proof-state="not-recorded"') && markup.includes("Counting starts when the inbox is recorded.");
     need(waiting, " does not say counting starts when the inbox is recorded, but no MaatInbox is recorded");
     if (waiting) {
       need(values.every((v) => v === undefined || v === "not deployed"), " shows a brief line other than not deployed, but no MaatInbox is recorded");
+      need(decisions.every((v) => v === undefined || v === "not read"), " shows a Decision line other than not read, but no MaatInbox is recorded");
       need(!/data-proof-row="(?:outside|team|hidden)"/.test(markup), " lists a wallet or a brief, but no MaatInbox is recorded");
     }
   }

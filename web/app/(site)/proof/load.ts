@@ -3,7 +3,7 @@ import { browserStorage, loadCache } from "@/lib/chain/cache";
 import { readBriefs, type InboxDeployment } from "@/lib/chain/inbox";
 import { errorText, type LedgerClient } from "@/lib/chain/load";
 import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
-import { countBriefs, type ProofCount, type ProofLists } from "./count";
+import { countBriefs, countDecisions, type DecisionCount, type ProofCount, type ProofLists } from "./count";
 import { LOG_WORKERS, snapshotSeed, traceTeam, type Rpc, type TeamInputs, type TeamTrace, type VaultSeed } from "./team";
 import { readVerifiedAccounts } from "./verified";
 
@@ -22,9 +22,11 @@ export interface ProofRead {
   complete: boolean;
   /** Why the read is not complete, one sentence each. */
   problems: string[];
-  /** The block the briefs were read to; the team set and the column are read at this block too. */
+  /** The block the briefs were read to; the team set, the vault's Decisions and the column are read at this block too. */
   head: bigint;
   team: TeamTrace;
+  /** The Decision lines, from the vault's Decision logs the trace read, or null when it read no vault. */
+  decisions: DecisionCount | null;
 }
 
 /** Raw JSON-RPC over the page's client, for team.ts, which the recount runs over fetch. */
@@ -62,10 +64,10 @@ export async function vaultSeed(vault: string, seeds: ProofSeeds): Promise<Vault
 
 /**
  * Everything /proof shows, from the chain: every Brief log of the inbox up to the head (the /ask reader), the team set
- * traced at the head from those logs, the vault's and the committed lists, the briefs counted by the rule, then the
- * Verified Account of each outside wallet, read at the head block and judged at its timestamp. An incomplete read gives
- * no column, since its lines show no number. The vault's logs may start from `seeds` (ProofSeeds); both scans read
- * LOG_WORKERS windows at a time.
+ * traced at the head from those logs, the vault's and the committed lists, the briefs counted by the rule, the vault's
+ * Decisions the trace read, each on its line, then the Verified Account of each outside wallet, read at the head block
+ * and judged at its timestamp. An incomplete read gives no column, since its lines show no number. The vault's logs may
+ * start from `seeds` (ProofSeeds); both scans read LOG_WORKERS windows at a time.
  */
 export async function readProof(
   client: ProofClient,
@@ -90,7 +92,7 @@ export async function readProof(
   const [read, team] = await Promise.all([scan, traceTeam(clientRpc(client), inputs, head, signal)]);
   const count = countBriefs(read.briefs, { ...lists, team: team.members });
   const problems = [...(read.complete ? [] : [SCAN_GAP]), ...team.gaps];
-  const base = { count, complete: problems.length === 0, problems, head: read.head, team };
+  const base = { count, complete: problems.length === 0, problems, head: read.head, team, decisions: countDecisions(team) };
   if (!base.complete || count.outsideWallets.length === 0) return { ...base, verified: new Map(), verifiedError: null };
   try {
     const block = await client.getBlock({ blockNumber: read.head });
