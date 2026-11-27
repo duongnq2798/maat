@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from "@testing-library/react";
 import { createPublicClient, custom, type Address, type Hash, type Hex } from "viem";
 import { base } from "viem/chains";
 import { describe, expect, it } from "vitest";
-import { ProofApp } from "@/app/(site)/proof/ProofApp";
+import { COUNTS_START_NOTE, ProofApp } from "@/app/(site)/proof/ProofApp";
 import ProofPage, { metadata } from "@/app/(site)/proof/page";
 import { proofConfig, sameProofConfig, type ProofConfig } from "@/app/(site)/proof/config";
 import { readProof, type ProofClient } from "@/app/(site)/proof/load";
@@ -120,6 +120,17 @@ describe("/proof while deployments/README.md records no MaatInbox", () => {
 });
 
 describe("/proof with a MaatInbox recorded", () => {
+  it("says above the counts that they start when /ask opens, while the owner's switch keeps it closed, and not once it is open", () => {
+    const { unmount } = render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never }} askOpen={false} />);
+    const note = document.querySelector("[data-proof-closed]")!;
+    expect(note.textContent).toBe(COUNTS_START_NOTE);
+    expect(note.textContent).toMatch(/^Counts start when \/ask opens\./);
+    expect(note.compareDocumentPosition(document.querySelector("[data-proof-notes]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    unmount();
+    render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never }} askOpen />);
+    expect(document.querySelector("[data-proof-closed]")).toBeNull();
+  });
+
   it("counts the inbox's Brief logs by the rule and fills the Verified Account column", async () => {
     render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never }} />);
     expect(document.querySelector('[data-proof-state="reading"]')).not.toBeNull();

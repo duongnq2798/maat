@@ -3,7 +3,7 @@ import { join, relative, sep } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { encodeAbiParameters, encodeEventTopics, getAddress, keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
-import { ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
+import { ASK_CLOSED_REASON, ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
 import { PreviewForm } from "@/app/(site)/ask/PreviewForm";
 import AskPage, { metadata } from "@/app/(site)/ask/page";
 import { askConfig, askIsOpen, fetchAskConfig, sameAskConfig, type AskConfig } from "@/app/(site)/ask/config";
@@ -135,6 +135,20 @@ describe("the owner's switch: /ask opens only when it is on and the inbox and th
     expect(screen.getByText(/MaatInbox is recorded in deployments\/README\.md, but this page does not send briefs yet\./)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Send with/ })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Briefs" })).toBeNull();
+  });
+
+  it("puts the closed notice above Send a brief, with why it is closed and when it is planned to open", () => {
+    const config = askConfig(rows(true), false);
+    const { container } = render(
+      <AskApp initial={config} deps={{ client: fakeLedgerClient({ head: 1n, logs: [] }), fetchConfig: () => new Promise(() => {}) }} />,
+    );
+    const notice = container.querySelector('[data-ask-state="not-open"]')!;
+    const send = screen.getByRole("heading", { name: "Send a brief" });
+    expect(notice.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(notice as HTMLElement).getByText(ASK_CLOSED_REASON)).toBeInTheDocument();
+    expect(ASK_CLOSED_REASON).toContain("agent-r2, reads no briefs");
+    expect(ASK_CLOSED_REASON).toContain("planned to open");
+    expect(ASK_CLOSED_REASON).toContain("after Sat 28 Nov 02:00 UTC");
   });
 });
 

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
+import { ASK_OPEN } from "@/content/ask-open";
 import { HIDDEN_BRIEFS } from "@/content/ask-hidden";
 import { PROOF_BOUNTY } from "@/content/proof-bounty";
 import { PROOF_SENDS } from "@/content/proof-sends";
@@ -161,7 +162,11 @@ function NotRecorded({ lists }: { lists: ProofLists }) {
  * from MaatInbox's Brief logs. `initial` is the build's deployments table; the page then reads /data/deployments.json,
  * keeps `initial` when that read fails or gives the same inputs, and reads Base again only when it gives others.
  */
-export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: ProofDeps }) {
+/** The line above the counts while the inbox is recorded and the owner's switch keeps /ask closed. */
+export const COUNTS_START_NOTE =
+  "Counts start when /ask opens. Until then no page on this site sends a brief; a brief sent to MaatInbox directly still counts.";
+
+export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: ProofConfig; deps?: ProofDeps; askOpen?: boolean }) {
   const [config, setConfig] = useState(initial);
   // createLedgerClient builds a viem PublicClient, which has request as well.
   const [client] = useState<ProofClient>(() => deps.client ?? (createLedgerClient() as ProofClient));
@@ -198,6 +203,11 @@ export function ProofApp({ initial, deps = {} }: { initial: ProofConfig; deps?: 
         title="The counts"
         lead="Each line is kept apart and never added to another. The team's own briefs are on their own line, a brief the owner hid from the /ask feed still counts, and bounty claimants are listed apart."
       >
+        {config.inbox === null || askOpen ? null : (
+          <p data-proof-closed="" className="m-0 max-w-[720px] text-[15px] font-medium leading-relaxed text-ink">
+            {COUNTS_START_NOTE}
+          </p>
+        )}
         <div data-proof-notes className="flex max-w-[720px] flex-col gap-2 text-[13px] leading-normal text-ink-2">
           <p className="m-0">{TEAM_SET_NOTE}</p>
           <p className="m-0">{DECISION_NOTE}</p>
