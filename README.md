@@ -28,6 +28,9 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 > **Status as of 2026-11-27.** The contracts are **unaudited**. The owner deployed the four Maat contracts to
 > **Base mainnet** on 2026-11-24, by hand, from `main` at `66bd0d0`, with the default mandate; their
 > addresses are in [`deployments/README.md`](deployments/README.md) ([Deployments and traction](#deployments-and-traction)).
+> On 2026-11-27 the owner deployed `MaatInbox`, the inbox for briefs to the agent, from the same wallet
+> ([tx](https://basescan.org/tx/0x61b7f0b44ae01a6fbb34e0e7c35d53c2ffd1228fbc3f0b3dd020741826850db4)); Sourcify and Basescan show an exact match of its source. `/ask` stays closed until the agent
+> restarts on a release that reads briefs.
 > No Maat contract is on a testnet. On 2026-11-27 at 01:04 UTC the owner handed the vault's executor role to the
 > agent's Coinbase CDP Server Wallet account `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`
 > ([`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), and Maat's agent
@@ -54,7 +57,8 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
   adapters, deploy script, agent runtime, and the website with a 51-page docs center. CI on `main`
   ([run 44553264467](https://github.com/duongnq2798/maat/actions/runs/44553264467), 2026-11-19): 220 contract,
   167 agent, 1,494 website unit and 259 end-to-end tests passed.
-- **On Base mainnet.** The owner deployed the four Maat contracts on 2026-11-24. They are unaudited.
+- **On Base mainnet.** The owner deployed the four Maat contracts on 2026-11-24 and `MaatInbox`, the inbox for
+  briefs to the agent, on 2026-11-27. They are unaudited.
   [Addresses](#deployments-and-traction).
 - **What is not done yet.** No audit; x402 and the rest are planned (see the box above). The agent has run live on
   Base mainnet with the real Claude API and its CDP Server Wallet since 2026-11-27; its first `Decision`, at 02:14 UTC
@@ -152,10 +156,16 @@ a 100 bps slippage limit. No figure here is rounded.
 | `AerodromeSwapAdapter` | Deployed; [address and deploy tx](deployments/README.md) |
 | `AaveV4CreditAdapter` | Deployed; [address and deploy tx](deployments/README.md) |
 | `MandateVault` | Deployed; [address and deploy tx](deployments/README.md) |
+| `MaatInbox` | Deployed; [address and deploy tx](deployments/README.md) |
 
 The owner deployed the four Maat contracts on 2026-11-24, from `main` at `66bd0d0`, with the
 default mandate in [`contracts/script/MaatConfig.sol`](contracts/script/MaatConfig.sol). The contracts are
-unaudited. On 2026-11-24, Basescan showed the source of all four as verified, with an exact match. The table
+unaudited. On 2026-11-24, Basescan showed the source of all four as verified, with an exact match. The owner
+deployed `MaatInbox`, the inbox for briefs to the agent, on 2026-11-27 from the same wallet, at block 62,792,948, with
+its own script, [`contracts/script/DeployMaatInbox.s.sol`](contracts/script/DeployMaatInbox.s.sol). Sourcify reports an
+exact match of its creation and runtime code since 03:09 UTC that day, and Basescan showed its source as verified,
+with an exact match, the same day. The agent that runs now, from tag `agent-r2`, predates briefs and reads none, so
+`/ask` stays closed until the agent restarts on a release that reads them. The table
 in [`deployments/README.md`](deployments/README.md) records each address and deploy transaction, with Basescan
 links; the docs show the same table on
 [Status and roadmap](https://maatonbase.xyz/docs/get-started/status#next-mainnet) and
@@ -348,6 +358,7 @@ on `main` (`3778fea`, 2026-11-19), and the fork counts from the hand run at `449
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027). **Deployed** on Base mainnet | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested. **Deployed** on Base mainnet | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
 | `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop). **Deployed** on Base mainnet | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
+| `MaatInbox`: public briefs to the agent, one zero-value transaction each, logged as `Brief` events; no owner, no funds | **Built**, unit and fork tested (`test_deployThenBriefWithSuffix`). **Deployed** on Base mainnet on 2026-11-27. The live agent (`agent-r2`) does not read briefs, so `/ask` stays closed until it restarts on a release that does | [`contracts/src/MaatInbox.sol`](contracts/src/MaatInbox.sol) |
 | Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner deployed the four Maat contracts to Base mainnet on 2026-11-24, from `main` at `66bd0d0` | [`contracts/script`](contracts/script) |
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (167 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, from tag `agent-r2` (`b8c914a`), with the real Claude API; its first live round (01:14 UTC) proposed no trade because NYSE was closed for Thanksgiving, and its first `Decision`, at 02:14 UTC, was a GOOGLc buy that the vault refused with `MARKET_CLOSED` ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)) | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
