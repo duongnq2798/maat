@@ -33,8 +33,8 @@
     "brief-tx": "On Base: an outside wallet's brief to Maat's agent, and the vault's verdict on its answer.",
     "brief-placeholder": "Placeholder: no outside brief to Maat's agent, and no verdict on its answer, on Base yet.",
     "receipts-contracts": {
-      "text": "{deployments.count} contracts on Base mainnet. On {deployments.verifiedOn}, Basescan showed each one's source as verified.",
-      "when": { "present": "deployments.verifiedOn" },
+      "text": "{deployments.count} contracts on Base mainnet, verified on Basescan: {deployments.verified}.",
+      "when": { "present": "deployments.verified" },
       "else": "receipts-contracts-listed"
     },
     "receipts-contracts-listed": "{deployments.count} contracts on Base mainnet, each at the address deployments/README.md records.",

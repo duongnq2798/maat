@@ -107,7 +107,7 @@ at render time from:
 | Placeholder | Read from |
 | --- | --- |
 | `gap.*` | `web/content/gap-index/edition-0.json`: NVDAc in the window that closed on Fri 6 Nov |
-| `deployments.*` | the address table of `deployments/README.md` and its verification note |
+| `deployments.*` | the address table of `deployments/README.md`, the verification note under it and each later contract's own paragraph |
 | `readme.*` | the "Tested, in numbers" table of the root `README.md` |
 | `reserve.*` | `RESERVE_CAP_BPS` in `contracts/script/QueueReserveCaps.s.sol` and the basket in `contracts/script/MaatConfig.sol` |
 | `ledger.*` | the live `/ledger` page's mandate panel, read by the capture once the panel shows the onchain mandate; a cell it cannot read, or one tagged `configured` (the panel could not read the vault), stops the render |
@@ -121,7 +121,7 @@ Some captions show only while a condition holds, and another caption otherwise (
 | --- | --- | --- |
 | `mandate-reserve` | the vault's weight cap, as `/ledger` reads it, equals `RESERVE_CAP_BPS` | `mandate-timelock`, and the render warns |
 | `brief-ask`, the invitation line | `deployments/README.md` has a Base mainnet `MaatInbox` row | `brief-ask-soon`, which says the inbox opens once it is on Base |
-| `receipts-contracts` | the verification note under that table counts as many contracts as the table holds | `receipts-contracts-listed`, which claims no verification; the contracts card leaves the note out, and the render warns |
+| `receipts-contracts`, with the day Basescan showed each contract verified | `deployments/README.md` gives that day for every Base mainnet row: the note under the table for the contracts it counts, the contract's own paragraph for a later one | `receipts-contracts-listed`, which claims no verification; the contracts card leaves the note out, and the render warns |
 
 A tx shot of two transactions with only one hash set shows the real one and a placeholder card, under
 `pair-partial`, a caption labelled PLACEHOLDER; the render warns.

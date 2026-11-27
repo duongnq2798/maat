@@ -12,9 +12,11 @@ import {
   ciFigures,
   deploymentFigures,
   deploymentRows,
+  deploymentVerification,
   fileSources,
   gapFigures,
   reserveFigures,
+  verifiedNote,
 } from "../../film/lib/sources.mjs";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
@@ -156,7 +158,8 @@ describe("the caption sources read the committed files", () => {
     expect(counted, "the note's count").toBeLessThanOrEqual(rows.length);
     if (counted < rows.length) {
       // Today: the note counts the four contracts Basescan showed verified on 2026-11-24. MaatInbox's own paragraph gives
-      // its later date, 2026-11-27, so no one date covers every row and the caption names none.
+      // its later date, 2026-11-27, so no one date covers every row and this key names none (deployments.verified, tested
+      // below, gives each row's day).
       expect(files.values["deployments.verifiedOn"]).toBeUndefined();
       expect(files.values["deployments.verifiedOnIso"]).toBeUndefined();
       return;
@@ -188,13 +191,87 @@ describe("the caption sources read the committed files", () => {
     const stale = deploymentFigures(md);
     expect(stale["deployments.count"]).toBe(String(n));
     expect(stale["deployments.verifiedOn"]).toBeUndefined();
+    // The note's four no longer match the five rows deployed by its day, so it covers none of them.
+    expect(stale["deployments.verified"]).toBeUndefined();
     expect(stale["deployments.inbox"]).toBe(`0x${"cd".repeat(20)}`);
-    const values = Object.fromEntries(Object.entries({ ...files.values, ...stale }).filter(([k]) => !k.startsWith("deployments.verifiedOn")));
+    // Every deployments.verified* key: the single day of the note, and the day of each row.
+    const values = Object.fromEntries(Object.entries({ ...files.values, ...stale }).filter(([k]) => !k.startsWith("deployments.verified")));
     const picked = pickCaption(captionsFile.captions, "receipts-contracts", values);
     expect(picked.id).toBe("receipts-contracts-listed");
     expect(renderCaption(picked.text, values).text).not.toMatch(/verified/);
     // Once the note counts the new row too, the date is back.
     expect(deploymentFigures(recount(md, n))["deployments.verifiedOn"]).toBe(verified["deployments.verifiedOn"]);
+  });
+
+  it("reads the day Basescan showed each row verified: the note's for the contracts it counts, the inbox's own paragraph for it", () => {
+    const real = lf("deployments/README.md");
+    const verified = deploymentVerification(real);
+    expect(verified.map((v) => v.contract)).toEqual(deploymentRows(real).filter((r) => r.network === "Base mainnet" && r.address).map((r) => r.contract));
+    expect(verified.map((v) => [v.contract, v.verifiedOn])).toEqual([
+      ["MarketCalendar", "2026-11-24"],
+      ["AerodromeSwapAdapter", "2026-11-24"],
+      ["AaveV4CreditAdapter", "2026-11-24"],
+      ["MandateVault", "2026-11-24"],
+      ["MaatInbox", "2026-11-27"],
+    ]);
+    expect(files.values["deployments.verified"]).toBe("four on 24 Nov 2026, MaatInbox on 27 Nov 2026");
+    expect(verifiedNote(real)).toBe("Basescan showed the source of every contract as verified: four on 2026-11-24, MaatInbox on 2026-11-27.");
+    // Every row has a day, so the receipts card says each one is verified, with both days.
+    const values = { ...files.values, ...CAPTURED_DEFAULTS };
+    const picked = pickCaption(captionsFile.captions, "receipts-contracts", values);
+    expect(picked.id).toBe("receipts-contracts");
+    expect(renderCaption(picked.text, values).text).toBe(
+      `${files.values["deployments.count"]} contracts on Base mainnet, verified on Basescan: four on 24 Nov 2026, MaatInbox on 27 Nov 2026.`,
+    );
+  });
+
+  it("claims no verification while one row has no day, and the receipts card falls back to the caption that claims less", () => {
+    const real = lf("deployments/README.md");
+    const dated = (md: string) => deploymentVerification(md).map((v) => v.verifiedOn);
+    const expectFallback = (md: string) => {
+      const figures = deploymentFigures(md);
+      expect(figures["deployments.verified"]).toBeUndefined();
+      expect(verifiedNote(md)).toBe("");
+      // The repository's values with this file's deployment figures in place of today's.
+      const values = { ...Object.fromEntries(Object.entries(files.values).filter(([k]) => !k.startsWith("deployments."))), ...figures };
+      const picked = pickCaption(captionsFile.captions, "receipts-contracts", values);
+      expect(picked.id).toBe("receipts-contracts-listed");
+      expect(renderCaption(picked.text, values).text).not.toMatch(/verified/);
+    };
+    // The inbox's paragraph without its Basescan clause: the four keep their day, the inbox has none.
+    const noClause = real.replace(/,? and on \d{4}-\d{2}-\d{2},? Basescan showed its source as verified[^.]*\./, ".");
+    expect(noClause).not.toBe(real);
+    expect(dated(noClause)).toEqual(["2026-11-24", "2026-11-24", "2026-11-24", "2026-11-24", ""]);
+    expectFallback(noClause);
+    // A day before the inbox's deploy day is not a day it was verified.
+    const early = real.replace(/\bon 2026-11-27(,? Basescan showed its source as verified)/, (_, rest: string) => `on 2026-11-26${rest}`);
+    expect(early).not.toBe(real);
+    expect(dated(early).at(-1)).toBe("");
+    expectFallback(early);
+    // A note whose count does not match the rows deployed by its day covers none of them.
+    const miscounted = real.replace(/(source of all )\w+( contracts)/, `$1${COUNT_WORDS[3]}$2`);
+    expect(dated(miscounted)).toEqual(["", "", "", "", "2026-11-27"]);
+    expectFallback(miscounted);
+    // A paragraph that names another row's contract as well does not say which one "its" means.
+    const shared = real.replace("The owner deployed `MaatInbox` on", "The owner deployed `MaatInbox`, after `MandateVault`, on");
+    expect(shared).not.toBe(real);
+    expect(dated(shared).at(-1)).toBe("");
+    expectFallback(shared);
+  });
+
+  it("says all on one day when the note counts every row", () => {
+    const real = lf("deployments/README.md");
+    const noInbox = real
+      .split("\n")
+      .filter((l) => !/^\| Base mainnet \| MaatInbox \|/.test(l))
+      .join("\n");
+    const figures = deploymentFigures(noInbox);
+    expect(figures["deployments.verified"]).toBe(`all on ${figures["deployments.verifiedOn"]}`);
+    expect(verifiedNote(noInbox)).toBe(`Basescan showed the source of every contract as verified: all on ${figures["deployments.verifiedOnIso"]}.`);
+    const values = { ...files.values, ...figures };
+    expect(renderCaption(pickCaption(captionsFile.captions, "receipts-contracts", values).text, values).text).toBe(
+      `${figures["deployments.count"]} contracts on Base mainnet, verified on Basescan: all on ${figures["deployments.verifiedOn"]}.`,
+    );
   });
 
   it("reads each CI figure from its row of the README's Tested, in numbers table", () => {
