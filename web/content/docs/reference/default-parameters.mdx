@@ -127,7 +127,7 @@ No agent with changed defaults has been tested. After a change, run `npm test` a
 
 ## Measured and planned figures
 
-The rows below are measurements, estimates, counts, dates, versions, derived values or planned values, not settings. Each Source says where the figure comes from. The planned treasury size and the planned price of an [x402](/docs/help/glossary#x402) check are plans, not features of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
+The rows below are measurements, estimates, counts, dates, versions, derived values, planned values or a dropped design's price, not settings. Each Source says where the figure comes from. The treasury size is a plan, and the price of an [x402](/docs/help/glossary#x402) check belongs to the x402 Guard Service, which was dropped for this season. Neither is a feature of the code: [Status and roadmap](/docs/get-started/status) says what is built and what is not.
 
 The two slippage rows are derived from the default caps. The vault gives the swap adapter a [slippage floor](/docs/help/glossary#slippage-floor) <Fact name="mandate.maxSlippageBps" /> below the output the feed price implies, and the Aerodrome adapter reverts below it. So a swap at the per-trade cap fills at most <Fact name="slippageLossPerTradeUsd" /> below the oracle price, and the swaps of one UTC day at most <Fact name="slippageLossPerDayUsd" />, because the daily cap counts buys, sells and bill payments. The bound is measured from the feed price, which the vault trusts.
 

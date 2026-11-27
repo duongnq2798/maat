@@ -259,7 +259,7 @@ export const FACT_TEXT = {
     "Most the swaps of one UTC day can fill below the oracle price",
   ),
   treasuryUsd: t(`${usd(F.treasuryUsd.value.min)} to ${usd(F.treasuryUsd.value.max)}`, "treasuryUsd", "Planned treasury size"),
-  x402Price: t(F.x402Price.value, "x402Price", "Planned price of an x402 check"),
+  x402Price: t(F.x402Price.value, "x402Price", "Price of an x402 check in the dropped Guard Service design"),
   solidityVersion: t(F.solidityVersion.value, "solidityVersion", "Solidity version"),
   addressesVerifiedOn: t(F.addressesVerifiedOn.value, "addressesVerifiedOn", "Date the Base addresses were verified"),
   amzncPoolLiquidityUsd: t(

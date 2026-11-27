@@ -1,6 +1,6 @@
 ---
 title: The treasury loop
-description: How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is still planned.
+description: How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is not built.
 type: concept
 audience: [newcomer, watcher, builder]
 status: fork-tested
@@ -18,11 +18,11 @@ sources:
 next: [guides/run-the-agent, concepts/credit-and-health-factor]
 ---
 
-Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is still only planned. It describes the agent's code and what the fork run covers. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet. Every swap the agent has made ran on a fork. On mainnet its first `Decision`, on 2026-11-27, was a buy the vault refused with `MARKET_CLOSED`.
+Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is not built. It describes the agent's code and what the fork run covers. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet. On mainnet the agent's first `Decision`, on 2026-11-27, was a buy the vault refused with `MARKET_CLOSED`, and its first swaps came later that day, when the vault allowed its buys of GOOGLc and AAPLc toward their target weights ([transaction](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503), [transaction](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69)). Its supply, borrow and bill steps have run only on a fork or in tests.
 
 ## Five steps
 
-The loop has five steps: earn, buy, supply, borrow and pay. The diagram shows the four that the agent is built to run. The first, earning, is planned and not built (see [Planned: earning](#planned-earning)).
+The loop has five steps: earn, buy, supply, borrow and pay. The diagram shows the four that the agent is built to run. The first, earning, is not built (see [Earning: not built](#earning-not-built)).
 
 <TreasuryLoop />
 
@@ -113,7 +113,7 @@ When USDC falls below the runway plus the unpaid bill, the policy suggests a bor
 
 The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock is not allowed, is paused, has no valid, fresh feed answer or has no stable multiplier, when a credit view cannot be read, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
 
-The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet, which is why [earning](#planned-earning) is planned.
+The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet: [earning](#earning-not-built) is not built.
 
 ## Paying its own bill
 
@@ -176,11 +176,11 @@ That is <Fact name="loopMinutes" /> in session and <Fact name="offSessionMinutes
 
 Two limits bound what a round can send. By default the agent sends at most <Fact name="maxTxPerDay" /> transactions in a UTC day and halts the round when it reaches that number. A refusal that is worth recording onchain is sent once per reason per NYSE date, and `MARKET_CLOSED` once per closed phase of that date ([Refusal codes](/docs/concepts/refusal-codes#how-the-agent-reacts)). The transaction cap and the compute bill count UTC days. Claude's own spend has a daily cap too: once the day's Claude cost reaches <Fact name="maxLlmUsdPerDay" /> (`MAAT_MAX_LLM_USD_PER_DAY`), the rounds of that UTC day skip Claude and journal why.
 
-## Planned: earning
+## Earning: not built
 
-<Callout type="note" title="Planned">
+<Callout type="note" title="Not built">
 
-The first step of the loop is not built. The design has other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. Earning from x402 safety checks is planned and not built on `main`: no service on `main` takes a payment. [Pull request #2](https://github.com/duongnq2798/maat/pull/2), open and unmerged, adds an x402 Guard Service. The [status page](/docs/get-started/status#planned-not-built) lists it with the other planned work.
+The first step of the loop is not built. The design had other agents pay <Fact name="x402Price" /> over [x402](/docs/help/glossary#x402) to ask whether a trade is safe right now, and the USDC would reach the vault. That x402 Guard Service was dropped for this season: [pull request #2](https://github.com/duongnq2798/maat/pull/2), which added it, was closed unmerged on 2026-11-27, and no service on `main` takes a payment. The [status page](/docs/get-started/status#planned-not-built) says what is planned instead.
 
 </Callout>
 
