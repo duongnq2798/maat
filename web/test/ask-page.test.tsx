@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 import { ASK_NOTICE, AskApp } from "@/app/(site)/ask/AskApp";
 import { PreviewForm } from "@/app/(site)/ask/PreviewForm";
 import AskPage, { metadata } from "@/app/(site)/ask/page";
-import { askConfig, askIsOpen, fetchAskConfig } from "@/app/(site)/ask/config";
+import { askConfig, askIsOpen, fetchAskConfig, sameAskConfig, type AskConfig } from "@/app/(site)/ask/config";
 import { GET as GET_ASK } from "@/app/data/ask.json/route";
 import { Nav } from "@/components/sections/Nav";
 import { ASK_OG_IMAGE } from "@/content/ask-card";
@@ -29,6 +29,7 @@ const readRepo = (rel: string) => readFileSync(join(REPO_ROOT, rel), "utf8").spl
 
 const VAULT: Address = "0x00000000000000000000000000000000000Aa001";
 const INBOX: Address = "0x00000000000000000000000000000000000B0001";
+const INBOX_2: Address = "0x00000000000000000000000000000000000B0002";
 const OWNER: Address = "0x00000000000000000000000000000000000000A1";
 const SENDER: Address = "0x00000000000000000000000000000000000A11cE";
 const DEPLOY = 2_000_000n;
@@ -112,6 +113,17 @@ describe("the owner's switch: /ask opens only when it is on and the inbox and th
     await expect(fetchAskConfig(fetchImpl)).rejects.toThrow("/data/ask.json answered HTTP 404");
   });
 
+  it("takes a runtime config with the same switch, addresses and rows, in any hex case, as the same config", () => {
+    const c = askConfig(rows(true), true);
+    expect(sameAskConfig(c, structuredClone(c))).toBe(true);
+    expect(sameAskConfig(c, { ...c, inbox: { inbox: INBOX.toLowerCase() as Address, deployTx: c.inbox!.deployTx } })).toBe(true);
+    expect(sameAskConfig(c, { ...c, open: false })).toBe(false);
+    expect(sameAskConfig(c, { ...c, inbox: { inbox: INBOX_2, deployTx: c.inbox!.deployTx } })).toBe(false);
+    expect(sameAskConfig(c, { ...c, inbox: null })).toBe(false);
+    expect(sameAskConfig(c, { ...c, vault: INBOX })).toBe(false);
+    expect(sameAskConfig(c, { ...c, deployments: c.deployments.slice(1) })).toBe(false);
+  });
+
   it("serves the committed switch at /data/ask.json", async () => {
     expect(await GET_ASK().json()).toEqual({ open: ASK_OPEN });
   });
@@ -184,8 +196,12 @@ describe("/ask once it is open", () => {
    * The page with an open inbox, a fake Base and a fake EIP-6963 wallet. `emitBrief` false gives the sent transaction a
    * receipt with no Brief; `holdSend` keeps eth_sendTransaction pending until `release()`; `baseAccount` answers the
    * Base Account requests; `sentInput` is the input Base reports for the sent transaction (the wallet's data by default).
+   * `runtime` is the config the runtime files give, served once the feed has asked Base for the inbox's logs (never by
+   * default); `inboxReads` lists the inbox address of each such ask.
    */
-  function setup(opts: { emitBrief?: boolean; holdSend?: boolean; baseAccount?: Record<string, unknown>; sentInput?: Hex } = {}) {
+  function setup(
+    opts: { emitBrief?: boolean; holdSend?: boolean; baseAccount?: Record<string, unknown>; sentInput?: Hex; runtime?: (initial: AskConfig) => AskConfig } = {},
+  ) {
     const { emitBrief = true } = opts;
     const ownerInput = `${executeCalldata({ rationaleHash: keccak256(toBytes("first")) })}${erc8021Suffix([AGENT_TEST_CODE]).slice(2)}` as Hex;
     const logs: CachedLog[] = [decisionLog(1, DEPLOY + 5n), briefLog(1, SENDER, "<b>buy</b> https://evil.example", DEPLOY + 9n)];
@@ -199,8 +215,18 @@ describe("/ask once it is open", () => {
     const sentData = () => (requests.find((r) => r.method === "eth_sendTransaction")?.params as [{ data: Hex }] | undefined)?.[0].data;
     const receipts: Hash[] = [];
     let added = false;
+    const inboxReads: Address[] = [];
+    let inboxAsked = () => {};
+    const firstInboxRead = new Promise<void>((resolve) => (inboxAsked = resolve));
     const client = {
       ...fake,
+      getLogs: async (args: { address?: Address; fromBlock: bigint; toBlock: bigint }) => {
+        if (args.address && [INBOX, INBOX_2].includes(args.address)) {
+          inboxReads.push(args.address);
+          inboxAsked();
+        }
+        return fake.getLogs(args);
+      },
       readContract: async ({ functionName }: { functionName: string }) => {
         if (functionName === "owner") return OWNER;
         throw new Error(`unexpected readContract ${functionName}`);
@@ -243,13 +269,14 @@ describe("/ask once it is open", () => {
         throw Object.assign(new Error(`${method} unsupported`), { code: 4200 });
       },
     });
-    const config = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) }, deployments: [] };
+    const config: AskConfig = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) }, deployments: [] };
+    const { runtime } = opts;
     render(
       <AskApp
         initial={config}
         deps={{
           client,
-          fetchConfig: () => new Promise(() => {}),
+          fetchConfig: runtime ? () => firstInboxRead.then(() => runtime(config)) : () => new Promise(() => {}),
           // The team set as /proof traces it: here no team wallet sent a brief.
           team: async () => ({ members: new Set<string>(), complete: true }),
           watch: (onChange) => {
@@ -260,7 +287,7 @@ describe("/ask once it is open", () => {
         }}
       />,
     );
-    return { requests, receipts, release };
+    return { requests, receipts, release, inboxReads };
   }
 
   const box = () => screen.getByLabelText("Your brief") as HTMLTextAreaElement;
@@ -303,6 +330,24 @@ describe("/ask once it is open", () => {
     expect(box().value).toBe("");
     await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("2"));
     expect(within(screen.getByRole("list", { name: "Briefs" })).getByText("the new brief")).toBeInTheDocument();
+  });
+
+  it("keeps the feed's one read of Base when the runtime files give the build's config", async () => {
+    // A copy, not the same object: the runtime files are parsed into new objects with the same values.
+    const { inboxReads } = setup({ runtime: (c) => structuredClone(c) });
+    const feed = await screen.findByRole("list", { name: "Briefs" });
+    expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
+    // Time for a restart to ask Base again, had the runtime config started one.
+    await new Promise((r) => setTimeout(r, 200));
+    expect(inboxReads).toEqual([INBOX]);
+  });
+
+  it("reads the feed again when the runtime files give another inbox", async () => {
+    const { inboxReads } = setup({ runtime: (c) => ({ ...c, inbox: { inbox: INBOX_2, deployTx: hash32(4242) } }) });
+    await waitFor(() => expect(inboxReads).toEqual([INBOX, INBOX_2]));
+    const feed = await screen.findByRole("list", { name: "Briefs" });
+    expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
   });
 
   it("says how each path carries the Builder Code", async () => {

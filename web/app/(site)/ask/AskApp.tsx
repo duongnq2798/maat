@@ -7,7 +7,7 @@ import type { LedgerClient } from "@/lib/chain/load";
 import { createLedgerClient } from "@/lib/chain/rpc";
 import { BriefForm, type BriefFormDeps } from "./BriefForm";
 import { BriefsPanel } from "./BriefsPanel";
-import { askIsOpen, fetchAskConfig, type AskConfig } from "./config";
+import { askIsOpen, fetchAskConfig, sameAskConfig, type AskConfig } from "./config";
 import { PreviewForm } from "./PreviewForm";
 import type { TeamReader } from "./team-set";
 
@@ -56,7 +56,8 @@ function NotOpen({ recorded }: { recorded: boolean }) {
 /**
  * /ask: send a brief to the agent through MaatInbox, ask the live vault for free, and read the briefs. `initial` is the
  * build's deployments table and the owner's switch, so the static HTML shows the state the page settles on; the page
- * then reads /data/deployments.json and /data/ask.json, and keeps `initial` when that read fails.
+ * then reads /data/deployments.json and /data/ask.json, and keeps `initial` when that read fails or gives the same
+ * config, so the feed reads Base again only when the runtime files give another.
  */
 export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskDeps }) {
   const [config, setConfig] = useState(initial);
@@ -67,7 +68,7 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
   useEffect(() => {
     let live = true;
     fetchConfig()
-      .then((c) => live && setConfig(c))
+      .then((c) => live && setConfig((prev) => (sameAskConfig(prev, c) ? prev : c)))
       .catch(() => {});
     return () => {
       live = false;
