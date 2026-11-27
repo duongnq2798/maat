@@ -11,6 +11,7 @@
     "build": "next build && node scripts/fix-export-segments.mjs out",
     "typecheck": "next typegen && tsc --noEmit",
     "test": "vitest run",
+    "agent-note": "tsx scripts/agent-note.ts",
     "brand": "tsx scripts/brand.ts",
     "card": "tsx scripts/card.ts",
     "check:out": "tsx scripts/check-out.ts",

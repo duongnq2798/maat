@@ -566,14 +566,16 @@
   }
 }
 
-/* The live strip's Readout (components/live/LiveStrip.tsx). A live verdict line leads it, set larger than the block
-   number under it (culture plan Q5), so the verdict, not the block height, is what the Readout says loudest. Its lead,
-   "An agent under Maat's default mandate would", is a kicker on a line of its own at the strip's 13 px. A headline
-   that names a reason for each token (mixed) is the longest the strip prints, so its reasons keep the strip's own 13 px
-   and weight (set larger, the three-refusal frame outgrows the Readout's reserved height at 360 px), and only its verb,
-   REFUSE, takes the verdict size, on a 20 px line, so the verdict is still the largest text after the H1 in the phone's
-   first screen. The block number, its weight settling from 300 to 560 when a reading lands; the scan line, hidden at
-   rest (useScan shows it for one 400 ms pass); the LIVE pill's lamp; and focus rings in pass-lit on the dark window. */
+/* The live strip's Readout (components/live/LiveStrip.tsx), the hero's live line. A live verdict leads it, set larger
+   than the block number under it (culture plan Q5), so the verdict, not the block height, is what the Readout says
+   loudest. Its label, "Right now, a buy would be:", is a kicker on a line of its own at the strip's 13 px in lcd-2. A
+   headline that names a reason for each token (mixed) is the longest the strip prints, so its reasons keep the strip's
+   own 13 px and weight, and only its verb, Refused, takes the verdict size, on a 20 px line, so the verdict is still the
+   largest text after the H1 in the phone's first screen. The first ticker's gloss, "(NVIDIA, a B20 token on Base)", and
+   the row under a pass that links the method, "The vault runs the other checks on a real trade", keep the strip's 13 px
+   too, so the tickers and the verdict stay the loudest words. The block number, its weight settling from 300 to 560
+   when a reading lands; the scan line, hidden at rest (useScan shows it for one 400 ms pass); the LIVE pill's lamp; and
+   focus rings in pass-lit on the dark window. */
 @layer components {
   .readout-verdict {
     font-size: 22px;
@@ -599,15 +601,27 @@
     line-height: 20px;
     letter-spacing: 0;
     font-weight: 400;
+    color: var(--color-lcd-2);
+  }
+  .readout-verdict [data-ticker-gloss] {
+    font-size: 13px;
+    letter-spacing: 0;
+    font-weight: 400;
+    color: var(--color-lcd-2);
+  }
+  .readout-verdict [data-verdict-method] {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 20px;
+    letter-spacing: 0;
+    font-weight: 400;
   }
   .readout-verdict[data-verdict-line="mixed"] {
     font-size: 13px;
     line-height: 20px;
     letter-spacing: 0;
     font-weight: 400;
-  }
-  .readout-verdict[data-verdict-line="mixed"] [data-verdict-lead] {
-    display: inline;
   }
   .readout-verdict[data-verdict-line="mixed"] [data-verdict-word] {
     font-size: 22px;
