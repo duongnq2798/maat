@@ -2,12 +2,15 @@ import { readFileSync } from "node:fs";
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Hero } from "@/components/sections/Hero";
-import { HeroNote } from "@/components/sections/HeroNote";
+import { HeroNote, type RecordedNote } from "@/components/sections/HeroNote";
+import type { VaultStatus, VaultView } from "@/components/sections/VaultDecisions";
+import { RECORDED_ROWS } from "@/components/sections/vault-rows";
 import { FACTS } from "@/content/facts";
 import { FILM } from "@/content/film";
 import agentNote from "@/content/generated/agent-note.json";
 import { HERO_CTAS, HERO_DEFINITION } from "@/content/hero";
 import { etLabel } from "@/lib/chain/ledger";
+import { NOTE_ROUND_SEC, noteSuperseded } from "@/lib/live/hero-note";
 import { SITE } from "@/lib/site";
 
 const css = readFileSync("app/globals.css", "utf8");
@@ -72,7 +75,8 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
     render(<Hero />);
     const card = hero().querySelector("[data-hero-card]")!;
     const note = card.nextElementSibling!;
-    expect(note).toHaveAttribute("data-hero-note");
+    // The note is newer than every Decision recorded in this build, so the static page quotes it.
+    expect(note).toHaveAttribute("data-hero-note", "recorded");
     expect(note).toHaveTextContent(`Maat's agent, last round recorded in this build · ${agentNote.note.when}`);
     expect(note.querySelector("blockquote")!.textContent).toBe(agentNote.note.summary);
     const line = within(note as HTMLElement).getByRole("link", { name: `journal/${agentNote.note.file} line ${agentNote.note.line}` });
@@ -89,11 +93,67 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
   });
 
   it("shows a note as text, never as markup, and nothing at all when the build records none", () => {
-    const { container, unmount } = render(<HeroNote recorded={{ summary: "<b>no</b> trade", when: "Fri 27 Nov 09:15 ET", file: "2026-11-27.jsonl", line: 3 }} />);
+    const { container, unmount } = render(
+      <HeroNote recorded={{ summary: "<b>no</b> trade", ts: 1_795_788_934.097, when: "Fri 27 Nov 09:15 ET", file: "2026-11-27.jsonl", line: 3 }} />,
+    );
     expect(container.querySelector("b")).toBeNull();
     expect(container.querySelector("blockquote")!.textContent).toBe("<b>no</b> trade");
     unmount();
     expect(render(<HeroNote recorded={null} />).container).toBeEmptyDOMElement();
+  });
+
+  it("drops a note once the vault's latest Decision is newer than its round, never for a Decision of that round", () => {
+    // The review of PR #105: the note of journal/2026-11-27.jsonl line 19 (14:15:34 UTC, "I proposed nothing this
+    // round") beside the buy the next round sent, at 15:15:43 UTC.
+    const line19 = 1_795_788_934.097;
+    expect(noteSuperseded(line19, 1_795_792_543)).toBe(true);
+    // Line 20, the round that proposed that buy: its run row is written before the intents it sends.
+    const line20 = 1_795_792_539.35;
+    expect(noteSuperseded(line20, 1_795_792_543)).toBe(false);
+    expect(noteSuperseded(line20, Math.floor(line20) + NOTE_ROUND_SEC)).toBe(false);
+    expect(noteSuperseded(line20, Math.ceil(line20) + NOTE_ROUND_SEC)).toBe(true);
+    // An older Decision, and one whose time was not read, never drop it.
+    expect(noteSuperseded(line19, line19 - 3600)).toBe(false);
+    expect(noteSuperseded(line19, null)).toBe(false);
+  });
+
+  describe("beside the vault card's latest Decision, live or recorded", () => {
+    const recorded: RecordedNote = {
+      summary: "Market is closed, so I proposed nothing this round.",
+      ts: 1_795_788_934.097,
+      when: "Fri 27 Nov 09:15 ET",
+      file: "2026-11-27.jsonl",
+      line: 19,
+    };
+    const view = (status: VaultStatus, timestamp: number | null): VaultView => ({
+      status,
+      decisions: [{ ...RECORDED_ROWS[0]!, timestamp }, ...RECORDED_ROWS.slice(1)],
+      head: status === "live" ? "63010853" : null,
+      retry: null,
+    });
+    const STATUSES: readonly VaultStatus[] = ["live", "recorded", "reading"];
+
+    it.each(STATUSES)("quotes the note while the %s Decision is older than its round", (status) => {
+      for (const t of [recorded.ts - 3600, recorded.ts + 8, null]) {
+        const { container, unmount } = render(<HeroNote recorded={recorded} view={view(status, t)} />);
+        const note = container.querySelector("[data-hero-note]")!;
+        expect(note).toHaveAttribute("data-hero-note", "recorded");
+        expect(note.querySelector("blockquote")!.textContent).toBe(recorded.summary);
+        unmount();
+      }
+    });
+
+    it.each(STATUSES)("gives way to one dated line that points to /now once the %s Decision is newer", (status) => {
+      const { container } = render(<HeroNote recorded={recorded} view={view(status, 1_795_792_543)} />);
+      const note = container.querySelector<HTMLElement>("[data-hero-note]")!;
+      expect(note).toHaveAttribute("data-hero-note", "superseded");
+      expect(note.querySelector("blockquote")).toBeNull();
+      expect(note).not.toHaveTextContent("proposed nothing");
+      expect(note.textContent).toBe(
+        "The vault's latest Decision is newer than the last note from Maat's agent in this build (Fri 27 Nov 09:15 ET). Newer rounds on /now →",
+      );
+      expect(within(note).getByRole("link", { name: "Newer rounds on /now" })).toHaveAttribute("href", "/now");
+    });
   });
 
   it("engraves the spec plate's labels and marks each figure with the fact it comes from", () => {

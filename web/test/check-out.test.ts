@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   checkAbiFiles,
+  checkAgentNote,
   checkDataFiles,
   checkDocsIndexes,
   checkDocsPage,
@@ -101,6 +102,28 @@ const NOW = [
   '<a href="https://basescan.org/address/0xcA11bde05977b3631167028862bE2a173976CA11">0xcA11bde05977b3631167028862bE2a173976CA11</a>',
   "</main></body></html>",
 ].join("");
+
+describe("checkAgentNote", () => {
+  const note = { ts: 1_795_788_934.097, when: "Fri 27 Nov 09:15 ET" };
+  const decision = (blockNumber: string, blockTime: number) => ({ blockNumber, blockTime });
+
+  it("says nothing while the note is newer than every recorded Decision, or from the round of the newest", () => {
+    expect(checkAgentNote(note, [decision("61745836", 1_795_745_686)])).toEqual([]);
+    expect(checkAgentNote(note, [decision("63010852", Math.floor(note.ts) + 8)])).toEqual([]);
+    expect(checkAgentNote(note, [])).toEqual([]);
+  });
+
+  it("warns when a recorded Decision is newer than the note's round, since the hero then hides the note", () => {
+    const warnings = checkAgentNote(note, [decision("61745836", 1_795_745_686), decision("63010853", 1_795_792_543)]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("(Fri 27 Nov 09:15 ET) is older than the Decision recorded at block 63010853");
+    expect(warnings[0]).toContain("npm run agent-note");
+  });
+
+  it("warns when the build records no note", () => {
+    expect(checkAgentNote(null, [])).toEqual([expect.stringContaining("records no note of Maat's agent")]);
+  });
+});
 
 describe("checkNowPage", () => {
   it("accepts a /now page that is ready to ship", () => {
