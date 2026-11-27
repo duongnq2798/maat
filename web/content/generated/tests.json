@@ -522,14 +522,20 @@
     "sells $1 of the largest priced holding after the BUY": 198
   },
   "agent/test/prompt.test.ts": {
-    "prompt": 8,
-    "system prompt carries the mandate rules and stays free of volatile data": 9,
-    "states the limits the zod schema enforces": 17,
-    "user message shows state, weights, suggestions and the bill in dollars": 27,
-    "credit actions": 40,
-    "off (the default prompt): says so, names every credit action, and drops the supply, borrow and repay policy": 50,
-    "on: keeps the supply, borrow and repay policy, and the rest of the prompt is the same": 57,
-    "the user message says whether credit actions are on": 65
+    "prompt": 10,
+    "system prompt carries the mandate rules and stays free of volatile data": 11,
+    "states the limits the zod schema enforces": 19,
+    "user message shows state, weights, suggestions and the bill in dollars": 29,
+    "credit actions": 42,
+    "off (the default prompt): says so, names every credit action, and drops the supply, borrow and repay policy": 52,
+    "on: keeps the supply, borrow and repay policy, and the rest of the prompt is the same": 59,
+    "the user message says whether credit actions are on": 67,
+    "feed age and the session": 74,
+    "the user message carries the vault's maxStalenessSec and each feed's age against it, by the contract's rule": 91,
+    "feedStale is null where no valid answer was read, as feedAgeSeconds is": 104,
+    "the brief message carries the same limit and ages": 115,
+    "the system prompt calls a feed stale past maxStalenessSec and no sooner, and names the closed market as the reason": 121,
+    "a fake model receives the rule in the system prompt and the limit and ages in the user message": 142
   },
   "agent/test/proposer.test.ts": {
     "ClaudeProposer": 30,
