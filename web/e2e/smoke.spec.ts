@@ -210,6 +210,41 @@ test("the Refusals section fills only the recorded refusal's label in red, in th
   await expect(section.getByRole("button", { name: "Show all 19" })).toBeInViewport();
 });
 
+// On a phone "Show all 19" opens the codes where the reader is (review of PR #116): its toggle sits above the groups,
+// and tapped from low on the screen it moves to the top, so the toggle stays on screen and MARKET_CLOSED, the first
+// code, shows under it, above the thumb bar. Tapped from the middle of the screen, nothing needs to move.
+for (const [where, at] of [
+  ["the middle", 0.5],
+  ["low on the screen", 0.88],
+] as const) {
+  test(`at 390 px Show all 19, tapped from ${where}, opens the codes on screen from MARKET_CLOSED down`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const section = page.locator("#reasons");
+    const open = section.getByRole("button", { name: "Show all 19" });
+    await open.evaluate((el, at) => {
+      const box = el.getBoundingClientRect();
+      window.scrollBy({ top: box.top + box.height / 2 - window.innerHeight * at, behavior: "instant" });
+    }, at);
+    await open.click();
+    const close = section.getByRole("button", { name: "Show the groups only" });
+    await expect(close).toHaveAttribute("aria-expanded", "true");
+    await expect(close).toBeInViewport({ ratio: 1 });
+    const code = section.locator('li[data-code="MARKET_CLOSED"]');
+    await expect(code).toBeInViewport({ ratio: 1 });
+    // Whole above the thumb bar, once any scroll has settled.
+    await expect
+      .poll(() =>
+        code.evaluate((el) => {
+          const bar = document.querySelector('[data-thumb-bar="shown"]');
+          return el.getBoundingClientRect().bottom <= (bar ? bar.getBoundingClientRect().top : window.innerHeight);
+        }),
+      )
+      .toBe(true);
+  });
+}
+
 test("reduced motion shows the final state at once", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto("/");

@@ -119,6 +119,8 @@ describe("landing page", () => {
     const toggle = within(section).getByRole("button", { name: "Show all 19" });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle.getAttribute("aria-controls")!.split(" ")).toEqual(groups.map((g) => g.querySelector("ul[id]")!.id));
+    // The toggle comes before the groups it opens, so opening them never moves it (e2e/smoke.spec.ts checks the screen).
+    for (const g of groups) expect(toggle.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("opens all nineteen refusals once on Show all 19, each titled by its plain label, and highlights only MARKET_CLOSED", () => {

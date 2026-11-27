@@ -20,21 +20,40 @@ const listId = (i: number) => `reasons-codes-${i}`;
  * all 19" opens every group's codes, each with what it means. MARKET_CLOSED, the refusal the vault recorded, stays
  * filled in red either way. Both views are in the exported HTML, the closed one hidden, so the page holds every code
  * for search, and a reader without JavaScript still reads every group's labels.
+ *
+ * The toggle sits above the groups, so opening or closing them never moves it: the codes open under the reader's
+ * finger, from the first group's MARKET_CLOSED down.
  */
 export function RefusalGroups({ total }: { total: number }) {
   const [open, setOpen] = useState(false);
   const toggle = useRef<HTMLButtonElement>(null);
-  const closed = useRef(false);
-  // Closing the long list moves the toggle up by the height of the codes; it is brought back on screen, so the reader
-  // does not lose their place.
+  const opened = useRef(false);
+  // Opened from the lower half of the screen, the first codes would start below it: the toggle goes to the top, its
+  // focus still on screen, and the first group's codes show under it.
   useEffect(() => {
-    if (!closed.current) return;
-    closed.current = false;
+    if (!opened.current) return;
+    opened.current = false;
+    const button = toggle.current;
+    if (!button) return;
+    const { top } = button.getBoundingClientRect();
     // Optional: the unit tests' jsdom has no scrollIntoView.
-    toggle.current?.scrollIntoView?.({ block: "nearest" });
+    if (top < 0 || top > window.innerHeight / 2) button.scrollIntoView?.({ block: "start" });
   }, [open]);
   return (
     <div className="flex flex-col gap-6">
+      <button
+        ref={toggle}
+        type="button"
+        aria-expanded={open}
+        aria-controls={REASON_GROUPS.map((_, i) => listId(i)).join(" ")}
+        onClick={() => {
+          opened.current = !open;
+          setOpen(!open);
+        }}
+        className="pill-line cursor-pointer scroll-mt-4 self-start bg-white"
+      >
+        {open ? "Show the groups only" : `Show all ${total}`}
+      </button>
       <div data-refusals={open ? "all" : "groups"} className="grid grid-cols-[repeat(auto-fit,minmax(min(100%,320px),1fr))] items-start gap-4">
         {REASON_GROUPS.map((g, i) => (
           <div key={g.title} data-group={g.title} className="card flex flex-col gap-3.5 p-[22px]">
@@ -76,19 +95,6 @@ export function RefusalGroups({ total }: { total: number }) {
           </div>
         ))}
       </div>
-      <button
-        ref={toggle}
-        type="button"
-        aria-expanded={open}
-        aria-controls={REASON_GROUPS.map((_, i) => listId(i)).join(" ")}
-        onClick={() => {
-          closed.current = open;
-          setOpen(!open);
-        }}
-        className="pill-line cursor-pointer self-start bg-white"
-      >
-        {open ? "Show the groups only" : `Show all ${total}`}
-      </button>
     </div>
   );
 }
