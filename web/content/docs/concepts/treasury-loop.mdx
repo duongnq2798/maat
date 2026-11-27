@@ -4,7 +4,7 @@ description: How the agent keeps its basket, supplies idle stock, borrows for ru
 type: concept
 audience: [newcomer, watcher, builder]
 status: fork-tested
-lastReviewed: 2026-11-19
+lastReviewed: 2026-11-27
 sources:
   - agent/src/policy.ts
   - agent/src/loop/runOnce.ts
@@ -18,7 +18,7 @@ sources:
 next: [guides/run-the-agent, concepts/credit-and-health-factor]
 ---
 
-Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is still only planned. It describes the agent's code and what the fork run covers. The four Maat contracts are deployed on Base mainnet. Every swap the agent has made ran on a fork. On mainnet its first `Decision`, on 2026-11-27, was a buy the vault refused with `MARKET_CLOSED`.
+Maat is designed to pay its own way: keep a small basket of tokenized stocks, put idle stock to work as collateral, borrow USDC against it to cover its running costs, and pay its own compute bill from the vault. This page shows how the agent is built to do that, which rule decides each step, and which part is still only planned. It describes the agent's code and what the fork run covers. The four core Maat contracts and `MaatInbox` are deployed on Base mainnet. Every swap the agent has made ran on a fork. On mainnet its first `Decision`, on 2026-11-27, was a buy the vault refused with `MARKET_CLOSED`.
 
 ## Five steps
 

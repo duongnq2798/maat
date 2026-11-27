@@ -1,10 +1,10 @@
 ---
 title: Verify Maat by hand
-description: "Five read-only cast commands to check the mainnet vault yourself: its source, owner, executor and mandate, both Decisions, the calendar and a rationale hash."
+description: "Five read-only commands to check the mainnet vault: its source, owner, executor and mandate, its first three Decisions, the calendar and the rationale hashes."
 type: guide
 audience: [watcher, developer, evaluator]
-status: fork-tested
-lastReviewed: 2026-11-25
+status: live
+lastReviewed: 2026-11-27
 sources:
   - deployments/README.md
   - contracts/src/MandateVault.sol
@@ -17,14 +17,16 @@ sources:
   - contracts/foundry.toml
   - agent/scripts/first-decision.ts
   - agent/src/intent.ts
+  - agent/src/rationale/blob.ts
+  - docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md
 next: [guides/watch-decisions-onchain, get-started/read-a-decision, concepts/market-hours]
 ---
 
-Maat's [vault](/docs/help/glossary#vault) runs on [Base](/docs/help/glossary#base) mainnet, so you can check what it is and what it did without trusting this site. This page gives five read-only `cast` commands, each with the output it printed when this page was written, and the Basescan page to open beside it. Together they show that the vault is the contract its recorded deploy created and that its source is verified; who its [owner](/docs/help/glossary#owner) and [executor](/docs/help/glossary#executor) are and which [mandate](/docs/help/glossary#mandate) it enforces; its two mainnet [Decision](/docs/help/glossary#decision) events, with their [action](/docs/help/glossary#action), `allowed`, [reason](/docs/help/glossary#reason) and `rationaleHash`, and who sent them; that the vault's calendar said the [NYSE session](/docs/help/glossary#nyse-session) was closed at the first Decision's block and open at the second's; and that both hashes are the hash of one known [rationale](/docs/help/glossary#rationale) text. No command needs a key, a wallet or an account, and none sends a transaction.
+Maat's [vault](/docs/help/glossary#vault) runs on [Base](/docs/help/glossary#base) mainnet, so you can check what it is and what it did without trusting this site. This page gives five read-only `cast` commands, the last of which also reads one file of the agent's public journal with `curl`, each with the output it printed when this page was written, and the Basescan page to open beside it. Together they show that the vault is the contract its recorded deploy created and that its source is verified; who its [owner](/docs/help/glossary#owner) and [executor](/docs/help/glossary#executor) are and which [mandate](/docs/help/glossary#mandate) it enforces; its mainnet [Decision](/docs/help/glossary#decision) events, the owner's two smoke-test buys and the first `Decision` of Maat's agent, with their [action](/docs/help/glossary#action), `allowed`, [reason](/docs/help/glossary#reason) and `rationaleHash`, and who sent them; that the vault's calendar said the [NYSE session](/docs/help/glossary#nyse-session) was closed at the blocks of the two refusals and open at the allowed buy's; and that each `rationaleHash` is the hash of a text you can read: one known [rationale](/docs/help/glossary#rationale) text for the owner's two, and the [rationale blob](/docs/help/glossary#rationale-blob) in the agent's own transaction for its `Decision`. No command needs a key, a wallet or an account, and none sends a transaction.
 
 <Callout type="note" title="What was run">
 
-Every output on this page was printed by the command above it, run on 2026-11-25 with `cast` from Foundry 1.9.0 against the keyless public RPC `https://base-rpc.publicnode.com`. Long hashes and the owner's address are shortened here with an ellipsis; your terminal prints them in full. The same day, `https://mainnet.base.org` printed the same output for commands 1, 2 and 4, and refused the log query of command 3 with HTTP 429 (`request limit reached`), so the page uses the first RPC. Command 5 needs no RPC: it hashes a text on your machine. Commands 1, 3 and 4 read records at fixed blocks, which do not change. Command 2 reads the vault at the latest block, so its executor line changed when the owner handed that role to the agent's CDP Server Wallet on 2026-11-27, and changes again with any later `setExecutor`, and its mandate lines change if the owner applies a queued mandate change (a `MandateApplied` event, no sooner than <Fact name="timelockHours" /> after the change was queued).
+Every output on this page was printed by the command above it, run on 2026-11-25 with `cast` from Foundry 1.9.0 against the keyless public RPC `https://base-rpc.publicnode.com`. Long hashes and the owner's address are shortened here with an ellipsis; your terminal prints them in full. The same day, `https://mainnet.base.org` printed the same output for commands 1, 2 and 4, and refused the log query of command 3 with HTTP 429 (`request limit reached`), so the page uses the first RPC. The lines for the agent's `Decision` in commands 3, 4 and 5 were added on 2026-11-27, printed by the same commands run the same way that day. Command 5 hashes the owner's text on your machine, with no RPC, and reads the agent's blob from its transaction. Commands 1, 3 and 4 read records at fixed blocks, which do not change. Command 2 reads the vault at the latest block, so its executor line changed when the owner handed that role to the agent's CDP Server Wallet on 2026-11-27, and changes again with any later `setExecutor`, and its mandate lines change if the owner applies a queued mandate change (a `MandateApplied` event, no sooner than <Fact name="timelockHours" /> after the change was queued).
 
 </Callout>
 
@@ -34,6 +36,7 @@ Every output on this page was printed by the command above it, run on 2026-11-25
 | --- | --- |
 | `cast` | From [Foundry](https://getfoundry.sh). The outputs below come from Foundry 1.9.0. |
 | bash | Linux, macOS, or Git Bash on Windows. The commands use `export`, loops, `$(...)`, `printf` and pipes, which PowerShell and cmd do not run. |
+| `xxd` and `curl` | Command 5 uses them for the agent's `Decision`: `xxd` to turn its transaction's input into bytes, and `curl` to read one file of the agent's public journal. Git Bash on Windows has both, and so do most Linux and macOS systems. |
 | A Base mainnet RPC | Any one works if it answers `eth_getLogs` for command 3. Every command here reads only, so a keyless public RPC is enough. |
 
 Set the RPC and the two addresses once. The vault and the calendar are the `MandateVault` and `MarketCalendar` rows of the table in [`deployments/README.md`](https://github.com/duongnq2798/maat/blob/main/deployments/README.md), which [Status and roadmap](/docs/get-started/status#next-mainnet) also shows:
@@ -125,13 +128,13 @@ The other fourteen lines are the mandate, one field per line in the order of [Ty
 
 <Step>
 
-### Read the two Decisions
+### Read the vault's Decisions
 
-[Status and roadmap](/docs/get-started/status#next-mainnet) records the blocks of the vault's two `Decision` events on mainnet, `61700601` and `61745836`. This reads the vault's `Decision` logs in each of those blocks. A one-block range keeps the query small enough for providers that limit how many blocks one log query may cover, and `grep` keeps the lines of each log from its transaction hash to the end of its decoded fields; drop the `| grep ...` to see the raw log as well.
+[Status and roadmap](/docs/get-started/status#next-mainnet) records the blocks of the vault's first three `Decision` events on mainnet: `61700601` and `61745836`, the owner's two smoke-test buys, and `62776552`, the first `Decision` of Maat's agent. This reads the vault's `Decision` logs in each of those blocks. A one-block range keeps the query small enough for providers that limit how many blocks one log query may cover, and `grep` keeps the lines of each log from its transaction hash to the end of its decoded fields; drop the `| grep ...` to see the raw log as well.
 
 ```bash
 DECISION='Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)'
-for b in 61700601 61745836; do
+for b in 61700601 61745836 62776552; do
   cast logs --rpc-url "$RPC" --address "$VAULT" --from-block "$b" --to-block "$b" "$DECISION" | grep -A 9 transactionHash
 done
 ```
@@ -159,27 +162,38 @@ Output:
   	allowed: true
   	reason: 0
   	rationaleHash: 0x0baa4c52…57f6
+  transactionHash: 0xca9e2dfe…bed6
+  transactionIndex: 9
+  decoded:
+  	intentId: 0x22b5b771…b4ed
+  	action: 0
+  	token: 0xb2000000000000000000002D0BA3164cc74f58B7
+  	amount: 4680721 [4.68e6]
+  	allowed: false
+  	reason: 6
+  	rationaleHash: 0xb8552684…a6c1
 ```
 
-| Field | First Decision | Second Decision |
-| --- | --- | --- |
-| Transaction | [`0xdfdb6739...6c3b`](https://basescan.org/tx/0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b) | [`0x61622340...23c8`](https://basescan.org/tx/0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8) |
-| `action` | `0`, `BUY` | `0`, `BUY` |
-| `token` | NVDAc, the `NVDAC` constant of `contracts/script/BaseAddresses.sol` | NVDAc |
-| `amount` | `5000000`: 5 USDC, in raw units | `5000000`: 5 USDC |
-| `allowed` | `false` | `true` |
-| `reason` | `6`, [`MARKET_CLOSED`](/docs/concepts/refusal-codes#market_closed) | `0`, `OK` |
-| `rationaleHash` | `0x0baa4c52...57f6` | The same hash |
+| Field | Owner's first | Owner's second | Agent's first |
+| --- | --- | --- | --- |
+| Transaction | [`0xdfdb6739...6c3b`](https://basescan.org/tx/0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b#eventlog) | [`0x61622340...23c8`](https://basescan.org/tx/0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8#eventlog) | [`0xca9e2dfe...bed6`](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6#eventlog) |
+| `action` | `0`, `BUY` | `0`, `BUY` | `0`, `BUY` |
+| `token` | NVDAc, the `NVDAC` constant of `contracts/script/BaseAddresses.sol` | NVDAc | GOOGLc, the `GOOGLC` constant |
+| `amount` | `5000000`: 5 USDC, in raw units | `5000000`: 5 USDC | `4680721`: 4.68 USDC |
+| `allowed` | `false` | `true` | `false` |
+| `reason` | `6`, [`MARKET_CLOSED`](/docs/concepts/refusal-codes#market_closed) | `0`, `OK` | `6`, `MARKET_CLOSED` |
+| `rationaleHash` | `0x0baa4c52...57f6` | The same hash | `0xb8552684...a6c1` |
 
-On 2026-11-25, the Logs tab of each transaction on Basescan showed the same `Decision` with the same fields decoded, the second one among the other logs of that transaction. The ids of the enums come from [Types](/docs/reference/types#action), and [Read a decision](/docs/get-started/read-a-decision#field-by-field) explains each field. When this page was written, these were the only two `Decision` events of the vault: a query of its `Decision` logs from its deploy block, `61698517` (the `blockNumber` that the receipt of command 1 shows when you leave out `contractAddress`), to block `61979261` returned these two and no other. To list them all yourself, [Watch decisions onchain](/docs/guides/watch-decisions-onchain#read-the-events-with-cast) queries from the deploy block.
+On 2026-11-25, the Logs tab of each of the owner's two transactions on Basescan showed the same `Decision` with the same fields decoded, the second one among the other logs of that transaction. The links above end in `#eventlog`, which opens that Logs tab. A refusal is logged, not reverted, so on 2026-11-27 the Overview tab of the agent's transaction showed it as a success: its receipt's `status` is `1`, and the refusal is in its log, as `allowed` false and `reason` `6`, with no name for the `6`. The ids of the enums come from [Types](/docs/reference/types#action), and [Read a decision](/docs/get-started/read-a-decision#field-by-field) explains each field. On 2026-11-25 a query of the vault's `Decision` logs from its deploy block, `61698517` (the `blockNumber` that the receipt of command 1 shows when you leave out `contractAddress`), to block `61979261` returned the owner's two and no other. On 2026-11-27 the same query to block `62879618` returned these three and no other. The vault logs a `Decision` for every `execute` that does not revert, so a later query can return more. To list them all yourself, [Watch decisions onchain](/docs/guides/watch-decisions-onchain#read-the-events-with-cast) queries from the deploy block.
 
-Who sent each Decision is on its transaction, not in the event. This reads the sender of each transaction, then the last 32 characters of its input data; `tail -c 33` keeps them and the newline after them:
+Who sent each Decision is on its transaction, not in the event. This reads the sender of each transaction, then the last 32 characters of its input data; `tail -c 33` keeps them and the newline after them. The last command reads the vault's executor as it stood at the agent's block, to compare with the agent's sender:
 
 ```bash
-for tx in 0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b 0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8; do
+for tx in 0xdfdb6739912a73542d90129bd7269a939dc8b2d47a869f56d9ab5e3a02e86c3b 0x61622340a151c73c3f2b3bc910292a3e3136bd4aa7ecd55a92f59914953a23c8 0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6; do
   cast tx "$tx" from --rpc-url "$RPC"
   cast tx "$tx" input --rpc-url "$RPC" | tail -c 33
 done
+cast call "$VAULT" "executor()(address)" --block 62776552 --rpc-url "$RPC"
 ```
 
 Output:
@@ -189,9 +203,12 @@ Output:
 80218021802180218021802180218021
 0x3c3a66f7…1D6a
 80218021802180218021802180218021
+0x9bC6E49d42e0659f3ef667B09B67506B348e115A
+80218021802180218021802180218021
+0x9bC6E49d42e0659f3ef667B09B67506B348e115A
 ```
 
-Both came from the owner's wallet, the first line of command 2, which was also the executor then. Since 2026-11-27 the executor is the agent's CDP Server Wallet, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, so any transaction the agent sends comes from that address, as its first `Decision` did, at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). The input of each ends in `8021` eight times, the marker that closes an ERC-8021 [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix; [Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round) shows a whole suffix and how to read the code out of it.
+The owner's two came from the owner's wallet, the first line of command 2, which was also the executor then. On 2026-11-27 the owner made the agent's CDP Server Wallet, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, the executor, and the agent's `Decision` came from that address at 02:14:46 UTC that day. The last line, `executor()` at block `62776552`, prints the same address, so the agent's buy came from the one address whose `execute` calls the vault accepted in that block. The input of each transaction ends in `8021` eight times, the marker that closes an ERC-8021 [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix; [Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round) shows a whole suffix and how to read the code out of it.
 
 </Step>
 
@@ -215,7 +232,7 @@ The market-hours check asks the calendar one question, with the timestamp of the
 This asks it again for each Decision's block: it reads the block's timestamp, then calls `isOpen` with that timestamp and the session mode `0`, the first line of the mandate in command 2. `--block` reads the calendar as it stood at that block, holidays included.
 
 ```bash
-for b in 61700601 61745836; do
+for b in 61700601 61745836 62776552; do
   t=$(cast block "$b" --field timestamp --rpc-url "$RPC")
   echo "block $b, timestamp $t, open: $(cast call "$CALENDAR" "isOpen(uint256,uint8)(bool)" "$t" 0 --block "$b" --rpc-url "$RPC")"
 done
@@ -226,9 +243,10 @@ Output:
 ```text
 block 61700601, timestamp 1795530495, open: false
 block 61745836, timestamp 1795539542, open: true
+block 62776552, timestamp 1795745686, open: false
 ```
 
-`cast block 61700601`, without `--field`, prints the timestamp in both forms. `1795530495` is 2026-11-24 14:28:15 UTC. New York was on standard time, five hours behind UTC, so it was 09:28:15 there, before the <Fact name="nyseOpen" /> open: the calendar said closed, and the vault refused with `MARKET_CLOSED`. `1795539542` is 2026-11-24 16:59:02 UTC, 11:59:02 in New York, inside the session: the calendar said open, and the market check passed. [Market hours](/docs/concepts/market-hours#new-york-time-onchain) explains how the calendar computes New York time, and [MarketCalendar](/docs/reference/market-calendar#isopen) documents `isOpen`.
+`cast block 61700601`, without `--field`, prints the timestamp in both forms. `1795530495` is 2026-11-24 14:28:15 UTC. New York was on standard time, five hours behind UTC, so it was 09:28:15 there, before the <Fact name="nyseOpen" /> open: the calendar said closed, and the vault refused with `MARKET_CLOSED`. `1795539542` is 2026-11-24 16:59:02 UTC, 11:59:02 in New York, inside the session: the calendar said open, and the market check passed. `1795745686` is 2026-11-27 02:14:46 UTC, 21:14:46 on Thursday 2026-11-26 in New York, Thanksgiving, a NYSE holiday: the calendar said closed, and the vault refused the agent's buy with `MARKET_CLOSED`. [Market hours](/docs/concepts/market-hours#new-york-time-onchain) explains how the calendar computes New York time, and [MarketCalendar](/docs/reference/market-calendar#isopen) documents `isOpen`.
 
 </Step>
 
@@ -236,7 +254,7 @@ block 61745836, timestamp 1795539542, open: true
 
 ### Hash the rationale text
 
-The chain holds only the hash of a rationale. The owner sent both buys with the calldata that `agent/scripts/first-decision.ts` builds, and when no `--rationale` is given, the tool writes this text:
+The chain holds only the hash of a rationale. The owner sent both smoke-test buys with the calldata that `agent/scripts/first-decision.ts` builds, and when no `--rationale` is given, the tool writes this text:
 
 ```typescript title="agent/scripts/first-decision.ts#L134-L134"
   const rationale = input.rationale ?? `Owner-sent first decision: BUY ${usd} USD of ${listed.symbol}`;
@@ -254,7 +272,39 @@ Output:
 0x0baa4c52…57f6
 ```
 
-In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6`, the `rationaleHash` of both Decisions in command 3. So both intents committed to this text when they were sent, and it cannot have changed since without changing its hash. It does not prove that the text is the reason for the trade: the vault stores the hash without checking it. An intent the agent sends hashes its [rationale blob](/docs/help/glossary#rationale-blob) instead, which [Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) hashes from its [journal](/docs/help/glossary#journal) the same way.
+In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f6`, the `rationaleHash` of the owner's two Decisions in command 3. So both of those intents committed to this text when they were sent, and it cannot have changed since without changing its hash. It does not prove that the text is the reason for the trade: the vault stores the hash without checking it.
+
+An intent the agent sends hashes its [rationale blob](/docs/help/glossary#rationale-blob) instead: `maat:v1:` and a JSON object, which the agent puts in the transaction's input before the Builder Code. This cuts the blob out of the agent's transaction and hashes it. `xxd -r -p` turns the hex input into bytes, `grep -ao` keeps the bytes from `maat:v1:` to the blob's closing `}`, and `tr -d '\n'` drops the newline `grep` adds:
+
+```bash
+cast tx 0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6 input --rpc-url "$RPC" | sed 's/^0x//' | xxd -r -p | grep -ao 'maat:v1:.*}' | tr -d '\n' | cast keccak
+```
+
+Output:
+
+```text
+0xb855268417f4edb7b305281f7d7afb5bd7dc5506878a9e36476cf0ca78e0a6c1
+```
+
+It is the `rationaleHash` of the agent's `Decision` in command 3, so the blob in the transaction is the one the intent committed to. Leave out `| tr -d '\n' | cast keccak` to read the blob itself. Its keys are set by [the blob spec](https://github.com/duongnq2798/maat/blob/main/docs/superpowers/specs/2026-11-25-maat-v1-rationale-blob-design.md): `b` is the block the round read the vault at, `62776520`; `c` is the agent's git commit, `b8c914a` in short; `j` is the journal head, the hash of the agent's last [journal](/docs/help/glossary#journal) row when the blob was built, `0x1a06543b...4fb6`; `m` is the model that wrote the text; `r` is the run id, `1795745679507-b16b90d3`; `s` holds, for each stock, the feed round, its time and the pool's premium that the round read; and `t` is the text Claude wrote, with the closed-market note the agent appends:
+
+```text
+GOOGLc is 0% vs a 23.3% target, a drift of -23.3pp, beyond the 5pp band. The amount fits the $11.50 spendable after the compute reserve. The market is closed, so the contract may refuse; the refusal is worth recording. (market closed, NYSE holiday: Thanksgiving)
+```
+
+The journal head ties the blob to the journal the agent publishes. On 2026-11-27 the `run` row of that round in the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch, in `journal/2026-11-27.jsonl`, had the hash `0x1a06543b...4fb6`. This prints that row's hash and kind:
+
+```bash
+curl -s https://raw.githubusercontent.com/duongnq2798/maat/agent-journal/journal/2026-11-27.jsonl | grep -o '"hash":"0x1a06543b[0-9a-f]*","kind":"[a-z]*"'
+```
+
+Output:
+
+```text
+"hash":"0x1a06543be8b8d9ccafdb9e36e34fa907a06fbff23ebc55b879c3c613595b4fb6","kind":"run"
+```
+
+[Match a Decision to the journal](/docs/guides/watch-decisions-onchain#match-a-decision-to-the-journal) hashes a blob from the agent's own journal the same way.
 
 </Step>
 
@@ -264,9 +314,9 @@ In full it is `0x0baa4c52e17e7acc5c7cc851e57a9df523c70b5a1530d77055bb2401370f57f
 
 - Command 1 prints the address in `VAULT`, and the vault's Contract tab on Basescan shows its source as verified.
 - In command 2, the first line is the owner, the second is the address that may send `execute` now, and the mandate's `calendar`, `swapAdapter` and `creditAdapter` are the addresses of the other three rows of the deployments table.
-- Command 3 prints two decoded `Decision` logs: a `BUY` refused with reason `6` and a `BUY` allowed with reason `0`, with the same `rationaleHash`. Its sender check prints the owner's address and `80218021802180218021802180218021` for each transaction.
-- Command 4 prints `open: false` for block `61700601` and `open: true` for block `61745836`.
-- Command 5 prints the `rationaleHash` of command 3.
+- Command 3 prints three decoded `Decision` logs: the owner's `BUY` refused with reason `6` and `BUY` allowed with reason `0`, with the same `rationaleHash`, and the agent's GOOGLc `BUY` refused with reason `6`. Its sender check prints the owner's address for the first two transactions and the agent's CDP Server Wallet address for the third, each followed by `80218021802180218021802180218021`, and then that same agent address as the executor at block `62776552`.
+- Command 4 prints `open: false` for blocks `61700601` and `62776552`, and `open: true` for block `61745836`.
+- Command 5 prints the `rationaleHash` of the owner's two `Decision` events, then the `rationaleHash` of the agent's, hashed from the blob in its transaction, and the journal row whose hash is the blob's journal head.
 
 ## Common mistakes
 
