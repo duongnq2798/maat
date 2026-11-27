@@ -21,11 +21,8 @@ export interface HeroCta {
   href: string;
 }
 
-/**
- * The hero's two CTAs, in order. The first opens the film band while the landing has one (FILM.onLanding), and How it
- * works until then, so it never links a section that is not on the page.
- */
+/** The hero's two CTAs, in order: the film band right under the hero (components/sections/Film.tsx), then the simulator. */
 export const HERO_CTAS: readonly [HeroCta, HeroCta] = [
-  FILM.onLanding ? { label: `Watch the film (${FILM.length})`, href: "#film" } : { label: "How it works", href: "#how" },
+  { label: `Watch the film (${FILM.length})`, href: "#film" },
   { label: "Try to make it say no", href: "#try" },
 ];

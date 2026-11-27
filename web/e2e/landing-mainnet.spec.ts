@@ -191,10 +191,11 @@ for (const vp of VIEWPORTS) {
     expect(NEWEST.sender).toBe("agent");
     await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
 
-    // The primary CTA: the film while the landing has its band, How it works until then; never a dead link.
+    // The primary CTA opens the film band directly under the hero (spec 2026-11-27 section 2); never a dead link.
     const primary = page.locator("[data-hero-cta]").first();
     await expect(primary).toHaveText(HERO_CTAS[0].label);
-    await expect(primary).toHaveAttribute("href", HERO_CTAS[0].href);
+    await expect(primary).toHaveAttribute("href", "#film");
+    await expect(page.locator("#top + #film")).toHaveCount(1);
 
     const words = await forkWordsInFirstScreen(page);
     expect(words.filter((w) => !w.tab)).toEqual([]);

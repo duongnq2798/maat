@@ -63,6 +63,23 @@ export function checkExport(html: string): string[] {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+
+  // The film band (spec 2026-11-27 section 2): the site serves the cut, its poster and its captions itself, and the
+  // browser fetches no byte of the cut before the visitor presses play. An embed would load a third party on arrival.
+  // Attribute names are matched in any case: React writes some in camelCase (playsInline=""), and HTML reads them so.
+  const media = [...html.matchAll(/<(video|audio|source|track)\b[^>]*>/gi)];
+  const videos = media.filter(([, tag]) => tag?.toLowerCase() === "video").map(([el]) => el);
+  need(videos.length > 0, "the film band's <video> is missing");
+  for (const video of videos) {
+    need(/\spreload="none"/i.test(video), `a <video> without preload="none" loads the film before play: ${video.slice(0, 80)}`);
+    need(!/\sautoplay\b/i.test(video), `a <video> plays on its own: ${video.slice(0, 80)}`);
+  }
+  for (const [el] of media) {
+    for (const [, attr, url] of el.matchAll(/\s(src|poster)="([^"]+)"/gi)) {
+      need(/^\/(?!\/)/.test(url ?? ""), `a media ${attr} loads from outside the site: ${url}`);
+    }
+  }
+  need(!/<(?:iframe|embed|object)\b/i.test(html), "the page embeds an iframe, embed or object, which loads before a click");
   return problems;
 }
 

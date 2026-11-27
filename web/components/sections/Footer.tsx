@@ -27,9 +27,17 @@ function lead(deployments: readonly Deployment[]): string {
 
 /**
  * The footer: "Watch it say no.", its lead and CTAs, then the project links. Its top padding is less than a section's,
- * since the section above already ends in its own (spec 2026-11-27 section 4: no empty band above the heading).
+ * since the section above already ends in its own (spec 2026-11-27 section 4: no empty band above the heading). Under
+ * the heading, "Watch the film" opens the landing's film band (spec 2026-11-27 section 2): in the page on the landing
+ * (`onLanding`), and on the landing from every other page the footer closes.
  */
-export function Footer({ deployments = docsData.deployments }: { deployments?: readonly Deployment[] }) {
+export function Footer({
+  deployments = docsData.deployments,
+  onLanding = false,
+}: {
+  deployments?: readonly Deployment[];
+  onLanding?: boolean;
+}) {
   return (
     <footer className="relative overflow-hidden border-t border-line">
       <div aria-hidden="true" className="grid-bg absolute inset-0" />
@@ -42,6 +50,9 @@ export function Footer({ deployments = docsData.deployments }: { deployments?: r
           <div className="flex flex-wrap justify-center gap-3">
             <a className="pill-dark" href={SITE.xUrl}>
               Follow {SITE.xHandle}
+            </a>
+            <a className="pill-line" href={onLanding ? "#film" : "/#film"}>
+              Watch the film
             </a>
             <a className="pill-line" href={SITE.repoUrl}>
               Read the code
