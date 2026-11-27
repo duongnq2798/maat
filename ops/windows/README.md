@@ -40,8 +40,11 @@ setting.
 It opens nothing, prints a `start-maat:` line and exits with code 1 when:
 
 - `<ROOT>` has no `agent\package.json` or no `ops\journal\publish.mjs`;
-- `<ROOT>\agent\data\agent.lock` names the pid of a running `node` process: an agent already runs on the default data
-  folder, and a second one would stop at its start with `another agent (pid <PID>) is running`. A lock whose pid has
+- `<ROOT>\agent\data\agent.lock` names another host: the agent writes `<pid> <host>` and refuses a lock from another
+  host, so check which machine runs the agent first;
+- `<ROOT>\agent\data\agent.lock` names the pid of a running `node` process (as `<pid> <host>`, or a bare pid from an
+  older agent): an agent already runs on the default data folder, and a second one would stop at its start with
+  `another agent (pid <PID>) is running`. A lock whose pid has
   gone, or now belongs to another program, does not stop it: the agent clears such a lock at its start. The check
   looks at `agent\data` only, because the script reads no `MAAT_DATA_DIR`.
 

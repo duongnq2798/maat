@@ -59,10 +59,16 @@ foreach ($need in @('agent\package.json', 'ops\journal\publish.mjs')) {
 $lock = Join-Path $Root 'agent\data\agent.lock'
 if (Test-Path -LiteralPath $lock -PathType Leaf) {
   $text = "$(Get-Content -LiteralPath $lock -Raw -ErrorAction SilentlyContinue)".Trim()
-  if ($text -match '^\d{1,9}$') {
-    $holder = Get-Process -Id ([int]$text) -ErrorAction SilentlyContinue
+  # The agent writes "<pid> <host>" (agent/src/loop/lock.ts); an older agent wrote a bare pid.
+  if ($text -match '^(\d{1,9})(?:\s+(\S+))?$') {
+    $lockPid = [int]$Matches[1]
+    $lockHost = $Matches[2]
+    if ($lockHost -and $lockHost -ne [System.Net.Dns]::GetHostName()) {
+      Exit-StartMaat "agent\data\agent.lock names another host ($lockHost), and the agent refuses such a lock, so nothing was opened. Check which machine runs the agent before you delete the lock."
+    }
+    $holder = Get-Process -Id $lockPid -ErrorAction SilentlyContinue
     if ($null -ne $holder -and $holder.ProcessName -eq 'node') {
-      Exit-StartMaat "an agent (pid $text) already runs on agent\data (lock $lock), so nothing was opened. Stop it with Ctrl-C in its tab first."
+      Exit-StartMaat "an agent (pid $lockPid) already runs on agent\data (lock $lock), so nothing was opened. Stop it with Ctrl-C in its tab first."
     }
   }
 }
