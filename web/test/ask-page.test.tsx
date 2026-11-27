@@ -149,6 +149,10 @@ describe("the owner's switch: /ask opens only when it is on and the inbox and th
     expect(ASK_CLOSED_REASON).toContain("agent-r2, reads no briefs");
     expect(ASK_CLOSED_REASON).toContain("planned to open");
     expect(ASK_CLOSED_REASON).toContain("after Sat 28 Nov 02:00 UTC");
+    // The rule's 24 hours ran out on 26 Nov: the reason states it as met, not as a condition still to come.
+    expect(ASK_CLOSED_REASON).toContain("has been live since 25 Nov");
+    expect(ASK_CLOSED_REASON).not.toMatch(/once the \/proof counting rule/);
+    expect(within(screen.getByRole("region", { name: "Send a brief" })).getByText("The form appears here once /ask opens.")).toBeInTheDocument();
   });
 });
 

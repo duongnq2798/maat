@@ -120,11 +120,14 @@ describe("/proof while deployments/README.md records no MaatInbox", () => {
 });
 
 describe("/proof with a MaatInbox recorded", () => {
-  it("says above the counts that they start when /ask opens, while the owner's switch keeps it closed, and not once it is open", () => {
+  it("says above the counts that no page sends a brief until /ask opens and that a direct brief counts now, while the switch keeps it closed, and not once it is open", () => {
     const { unmount } = render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never }} askOpen={false} />);
     const note = document.querySelector("[data-proof-closed]")!;
     expect(note.textContent).toBe(COUNTS_START_NOTE);
-    expect(note.textContent).toMatch(/^Counts start when \/ask opens\./);
+    expect(note.textContent).toMatch(/^No brief yet: no page on this site sends one until \/ask opens\./);
+    expect(note.textContent).toContain("sent to MaatInbox directly is counted now");
+    // The rule has no start date: it counts every Brief log from the inbox's deployment on.
+    expect(note.textContent).not.toMatch(/counts? start/i);
     expect(note.compareDocumentPosition(document.querySelector("[data-proof-notes]")!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     unmount();
     render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(CHAIN), fetchConfig: never }} askOpen />);

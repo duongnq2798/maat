@@ -158,14 +158,18 @@ function NotRecorded({ lists }: { lists: ProofLists }) {
 }
 
 /**
+ * The line above the counts while the inbox is recorded and the owner's switch keeps /ask closed. The rule counts every
+ * Brief log from the inbox's deployment on, with no start date, so the line says why the counts can be zero, not that
+ * counting waits for /ask.
+ */
+export const COUNTS_START_NOTE =
+  "No brief yet: no page on this site sends one until /ask opens. A brief sent to MaatInbox directly is counted now.";
+
+/**
  * /proof: the counting rule of inbox spec §5, word for word, and the brief lines it gives, counted in the browser
  * from MaatInbox's Brief logs. `initial` is the build's deployments table; the page then reads /data/deployments.json,
  * keeps `initial` when that read fails or gives the same inputs, and reads Base again only when it gives others.
  */
-/** The line above the counts while the inbox is recorded and the owner's switch keeps /ask closed. */
-export const COUNTS_START_NOTE =
-  "Counts start when /ask opens. Until then no page on this site sends a brief; a brief sent to MaatInbox directly still counts.";
-
 export function ProofApp({ initial, deps = {}, askOpen = ASK_OPEN }: { initial: ProofConfig; deps?: ProofDeps; askOpen?: boolean }) {
   const [config, setConfig] = useState(initial);
   // createLedgerClient builds a viem PublicClient, which has request as well.

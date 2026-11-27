@@ -41,10 +41,11 @@ function Section({ id, title, lead, children }: { id: string; title: string; lea
 /**
  * Why /ask is closed once the inbox is recorded: the running agent reads no briefs. A plan, not a promise: the owner
  * opens the page with content/ask-open.ts, in its own pull request, after the agent restarts on a release that reads
- * them and the /proof counting rule has been live for 24 hours (inbox spec §5).
+ * them. The other condition, the /proof counting rule live for 24 hours (inbox spec §5), is met: the rule last changed
+ * on 25 Nov.
  */
 export const ASK_CLOSED_REASON =
-  "Closed on purpose: the release of Maat's agent that runs now, agent-r2, reads no briefs. /ask is planned to open after the agent restarts on a release that does, after Sat 28 Nov 02:00 UTC, once the /proof counting rule has been live for 24 hours.";
+  "Closed on purpose: the release of Maat's agent that runs now, agent-r2, reads no briefs. /ask is planned to open after the agent restarts on a release that does, after Sat 28 Nov 02:00 UTC; the /proof counting rule has been live since 25 Nov.";
 
 /**
  * What the page shows above "Send a brief" until it is open, before the inbox is recorded and after, until the owner's
@@ -117,7 +118,7 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
         {open ? (
           <BriefForm inbox={config.inbox} vault={config.vault} deployTx={config.deployTx} client={client} onIncluded={() => setReloadKey((n) => n + 1)} deps={deps} />
         ) : (
-          <p className="m-0 text-[15px] text-ink-2">The form appears here once the inbox opens.</p>
+          <p className="m-0 text-[15px] text-ink-2">The form appears here once /ask opens.</p>
         )}
       </Section>
 
