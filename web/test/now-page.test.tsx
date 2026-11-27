@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -10,6 +8,7 @@ import { regularSession } from "@/content/calendar";
 import { CHECK_LABELS } from "@/content/engine";
 import { FACTS } from "@/content/facts";
 import { formatInt } from "@/content/format";
+import { pageOgImage } from "@/content/page-cards";
 import { REASON_LABEL, type ReasonCode, reasonText } from "@/content/reasons";
 import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from "@/lib/live/abi";
 import { formatAge, formatDateUtc, formatMultiplier, formatUsd8 } from "@/lib/live/format";
@@ -124,7 +123,7 @@ describe("the /now page", () => {
     expect([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href"))).toEqual(["#main"]);
   });
 
-  it("names itself in its metadata: title, description, canonical /now and the landing's link preview image", () => {
+  it("names itself in its metadata: title, description, canonical /now and its own link preview image", () => {
     expect(metadata.title).toBe("Right now on Base · Maat");
     const description = String(metadata.description);
     expect(description).toBe(
@@ -133,13 +132,7 @@ describe("the /now page", () => {
     expect(description.length).toBeGreaterThanOrEqual(50);
     expect(description.length).toBeLessThanOrEqual(160);
     expect(metadata.alternates?.canonical).toBe("/now");
-    const image = {
-      url: "/opengraph-image.png",
-      type: "image/png",
-      width: 1200,
-      height: 630,
-      alt: readFileSync(join(process.cwd(), "app/opengraph-image.alt.txt"), "utf8"),
-    };
+    const image = pageOgImage("/now");
     const og = metadata.openGraph as { url?: string; title?: string; description?: string; images?: unknown };
     expect(og.url).toBe("/now");
     expect(og.title).toBe("Right now on Base · Maat");
@@ -226,6 +219,16 @@ describe("the /now page", () => {
     expect(method()).toHaveTextContent("nothing is signed");
   });
 
+  it("names every read the page makes in the method's lead, never only eth_call, and the snapshot the week starts from", () => {
+    setup();
+    const lead = within(method()).getByRole("heading", { name: "How this page reads Base" }).parentElement!;
+    expect(lead).not.toHaveTextContent(/only eth_call/i);
+    for (const read of ["eth_call", "eth_getCode", "eth_getLogs", "raw.githubusercontent.com", "nothing is signed or sent"]) expect(lead).toHaveTextContent(read);
+    const week = within(method()).getByRole("heading", { name: "The week and the agent's note" }).parentElement!;
+    expect(week).not.toHaveTextContent("eth_getLogs from the deploy block");
+    expect(week).toHaveTextContent("/data/decisions-snapshot.json");
+  });
+
   it("says a deployed MarketCalendar gives the session, with its Basescan link, once the deployments table names it", () => {
     deployCalendar(CAL);
     setup();
@@ -235,7 +238,11 @@ describe("the /now page", () => {
     const link = within(method()).getByRole("link", { name: CAL });
     expect(link).toHaveAttribute("href", `https://basescan.org/address/${CAL}`);
     expect(link).toHaveAttribute("target", "_blank");
-    expect(method()).not.toHaveTextContent("web/content/calendar.ts");
+    // The session part no longer names the repo calendar; the week's part still does, since the week is always drawn
+    // from it.
+    const part = (name: string) => within(method()).getByRole("heading", { name }).parentElement!;
+    expect(part("The NYSE session")).not.toHaveTextContent("web/content/calendar.ts");
+    expect(part("The week and the agent's note")).toHaveTextContent("web/content/calendar.ts");
     neverSafe();
   });
 

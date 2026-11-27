@@ -79,7 +79,7 @@ export function handTypedFacts(source: string, facts: Readonly<Record<string, st
  * The phrases a page uses to say that nothing of Maat is deployed. Once deployments/README.md records a Base mainnet
  * address, test/docs-content.test.ts fails on every line that still holds one, so the launch edit starts from a list.
  * Left out are words that stay true after a deploy: a fork run broadcasts nothing ("Nothing is broadcast"), where the
- * agent has run ("has run in live mode only on a fork"), and what a deployed vault would do ("Once a vault is deployed").
+ * agent had run before 2026-11-27 ("had run in live mode only on a fork"), and what a deployed vault would do ("Once a vault is deployed").
  */
 const NOT_DEPLOYED = new RegExp(
   [

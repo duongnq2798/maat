@@ -4,15 +4,14 @@ import { ASK_OPEN } from "../content/ask-open";
 import { routeLiveRpc } from "./fake-live-rpc";
 import { collectErrors, lineCount } from "./helpers";
 
-// The landing's nav (components/sections/Nav.tsx) at the widths smoke.spec.ts checks, and at 390 px, a phone. The
-// owner's switch, content/ask-open.ts, adds Ask and Proof before Docs in the bar and in the phone menu; while it is
-// off, neither is there, and the pill reads "View on GitHub". With it on, the pill reads "GitHub", which with narrower
-// links leaves the docked reading its room (e2e/instrument-nav.spec.ts). Up to 720 px the bar's links give way to the
-// Menu.
+// The landing's nav (components/sections/Nav.tsx) at the widths smoke.spec.ts checks, and at 390 px, a phone. Pages
+// first (spec 2026-11-23 section 2, decision 3): the bar and the phone menu list the same pages, Now, Gap Index, Ledger
+// and Docs, and no section of the landing. The owner's switch, content/ask-open.ts, adds Ask and Proof after Ledger in
+// both; while it is off, neither is there. Up to 720 px the bar's links give way to the Menu.
 const ASK = ASK_OPEN ? ["Ask", "Proof"] : [];
-const BAR = ["How it works", "Refusals", "Try it", "Ledger", "Mandate", ...ASK, "Docs"];
-const MENU = ["Ledger", "Now", "Gap Index", ...ASK, "Docs"];
-const PILL = ASK_OPEN ? "GitHub ↗" : "View on GitHub ↗";
+const BAR = ["Now", "Gap Index", "Ledger", ...ASK, "Docs"];
+const MENU = BAR;
+const PILL = "View on GitHub ↗";
 
 for (const width of [360, 390, 768, 1024, 1440, 1920]) {
   test(`at ${width} px the nav ${ASK_OPEN ? "links" : "leaves out"} Ask and Proof, fits, tabs in order and passes axe`, async ({ page }) => {

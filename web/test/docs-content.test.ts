@@ -364,7 +364,7 @@ describe("the launch list: once deployments/README.md records Maat's Base mainne
     const tx = `0x${String(digit).repeat(64)}`;
     return `| Base mainnet | ${contract} | [\`${address}\`](https://basescan.org/address/${address}) | [\`${tx}\`](https://basescan.org/tx/${tx}) | |`;
   };
-  /** The table with all four rows filled with test values. Parsed inside each test, so a bad table fails that test only. */
+  /** The table with every row filled with test values. Parsed inside each test, so a bad table fails that test only. */
   const recorded = () => {
     let digit = 0;
     return parseDeployments(readme.replace(ROW, (_row, contract: string) => filledRow(contract, ++digit)));
@@ -375,10 +375,11 @@ describe("the launch list: once deployments/README.md records Maat's Base mainne
   /** The line number of the first line of `source` that holds `text`; 0 when none does. */
   const lineOf = (source: string, text: string) => source.split("\n").findIndex((l) => l.includes(text)) + 1;
 
-  it("tests with the four rows of the table filled with test values, and with all of them empty", () => {
-    const four = ["MarketCalendar", "AerodromeSwapAdapter", "AaveV4CreditAdapter", "MandateVault"];
-    expect(recorded().filter(hasAddress).map((d) => d.contract)).toEqual(four);
-    expect(parseDeployments(emptied).map((d) => [d.contract, hasAddress(d)])).toEqual(four.map((c) => [c, false]));
+  it("tests with the five rows of the table filled with test values, and with all of them empty", () => {
+    // The four contracts of Deploy.s.sol and the inbox of DeployMaatInbox.s.sol (test/docs-gen.test.ts reads them).
+    const five = ["MarketCalendar", "AerodromeSwapAdapter", "AaveV4CreditAdapter", "MandateVault", "MaatInbox"];
+    expect(recorded().filter(hasAddress).map((d) => d.contract)).toEqual(five);
+    expect(parseDeployments(emptied).map((d) => [d.contract, hasAddress(d)])).toEqual(five.map((c) => [c, false]));
   });
 
   it("reads every docs page and the ABI files' note, and lists a line that says nothing is deployed by its file and line", () => {
@@ -423,7 +424,7 @@ describe("the launch list: once deployments/README.md records Maat's Base mainne
     expect(launchList(parseDeployments(readme))).toEqual([]);
   });
 
-  it("finds none either with all four rows of the table filled with test values", () => {
+  it("finds none either with all five rows of the table filled with test values", () => {
     expect(launchList(recorded())).toEqual([]);
   });
 });

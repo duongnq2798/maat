@@ -4,7 +4,7 @@ description: "How each guarantee is tested: contract unit and fork suites, agent
 type: concept
 audience: [evaluator, developer]
 status: fork-tested
-lastReviewed: 2026-11-25
+lastReviewed: 2026-11-26
 sources:
   - contracts/test/MandateVault.t.sol
   - contracts/test/GuardLib.t.sol
@@ -263,7 +263,7 @@ The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat
 
 <Callout type="warning" title="Not exercised">
 
-Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no output from the real Claude API is committed. The CDP code is tested against a fake client only, and has never run against the real CDP. These tests show the agent's logic, not what those services do.
+Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no unit or fork test calls the real Claude API. The CDP code is tested against a fake client only. Outside the tests, Maat's live agent has called the real Claude API and run with its real CDP account since 2026-11-27, and its round summaries, written by Claude, are on the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch. Its first `Decision` went through the CDP account at 02:14 UTC that day ([transaction](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6)). These tests show the agent's logic, not what those services do.
 
 </Callout>
 
@@ -288,6 +288,7 @@ The built site is checked too. `npm run check:out` reads the static export and f
 - a page loads a third-party script, or the landing page, `/now`, `/gap-index` or a docs page loads Google Fonts at runtime;
 - a docs page lacks `lang="en"`, the docs title suffix, a description of the right length, a canonical link or an absolute OG image;
 - a docs page's `og:image` or `twitter:image` is not the page's own link preview image, or that image is missing or is not a PNG of the size its tags give;
+- the `og:image` or `twitter:image` of `/ask`, `/now`, `/ledger`, `/gap-index` or `/proof` is not that page's own card (`/og/ask.png`, `/og/now.png`, `/og/ledger.png`, `/og/gap-index.png` or `/og/proof.png`), or that card is missing or is not a PNG of the size its tags give;
 - a page links a same-page anchor (`#id`) that is not on it, or a docs page links a docs page that was not exported or another file that is not in the export (anchors on other pages are checked by `docs-content.test.ts`);
 - an MDX block component ended up inside a paragraph;
 - a Markdown copy still holds the tag of a component that prints data, such as a reference entry, a table or a diagram, instead of its text;
@@ -298,6 +299,7 @@ The built site is checked too. `npm run check:out` reads the static export and f
 - with `CI` or `VERCEL` set, the site URL's host is `localhost`, `127.0.0.1` or `[::1]`, or an exported file holds an http URL on `localhost` that no docs page writes in its own text;
 - the Right now on Base page, `/now`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/now` or an absolute OG image, or `sitemap.xml` leaves it out;
 - the landing page's live strip or `/now`, which read Base mainnet in the browser, has a reading in the exported HTML (a LIVE pill, a Basescan block link or a verdict line) instead of its reading state;
+- `/now` lacks its market week's waiting state in the exported HTML, or holds what the browser draws from the visitor's clock and its reads: the week's now line, a session line, a `Decision` tick or the agent's note;
 - the Weekend Gap Index page, `/gap-index`, lacks `lang="en"`, its title or heading, a description of the right length, a canonical link to `/gap-index` or an absolute OG image, or `sitemap.xml` leaves it out;
 - `/gap-index`, which is built from the committed edition files, leaves the NVDAc hours of its first measured window out of its markup (its inline scripts do not count), or has "safe", in any case, anywhere in its HTML, even inside another word;
 - the mainnet ledger page, `/ledger`, shows its waiting state although `deployments/README.md` records a vault, or does not show it while none is recorded; lacks its connecting line, or has a chain reading in its HTML (a "Reading Base mainnet" line or a Basescan transaction link), while a vault is recorded; lacks a description of the right length, an absolute OG image or a canonical link to `/ledger`; loads Google Fonts; or `sitemap.xml` leaves it out;
@@ -314,7 +316,7 @@ These gates prove that numbers, signatures, excerpts, links and the shape of the
 | --- | --- |
 | **No audit** | Nobody independent has reviewed the code. See [What Maat does not claim](/docs/security/not-claimed) |
 | **Fuzzing beyond the mocks** | Only the [live fork run](#live-fork-run-against-the-deployed-vault) fuzzes against the real contracts, in short campaigns at one block a day. The offline invariant suite runs on mocks, and every other contract test, the other fork tests included, takes fixed inputs. [What the invariants do not cover](#what-the-invariants-do-not-cover) lists what the offline suite leaves out |
-| **The real Claude API** | The proposer runs against a fake client, and no output from the real API is committed |
+| **The real Claude API** | The proposer runs against a fake client, and no unit or fork test calls the real API. Since 2026-11-27 the live agent's round summaries, written by Claude, are on the public `agent-journal` branch, but no test checks them |
 | **The real CDP wallet and its policy** | The CDP code runs against a fake client, and no test shows that CDP enforces the policy |
 | **Mainnet** | The owner deployed the four Maat contracts on Base mainnet, but every test is still a unit test or a fork |
 | **A real split or dividend** | The assumption that the feed includes the multiplier has not been observed across one |

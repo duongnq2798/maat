@@ -63,6 +63,8 @@ export interface FakeTx {
   logs?: FakeLog[];
   /** A contract creation's new address. */
   contractAddress?: Address;
+  /** The calldata eth_getTransactionByHash gives; defaults to "0x". */
+  input?: Hex;
 }
 
 export interface ProofChain {
@@ -140,14 +142,22 @@ const VAULT_EVENTS = parseAbi([
   "event MultiplierChangeDetected(address indexed token, uint256 oldMultiplier, uint256 newMultiplier)",
 ]);
 
-/** The vault's Decision log for intent `id`, as execute() emits it: an allowed BUY of 1 unit of `token`. */
-export function decisionLog(vault: Address, id: number, token: Address = ZERO_ADDRESS): FakeLog {
+/**
+ * The vault's Decision log for intent `id`, as execute() emits it: a BUY of 1 unit of `token`, allowed with reason 0
+ * (OK) and a zero rationaleHash unless `opts` says otherwise. `reason` is the uint8 of enum Reason (0 is OK).
+ */
+export function decisionLog(
+  vault: Address,
+  id: number,
+  token: Address = ZERO_ADDRESS,
+  opts: { allowed?: boolean; reason?: number; rationaleHash?: Hex } = {},
+): FakeLog {
   return {
     address: vault,
     topics: encodeEventTopics({ abi: VAULT_EVENTS, eventName: "Decision", args: { intentId: toHex(id, { size: 32 }), token } }) as Hex[],
     data: encodeAbiParameters(
       [{ type: "uint8" }, { type: "uint256" }, { type: "bool" }, { type: "uint8" }, { type: "bytes32" }],
-      [0, 1n, true, 0, ZERO32],
+      [0, 1n, opts.allowed ?? true, opts.reason ?? 0, opts.rationaleHash ?? ZERO32],
     ),
   };
 }
@@ -305,7 +315,7 @@ function rpcTx(t: FakeTx) {
     maxFeePerGas: "0x1",
     maxPriorityFeePerGas: "0x1",
     hash: lower(t.hash),
-    input: "0x",
+    input: t.input ?? "0x",
     nonce: toHex(t.nonce),
     to: t.to === null ? null : lower(t.to),
     transactionIndex: "0x0",

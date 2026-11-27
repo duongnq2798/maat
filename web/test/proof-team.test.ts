@@ -412,11 +412,17 @@ describe("what the trace hard-codes, since the script has no keccak", () => {
 });
 
 describe("the committed team lists", () => {
-  it("lists the owner's sent transactions, the first four being the deploys in deployments/README.md", () => {
+  it("lists the owner's sent transactions in nonce order, with every deploy in deployments/README.md among them", () => {
     const owner = PROOF_SENDS.find((s) => lower(s.wallet) === lower(OWNER));
-    expect(owner?.txs).toHaveLength(9);
-    const deploys = docsData.deployments.filter((r) => r.network === "Base mainnet" && r.tx !== "").map((r) => lower(r.tx));
-    expect(owner?.txs.slice(0, 4).map(lower)).toEqual(deploys.slice(0, 4));
+    // Nonces 0 to 8, then nonce 10; nonce 9, the setExecutor, left an ExecutorSet log of the vault.
+    expect(owner?.txs).toHaveLength(10);
+    const txs = (owner?.txs ?? []).map(lower);
+    const rows = docsData.deployments.filter((r) => r.network === "Base mainnet" && r.tx !== "");
+    const deploys = rows.map((r) => lower(r.tx));
+    // The owner deployed every row, in table order: Deploy.s.sol's four contracts at nonces 0 to 3, MaatInbox at nonce 10.
+    expect(txs.filter((t) => deploys.includes(t))).toEqual(deploys);
+    expect(txs.slice(0, 4)).toEqual(deploys.slice(0, 4));
+    expect(txs.at(-1)).toBe(lower(rows.find((r) => r.contract === "MaatInbox")?.tx ?? ""));
     expect(new Set(PROOF_SENDS.map((s) => lower(s.wallet))).size).toBe(PROOF_SENDS.length);
   });
 

@@ -2,6 +2,8 @@ import { Resvg } from "@resvg/resvg-js";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import satori, { type SatoriOptions } from "satori";
+import { ASK_INVITATION } from "../content/ask-card";
+import { type CardPage, PAGE_CARDS, type PageCard } from "../content/page-cards";
 import { REASON_LABEL, type RefusalCode, reasonText } from "../content/reasons";
 import { OG_IMAGE_SIZE, type OgCard } from "../lib/docs/og";
 import { SITE } from "../lib/site";
@@ -22,7 +24,7 @@ const OG_ALT = `Maat: the AI agent that knows when not to trade. The market sess
 /** Wide enough for mark + gap + "maat". Tune by eye in Step 5 so the wordmark ends 4-8 px from the right edge. */
 const LOCKUP_WIDTH = 184;
 
-function fonts(): SatoriOptions["fonts"] {
+export function fonts(): SatoriOptions["fonts"] {
   const sans = (file: string) => readFileSync(join(FONT_DIR, "geist-sans", file));
   const mono = (file: string) => readFileSync(join(FONT_DIR, "geist-mono", file));
   return [
@@ -64,8 +66,8 @@ export function avatarSvg(): string {
   );
 }
 
-const dataUri = (svg: string) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
-const png = (svg: string, width: number): Buffer =>
+export const dataUri = (svg: string) => `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
+export const png = (svg: string, width: number): Buffer =>
   new Resvg(svg, { fitTo: { mode: "width", value: width } }).render().asPng();
 
 export function pngSize(buf: Buffer): { width: number; height: number } {
@@ -91,7 +93,7 @@ export function pngToIco(pngData: Buffer, size: number): Buffer {
 
 // ---- satori layouts (every element with more than one child needs display: flex)
 
-function Grid() {
+export function Grid() {
   return (
     <div
       style={{
@@ -108,7 +110,7 @@ function Grid() {
   );
 }
 
-function Lockup({ mark }: { mark: number }) {
+export function Lockup({ mark }: { mark: number }) {
   return (
     <div style={{ display: "flex", alignItems: "center", gap: Math.round(mark * 0.33) }}>
       <img src={dataUri(markSvg("dark"))} width={mark} height={mark} />
@@ -322,6 +324,100 @@ function DocsOg({ card }: { card: OgCard }) {
   );
 }
 
+/**
+ * /ask's link preview (content/ask-card.ts): the lockup, the invitation line with its second sentence in the accent, the
+ * mechanism line, and the mark at rest beside them, inside the landing image's 64 x 72 px margins. It shows no verdict
+ * and no figure, so it claims no weighing.
+ */
+function AskOg() {
+  const [lure, lastWord] = ASK_INVITATION.split(/(?<=\.) /);
+  return (
+    <div
+      style={{
+        width: OG_IMAGE_SIZE.width,
+        height: OG_IMAGE_SIZE.height,
+        display: "flex",
+        position: "relative",
+        backgroundColor: PALETTE.paper,
+        fontFamily: "Geist",
+        color: PALETTE.ink,
+      }}
+    >
+      <Grid />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "64px 72px",
+          width: 840,
+        }}
+      >
+        <Lockup mark={44} />
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 62, fontWeight: 600, letterSpacing: "-0.045em", lineHeight: 1.04 }}>
+          <span>{lure}</span>
+          <span style={{ color: PALETTE.accent }}>{lastWord}</span>
+        </div>
+        <span style={{ fontFamily: "Geist Mono", fontSize: 22, fontWeight: 500, color: PALETTE.ink2 }}>Claude proposes. The vault decides.</span>
+      </div>
+      <div style={{ position: "absolute", right: 72, top: 205, display: "flex" }}>
+        <img src={dataUri(markSvg("dark"))} width={220} height={220} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The link preview of /now, /ledger, /gap-index or /proof (content/page-cards.ts), laid out as /ask's: the lockup with
+ * the page's h1 beside it, as a docs card names "Docs", the line from the page's lead with its second part in the
+ * accent, the tagline, and the mark at rest beside them, inside the landing image's 64 x 72 px margins. The longer a
+ * line, the smaller its type, so every line fits its column. It shows no verdict and no figure, so it claims no weighing.
+ */
+function PageOg({ card }: { card: PageCard }) {
+  const length = card.line.join(" ").length;
+  const size = length <= 90 ? 58 : length <= 125 ? 50 : 44;
+  return (
+    <div
+      style={{
+        width: OG_IMAGE_SIZE.width,
+        height: OG_IMAGE_SIZE.height,
+        display: "flex",
+        position: "relative",
+        backgroundColor: PALETTE.paper,
+        fontFamily: "Geist",
+        color: PALETTE.ink,
+      }}
+    >
+      <Grid />
+      <div
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          justifyContent: "space-between",
+          padding: "64px 72px",
+          // The content box: the line ends 76 px left of the mark (satori adds the padding to this width).
+          width: 760,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <Lockup mark={44} />
+          <span style={{ fontSize: 31, fontWeight: 500, letterSpacing: "-0.03em", color: PALETTE.ink2 }}>{card.heading}</span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: size, fontWeight: 600, letterSpacing: "-0.04em", lineHeight: 1.08 }}>
+          <span>{card.line[0]}</span>
+          <span style={{ color: PALETTE.accent }}>{card.line[1]}</span>
+        </div>
+        <span style={{ fontFamily: "Geist Mono", fontSize: 22, fontWeight: 500, color: PALETTE.ink2 }}>{SITE.tagline}</span>
+      </div>
+      <div style={{ position: "absolute", right: 72, top: 205, display: "flex" }}>
+        <img src={dataUri(markSvg("dark"))} width={220} height={220} />
+      </div>
+    </div>
+  );
+}
+
 /** Content sits right of x = 560 so the avatar never covers it. */
 function Banner() {
   return (
@@ -367,6 +463,26 @@ function Banner() {
 /** The landing's link preview (brand/out/og.png, app/opengraph-image.png) as SVG. `onNodeDetected` gets the box of every element, so a test can see what it shows. */
 export function ogSvg(onNodeDetected?: SatoriOptions["onNodeDetected"], f: SatoriOptions["fonts"] = fonts()): Promise<string> {
   return satori(<Og />, { width: 1200, height: 630, fonts: f, onNodeDetected });
+}
+
+/** /ask's link preview as SVG, with the same `onNodeDetected` as ogSvg. */
+export function askOgSvg(onNodeDetected?: SatoriOptions["onNodeDetected"], f: SatoriOptions["fonts"] = fonts()): Promise<string> {
+  return satori(<AskOg />, { ...OG_IMAGE_SIZE, fonts: f, onNodeDetected });
+}
+
+/** /ask's link preview as a PNG, drawn when the site is built (app/og/ask.png/route.ts). Never written to brand/out. */
+export async function renderAskOg(): Promise<Buffer> {
+  return png(await askOgSvg(), OG_IMAGE_SIZE.width);
+}
+
+/** The link preview of /now, /ledger, /gap-index or /proof as SVG, with the same `onNodeDetected` as ogSvg. */
+export function pageOgSvg(page: CardPage, onNodeDetected?: SatoriOptions["onNodeDetected"], f: SatoriOptions["fonts"] = fonts()): Promise<string> {
+  return satori(<PageOg card={PAGE_CARDS[page]} />, { ...OG_IMAGE_SIZE, fonts: f, onNodeDetected });
+}
+
+/** A page's link preview as a PNG, drawn when the site is built (app/og/<page>.png/route.ts). Never written to brand/out. */
+export async function renderPageOg(page: CardPage): Promise<Buffer> {
+  return png(await pageOgSvg(page), OG_IMAGE_SIZE.width);
 }
 
 /** The X header (brand/out/x-banner.png) as SVG, with the same `onNodeDetected` as ogSvg. */

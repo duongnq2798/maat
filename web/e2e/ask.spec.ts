@@ -36,7 +36,8 @@ const DEPLOY = 61_698_517n;
 const HEAD = DEPLOY + 120_000n;
 const OWNER = getAddress("0x00000000000000000000000000000000000000a1");
 const SENDER = getAddress("0x00000000000000000000000000000000000a11ce");
-// A test inbox, served to the real build only by the second describe below; deployments/README.md records none.
+// A test inbox, served to the real build only by the second describe below, in place of the one deployments/README.md
+// records.
 const INBOX = getAddress("0x00000000000000000000000000000000000b0001");
 const INBOX_TX = hash32(4242);
 const SENT: Hash = `0x${"5e".repeat(32)}`;
@@ -128,7 +129,7 @@ async function serious(page: Page): Promise<string[]> {
     .map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
 }
 
-test.describe("/ask with the committed deployments table, which records no MaatInbox", () => {
+test.describe("/ask with the committed deployments table and the owner's switch off", () => {
   test("says the inbox is not open, offers no send, and asks the real vault for free", async ({ page }) => {
     const errors = collectErrors(page);
     await installWallet(page);
@@ -177,12 +178,18 @@ async function serveJournal(page: Page) {
   });
 }
 
-/** Serves the test inbox in /data/deployments.json, and the owner's switch in /data/ask.json as `open`. */
+/**
+ * Serves the test inbox in /data/deployments.json, in place of any MaatInbox row the table records, and the owner's
+ * switch in /data/ask.json as `open`.
+ */
 async function serveInbox(page: Page, open: boolean) {
   await page.route("**/data/deployments.json", async (route) => {
     const res = await route.fetch();
-    const file = (await res.json()) as { contracts: unknown[] };
-    file.contracts.push({ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: INBOX_TX, date: "2026-11-25" });
+    const file = (await res.json()) as { contracts: { contract: string }[] };
+    file.contracts = [
+      ...file.contracts.filter((r) => r.contract !== "MaatInbox"),
+      { network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: INBOX_TX, date: "2026-11-25" } as never,
+    ];
     await route.fulfill({ response: res, json: file });
   });
   await page.route("**/data/ask.json", async (route) => route.fulfill({ response: await route.fetch(), json: { open } }));
@@ -220,12 +227,15 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     const first = feed.locator('[data-brief-id="1"]');
     await expect(first.locator("[data-brief-text]")).toHaveText(HOSTILE_SHOWN);
     await expect(first).toContainText("0x0000");
-    await expect(first.locator("[data-brief-answer]")).toHaveText(`Maat replied: ${REPLY}`);
+    await expect(first.locator("[data-reply]")).toHaveText(`Maat's agent replied: ${REPLY}journal 2026-11-28.jsonl line 1 · no agent commit`);
+    // The row is final and not adopted, so no intent took the brief to the vault.
+    await expect(first.locator("[data-verdict]")).toHaveText("Vault's verdict: none, no intent took it to the vault");
     await expect(feed.locator("a, img")).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as { __pwned?: number }).__pwned)).toBeUndefined();
-    await expect(page.getByTestId("count-briefs")).toHaveText("1");
-    await expect(page.getByTestId("count-wallets")).toHaveText("1");
-    for (const id of ["count-persuaded", "count-allowed", "count-refused"]) await expect(page.getByTestId(id)).toHaveText("not available yet");
+    // This chain answers /ask's own reads but not /proof's team trace (executor(), each wallet's code and nonce), so
+    // the counters that split outside from team say so; e2e/ask-weighing.spec.ts counts on a chain that answers it.
+    await expect(page.getByText("1 brief from 1 wallet read from the inbox's logs, team included.")).toBeVisible();
+    for (const id of ["count-briefs", "count-wallets", "count-persuaded", "count-allowed", "count-refused"]) await expect(page.getByTestId(id)).toHaveText("team set not read");
 
     const send = page.getByRole("button", { name: "Send with Fake Wallet" });
     await expect(send).toBeDisabled();
@@ -247,8 +257,8 @@ test.describe("/ask with a test MaatInbox served in deployments.json and the swi
     expect(seen.methods).toContain("eth_getTransactionReceipt");
 
     await expect(feed.locator('[data-brief-id="2"] [data-brief-text]')).toHaveText("sell it all");
-    await expect(feed.locator('[data-brief-id="2"] [data-brief-answer]')).toHaveCount(0);
-    await expect(page.getByTestId("count-briefs")).toHaveText("2");
+    await expect(feed.locator('[data-brief-id="2"] [data-reply]')).toHaveText("Maat's agent: no reply yet.");
+    await expect(page.getByText("2 briefs from 1 wallet read from the inbox's logs, team included.")).toBeVisible();
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);
   });

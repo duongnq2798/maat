@@ -30,8 +30,11 @@ function stepD(pts: Pt[], from: number, to: number, start: number, stepAtFrom: b
   return `${d}H${x(to)}`;
 }
 
-/** The SVG's geometry, or null when there is no point to plot. */
-function geometry(row: TokenRow, w: CompleteWindow) {
+/**
+ * The SVG's geometry in its 1000x300 viewBox, or null when there is no point to plot. The Gap Index card
+ * (brand/gap-card.tsx) draws the same paths, scaled to its own size.
+ */
+export function chartGeometry(row: TokenRow, w: CompleteWindow) {
   const pool = toPts(row.series.pool);
   const feed = toPts(row.series.feed);
   const held = row.freeze ? Number(row.freeze.from.answer) : null;
@@ -90,8 +93,8 @@ function summary(row: TokenRow, w: CompleteWindow): string {
   }
   const g = row.largestGap;
   const back = `feed came back ${signedBps(f.returnMoveBps)}.`;
-  if (!g) return `${head} ${formatHours(f.hours)} frozen, no swap meanwhile, ${back}`;
-  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${gapPrices(g)}. ${formatHours(f.hours)} frozen, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
+  if (!g) return `${head} ${formatHours(f.hours)} held without an update, no swap meanwhile, ${back}`;
+  return `${head} Largest gap ${gapBps(g)}, pool ${gapSide(g)} the held answer. ${gapPrices(g)}. ${formatHours(f.hours)} held without an update, ${plural(f.swapsWhileFrozen, "swap", "swaps")} meanwhile, ${back}`;
 }
 
 /** The two prices a largest gap compares, as the edition holds them, 8 decimals each. */
@@ -135,7 +138,7 @@ function Header({ row }: { row: TokenRow }) {
         {f ? (
           <>
             <li>
-              <strong className="font-semibold text-ink">{formatHours(f.hours)}</strong> frozen
+              <strong className="font-semibold text-ink">{formatHours(f.hours)}</strong> held without an update
             </li>
             {g ? (
               <li>
@@ -157,6 +160,11 @@ function Header({ row }: { row: TokenRow }) {
     </div>
   );
 }
+
+/** The legend's two keys, and what a chart with no point says instead; the Gap Index card prints the same. */
+export const POOL_KEY = `Pool price after the last swap of each ${BUCKET_SEC / 60}-minute bucket`;
+export const FEED_KEY = "Feed answer, dashed while held without an update";
+export const NOTHING_TO_PLOT = "Nothing to plot: no swap and no feed update in this window.";
 
 /** A short key line for the legend, drawn like the series it names. */
 function Key({ dashed, className }: { dashed?: boolean; className: string }) {
@@ -230,7 +238,7 @@ function TableView({ row, w }: { row: TokenRow; w: CompleteWindow }) {
  * that fades out, the feed as a thin step line, dashed where it held its answer, and a dot at the last pool point.
  */
 export function GapChart({ row, window: w }: { row: TokenRow; window: CompleteWindow }) {
-  const geo = geometry(row, w);
+  const geo = chartGeometry(row, w);
   const gradient = `gap-fill-${w.id}-${row.symbol}`;
   const color = tone(row);
   return (
@@ -284,20 +292,20 @@ export function GapChart({ row, window: w }: { row: TokenRow; window: CompleteWi
             {geo.line ? (
               <li className="flex items-center gap-2">
                 <Key className={color} />
-                Pool price after the last swap of each {BUCKET_SEC / 60}-minute bucket
+                {POOL_KEY}
               </li>
             ) : null}
             {geo.solid || geo.dashed ? (
               <li className="flex items-center gap-2">
                 <Key dashed className="text-ink-2" />
-                Feed answer, dashed while held without an update
+                {FEED_KEY}
               </li>
             ) : null}
           </ul>
         </div>
       ) : (
         <p className="m-0 flex h-[120px] items-center justify-center rounded-xl border border-dashed border-line-strong px-4 text-center text-[13px] text-ink-2">
-          Nothing to plot: no swap and no feed update in this window.
+          {NOTHING_TO_PLOT}
         </p>
       )}
       {row.largestGap ? (

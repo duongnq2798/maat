@@ -47,7 +47,7 @@ export interface ProofSeeds {
  * A cache that took logs from a snapshot is used only while the site serves that same file, the rule loadLedger keeps
  * it by (lib/chain/load.ts), so a file that is replaced or removed takes with it what it left in this browser.
  */
-async function vaultSeed(vault: string, seeds: ProofSeeds): Promise<VaultSeed | null> {
+export async function vaultSeed(vault: string, seeds: ProofSeeds): Promise<VaultSeed | null> {
   const raw = await Promise.resolve(seeds.snapshot).catch(() => null);
   const file = snapshotSeed(raw, vault);
   const served = file ? parseSnapshot(raw, vault as Address) : null;

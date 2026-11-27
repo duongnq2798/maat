@@ -2,8 +2,8 @@
   "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise.",
   "captions": {
     "gap-held": "{gap.close} → {gap.open}. NYSE is closed, and the NVDAc price feed held one answer for {gap.hours} h.",
-    "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the frozen answer.",
-    "decides-how": "Claude proposes. The vault, a contract on Base, runs its checks and decides.",
+    "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the held answer.",
+    "decides-how": "Claude proposes. The vault decides. It is a contract on Base that checks every intent.",
     "decides-log": "A refusal does not revert: the vault records a typed Decision either way, with its reason code.",
     "decides-clip": "On Basescan: the vault's Decision event, with its reason code.",
     "mandate-brief": "The owner's brief: a basket of NVDAc, GOOGLc and AAPLc, kept inside a mandate the vault enforces.",
@@ -25,13 +25,13 @@
     "early-placeholder": "Placeholder: the early-close pair is not on Base yet.",
     "pair-partial": "Placeholder: one of the two transactions is not on Base yet.",
     "brief-ask": {
-      "text": "Briefs from any wallet reach the agent through an onchain inbox. Claude reads them; the vault keeps the last word.",
+      "text": "Try to talk Maat's agent into a bad trade. The vault has the last word.",
       "when": { "present": "deployments.inbox" },
       "else": "brief-ask-soon"
     },
-    "brief-ask-soon": "Once the inbox contract is on Base, any wallet can send the agent a brief. Claude reads it; the vault keeps the last word.",
-    "brief-tx": "On Base: an outside wallet's brief, and the vault's Decision on the agent's answer.",
-    "brief-placeholder": "Placeholder: no outside brief and answer on Base yet.",
+    "brief-ask-soon": "Once the inbox contract is on Base, any wallet can try to talk Maat's agent into a bad trade. The vault has the last word.",
+    "brief-tx": "On Base: an outside wallet's brief to Maat's agent, and the vault's verdict on its answer.",
+    "brief-placeholder": "Placeholder: no outside brief to Maat's agent, and no verdict on its answer, on Base yet.",
     "receipts-contracts": {
       "text": "{deployments.count} contracts on Base mainnet. On {deployments.verifiedOn}, Basescan showed each one's source as verified.",
       "when": { "present": "deployments.verifiedOn" },

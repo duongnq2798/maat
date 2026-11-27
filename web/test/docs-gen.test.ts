@@ -500,14 +500,14 @@ describe("parseDeployments", () => {
   const TX = `0x${"22".repeat(32)}`;
   const table = (...rows: string[]) => ["# Deployments", "", "| Network | Contract | Address | Tx | Date |", "|---|---|---|---|---|", ...rows].join("\n");
 
-  it("reads one row per contract the deploy script deploys, on Base mainnet, from deployments/README.md", () => {
+  it("reads one row per contract the deploy scripts deploy, on Base mainnet and in deploy order, from deployments/README.md", () => {
+    // Deploy.s.sol deploys the vault and the three contracts it uses; DeployMaatInbox.s.sol, broadcast later, the inbox.
+    const created = ["Deploy.s.sol", "DeployMaatInbox.s.sol"].flatMap((file) =>
+      [...readRepo(`contracts/script/${file}`).matchAll(/\bnew (\w+)\(/g)].map((m) => m[1]),
+    );
+    expect(created).toEqual(["MarketCalendar", "AerodromeSwapAdapter", "AaveV4CreditAdapter", "MandateVault", "MaatInbox"]);
     const rows = parseDeployments(readRepo("deployments/README.md"));
-    expect(rows.map((r) => [r.network, r.contract])).toEqual([
-      ["Base mainnet", "MarketCalendar"],
-      ["Base mainnet", "AerodromeSwapAdapter"],
-      ["Base mainnet", "AaveV4CreditAdapter"],
-      ["Base mainnet", "MandateVault"],
-    ]);
+    expect(rows.map((r) => [r.network, r.contract])).toEqual(created.map((c) => ["Base mainnet", c]));
   });
 
   it("reads the first table only, an empty cell as empty, and a cell's text without its link or code marks", () => {

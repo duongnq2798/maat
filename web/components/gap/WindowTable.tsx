@@ -9,7 +9,8 @@ import { GAP_TONE, gapPrices } from "./GapChart";
 /** Links off the site (Basescan) open in a new tab. */
 const EXTERNAL = { target: "_blank", rel: "noopener noreferrer" } as const;
 
-const COLUMNS = [
+/** The table's columns after Token, with their headers; the Gap Index card labels its figures with them. */
+export const COLUMNS = [
   { key: "hours", label: "Without a feed update" },
   { key: "swapsWhileFrozen", label: "Swaps meanwhile" },
   { key: "gap", label: "Largest gap" },

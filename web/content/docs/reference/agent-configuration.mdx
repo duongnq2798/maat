@@ -33,7 +33,7 @@ sources:
 next: [reference/agent-scripts, guides/run-the-agent]
 ---
 
-The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested, and it has run in [live mode](/docs/help/glossary#live-mode) only on a fork. The fork run used a scripted proposer and a local sender, and the path through the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) is tested against a fake client only. No output from the real Claude API is committed yet, and CDP has never been run for real.
+The agent takes all of its settings from environment variables. This page lists each one, says whether you must set it, gives its default, and says what it changes in the loop, so you can fill in a `.env` file without reading the code. The agent is built and fork-tested. Since 2026-11-27 it runs in [live mode](/docs/help/glossary#live-mode) on Base mainnet, with the real Claude API and the [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet), and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. The fork run used a scripted proposer and a local sender, and the path through the CDP Server Wallet is tested against a fake client.
 
 <EnvTable />
 

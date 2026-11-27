@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BEATS, CLIPS, FPS, shotCues, timeline, txState } from "./lib/beats.mjs";
+import { BEATS, CLIPS, FPS, scrollGoal, shotCues, timeline, txState } from "./lib/beats.mjs";
 import {
   captionHtml,
   captionTopInPage,
@@ -16,15 +16,28 @@ import {
   contentBottomInPage,
   deploymentsCardHtml,
   endCardHtml,
+  fitProblem,
   overlapProblem,
+  paceProblem,
   titleCardHtml,
 } from "./lib/cards.mjs";
 import { captionProblems, pickCaption, renderCaption } from "./lib/captions.mjs";
 import { frameListText } from "./lib/ffmpeg.mjs";
 import { FORMATS } from "./lib/formats.mjs";
-import { fetchTx } from "./lib/rpc.mjs";
+import { briefReply, readJournal } from "./lib/journal.mjs";
+import { fetchInput, fetchOwner, fetchTx } from "./lib/rpc.mjs";
 import { CAPTURED, OPTIONAL_KEYS, capturedValue, ciAgeWarning, ciFigures, deploymentRows, fileSources } from "./lib/sources.mjs";
-import { readTxConfig, tokenSymbols, txCardHtml, txCardModel, txProblems } from "./lib/tx.mjs";
+import {
+  persuasionCardHtml,
+  persuasionParts,
+  persuasionProblems,
+  persuasionReading,
+  readTxConfig,
+  tokenSymbols,
+  txCardHtml,
+  txCardModel,
+  txProblems,
+} from "./lib/tx.mjs";
 
 export const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const CLIP_EXTENSIONS = [".mp4", ".mov", ".webm", ".mkv"];
@@ -93,12 +106,18 @@ async function capturePage(page, { site, shot, format, dir, captured, warnings }
     else if (step.scroll) {
       const target = page.locator(step.scroll).first();
       await target.waitFor({ state: "attached", timeout: 90_000 });
-      const top = step.top?.[format] ?? 0;
-      const { from, to } = await target.evaluate((el, offset) => {
-        const max = document.documentElement.scrollHeight - window.innerHeight;
-        const y = el.getBoundingClientRect().top + window.scrollY - offset;
-        return { from: window.scrollY, to: Math.max(0, Math.min(max, Math.round(y))) };
-      }, top);
+      const at = await target.evaluate((el) => {
+        const footer = [...document.querySelectorAll("footer")].at(-1);
+        return {
+          from: window.scrollY,
+          target: el.getBoundingClientRect().top + window.scrollY,
+          max: document.documentElement.scrollHeight - window.innerHeight,
+          footer: footer ? footer.getBoundingClientRect().top + window.scrollY : null,
+          height: window.innerHeight,
+        };
+      });
+      const { from } = at;
+      const to = scrollGoal({ ...at, offset: step.top?.[format] ?? 0 });
       const n = Math.max(1, Math.round(step.over * FPS));
       for (let i = 1; i <= n; i++) {
         await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), Math.round(from + (to - from) * ease(i / n)));
@@ -106,6 +125,9 @@ async function capturePage(page, { site, shot, format, dir, captured, warnings }
       }
     }
   }
+  // The caption sits near the bottom of the frame: the site's footer, with its display line, must not be behind it.
+  const footerTop = await page.evaluate(() => [...document.querySelectorAll("footer")].at(-1)?.getBoundingClientRect().top ?? null);
+  if (footerTop !== null && footerTop < page.viewportSize().height) warnings.push(`[${format}] ${shot.path}: the shot ends with the site's footer in the frame, behind its caption`);
   const rest = shot.duration - used;
   if (rest > 1e-6) await snap(rest);
   const list = join(dir, "frames.txt");
@@ -128,6 +150,8 @@ export async function capture({ work, input, formats, site }) {
   const ciAge = ciAgeWarning(files.values, new Date().toISOString().slice(0, 10));
   if (ciAge) warnings.push(ciAge);
   const fontsDir = join(ROOT, "web/node_modules/geist/dist/fonts");
+  // The title and end cards draw the mark itself, so the film's first and last frames show it.
+  const mark = read("web/brand/src/mark.svg");
 
   // The txs of beats 5 to 7: read each set hash's receipt, and stop on one that does not show what txs.json expects.
   const config = readTxConfig(ROOT);
@@ -142,6 +166,34 @@ export async function capture({ work, input, formats, site }) {
     const problems = txProblems(model, entry.expect, ctx.contracts);
     if (problems.length > 0) throw new Error(`film/txs.json: ${problems.join("; ")}`);
     txModels[key] = model;
+  }
+
+  // A persuasion shot whose txs are all on Base shows Maat's agent's reply between the brief and the verdict, read from
+  // the published journal; the journal is read only then. A journal it cannot read, or one that does not verify, stops
+  // the render; no row for the brief yet shows a labelled line on the card, and a warning here. The render also stops
+  // unless the verdict is the vault's Decision on the intent that adopted the brief, sent by the vault's executor and
+  // not its owner, after the brief, and the brief comes from no team wallet (lib/tx.mjs persuasionProblems): it reads
+  // the Decision's calldata, the vault's owner() and the /proof team list for that.
+  const replies = {};
+  const answers = {};
+  for (const [b, beat] of BEATS.entries()) {
+    for (const shot of beat.shots.filter((x) => x.kind === "tx" && x.layout === "persuasion")) {
+      const models = shot.txs.map((k) => txModels[k]);
+      if (txState(models) !== "all") continue;
+      const { brief, verdict } = persuasionParts(models);
+      const { PROOF_TEAM } = await import(pathToFileURL(join(ROOT, "web/content/proof-team.ts")).href);
+      const answer = {
+        input: await fetchInput(verdict.model.hash),
+        owner: await fetchOwner(verdict.event.address),
+        team: PROOF_TEAM.map((/** @type {{ address: string }} */ w) => w.address.toLowerCase()),
+      };
+      const reply = briefReply(await readJournal(), { id: brief.event.id, txHash: brief.model.hash, logIndex: brief.event.logIndex });
+      const problems = persuasionProblems(models, { ...answer, reply });
+      if (problems.length > 0) throw new Error(`film/txs.json, beat ${b + 1}: ${problems.join("; ")}`);
+      if (reply.kind === "missing") warnings.push(`beat ${b + 1} shows no reply from Maat's agent: ${reply.why}. Render again once the journal publisher has pushed it`);
+      replies[`${beat.id}/${shot.id}`] = reply;
+      answers[`${beat.id}/${shot.id}`] = answer;
+    }
   }
 
   const clips = findClips(input);
@@ -168,22 +220,28 @@ export async function capture({ work, input, formats, site }) {
         else if (shot.kind === "card") {
           const html =
             shot.card === "title"
-              ? titleCardHtml({ format, fontsDir })
+              ? titleCardHtml({ format, fontsDir, mark })
               : shot.card === "deployments"
                 ? deploymentsCardHtml({ format, rows: deployments, verifiedNote, fontsDir })
                 : shot.card === "ci"
                   ? ciCardHtml({ format, figures: ci, fontsDir })
-                  : endCardHtml({ format, fontsDir });
+                  : endCardHtml({ format, fontsDir, mark });
           const still = await renderStill(page, join(dir, "stills"), name, html, { measure: contentBottomInPage });
           entry.input = { kind: "image", file: still.png };
           entry.contentBottom = still.measured;
         } else if (shot.kind === "tx") {
           const models = shot.txs.map((k) => txModels[k]);
           const beat = BEATS.find((b) => b.id === s.beat);
-          const still = await renderStill(page, join(dir, "stills"), name, txCardHtml(models, { format, title: beat.title, fontsDir }), { measure: contentBottomInPage });
+          const html =
+            shot.layout === "persuasion"
+              ? persuasionCardHtml(models, { format, title: beat.title, fontsDir, reply: replies[`${s.beat}/${shot.id}`], answer: answers[`${s.beat}/${shot.id}`] })
+              : txCardHtml(models, { format, title: beat.title, fontsDir });
+          const still = await renderStill(page, join(dir, "stills"), name, html, { measure: contentBottomInPage });
           entry.input = { kind: "image", file: still.png };
           entry.contentBottom = still.measured;
           entry.txState = txState(models);
+          // What a viewer reads on beat 7's real card besides its caption, for the pace check below.
+          if (shot.layout === "persuasion" && entry.txState === "all") entry.reading = persuasionReading(models, replies[`${s.beat}/${shot.id}`]);
           if (format === formats[0] && entry.txState !== "all") {
             const missing = models.filter((m) => m.kind === "placeholder").map((m) => m.key);
             manifest.placeholders.push({ beat: s.beatIndex, id: s.beat, missing });
@@ -218,6 +276,11 @@ export async function capture({ work, input, formats, site }) {
       const page = await context.newPage();
       const stills = {};
       for (const entry of manifest.formats[format].shots) {
+        // Every card, captioned or not, must fit in the frame.
+        if (entry.contentBottom !== undefined) {
+          const fit = fitProblem(`[${format}] shot ${entry.index} (${entry.beat}/${entry.slot})`, entry.contentBottom, f.viewport.height);
+          if (fit) overlaps.push(fit);
+        }
         const cues = [];
         entry.cueIds.forEach((cue, i) => {
           const next = entry.cueIds[i + 1];
@@ -235,11 +298,17 @@ export async function capture({ work, input, formats, site }) {
             if (overlap) overlaps.push(overlap);
           }
           entry.cues.push({ id: picked.id, text: out.text, png: stills[picked.id].png, from: cue.at, to: cue.to });
+          // Each caption with the numbers read, and beat 7's card under its caption, must be readable in its time.
+          if (format === formats[0]) {
+            const chars = [...(entry.reading ?? []), out.text].join(" ").length;
+            const pace = paceProblem(`beat ${entry.beatIndex} (${entry.beat}/${entry.slot}) under caption ${picked.id}`, chars, cue.to - cue.at);
+            if (pace) warnings.push(pace);
+          }
         }
       }
       await context.close();
     }
-    if (overlaps.length > 0) throw new Error(`a caption would cover a card's rows:\n${overlaps.join("\n")}`);
+    if (overlaps.length > 0) throw new Error(`a card runs off the frame, or a caption would cover its rows:\n${overlaps.join("\n")}`);
   } finally {
     await browser.close();
   }

@@ -1,16 +1,19 @@
 import { expect, type Locator, type Page, type Route, test } from "@playwright/test";
-import { getAddress } from "viem";
+import { encodeFunctionData, getAddress, keccak256, toBytes, toHex, type Address, type Hex } from "viem";
 import { ASK_OPEN } from "../content/ask-open";
+import { NAV_TOKENS } from "../content/b20-nav";
 import { FACTS } from "../content/facts";
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { REASON_LABEL, REASONS } from "../content/reasons";
+import { vaultAbi } from "../lib/chain/abi";
+import { word } from "../lib/live/abi";
 import { deploymentConfig } from "../lib/chain/config";
 import { basescanTx } from "../lib/live/basescan";
 import { LIVE_RPCS } from "../lib/live/rpc";
 import { SITE } from "../lib/site";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
-import { routeLiveRpc } from "./fake-live-rpc";
+import { fixtureResults, routeLiveRpc, type Scenario, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
 import { collectErrors, lineCount } from "./helpers";
 
@@ -64,15 +67,68 @@ const scenario: FakeScenario = {
   calls: { [VAULT.toLowerCase()]: { TIMELOCK: 86_400n } },
 };
 
+const USDC = getAddress(addresses.find((a) => a.name === "USDC")!.value);
+const OWNER: Address = getAddress("0x3c3a66f713DAE7e4A03Bbd81dB79FF65F42C1D6a");
+/** A compute bill's maat:v1 blob, as the agent's code writes it (kind "bill"). */
+const BILL_BLOB = `maat:v1:{"b":62500000,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x${"0".repeat(64)}","k":"bill","r":"run-landing-e2e","s":[],"t":"Compute bill: $1.000000 of Claude API usage unpaid as of UTC day 20784"}`;
+const BILL_HASH = keccak256(toBytes(BILL_BLOB));
+const BILL_LINE = "Compute bill paid · $1.00 · to the owner's allowlisted address";
+/** `execute(intent)` of that bill, paying the owner, then its blob. */
+const BILL_INPUT = `${encodeFunctionData({
+  abi: vaultAbi,
+  functionName: "execute",
+  args: [{ id: hash32(1009), action: 6, token: USDC, amount: 1_000_000n, minOut: 0n, payee: OWNER, rationaleHash: BILL_HASH }],
+})}${toHex(BILL_BLOB).slice(2)}` as Hex;
+
+/**
+ * The same vault whose newest Decision is the owner's $1.00 compute bill: a PAY_EXPENSE whose calldata carries the bill
+ * blob and names the owner as payee. The treasury read answers, so the landing knows the owner.
+ */
+const billScenario: FakeScenario = {
+  ...scenario,
+  logs: [...scenario.logs.slice(0, -1), decisionLog(9, NEW_BLOCK, { action: "PAY_EXPENSE", token: USDC, amount: 1_000_000n, rationaleHash: BILL_HASH })],
+  txs: {
+    [hash32(9)]: { from: OWNER, to: VAULT, input: BILL_INPUT },
+  },
+  calls: {
+    [VAULT.toLowerCase()]: {
+      TIMELOCK: 86_400n,
+      owner: OWNER,
+      executor: OWNER,
+      paused: false,
+      mandate: {
+        sessionMode: 0,
+        maxPremiumBps: 100,
+        maxSlippageBps: 150,
+        maxStaleness: 90_000,
+        multiplierCooldown: 86_400,
+        twapWindow: 1800,
+        perTradeCapUsd: 50_000_000n,
+        dailyCapUsd: 100_000_000n,
+        calendar: getAddress("0x0000000000000000000000000000000000000c01"),
+        swapAdapter: getAddress("0x0000000000000000000000000000000000000c02"),
+        creditAdapter: getAddress("0x0000000000000000000000000000000000000000"),
+        minHealthFactor: 1_500_000_000_000_000_000n,
+        targetHealthFactor: 2_000_000_000_000_000_000n,
+        deriskWindow: 28_800,
+      },
+      mandateHash: hash32(77),
+      tokens: [],
+      usdc: USDC,
+    },
+    [USDC.toLowerCase()]: { balanceOf: 30_000_000n },
+  },
+};
+
 /**
  * Sends the vault reader's calls to the fake chain: its batched calls (viem's http batch posts an array) and its
  * eth_getLogs, which lib/chain/rpc.ts sends in a request of its own. Every other request goes on to the strip's fake,
  * which reads no logs. Routed after that fake, so this handler runs first.
  */
-async function routeVault(page: Page) {
+async function routeVault(page: Page, chain: FakeScenario = scenario) {
   let answer: ((route: Route) => Promise<void>) | undefined;
   const capture = { route: async (_match: unknown, handler: (route: Route) => Promise<void>) => void (answer = handler) };
-  await installFakeChain(capture as unknown as Page, scenario);
+  await installFakeChain(capture as unknown as Page, chain);
   await page.route(
     (url) => RPC_HOSTS.includes(url.host),
     async (route) => {
@@ -186,6 +242,137 @@ for (const vp of VIEWPORTS) {
   });
 }
 
+for (const vp of VIEWPORTS) {
+  test(`at ${vp.width}x${vp.height} a compute bill reads as a bill on a neutral plate, never as a trade or as Allowed`, async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize(vp);
+    await page.clock.setFixedTime(NOW_MS);
+    await routeLiveRpc(page, "weekend");
+    await routeVault(page, billScenario);
+    await page.goto("/");
+
+    const card = vaultCard(page);
+    await expect(card).toHaveAttribute("data-vault-card", "live");
+    const p = plate(page);
+    await expect(p).toHaveAttribute("href", basescanTx(hash32(9)));
+    await expect(p).toContainText(`Last Decision: ${BILL_LINE} · ${AGE} ago`);
+    expect(await bottom(p)).toBeLessThanOrEqual(vp.height);
+
+    await expect(card.locator("[data-latest-line]")).toHaveText(BILL_LINE);
+    const verdict = card.locator("[data-verdict]");
+    await expect(verdict).toHaveAttribute("data-verdict", "bill");
+    await expect(verdict).toContainText("Paid");
+    // A neutral plate: white or near-white behind ink, never the accent or the ink of a verdict.
+    const { bg, color } = await verdict.evaluate((el) => ({ bg: getComputedStyle(el).backgroundColor, color: getComputedStyle(el).color }));
+    expect(bg).toBe("rgb(246, 247, 249)");
+    expect(color).toBe("rgb(11, 13, 18)");
+    const rows = card.getByRole("list", { name: "Recent decisions" }).getByRole("listitem");
+    await expect(rows.first()).toHaveAttribute("data-decision", "bill");
+    await expect(rows.first()).toContainText(BILL_LINE);
+    await expect(page.locator("#top")).not.toContainText("PAY_EXPENSE");
+    await page.screenshot({ path: `test-results/screens/landing-bill-${vp.width}.png` });
+
+    if (vp.width === 1440) {
+      expect(await lineCount(p.locator(":scope > span").last())).toBe(1);
+      for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
+    }
+    expect(errors).toEqual([]);
+  });
+}
+
+/**
+ * Every visible run of text in the first screen with its computed font size, and where it sits: the H1, the live
+ * strip's verdict line, a verdict plate of the vault card, or the strip's block number.
+ */
+function firstScreenSizes(page: Page) {
+  return page.evaluate(() => {
+    const runs: { px: number; text: string; in: "h1" | "verdict" | "block" | "other" }[] = [];
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = (n.textContent ?? "").trim();
+      const el = n.parentElement;
+      if (text === "" || !el || !el.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+      const range = document.createRange();
+      range.selectNodeContents(n);
+      const r = range.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0 || r.bottom <= 0 || r.top >= window.innerHeight || r.right <= 0 || r.left >= window.innerWidth) continue;
+      const where = el.closest("h1")
+        ? "h1"
+        : el.closest("[data-verdict-line], [data-verdict]")
+          ? "verdict"
+          : el.closest(".readout-figure")
+            ? "block"
+            : "other";
+      runs.push({ px: Number.parseFloat(getComputedStyle(el).fontSize), text, in: where });
+    }
+    return runs;
+  });
+}
+
+/**
+ * In-session readings whose headline names a reason for each refused token (kind "mixed"), the strip's longest: the
+ * first basket token's feed older than maxStalenessSec; and, as in e2e/instrument-states.spec.ts, each token refused
+ * for its own reason (FEED_STALE, MULTIPLIER_COOLDOWN, PREMIUM_TOO_HIGH).
+ */
+function sessionReading(refuse: "one" | "three"): Scenario {
+  const [stale, cooling, premium] = FACTS.basket.value;
+  const { maxPremiumBps, maxStalenessSec, twapWindowSec } = FACTS.mandate.value;
+  let r = fixtureResults(SESSION_TS);
+  for (const symbol of FACTS.basket.value) {
+    const twap = twapOf(r, symbol, twapWindowSec);
+    const answer = refuse === "three" && symbol === premium ? (twap * 10_000n) / BigInt(10_000 + 2 * maxPremiumBps + 100) : twap;
+    r = withFeed(r, symbol, answer, symbol === stale ? SESSION_TS - maxStalenessSec - 600 : SESSION_TS - 10);
+  }
+  if (refuse === "three") {
+    // effectiveAt: the third of each token's five calls, after the block number and the timestamp.
+    const i = NAV_TOKENS.findIndex((t) => t.symbol === cooling);
+    r[2 + i * 5 + 2] = { success: true, returnData: `0x${word(BigInt(SESSION_TS + 3600))}` };
+  }
+  return { results: r, open: true };
+}
+
+const READINGS = [
+  { name: "the weekend's refusal", clock: WEEKEND_TS + 5, scenario: (): Scenario => "weekend", kind: "refuse-all" },
+  { name: "one stale feed", clock: SESSION_TS + 5, scenario: () => sessionReading("one"), kind: "mixed" },
+  { name: "three refusals", clock: SESSION_TS + 5, scenario: () => sessionReading("three"), kind: "mixed" },
+] as const;
+
+for (const vp of VIEWPORTS) for (const reading of READINGS) {
+  test(`at ${vp.width}x${vp.height} with ${reading.name}, the largest text in the first screen after the H1 is a verdict, and the strip sets its verdict above and larger than the block number`, async ({
+    page,
+  }) => {
+    await page.setViewportSize(vp);
+    await page.clock.install({ time: reading.clock * 1000 });
+    await routeLiveRpc(page, reading.scenario());
+    await page.goto("/");
+    const strip = page.locator("#top [data-live-strip]");
+    await expect(strip).toHaveAttribute("data-live-strip", "live");
+    await expect(strip.locator("[data-verdict-line]")).toHaveAttribute("data-verdict-line", reading.kind);
+    await page.evaluate(() => document.fonts.ready);
+
+    const runs = (await firstScreenSizes(page)).filter((r) => r.in !== "h1");
+    const largest = Math.max(...runs.map((r) => r.px));
+    const top = runs.filter((r) => r.px === largest);
+    expect(top.length).toBeGreaterThan(0);
+    expect(top.filter((r) => r.in !== "verdict"), `the ${largest} px text`).toEqual([]);
+    // The block number is no longer the largest numeral on the screen.
+    expect(runs.filter((r) => r.in === "block").every((r) => r.px < largest)).toBe(true);
+
+    const line = strip.locator("[data-verdict-line]");
+    // A mixed line keeps its reasons at the strip's 13 px; its verb, REFUSE, is set at the verdict size.
+    const verdict = reading.kind === "mixed" ? line.locator("[data-verdict-word]") : line;
+    const block = strip.locator(".readout-figure");
+    const size = (l: Locator) => l.evaluate((el) => Number.parseFloat(getComputedStyle(el).fontSize));
+    // At 390 px the vault card is below the first screen, so the strip's verdict is the largest text after the H1; at
+    // 1440 px the card's verdict plate, beside it, is.
+    if (vp.width === 390) expect(await size(verdict)).toBe(largest);
+    expect(await size(verdict)).toBeGreaterThan(await size(block));
+    expect((await line.boundingBox())!.y).toBeLessThan((await block.boundingBox())!.y);
+    const shot = reading.kind === "refuse-all" ? "" : `-${reading.name.replaceAll(" ", "-")}`;
+    await page.screenshot({ path: `test-results/screens/landing-verdict-first${shot}-${vp.width}.png` });
+  });
+}
+
 test("when Base does not answer, the landing shows the two recorded Decisions and reads again on Read again", async ({ page }) => {
   const errors: { text: string; url: string }[] = [];
   page.on("console", (m) => {
@@ -220,11 +407,12 @@ test("when Base does not answer, the landing shows the two recorded Decisions an
   expect(errors.filter((e) => !(LIVE_RPCS.includes(originOf(e.url)) && /status of 503\b/.test(e.text)))).toEqual([]);
 });
 
-// The owner's switch, content/ask-open.ts, adds Ask and Proof before Docs (e2e/nav.spec.ts checks the nav at each width).
+// The pages, as the bar lists them too; the owner's switch, content/ask-open.ts, adds Ask and Proof after Ledger
+// (e2e/nav.spec.ts checks the nav at each width).
 const MENU = [
-  ["Ledger", "/ledger"],
   ["Now", "/now"],
   ["Gap Index", "/gap-index"],
+  ["Ledger", "/ledger"],
   ...(ASK_OPEN ? [["Ask", "/ask"], ["Proof", "/proof"]] : []),
   ["Docs", SITE.docsUrl],
 ] as const;
@@ -235,7 +423,8 @@ test(`at 390 px the Menu lists ${MENU_NAMES.slice(0, -1).join(", ")} and Docs, a
   await routeLiveRpc(page, "weekend");
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
-  await expect(nav.getByRole("link", { name: "How it works" })).toBeHidden();
+  // The bar's links are display: none up to 720 px, and the menu's while it is closed.
+  await expect(nav.getByRole("link", { name: "Gap Index" })).toBeHidden();
   const pages = nav.getByRole("list", { name: "Pages" });
   await expect(pages).toBeHidden();
   await nav.locator("[data-phone-menu] > summary").click();
@@ -247,13 +436,15 @@ test(`at 390 px the Menu lists ${MENU_NAMES.slice(0, -1).join(", ")} and Docs, a
   await expect(page).toHaveURL(/\/gap-index$/);
 });
 
-test("at 1440 px the Menu gives way to the links, and the problem section links the Gap Index", async ({ page }) => {
+test("at 1440 px the Menu gives way to the pages, and the problem section links the Gap Index", async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
   await routeLiveRpc(page, "weekend");
   await page.goto("/");
   const nav = page.getByRole("navigation", { name: "Main" });
   await expect(nav.locator("[data-phone-menu] > summary")).toBeHidden();
-  await expect(nav.getByRole("link", { name: "Ledger" })).toBeVisible();
+  const bar = nav.getByRole("link");
+  await expect(bar).toHaveText(["maat", ...MENU_NAMES, "View on GitHub ↗"]);
+  expect(await bar.evaluateAll((els) => els.slice(1, -1).map((el) => el.getAttribute("href")))).toEqual(MENU.map(([, href]) => href));
   const gap = page.locator('section[aria-labelledby="problem-title"]').getByRole("link", { name: /^Weekend Gap Index · / });
   await expect(gap).toBeVisible();
   await expect(gap).toHaveAttribute("href", "/gap-index");

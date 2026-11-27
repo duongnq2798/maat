@@ -35,7 +35,7 @@ sources:
 next: [guides/run-the-agent, guides/run-the-tests]
 ---
 
-This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and it has run in [live mode](/docs/help/glossary#live-mode) only on a fork, with a scripted proposer in place of Claude and a local sender in place of the [CDP wallet](/docs/help/glossary#cdp-server-wallet). [Messages the agent prints](#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run) quotes what the agent prints when it stops or a [round](/docs/help/glossary#round) goes wrong.
+This page covers the npm scripts in `agent/package.json` and the files in `agent/scripts`. It says what each one runs, which flags and modes it takes, what it needs, and which ones call a service outside your machine, so you know what is safe to run before you run it. Run every command from the `agent/` directory. `agent/package.json` sets Node 22.9 or newer in `engines` for the whole package, so every entry needs it. Run `npm ci` in `agent/` once before the first one. The agent is built and fork-tested, and its fork run used a scripted proposer in place of Claude and a local sender in place of the [CDP wallet](/docs/help/glossary#cdp-server-wallet). Since 2026-11-27 it runs in [live mode](/docs/help/glossary#live-mode) on Base mainnet, and its first `Decision`, at 02:14 UTC that day, was a buy the vault refused with `MARKET_CLOSED`. [Messages the agent prints](#messages-the-agent-prints-from-the-code-and-unit-tests-none-seen-in-a-live-run) quotes what the agent prints when it stops or a [round](/docs/help/glossary#round) goes wrong.
 
 | Entry | What it does | What it needs | Outside services |
 | --- | --- | --- | --- |
@@ -244,7 +244,7 @@ cd agent
 node --env-file=.env --import tsx scripts/cdp-setup.ts <VAULT_ADDRESS>
 ```
 
-If the vault address is missing or is not an address, it prints its usage and exits with an error. On success it prints the account address and the policy id, then three steps that you do yourself: send <Fact name="executorGasEth" /> on Base to the account for gas, call `setExecutor` on the vault from the owner wallet at go-live only, and then set `MAAT_EXECUTOR` to the account address in `.env`. Until `setExecutor` has run, a round needs the current executor in `MAAT_EXECUTOR`. [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) has the owner's command under "Switch the executor to the CDP Server Wallet". This page shows no output for the script, because the CDP path has never run against the real CDP.
+If the vault address is missing or is not an address, it prints its usage and exits with an error. On success it prints the account address and the policy id, then three steps that you do yourself: send <Fact name="executorGasEth" /> on Base to the account for gas, call `setExecutor` on the vault from the owner wallet at go-live only, and then set `MAAT_EXECUTOR` to the account address in `.env`. Until `setExecutor` has run, a round needs the current executor in `MAAT_EXECUTOR`. [deployments/README.md](https://github.com/duongnq2798/maat/blob/main/deployments/README.md) has the owner's command under "Switch the executor to the CDP Server Wallet". This page shows no output for the script, because these docs record none.
 
 </Callout>
 
@@ -344,7 +344,7 @@ This page shows no output for it, because the script calls the paid API.
 
 ## Messages the agent prints (from the code and unit tests; none seen in a live run)
 
-The agent has run in live mode only on a fork, and these docs record none of the messages below from a run outside the tests. Each one is quoted from `agent/src`, with what it means and the page that explains it. Text in angle brackets stands for a value the agent fills in. The last column names the unit test file that checks the message's text, with fakes in place of Claude, the CDP wallet and the chain, and None means that only the code holds it. For `invalid agent config`, the tests check the setting and the problem after the prefix.
+These docs record none of the messages below from a run outside the tests, including the live agent's on Base mainnet since 2026-11-27. Each one is quoted from `agent/src`, with what it means and the page that explains it. Text in angle brackets stands for a value the agent fills in. The last column names the unit test file that checks the message's text, with fakes in place of Claude, the CDP wallet and the chain, and None means that only the code holds it. For `invalid agent config`, the tests check the setting and the problem after the prefix.
 
 ### When the agent starts
 

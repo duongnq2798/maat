@@ -107,6 +107,14 @@ export function checkNowPage(html: string): string[] {
   need(!html.includes("basescan.org/block/"), "the exported HTML links a Base block, so a reading was baked into the page");
   need(!html.includes("data-verdict-line"), "the exported HTML holds a verdict line, so a reading was baked into the page");
 
+  // The market week is drawn from the visitor's clock, its line from the reading, its ticks and the agent's note from
+  // reads in the browser: the export holds the waiting week and none of them.
+  need(html.includes('data-market-week="waiting"'), "the market week's waiting state is not in the exported HTML");
+  need(!html.includes("data-now-marker"), "the exported HTML holds the week's now line, so a clock was baked into the page");
+  need(!html.includes("data-session-line="), "the exported HTML holds a session line, so a reading was baked into the page");
+  need(!html.includes("data-tick"), "the exported HTML holds a Decision tick, so a read of the vault was baked into the page");
+  need(!html.includes("data-agent-note"), "the exported HTML holds the agent note, so a read of the journal was baked into the page");
+
   for (const [, id] of html.matchAll(/<a[^>]*\shref="#([^"]+)"/g)) {
     need(html.includes(` id="${id}"`), `link #${id} has no target`);
   }

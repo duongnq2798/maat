@@ -9,6 +9,7 @@ import AskPage, { metadata } from "@/app/(site)/ask/page";
 import { askConfig, askIsOpen, fetchAskConfig } from "@/app/(site)/ask/config";
 import { GET as GET_ASK } from "@/app/data/ask.json/route";
 import { Nav } from "@/components/sections/Nav";
+import { ASK_OG_IMAGE } from "@/content/ask-card";
 import { ASK_OPEN } from "@/content/ask-open";
 import { ACTIONS } from "@/content/decisions";
 import { REASONS } from "@/content/reasons";
@@ -33,7 +34,12 @@ const SENDER: Address = "0x00000000000000000000000000000000000A11cE";
 const DEPLOY = 2_000_000n;
 const SENT: Hash = `0x${"5e".repeat(32)}`;
 
-describe("/ask while deployments/README.md records no MaatInbox", () => {
+describe("/ask while the owner's switch in web/content/ask-open.ts is off", () => {
+  it("is closed with the committed switch and deployments table", () => {
+    expect(ASK_OPEN).toBe(false);
+    expect(askIsOpen(askConfig(docsData.deployments))).toBe(false);
+  });
+
   it("shows the notice word for word, the not-open state and the free preview, with no way to send", () => {
     render(<AskPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Brief the agent" })).toBeInTheDocument();
@@ -56,14 +62,28 @@ describe("/ask while deployments/README.md records no MaatInbox", () => {
     expect(d.length).toBeLessThanOrEqual(160);
   });
 
+  it("points its og:image and twitter:image to its own card, not the landing's", () => {
+    const og = metadata.openGraph as { images?: unknown[] } | undefined;
+    const tw = metadata.twitter as { images?: unknown[] } | undefined;
+    expect(og?.images).toEqual([ASK_OG_IMAGE]);
+    expect(tw?.images).toEqual([ASK_OG_IMAGE]);
+    expect(ASK_OG_IMAGE.url).toBe("/og/ask.png");
+  });
+
+  it("leads with the invitation line, word for word", () => {
+    render(<AskPage />);
+    expect(screen.getByText(/^Try to talk Maat's agent into a bad trade\. The vault has the last word\./)).toBeInTheDocument();
+  });
+
   it("uses the notice of the inbox spec §4", () => {
     expect(readRepo("docs/superpowers/specs/2026-11-25-maat-inbox-design.md")).toContain(`> ${ASK_NOTICE}\n`);
   });
 });
 
 describe("the owner's switch: /ask opens only when it is on and the inbox and the vault are recorded", () => {
+  // The committed table without its MaatInbox row, plus a test inbox when `inbox` is true.
   const rows = (inbox: boolean) => [
-    ...docsData.deployments,
+    ...docsData.deployments.filter((r) => r.contract !== "MaatInbox"),
     ...(inbox ? [{ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: hash32(4242), date: "2026-11-25" }] : []),
   ];
 
@@ -223,13 +243,15 @@ describe("/ask once it is open", () => {
         throw Object.assign(new Error(`${method} unsupported`), { code: 4200 });
       },
     });
-    const config = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) } };
+    const config = { open: true, vault: VAULT, deployTx: hash32(4242), inbox: { inbox: INBOX, deployTx: hash32(4242) }, deployments: [] };
     render(
       <AskApp
         initial={config}
         deps={{
           client,
           fetchConfig: () => new Promise(() => {}),
+          // The team set as /proof traces it: here no team wallet sent a brief.
+          team: async () => ({ members: new Set<string>(), complete: true }),
           watch: (onChange) => {
             onChange([wallet]);
             return () => {};
@@ -264,7 +286,8 @@ describe("/ask once it is open", () => {
     const feed = await screen.findByRole("list", { name: "Briefs" });
     expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
     expect(within(feed).queryAllByRole("link")).toEqual([]);
-    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+    // The counters wait for the journal and the team set as well as the feed's logs, so they can settle after the feed shows.
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
 
     const send = screen.getByRole("button", { name: "Send with Fake Wallet" });
     expect(send).toBeDisabled();
@@ -301,7 +324,7 @@ describe("/ask once it is open", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/It is in the feed below/)).toBeNull();
     expect(box().value).toBe("sell it all");
-    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
   });
 
   it("keeps the box read-only while the wallet is asked, so the text on the page is the text it signs", async () => {

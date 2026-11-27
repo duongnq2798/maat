@@ -1,18 +1,23 @@
 "use client";
 
-import { Fragment, type MouseEvent, type ReactNode } from "react";
+import { Fragment, lazy, type MouseEvent, type ReactNode, Suspense, useEffect, useRef, useState } from "react";
+import type { LedgerDeps } from "@/components/ledger/useLedger";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { NAV_TOKENS } from "@/content/b20-nav";
 import { FACTS } from "@/content/facts";
 import { andList } from "@/content/format";
 import type { ReasonCode } from "@/content/reasons";
 import { basescanAddress } from "@/lib/live/basescan";
+import type { JournalRead } from "@/lib/chain/ledger";
 import { formatAge, formatBlock, formatDateUtc, formatEt, formatMultiplier, formatUsd8, formatUtc } from "@/lib/live/format";
 import type { LiveState } from "@/lib/live/freshness";
 import type { LiveReader } from "@/lib/live/rpc";
 import type { LiveSnapshot, TokenReading } from "@/lib/live/snapshot";
 import { DEFAULT_LIMITS, type TokenVerdict } from "@/lib/live/verdict";
+import { sessionLine } from "@/lib/live/week";
+import { AgentNote } from "./AgentNote";
 import { BlockLink, FAILED, LiveAnnouncer, LivePill, NotLiveWhy, READING, ReadButton, Sep, type ShownState, useRetry } from "./LiveStatus";
+import { MarketWeek, type SessionLineView, type WeekDecisionsView } from "./MarketWeek";
 import { useLiveSnapshot } from "./useLiveSnapshot";
 import { TONE, VerdictLine, type VerdictTone } from "./VerdictLine";
 
@@ -220,12 +225,70 @@ function Cards({ rows }: { rows: Record<Col, ReactNode>[] }) {
  */
 const RESERVE = "min-h-86 sm:min-h-56 md:min-h-46 lg:min-h-42";
 
+/** /ledger's loader for the week's ticks, in its own chunk, loaded once the page has mounted. */
+const NowDecisions = lazy(() => import("./NowDecisions"));
+
+/** How often the week reads the visitor's clock again, so the now line and the day move on. */
+const CLOCK_MS = 30_000;
+
 /**
- * /now in the browser: the status of the reading, the headline verdict, and one row per B20 with a NAV (a table from
- * md up, a card each below). The static HTML holds the reading state, each token's symbol and name and a dash in every
- * other cell; no chain value is ever baked in.
+ * The visitor's clock in unix seconds, read after mount, every CLOCK_MS and whenever the tab is shown again; null on
+ * the server and in the first render, so the static HTML holds no time. `clock` is for tests.
  */
-export function NowBoard({ reader }: { reader?: LiveReader }) {
+function useWallClock(clock?: () => number): number | null {
+  const read = useRef(clock);
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    const tick = () => setNow((read.current ?? (() => Date.now() / 1000))());
+    const onShow = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    tick();
+    const timer = setInterval(tick, CLOCK_MS);
+    document.addEventListener("visibilitychange", onShow);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onShow);
+    };
+  }, []);
+  return now;
+}
+
+/** The market week with its own clock and its own read of the vault, so a tick of the clock redraws only the week. */
+function LiveWeek({ line, ledger, clock }: { line: SessionLineView | null; ledger?: LedgerDeps; clock?: () => number }) {
+  const nowSec = useWallClock(clock);
+  const [decisions, setDecisions] = useState<WeekDecisionsView>({ state: "reading" });
+  return (
+    <>
+      <MarketWeek nowSec={nowSec} line={line} decisions={decisions} />
+      {nowSec === null ? null : (
+        <Suspense fallback={null}>
+          <NowDecisions deps={ledger} onView={setDecisions} />
+        </Suspense>
+      )}
+    </>
+  );
+}
+
+export interface NowBoardProps {
+  /** Answers the multicall; the keyless public RPCs when left out. */
+  reader?: LiveReader;
+  /** /ledger's loader dependencies, for the week's Decisions; its defaults on the same RPCs when left out. */
+  ledger?: LedgerDeps;
+  /** Reads the agent-journal branch; readJournal when left out. */
+  journal?: () => Promise<JournalRead>;
+  /** The visitor's clock in unix seconds; Date.now() when left out. */
+  clock?: () => number;
+}
+
+/**
+ * /now in the browser: the status of the reading and the headline verdict; the NYSE week, with the session line the
+ * reading sets and the vault's Decisions as ticks (MarketWeek); the agent's latest note, when the journal has one
+ * (AgentNote); and one row per B20 with a NAV (a table from md up, a card each below). The static HTML holds the reading
+ * state, the week's seven unlit rows, each token's symbol and name and a dash in every other cell; no chain value, no
+ * time and no note is ever baked in.
+ */
+export function NowBoard({ reader, ledger, journal, clock }: NowBoardProps) {
   const { state, refresh, refreshing } = useLiveSnapshot({ reader });
   const { box, onRetry } = useRetry(state, refreshing, refresh);
   const shown: ShownState | undefined = state.status === "reading" || state.status === "error" ? undefined : state;
@@ -239,6 +302,8 @@ export function NowBoard({ reader }: { reader?: LiveReader }) {
       shown?.reading.verdicts.find((v) => v.symbol === t.symbol),
     ),
   );
+  const session = shown === undefined ? null : sessionLine(shown.reading.session, shown.reading.snapshot.timestamp);
+  const line: SessionLineView | null = session === null || shown === undefined ? null : { ...session, live: shown.status === "live" };
 
   return (
     <div data-now-board={state.status} className="flex flex-col gap-12">
@@ -254,6 +319,9 @@ export function NowBoard({ reader }: { reader?: LiveReader }) {
           <p className="m-0">This page reads Base mainnet in your browser, so it needs JavaScript. The method below lists every call it makes.</p>
         </noscript>
       </div>
+
+      <LiveWeek line={line} ledger={ledger} clock={clock} />
+      <AgentNote {...(journal ? { read: journal } : {})} />
 
       <div className="flex flex-col gap-5">
         <div className="flex max-w-[820px] flex-col gap-2">

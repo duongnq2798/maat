@@ -18,7 +18,7 @@ const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
 const SESSION_LABEL = `${clockLabel(SESSION.open)}–${clockLabel(SESSION.close)}`;
 const ARIA_LABEL =
   `Weekly chart: Chainlink equity feed live from Sunday ${clockLabel(EDGE_MIN)} to Friday ${clockLabel(EDGE_MIN)} ET, ` +
-  `frozen over the weekend; NYSE regular session ${clockLabel(SESSION.open)} to ${clockLabel(SESSION.close)} on weekdays`;
+  `held without an update over the weekend; NYSE regular session ${clockLabel(SESSION.open)} to ${clockLabel(SESSION.close)} on weekdays`;
 
 export function WeekChart() {
   return (
@@ -67,7 +67,7 @@ export function WeekChart() {
         ))}
       </g>
       <text x={r1((x(FEED_STOP) + x(FEED_START)) / 2)} y="15" fontSize="9" textAnchor="middle" className="fill-refuse font-mono">
-        frozen
+        feed held
       </text>
       <text x={X0} y="15" fontSize="9" className="fill-ink-2 font-mono">
         feed live

@@ -61,7 +61,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "get-started/what-is-maat",
         "What is Maat",
-        "The problem with agents that trade tokenized stocks around the clock, and how a mandate onchain decides every trade they propose.",
+        "The problem with agents that trade tokenized stocks around the clock, and how a vault onchain weighs every trade they propose against a written mandate.",
       ),
       page(
         "get-started/how-a-decision-is-made",
@@ -307,7 +307,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "security/not-claimed",
         "What Maat does not claim",
-        "No audit, no live run of the agent on mainnet, and the known limitations: what can still go wrong and what is out of scope.",
+        "No audit, an agent live on mainnet only since 2026-11-27, and the known limitations: what can still go wrong and what is out of scope.",
       ),
       page(
         "security/testing",
