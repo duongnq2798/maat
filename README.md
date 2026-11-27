@@ -25,7 +25,7 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 > Claude proposes. The vault decides.
 
 > [!IMPORTANT]
-> **On Base mainnet now** (read from Base on 2026-11-27, 17:34 UTC). Since 2026-11-27 at 01:04 UTC the vault's executor has been
+> **On Base mainnet now** (read from Base on 2026-11-27, 23:10 UTC). Since 2026-11-27 at 01:04 UTC the vault's executor has been
 > the Coinbase CDP Server Wallet account of Maat's agent, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, and the agent
 > runs in live mode with the real Claude API.
 >
@@ -36,9 +36,13 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 >   ([tx](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503#eventlog)) and a $4.64 AAPLc buy
 >   ([tx](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69#eventlog)), both Allowed · All checks
 >   passed (OK).
-> - **Claude's reason is onchain.** Each of the three carries Claude's reason in its calldata, as a maat:v1 rationale
+> - **The vault noticed the early close.** NYSE closed early, at 13:00 ET, on Friday 27 Nov. Two labelled $1 probes,
+>   not Claude: an AAPLc buy at 12:58 ET, Allowed · All checks passed (OK) ([tx](https://basescan.org/tx/0x605ea741681e3a105020a2de2491829b2cc58707b5f2f89b8f7c7cf58986e0e2#eventlog)),
+>   and a GOOGLc buy at 13:01 ET, Refused · Market closed (MARKET_CLOSED) ([tx](https://basescan.org/tx/0x7c086145003fde5a42437d9d3637d51e694f6b371d63fbb9669a9538745c1f0f#eventlog)).
+>   The calendar contract has held that close since its deploy on Tuesday 24 Nov.
+> - **Claude's reason is onchain.** Each of Claude's three carries its reason in its calldata, as a maat:v1 rationale
 >   blob whose keccak256 equals the `Decision`'s `rationaleHash`; the [mainnet ledger](https://maatonbase.xyz/ledger)
->   checks that hash again in your browser.
+>   checks that hash again in your browser. A probe's blob says `PROBE v1, not a Claude proposal`.
 > - **Unaudited.** No third party has reviewed the contracts. Every `Decision` is on
 >   [maatonbase.xyz/ledger](https://maatonbase.xyz/ledger); the deploy history is under [Status](#status).
 
@@ -231,8 +235,18 @@ links; the docs show the same table on
   whose keccak256 is the `rationaleHash`
   (`0x95696cf56c271cd3c34db96f578e1dec94da7cb802b39e64d13067c542fe8f87` and
   `0x090ac5b4aab31b23b17dd934e2fa563dcf81f0d8a74c169a6fbc5b2ecf6b8118`), and the Builder Code `bc_w7i5vjdv`.
-- **Mainnet `Decision` events.** This README keeps no running count: when it was last read from Base, at 17:34 UTC
-  on 2026-11-27, the vault had emitted five, the owner's two smoke-test buys and the agent's three above. Every
+- **The early-close probes.** NYSE closed early on 2026-11-27, at 13:00 ET (18:00 UTC), and `MarketCalendar` has held
+  that early close, at minute 780, since its constructor ran at its deploy on 2026-11-24. At 17:58:02 and 18:01:03 UTC,
+  in blocks 63,059,534 and 63,060,437, the agent's executor sent two owner-scheduled `MAAT_PROBES` intents, each a
+  `BUY` of 1,000,000 USDC units ($1) with no Claude call: AAPLc, allowed with reason 0, `OK`
+  ([`0x605ea741...e0e2`](https://basescan.org/tx/0x605ea741681e3a105020a2de2491829b2cc58707b5f2f89b8f7c7cf58986e0e2#eventlog)), which swapped 1 USDC for 0.00279064 AAPLc, and GOOGLc, refused with
+  reason 6, `MARKET_CLOSED`
+  ([`0x7c086145...1f0f`](https://basescan.org/tx/0x7c086145003fde5a42437d9d3637d51e694f6b371d63fbb9669a9538745c1f0f#eventlog)). Each blob carries
+  `"k":"probe"` and a text that begins `PROBE v1, not a Claude proposal`. The calendar gives anyone the same answers:
+  `isOpen(1795802282, 0)` is `true` and `isOpen(1795802463, 0)` is `false`.
+- **Mainnet `Decision` events.** This README keeps no running count: when it was last read from Base, at 23:10 UTC
+  on 2026-11-27, the vault had emitted seven: the owner's two smoke-test buys, the agent's three above and its two
+  probes. Every
   `Decision` the vault emits is public in its events on Basescan, at the `MandateVault` address in
   [`deployments/README.md`](deployments/README.md). The
   [mainnet ledger](https://maatonbase.xyz/ledger) reads them from Base in your browser, with the vault's
@@ -779,8 +793,8 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
   Neither package ships in the static site.
 
 **The case against Maat.** It is unaudited, and its live record is short: Maat's agent has run on Base mainnet only
-since 2026-11-27, and when this README was last read against Base, at 17:34 UTC that day, that record was one refusal
-while NYSE was closed and two allowed buys of $4.64 each. Its sells and credit actions have run only in fork tests: the
+since 2026-11-27, and when this README was last read against Base, at 23:10 UTC that day, that record was one refusal
+while NYSE was closed and two allowed buys of $4.64 each from Claude, plus two $1 probes around the early close. Its sells and credit actions have run only in fork tests: the
 contracts' fork tests send them with no proposer, and the agent's fork run used a scripted proposer in place of Claude.
 So nothing here yet shows how the real model trades over many sessions or through a sell. Its session check is only as good as a calendar the owner must keep current;
 its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
