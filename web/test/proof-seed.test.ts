@@ -187,6 +187,24 @@ describe("the team trace with the vault's logs seeded from a snapshot", () => {
     expect(seeded.lines).toEqual(full.lines);
   });
 
+  it("rejects a seed that leaves out a Decision log of a transaction it holds another log of, and counts every Decision", async () => {
+    // execute() can log MultiplierChangeDetected before its Decision (MandateVault._syncMultiplier). A seed that keeps
+    // the first and drops the second leaves no team send missing, so only the receipt shows the Decision it left out.
+    const txs = TXS.map((t) => (t.hash === txHash(4) ? { ...t, logs: [multiplierLog(VAULT, TOKEN), decisionLog(VAULT, 1)] } : t));
+    const chain: ProofChain = { ...CHAIN, txs };
+    const snapshot = vaultSnapshot(chain, VAULT, DEPLOY, N);
+    const dropped = { ...snapshot, logs: snapshot.logs.filter((l) => !(l.transactionHash === txHash(4) && l.topics[0] === VAULT_TOPICS[0])) };
+    expect(dropped.logs).toHaveLength(snapshot.logs.length - 1);
+    const full = await run(undefined, chain);
+    const seeded = await run(seedOf(dropped), chain);
+    expect(full.trace.decisions).toHaveLength(3);
+    expect(seeded.trace.seed).toBeNull();
+    expect(seeded.trace.seedRejected).toBe(`the snapshot leaves out the log of the vault at index 1 of ${txHash(4)}, which its receipt holds in block 62,000,030`);
+    expect(seeded.trace.decisions).toEqual(full.trace.decisions);
+    expect(seeded.lines).toEqual(full.lines);
+    expect(lowest(seeded.seen)).toBe(DEPLOY);
+  });
+
   it("rejects a seeded log of a transaction the RPC does not have", async () => {
     const ghost: Hash = `0x${"ab".repeat(32)}`;
     const seeded = await run(seedOf(edited((logs) => [...logs, { ...logs[decisionAt(logs)]!, transactionHash: ghost }])));

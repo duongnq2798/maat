@@ -99,12 +99,13 @@ describe("/proof while deployments/README.md records no MaatInbox", () => {
     expect(screen.getByText("node scripts/recount.mjs")).toBeInTheDocument();
   });
 
-  it("puts the team-set note and the Decision note right before the brief lines", () => {
+  it("puts the team-set note and the Decision note right before the lines, whose first is a Decision line", () => {
     render(<ProofApp initial={proofConfig(ROWS(false))} deps={{ fetchConfig: never }} />);
     const notes = document.querySelector("[data-proof-notes]");
     expect([...notes!.querySelectorAll("p")].map((p) => p.textContent)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
-    const lines = screen.getByTestId("proof-outside-briefs");
-    expect(notes!.compareDocumentPosition(lines) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const first = document.querySelector('[data-testid^="proof-"]');
+    expect(first?.getAttribute("data-testid")).toBe("proof-owner-decisions");
+    expect(notes!.compareDocumentPosition(first!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("builds its static state from the committed deployments table", () => {
@@ -185,6 +186,11 @@ describe("/proof with a MaatInbox recorded", () => {
     for (const key of BRIEF_LINES) expect(value(key)).toBe("incomplete");
     expect(value("bounty-claimants")).toBe("0");
     expect(screen.queryByText(/Counted to block/)).toBeNull();
+    // The Decision lines keep their number, and say the block and the vault they were counted from.
+    for (const key of DECISION_LINES) expect(value(key)).toBe("0");
+    expect(document.querySelector("[data-proof-decisions-head]")?.textContent).toBe(
+      `The Decision lines are counted to block 62,120,000 of Base mainnet, from the Decision logs of MandateVault ${VAULT.toLowerCase()}.`,
+    );
     expect(screen.getByText("Some blocks of the Brief logs could not be read, so briefs may be missing.")).toBeInTheDocument();
     expect(screen.queryByRole("table", { name: "Outside wallets" })).toBeNull();
     expect(screen.getByRole("button", { name: "Read again" })).toBeInTheDocument();

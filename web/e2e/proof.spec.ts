@@ -138,7 +138,8 @@ test.describe("/proof with the committed deployments table", () => {
     } else {
       await expect(page.locator('[data-proof-state="read"]')).toBeVisible();
       await expect(page.getByTestId("proof-outside-briefs")).toHaveText("0");
-      // The executor's three Decisions carry no rationale blob, so each is an agent Decision, and the vault allowed all.
+      // In this fake chain, not on mainnet: the executor's three Decisions carry no rationale blob, so each is an agent
+      // Decision, and the vault allowed all.
       await expect(page.getByTestId("proof-agent-decisions")).toHaveText("3");
       await expect(page.getByTestId("proof-agent-decisions-split")).toHaveText("3 allowed, 0 refused");
     }

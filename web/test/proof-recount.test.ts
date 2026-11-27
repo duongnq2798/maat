@@ -266,7 +266,7 @@ describe("node scripts/recount.mjs prints the numbers the page computes, from th
     expect(out.stdout).toContain(`Hop stop ${lower(VAULT)}: MandateVault (deployments/README.md)`);
   });
 
-  it("prints the team-set note and the Decision note right before the brief lines, as the page shows them", async () => {
+  it("prints the team-set note and the Decision note right before the lines, as the page shows them", async () => {
     const out = await recountRun(["--rpc", rpc.url, "--root", root]);
     expect(preambleOf(out.stdout).slice(-2)).toEqual([TEAM_SET_NOTE, DECISION_NOTE]);
   });

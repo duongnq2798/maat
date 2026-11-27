@@ -126,16 +126,25 @@ function RecordedCounts({
           .
         </p>
       ) : (
-        <div className="flex flex-col gap-2 text-[15px] text-refuse">
-          <p className="m-0 flex flex-wrap items-center gap-3">The count is incomplete, so no brief line has a number. {again}</p>
-          <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
-            {proof.problems.map((p) => (
-              <li key={p} className="[overflow-wrap:anywhere]">
-                {p}
-              </li>
-            ))}
-          </ul>
-        </div>
+        <>
+          <div className="flex flex-col gap-2 text-[15px] text-refuse">
+            <p className="m-0 flex flex-wrap items-center gap-3">The count is incomplete, so no brief line has a number. {again}</p>
+            <ul className="m-0 flex list-disc flex-col gap-1 pl-5">
+              {proof.problems.map((p) => (
+                <li key={p} className="[overflow-wrap:anywhere]">
+                  {p}
+                </li>
+              ))}
+            </ul>
+          </div>
+          {/* The Decision lines keep their number, so they keep the block and the vault they were counted from. */}
+          {proof.team.vault ? (
+            <p data-proof-decisions-head="" className="m-0 text-[15px] text-ink-2">
+              The Decision lines are counted to block {formatCount(Number(proof.team.block))} of Base mainnet, from the Decision
+              logs of MandateVault <code className="font-mono text-[0.9em] [overflow-wrap:anywhere]">{proof.team.vault}</code>.
+            </p>
+          ) : null}
+        </>
       )}
       {proof.team.seed ? <p className="m-0 max-w-[720px] text-[13px] leading-normal text-ink-2">{seedText(proof.team.seed)}</p> : null}
       {proof.verifiedError ? (

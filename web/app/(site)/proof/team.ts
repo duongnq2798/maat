@@ -25,10 +25,11 @@ export interface TeamInputs {
   /**
    * Vault logs the caller already holds (snapshotSeed: the committed snapshot; or the ledger's browser cache), or a
    * promise of them. The trace takes from it the logs of VAULT_TOPICS in its range once each one's transaction receipt
-   * holds it, and the block it records has that hash, and reads only the other blocks; any difference drops the seed
-   * and the trace reads every block from the vault's deploy. So a seed cannot add or change a log. A log it leaves out
-   * leaves a team wallet with fewer sends than its nonce; then the trace reads the seed's blocks from the RPC as well
-   * and walks the hops again, so it gives what it gives with no seed.
+   * holds it and holds no log of VAULT_TOPICS of the vault that the seed leaves out, and the block it records has that
+   * hash, and reads only the other blocks; any difference drops the seed and the trace reads every block from the
+   * vault's deploy. So a seed cannot add or change a log, nor leave out one of a transaction it gives another log of. A
+   * transaction it leaves out whole leaves a team wallet with fewer sends than its nonce; then the trace reads the
+   * seed's blocks from the RPC as well and walks the hops again, so it gives what it gives with no seed.
    */
   vaultSeed?: VaultSeed | null | PromiseLike<VaultSeed | null>;
 }
@@ -370,12 +371,16 @@ export function snapshotSeed(raw: unknown, vault: string): VaultSeed | null {
 }
 
 const SEED_NAME: Record<VaultSeed["source"], string> = { snapshot: "the snapshot", cache: "the ledger's cache" };
+const SEED_TOPICS = new Set<string>(VAULT_TOPICS);
 const sameHex = (a: unknown, b: unknown) => typeof a === "string" && typeof b === "string" && a.toLowerCase() === b.toLowerCase();
 
 /**
- * Why `logs` of `seed` cannot stand for the vault's: the block it records has another hash on the RPC, or a log's
- * transaction receipt does not hold, in the same block and at the same log index, the same log of the vault. Null when
- * every one holds. The receipts are the trace's own reads, so a seed that passes costs no read the scan would not.
+ * Why `logs` of `seed` cannot stand for the vault's: the block it records has another hash on the RPC, a log's
+ * transaction receipt does not hold, in the same block and at the same log index, the same log of the vault, or that
+ * receipt holds a log of VAULT_TOPICS of the vault that `logs` leaves out (execute() can log MultiplierChangeDetected
+ * and a Decision in one transaction, and a seed that kept only the first would lose a Decision no nonce check catches).
+ * Null when every one holds. The receipts are the trace's own reads, so a seed that passes costs no read the scan would
+ * not.
  */
 async function seedProblem(rpc: Rpc, read: (hash: string) => Promise<Read>, vault: string, seed: VaultSeed, logs: readonly SeedLog[]): Promise<string | null> {
   const anchor = seed.anchor;
@@ -401,6 +406,9 @@ async function seedProblem(rpc: Rpc, read: (hash: string) => Promise<Read>, vaul
           r.topics.every((t, i) => sameHex(t, l.topics[i]));
         if (!same) return `the receipt of ${hash} has no log of the vault at index ${l.logIndex} as ${SEED_NAME[seed.source]} has it in block ${fmt(BigInt(l.blockNumber))}`;
       }
+      const held = new Set(byTx.get(hash)!.map((l) => BigInt(l.logIndex)));
+      const left = receipt.logs.find((x) => sameHex(x.address, vault) && SEED_TOPICS.has(String(x.topics[0]).toLowerCase()) && !held.has(BigInt(x.logIndex)));
+      if (left) return `${SEED_NAME[seed.source]} leaves out the log of the vault at index ${BigInt(left.logIndex)} of ${hash}, which its receipt holds in block ${fmt(BigInt(receipt.blockNumber))}`;
     }
     return null;
   });
