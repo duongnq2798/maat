@@ -4,6 +4,7 @@ import { ASK_OPEN } from "../content/ask-open";
 import { NAV_TOKENS } from "../content/b20-nav";
 import { FACTS } from "../content/facts";
 import { HERO_CTAS, HERO_DEFINITION } from "../content/hero";
+import agentNote from "../content/generated/agent-note.json" with { type: "json" };
 import addresses from "../content/generated/base-addresses.json" with { type: "json" };
 import deployments from "../content/generated/deployments.json" with { type: "json" };
 import { REASON_LABEL, REASONS } from "../content/reasons";
@@ -202,6 +203,9 @@ for (const vp of VIEWPORTS) {
       await expect(page.locator("#top").getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
       await expect(vaultCard(page)).toBeVisible();
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
+      // The one live proof: the card's latest mainnet Decision and its verdict, whole, in the first screen.
+      expect(await bottom(vaultCard(page).locator("[data-latest-line]"))).toBeLessThanOrEqual(vp.height);
+      expect(await bottom(vaultCard(page).locator("[data-verdict]"))).toBeLessThanOrEqual(vp.height);
     }
     expect(errors).toEqual([]);
   });
@@ -223,7 +227,11 @@ for (const vp of VIEWPORTS) {
     await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(hash32(9)));
     await expect(card.locator("[data-latest-line]")).toHaveText("BUY NVDAc · $50.00");
     await expect(card.locator("[data-latest-when]")).toContainText(`· ${AGE} ago`);
+    // Its own date first, "Thu 26 Nov 22:07 ET", never only an age.
+    await expect(card.locator("[data-latest-when]")).toHaveText(/^\w{3} \d{1,2} \w{3} \d{2}:\d{2} ET · block /);
     await expect(card.locator("[data-ticker-gloss]")).toHaveText("NVDAc (NVIDIA, a B20 token on Base)");
+    // The note under the card is newer than this Decision, so its quote stays.
+    await expect(page.locator("#top [data-hero-note]")).toHaveAttribute("data-hero-note", "recorded");
     await expect(card.locator("[data-verdict]")).toContainText(REASON_LABEL[LONGEST]);
 
     await expect(card).toContainText(`${RECORDED.length + 1} Decisions on Base mainnet, read from Base by your browser.`);
@@ -235,8 +243,11 @@ for (const vp of VIEWPORTS) {
 
     if (vp.width === 1440) {
       await expect(page.locator("[data-vault-bar]")).toHaveText(`Last Decision ${AGE} ago.`);
-      // With the longest refusal on the card, both CTAs stay in the first screen.
+      // With the longest refusal on the card, both CTAs stay in the first screen, and so do the card's latest Decision
+      // and its verdict.
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
+      expect(await bottom(card.locator("[data-latest-line]"))).toBeLessThanOrEqual(vp.height);
+      expect(await bottom(card.locator("[data-verdict]"))).toBeLessThanOrEqual(vp.height);
     } else {
       await expect(page.locator("[data-vault-bar]")).toBeHidden();
     }
@@ -277,6 +288,63 @@ for (const vp of VIEWPORTS) {
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
     }
     expect(errors).toEqual([]);
+  });
+}
+
+/** The time of the Decision read after the note recorded in this build: an hour after the note's round. */
+const AFTER_NOTE = Math.ceil(agentNote.note.ts) + 3600;
+/** The same vault, its newest Decision an hour after the agent's recorded note: the agent acted since it. */
+const afterNoteScenario: FakeScenario = {
+  ...scenario,
+  headTime: AFTER_NOTE + 20,
+  times: { ...scenario.times, [String(NEW_BLOCK)]: AFTER_NOTE },
+};
+
+for (const vp of VIEWPORTS) {
+  test(`at ${vp.width}x${vp.height} the note under the card gives way to one dated line once the card's Decision is newer`, async ({ page }) => {
+    const errors = collectErrors(page);
+    await page.setViewportSize(vp);
+    await page.clock.setFixedTime((AFTER_NOTE + 3 * 3600 + 5 * 60) * 1000);
+    await routeLiveRpc(page, "weekend");
+    await routeVault(page, afterNoteScenario);
+    await page.goto("/");
+
+    const card = vaultCard(page);
+    const note = page.locator("#top [data-hero-note]");
+    // The static page quotes the note (every Decision recorded in this build is older); the read brings a newer one.
+    await expect(card).toHaveAttribute("data-vault-card", "live");
+    await expect(card.locator("[data-latest-when]")).toContainText(`· ${AGE} ago`);
+    await expect(note).toHaveAttribute("data-hero-note", "superseded");
+    await expect(note).toHaveText(
+      `The vault's latest Decision is newer than the last note from Maat's agent in this build (${agentNote.note.when}). Newer rounds on /now →`,
+    );
+    await expect(note.locator("blockquote")).toHaveCount(0);
+    await expect(note.getByRole("link", { name: "Newer rounds on /now" })).toHaveAttribute("href", "/now");
+    await page.screenshot({ path: `test-results/screens/landing-note-superseded-${vp.width}.png` });
+    expect(errors).toEqual([]);
+  });
+}
+
+/** The gap between the last line of the last section and the footer's heading, "Watch it say no.", in px. */
+function gapAboveFooter(page: Page) {
+  return page.evaluate(() => {
+    const sections = document.querySelectorAll("#main > section");
+    const last = sections[sections.length - 1]!.firstElementChild!.lastElementChild!;
+    const heading = document.querySelector("footer h2")!;
+    return heading.getBoundingClientRect().top - last.getBoundingClientRect().bottom;
+  });
+}
+
+for (const vp of VIEWPORTS) {
+  test(`at ${vp.width}x${vp.height} no empty band opens above "Watch it say no."`, async ({ page }) => {
+    await page.setViewportSize(vp);
+    await routeLiveRpc(page, "weekend");
+    await page.goto("/");
+    await page.locator("footer h2").scrollIntoViewIfNeeded();
+    // Spec 2026-11-27 section 4: the last section ends on the footer's own padding, not on a section's full one too.
+    const gap = await gapAboveFooter(page);
+    expect(gap).toBeGreaterThan(0);
+    expect(gap).toBeLessThan(140);
   });
 }
 
