@@ -1,6 +1,5 @@
 // @vitest-environment node
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { parseSync } from "vite";
 import { describe, expect, it } from "vitest";
@@ -126,23 +125,12 @@ const DATED = /^docs\/superpowers\/(?:.+\/)?\d{4}-\d{2}-\d{2}-[^/]+$/;
 const SKIPPED = (path: string) => path === LEXICON || path.startsWith("web/content/generated/") || DATED.test(path);
 
 /**
- * PR #78 (feat/agent-voice) owns these files and renames the AI and the motto in them: "You are Maat" becomes "You are
- * Maat's agent", and the motto becomes "Claude proposes. The vault decides." The scan skips them until #78 merges. Then
- * this list goes, with the test below that keeps it honest, and any hit #78 leaves in them is fixed then.
- */
-const PENDING_AGENT_R3 = [
-  "agent/README.md",
-  "web/content/docs/get-started/how-a-decision-is-made.mdx",
-  "web/content/docs/security/threat-model.mdx",
-] as const;
-
-/**
  * Files the two culture lanes in progress own, feat/now-market-clock and feat/landing-verdict-first, that hold a
  * retired variant today. Each lane fixes its own, and its entry goes once the file is clean.
  */
 const PENDING_CULTURE_LANES: readonly string[] = [];
 
-const PENDING = new Set<string>([...PENDING_AGENT_R3, ...PENDING_CULTURE_LANES]);
+const PENDING = new Set<string>(PENDING_CULTURE_LANES);
 
 let trackedPaths: string[] | undefined;
 /** The tracked files in SCOPE, as `git ls-files` lists them. */
@@ -436,14 +424,6 @@ describe("the repository's public copy", () => {
       .filter((f) => !SKIPPED(f) && !PENDING.has(f))
       .flatMap(fileHits);
     expect(hits).toEqual([]);
-  });
-
-  it("skips PR #78's files only while #78 is open", () => {
-    for (const f of PENDING_AGENT_R3) expect(existsSync(join(REPO_ROOT, f)), f).toBe(true);
-    // #78 renames the AI in the system prompt: once that is on this tree, PENDING_AGENT_R3 must go.
-    expect(lf("agent/src/llm/prompt.ts"), "PR #78 has merged: remove PENDING_AGENT_R3 and fix what the scan finds").not.toContain(
-      "You are Maat's agent",
-    );
   });
 
   it("skips a culture lane's file only while it holds a retired variant", () => {

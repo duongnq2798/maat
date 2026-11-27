@@ -121,7 +121,7 @@ The agent keeps each rationale in its journal and sends a sanitized copy in the 
 
 Each request carries a system prompt, a user message with the round's state, and the JSON schema, whose field descriptions add a few short instructions. The system prompt is fixed except for its credit lines, which follow the `MAAT_CREDIT_ACTIONS` setting ([MAAT_CREDIT_ACTIONS](/docs/reference/agent-configuration#maat_credit_actions)). With credit actions off, the default, it tells Claude never to propose `SUPPLY`, `WITHDRAW_COLLATERAL`, `BORROW` or `REPAY`. This is the system prompt:
 
-```typescript title="agent/src/llm/prompt.ts#L9-L55"
+```typescript title="agent/src/llm/prompt.ts#L9-L66"
 /** The credit lines of the prompt, by MAAT_CREDIT_ACTIONS. Off, they say so, and name the actions never to propose. */
 const CREDIT = {
   on: {
@@ -142,8 +142,8 @@ const CREDIT = {
 /** The system prompt. `creditActions` false (the default) keeps every credit action out of the policy Claude reads. */
 export function systemPrompt(o: { creditActions: boolean }): string {
   const credit = o.creditActions ? CREDIT.on : CREDIT.off;
-  return `You are Maat, the treasury agent of an onchain vault on Base. The vault holds USDC and tokenized US stocks
-(B20 tokens NVDAc, GOOGLc, AAPLc) ${credit.vault}. Motto: "LLM proposes, contract decides."
+  return `You are Maat's agent, the treasury agent of Maat, an onchain vault on Base. The vault holds USDC and tokenized
+US stocks (B20 tokens NVDAc, GOOGLc, AAPLc) ${credit.vault}. Motto: "Claude proposes. The vault decides."
 You propose actions; the MandateVault contract checks each one against its mandate and refuses anything unsafe, and every
 verdict, including refusals, is published onchain.
 
@@ -165,17 +165,30 @@ maxSlippageBps below what the feed price implies fails. While the market is clos
 while a feed is stale it refuses trades in that stock: propose none of those.
 Compute bills are settled automatically; do not propose them.
 
+Feed age and the session: each token's feedAgeSeconds is its feed's age in seconds, and feedStale says whether that age
+is past maxStalenessSec. A feed under the limit is fresh, however many hours old it is: never call it stale or give it
+as a reason for a refusal. When marketOpen is false the market is closed, and that is the reason the vault would refuse
+a trade (it checks the session before feed age): name that one reason. A feed with feedStale true may be mentioned as a
+fact, not as a second refusal reason.
+
+Voice, for the summary and for each reply to a brief: calm, dry, in the first person, with no exclamation marks and no
+emoji. Name the rule that decides and give one reason. Never predict a price, and never apologize for a no. At most one
+wry clause. When you leave out a trade because you expect the vault to refuse it, say so plainly in the summary, or in
+the reply to the brief that asked for it.
+
 Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
 and in English. Hard limits (an answer that breaks one is rejected whole): at most ${MAX_INTENTS} intents, each rationale
 at most ${MAX_RATIONALE_CHARS} characters, the summary at most ${MAX_SUMMARY_CHARS} characters, every amount positive.`;
 }
 ```
 
-The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. The prompt asks Claude to propose an intent when it expects the vault to allow it and the intent fits the policy, and names what the vault checks a trade against: `maxStalenessSec` and the `limits` of the user message, which the agent reads from the vault's `mandate()` and `tokenConfig()`, apart from today's spend, which it reads from `spentOnDay`. While the market is closed, or a stock's [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness), it asks for no trade the vault would refuse. The prompt in the tag `agent-r2` still let Claude propose such a trade when the refusal was worth recording, and its user message carried the dollar caps alone: on 27 Nov one of its rationales gave a feed about 36 minutes old as a reason the vault might refuse, against a limit of 90,000 seconds. The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
+The prompt says that every verdict, including refusals, is published onchain, and the schema describes the rationale as "Published onchain as a hash". Both are wider than what the agent does: it sends a refused intent only for the [reasons](/docs/help/glossary#reason) in [How the agent reacts](/docs/concepts/refusal-codes#how-the-agent-reacts), at most once per reason per NYSE date (for `MARKET_CLOSED`, once per closed phase of that date), and in [dry-run mode](/docs/help/glossary#dry-run) it sends nothing. The prompt asks Claude to propose an intent when it expects the vault to allow it and the intent fits the policy, and names what the vault checks a trade against: `maxStalenessSec` and the `limits` of the user message, which the agent reads from the vault's `mandate()` and `tokenConfig()`, apart from today's spend, which it reads from `spentOnDay`. While the market is closed, or a stock's [feed](/docs/help/glossary#chainlink-equity-feed) is [stale](/docs/help/glossary#staleness), it asks for no trade the vault would refuse. The prompt in the tag `agent-r2` still let Claude propose such a trade when the refusal was worth recording, and its user message carried the dollar caps alone: on 27 Nov one of its rationales gave a feed about 36 minutes old as a reason the vault might refuse, against a limit of 90,000 seconds.
+
+The list of checks states the vault's own rule for a stale feed once: an age above `maxStalenessSec`, the rule behind [`FEED_STALE`](/docs/concepts/refusal-codes#feed_stale). The paragraph after it names the fields that carry that rule, each feed's age and a `feedStale` flag, and when `marketOpen` is false the prompt has Claude name the closed market as the one reason, since the vault checks the session before feed age and so never refuses with `FEED_STALE` while the market is closed; a stale feed may be mentioned as a fact, not as a second reason. It was added after a summary on 27 Nov called feeds up to about 2.7 hours old stale, against a limit of 90,000 seconds. The voice paragraph sets how the summary and each reply to a brief read, and asks Claude to say plainly, in the summary or in the reply to the brief that asked for it, when it leaves out a trade because it expects the vault to refuse it. It changes no rule, limit or schema field, and no code grades an answer's voice: `agent/test/voice.test.ts` checks that the prompt's own text uses none of the banned words that `bannedWords()` in `agent/src/llm/voice.ts` flags. The rules ban "only" when it is unscoped, a claim no word match can tell from a limit, so that test pins each "only" in the text the agent sends Claude, all of them limits such as "Rebalance only when". The Saturday buy in the worked example came from a scripted proposer, not from Claude. The investment policy's numbers are typed into the prompt: they match `DEFAULT_POLICY` in `agent/src/policy.ts` today, but they are not read from it.
 
 `renderUserMessage` builds the user message each round:
 
-```typescript title="agent/src/llm/prompt.ts#L62-L111"
+```typescript title="agent/src/llm/prompt.ts#L73-L124"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
@@ -216,6 +229,8 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,
       feedAgeSeconds: t.feedAge === null ? null : Number(t.feedAge),
+      // GuardLib's rule: stale when the age is above maxStaleness. Null when no valid answer was read.
+      feedStale: t.feedAge === null ? null : t.feedAge > BigInt(s.mandate.maxStaleness),
       valueUsd: usd(t.valueUsd6),
       ...(() => {
         const w = p.weights.find((x) => x.symbol === t.symbol);
@@ -237,7 +252,7 @@ The request itself:
         model: this.opts.model,
         max_tokens: 16000,
         // No cache_control: rounds start 15 to 60 minutes apart, past the 5-minute TTL, so a marker would only add the
-        // 1.25x write with no read. The prompt (about 2,450 to 2,750 characters) is also near the 512-token minimum.
+        // 1.25x write with no read. The prompt (about 3,400 to 3,650 characters) is also near the 512-token minimum.
         system: [{ type: "text", text: (briefs ? briefSystemPrompt : systemPrompt)({ creditActions: input.creditActions }) }],
         messages: [{ role: "user", content: briefs ? renderBriefMessage(input) : renderUserMessage(input) }],
         output_config: { effort: "medium", format: { type: "json_schema", schema: briefs ? BRIEF_BATCH_JSON_SCHEMA : BATCH_JSON_SCHEMA } },
