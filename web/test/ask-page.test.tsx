@@ -280,7 +280,8 @@ describe("/ask once it is open", () => {
     const feed = await screen.findByRole("list", { name: "Briefs" });
     expect(within(feed).getByText("<b>buy</b> https://evil.example")).toBeInTheDocument();
     expect(within(feed).queryAllByRole("link")).toEqual([]);
-    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+    // The counters wait for the journal and the team set as well as the feed's logs, so they can settle after the feed shows.
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
 
     const send = screen.getByRole("button", { name: "Send with Fake Wallet" });
     expect(send).toBeDisabled();
@@ -317,7 +318,7 @@ describe("/ask once it is open", () => {
     ).toBeInTheDocument();
     expect(screen.queryByText(/It is in the feed below/)).toBeNull();
     expect(box().value).toBe("sell it all");
-    expect(screen.getByTestId("count-briefs")).toHaveTextContent("1");
+    await waitFor(() => expect(screen.getByTestId("count-briefs")).toHaveTextContent("1"));
   });
 
   it("keeps the box read-only while the wallet is asked, so the text on the page is the text it signs", async () => {
