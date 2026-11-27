@@ -255,7 +255,7 @@ The landing's film band, `#film` directly under the hero (`web/components/sectio
 | File | What it is |
 | --- | --- |
 | `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,129,355 bytes |
-| `maat-film-poster.webp` | The poster: the frame at 53.5 s, the tx card of Maat's agent's Thanksgiving Decision, "Refused · Market closed (MARKET_CLOSED)", at 1280x720; 43,408 bytes |
+| `maat-film-poster.webp` | The poster: the 9:16 cut's frame at 53.5 s, cropped to the tx card of Maat's agent's Thanksgiving Decision, its heading "Thanksgiving: MARKET_CLOSED from Maat's agent" and its rows down to "Refused · Market closed (MARKET_CLOSED)", at 1280x720; 51,962 bytes |
 | `maat-film.en.vtt` | The captions track: the voice-over's 16 lines from `narration.json`, in 19 cues at the cut's times, on the top line of the picture, written by `vtt.mjs` |
 | `maat-film.on-screen.en.vtt` | The on-screen text track: the cut's 18 burned-in captions, at the cut's times, written by `vtt.mjs` |
 
@@ -306,19 +306,24 @@ Before the next full render, move that shot's scroll stop so the counts end abov
 
 ### Put a new cut on the landing
 
-Run from the repository root, with `<cut>` the 16:9 MP4 with its sound and `<work>` the work folder of the render its
-picture comes from:
+Run from the repository root, with `<cut>` the 16:9 MP4 with its sound, `<tall>` the 9:16 one, and `<work>` the work
+folder of the render their picture comes from:
 
 ```bash
 ffmpeg -i <cut> -map 0:v:0 -map 0:a:0 -map_metadata -1 -vf "scale=1280:720:flags=lanczos" \
   -c:v libx264 -preset slow -crf 26 -profile:v high -level:v 3.1 -pix_fmt yuv420p -r 30 \
   -c:a aac -b:a 128k -ar 48000 -ac 2 -movflags +faststart web/public/film/maat-film-720p.mp4
-ffmpeg -ss 53.5 -i <cut> -frames:v 1 -vf "scale=1280:720:flags=lanczos" -map_metadata -1 \
+ffmpeg -ss 53.5 -i <tall> -frames:v 1 -vf "crop=1080:720:0:410,pad=1280:720:100:0:white" -map_metadata -1 \
   -c:v libwebp -quality 82 -compression_level 6 web/public/film/maat-film-poster.webp
 node film/vtt.mjs --manifest <work>/manifest.json --captions web/public/film/maat-film.en.vtt \
   --on-screen web/public/film/maat-film.on-screen.en.vtt
 ```
 
 53.5 s is the middle of the Thanksgiving tx shot (51 to 56 s) in today's beat plan; if the plan moves that shot, take
-the middle of its new span. `film-band.test.tsx` keeps the cut between 5 and 6 MB: raise the CRF a step if a cut comes
-out heavier. `vtt.mjs` writes nothing while a narration cue leaves its shot or a cue's words are not its caption's.
+the middle of its new span. The poster comes from the 9:16 cut because its card is laid out for a phone: the same card
+in the 16:9 frame is small at the player's width, about 8 px of verdict at 1440 px and 4 px at 390 px, and its
+burned-in caption sits where the player draws its controls. The crop starts 43 px above the card's heading and keeps
+the whole card, with the verdict about 60% down the frame, above the controls' shade, and no caption in it; the pad
+widens it to 16:9 in the frame's own white. If the card moves, set the crop's top from a new frame.
+`film-band.test.tsx` keeps the cut between 5 and 6 MB: raise the CRF a step if a cut comes out heavier. `vtt.mjs`
+writes nothing while a narration cue leaves its shot or a cue's words are not its caption's.

@@ -14,7 +14,10 @@ export const FILM = {
   disclosure: "Voice and music: AI-generated with ElevenLabs",
   /** The cut: H.264 High at 1280x720 with AAC sound, its index at the front of the file so it starts at once. */
   video: "/film/maat-film-720p.mp4",
-  /** A frame of the Thanksgiving refusal, 1280x720 WebP. */
+  /**
+   * A frame of the Thanksgiving refusal, 1280x720 WebP: the 9:16 cut's tx card, its heading and its verdict large and
+   * clear of the player's controls, with no burned-in caption.
+   */
   poster: "/film/maat-film-poster.webp",
   /**
    * The captions of the sound as WebVTT: the voice-over of film/narration.json, at the top of the picture so they never
