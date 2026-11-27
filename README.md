@@ -119,10 +119,11 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 
 <p align="center">
   <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused: Over the size limit (SIZE_LIMIT)."></a>
-  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20, Allowed · All checks passed (OK), gas 758,192; SUPPLY NVDAc $15, Allowed · All checks passed (OK), 286,707; BORROW USDC $5, Allowed · All checks passed (OK), 484,173; BUY GOOGLc $10 on Sat 7 Nov, Refused · Market closed (MARKET_CLOSED), 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
+  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The fork run's ledger on the mainnet ledger page, /ledger#fork, headed Before mainnet, The fork run, with a fork · 5-7 Nov badge. Four rows: BUY NVDAc $20, Allowed · All checks passed (OK), gas 758,192; SUPPLY NVDAc $15, Allowed · All checks passed (OK), 286,707; BORROW USDC $5, Allowed · All checks passed (OK), 484,173; BUY GOOGLc $10 on Sat 7 Nov, Refused · Market closed (MARKET_CLOSED), 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627, and that the vault's mainnet decisions are in the mainnet ledger above."></a>
 </p>
 
-Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Right: the fork ledger.
+Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Right: the fork ledger, on
+[`/ledger#fork`](https://maatonbase.xyz/ledger#fork).
 
 ## By track: Agentic Stock Finance
 
