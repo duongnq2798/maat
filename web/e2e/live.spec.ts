@@ -1,12 +1,12 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Page, test } from "@playwright/test";
-import { NAV_TOKENS } from "../content/b20-nav";
+import { NAV_TOKENS, tickerGloss } from "../content/b20-nav";
 import { FACTS } from "../content/facts";
 import { andList } from "../content/format";
 import { REASON_LABEL } from "../content/reasons";
 import { REFRESH_MS } from "../lib/live/freshness";
 import { LIVE_RPCS } from "../lib/live/rpc";
-import { BUY_LEAD, buyLineText } from "../lib/live/verdict";
+import { BUY_LEAD, buyLineText, OTHER_CHECKS, PASS_LEAD, VAULT_NOT_RUN } from "../lib/live/verdict";
 import { fixtureResults, routeLiveRpc, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { collectErrors, measureFit, serveEmptyJournal } from "./helpers";
 
@@ -106,7 +106,9 @@ test("in session the live line passes the market checks for two basket tokens an
   const s = strip(page);
   await expect(s).toHaveAttribute("data-live-strip", "live");
   await expect(s).toContainText("11:43 ET");
-  await expect(s).toContainText(`${BUY_LEAD} Refused for ${refused}:`);
+  // The first ticker the line names is glossed (spec 2026-11-27 section 4): on a phone this line is where one first appears.
+  const glossed = tickerGloss(refused)!;
+  await expect(s).toContainText(`${BUY_LEAD} Refused for ${glossed}:`);
   // The premium in plain words: what it compares, in bps, against the limit (spec 2026-11-27 section 4).
   await expect(s).toContainText(new RegExp(`pool vs Chainlink \\d+ bps · limit ${maxPremiumBps}`));
   await expect(s.locator("[data-reason-tag]")).toHaveAttribute("data-reason-tag", "PREMIUM_TOO_HIGH");
@@ -114,9 +116,39 @@ test("in session the live line passes the market checks for two basket tokens an
   await expect(s).toContainText(`Market checks pass for ${andList(passed)}.`);
   await expect(s.getByRole("status")).toHaveText(
     new RegExp(
-      `^Live\\. ${BUY_LEAD} Refused for ${refused}: ${REASON_LABEL.PREMIUM_TOO_HIGH} \\(PREMIUM_TOO_HIGH\\) · pool vs Chainlink \\d+ bps · limit ${maxPremiumBps}\\. Market checks pass for ${andList(passed)}\\.$`,
+      `^Live\\. ${BUY_LEAD} Refused for ${glossed.replace(/[()]/g, "\\$&")}: ${REASON_LABEL.PREMIUM_TOO_HIGH} \\(PREMIUM_TOO_HIGH\\) · pool vs Chainlink \\d+ bps · limit ${maxPremiumBps}\\. Market checks pass for ${andList(passed)}\\.$`,
     ),
   );
+  expect(errors).toEqual([]);
+});
+
+test("in session with every market check passing, the live line names what passes and links the checks the vault runs on a real trade", async ({
+  page,
+}) => {
+  const errors = collectErrors(page);
+  const { twapWindowSec } = FACTS.mandate.value;
+  let results = fixtureResults(SESSION_TS);
+  for (const symbol of FACTS.basket.value) results = withFeed(results, symbol, twapOf(results, symbol, twapWindowSec), SESSION_TS - 10);
+  await clockAfter(page, SESSION_TS);
+  await routeLiveRpc(page, { results, open: true });
+  await page.goto("/");
+
+  const s = strip(page);
+  await expect(s).toHaveAttribute("data-live-strip", "live");
+  const line = s.locator("[data-verdict-line]");
+  await expect(line).toHaveAttribute("data-verdict-line", "pass-all");
+  // Review of PR #105: a label of its own, the tokens with the first one glossed, then a small link to the method.
+  await expect(line.locator("[data-verdict-lead]")).toHaveText(PASS_LEAD);
+  const [first, ...rest] = FACTS.basket.value;
+  await expect(line).toContainText(`${tickerGloss(first)}, ${andList(rest)}.`);
+  const method = line.locator("[data-verdict-method]").getByRole("link", { name: OTHER_CHECKS });
+  await expect(method).toHaveAttribute("href", "/now#method");
+  await expect(s).not.toContainText(VAULT_NOT_RUN);
+  await expect(s).not.toContainText("Allowed");
+  // The method row sits under the tokens, in the strip's small type.
+  const [tokens, row] = await Promise.all([line.locator("[data-ticker-gloss]").boundingBox(), method.boundingBox()]);
+  expect(row!.y).toBeGreaterThan(tokens!.y);
+  expect(await method.evaluate((el) => getComputedStyle(el).fontSize)).toBe("13px");
   expect(errors).toEqual([]);
 });
 

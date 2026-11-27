@@ -1,3 +1,4 @@
+import { companyGloss } from "@/content/b20-nav";
 import { localTime, regularSession, WEEKDAY_NAMES } from "@/content/calendar";
 import { CHECK_LABELS } from "@/content/engine";
 import { FACTS } from "@/content/facts";
@@ -228,6 +229,15 @@ export function headlineText(h: Headline): string {
  */
 export const BUY_LEAD = "Right now, a buy would be:";
 export const BUY_LEAD_NOT_LIVE = "At the last read, a buy would be:";
+/**
+ * The label when the default mandate refuses no basket token: the line names the tokens that pass the market checks,
+ * and never says Allowed, since checks 3, 8 and 9 need a vault and the line runs none (review of PR #105: "a buy would
+ * be: Market checks pass" did not parse).
+ */
+export const PASS_LEAD = "Right now, a buy would pass the market checks:";
+export const PASS_LEAD_NOT_LIVE = "At the last read, a buy would pass the market checks:";
+/** After a pass, the checks the line does not run; the hero links these words to the method on /now. */
+export const OTHER_CHECKS = "The vault runs the other checks on a real trade";
 /** The verdict's word when a basket token is refused; the hero sets it at the verdict size. */
 export const REFUSED = "Refused";
 /** Says what passed without claiming Allowed: checks 3, 8 and 9 need a vault, and the line runs none. */
@@ -238,29 +248,61 @@ export function premiumText(bps: bigint, limit: number): string {
   return `pool vs Chainlink ${bps} bps · limit ${limit}`;
 }
 
+/** The line's label for this headline: what passed when nothing is refused, the verdict a buy would get otherwise. */
+export function buyLead(h: Headline, live = true): string {
+  if (h.kind === "pass-all") return live ? PASS_LEAD : PASS_LEAD_NOT_LIVE;
+  return live ? BUY_LEAD : BUY_LEAD_NOT_LIVE;
+}
+
+/** The first ticker the line names: the first token that passes, or the first one refused; none in a refuse-all. */
+function firstTicker(h: Headline): string | null {
+  switch (h.kind) {
+    case "refuse-all":
+      return null;
+    case "pass-all":
+      return h.passed[0] ?? null;
+    case "mixed":
+      return h.refused[0]?.symbol ?? null;
+  }
+}
+
+/**
+ * What the line's first ticker stands for, "(NVIDIA, a B20 token on Base)", written right after it (spec 2026-11-27
+ * section 4: a ticker is explained the first time it appears, and on a phone this line is the first place one does);
+ * null when the line names no ticker or the first is not a NAV token.
+ */
+export function lineGloss(h: Headline): string | null {
+  const symbol = firstTicker(h);
+  return symbol === null ? null : companyGloss(symbol);
+}
+
 /**
  * The hero's live line as one sentence: the label, then "Refused · <reason>" when every basket token is refused for one
- * reason, "Refused for <token>: <reason>; ..." with the passing tokens after when only some are, and the market checks
- * that pass otherwise. A premium refusal gives its premium against the limit. components/live/VerdictLine.tsx shows it
- * with each "Label (CODE)" as its ReasonTag; the strip's live region reads it as it is.
+ * reason, "Refused for <token>: <reason>; ..." with the passing tokens after when only some are, and, when none is,
+ * the tokens that pass the market checks and the checks the vault runs on a real trade. The first ticker named carries
+ * its gloss (lineGloss). A premium refusal gives its premium against the limit. components/live/VerdictLine.tsx shows
+ * it with each "Label (CODE)" as its ReasonTag; the strip's live region reads it as it is.
  */
 export function buyLineText(
   h: Headline,
   verdicts: readonly TokenVerdict[],
   { live = true, limit = DEFAULT_LIMITS.maxPremiumBps }: { live?: boolean; limit?: number } = {},
 ): string {
-  const lead = live ? BUY_LEAD : BUY_LEAD_NOT_LIVE;
+  const lead = buyLead(h, live);
+  const gloss = lineGloss(h);
+  // The first ticker of the sentence, glossed; every other one bare.
+  const named = (symbol: string, first: boolean) => (first && gloss !== null ? `${symbol} ${gloss}` : symbol);
   switch (h.kind) {
     case "refuse-all":
       return `${lead} ${REFUSED} · ${reasonText(h.reason)}`;
     case "pass-all":
-      return `${lead} ${MARKET_CHECKS_PASS} for ${andList(h.passed)}; ${VAULT_NOT_RUN}.`;
+      return `${lead} ${andList(h.passed.map((s, i) => named(s, i === 0)))}. ${OTHER_CHECKS}.`;
     case "mixed": {
       const refused = h.refused
-        .map((x) => {
+        .map((x, i) => {
           const bps = verdicts.find((v) => v.symbol === x.symbol)?.premiumBps ?? null;
           const premium = x.reason === "PREMIUM_TOO_HIGH" && bps !== null ? ` · ${premiumText(bps, limit)}` : "";
-          return `${x.symbol}: ${reasonText(x.reason)}${premium}`;
+          return `${named(x.symbol, i === 0)}: ${reasonText(x.reason)}${premium}`;
         })
         .join("; ");
       const tail = h.passed.length > 0 ? ` ${MARKET_CHECKS_PASS} for ${andList(h.passed)}.` : "";

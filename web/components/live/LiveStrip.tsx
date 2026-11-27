@@ -11,7 +11,7 @@ import { NAV_TOKENS } from "@/content/b20-nav";
 import type { LiveState } from "@/lib/live/freshness";
 import { formatAge, formatBlock, formatEt } from "@/lib/live/format";
 import type { LiveReader } from "@/lib/live/rpc";
-import { BUY_LEAD, BUY_LEAD_NOT_LIVE, buyLineText, REFUSED } from "@/lib/live/verdict";
+import { buyLead, buyLineText, lineGloss, OTHER_CHECKS, REFUSED } from "@/lib/live/verdict";
 import {
   BlockLink,
   FAILED,
@@ -46,8 +46,10 @@ const GHOST_BLOCK = "88,888,888";
  * each glyph advance to a whole pixel and wraps sooner (about 12% taller on 2026-11-24), so each reserve keeps about
  * 40 px, or 12% where that is more, over those, rounded up to 4 px: 352, 192, 260 and 196.
  *
- * The line and its keys sit together in the middle of the window, so the room a shorter frame leaves is split above
- * and below them rather than opening a blank band between the line and its keys (judge rehearsal m5).
+ * The line and its keys always sit together, never with a blank band between them (judge rehearsal m5). Below sm they
+ * sit at the top of the window and the room a shorter frame leaves is under the keys, so a phone's first screen shows
+ * the label and the verdict right under the steps, with no dark band above them (review of PR #105). From sm the room
+ * is smaller, and they sit in the middle of the window.
  *
  * Each value is a min-height, never a fixed height: a frame taller than its reserve, on a platform or a width no test
  * measures, grows the window and moves what is under it down instead of running over it.
@@ -78,18 +80,24 @@ function NowLink() {
 /** The line's sentence, as the live region reads it too: the verdict a buy of each basket token would get. */
 const buySentence: Sentence = (state) => buyLineText(state.reading.headline, state.reading.verdicts, { live: state.status === "live" });
 
-/** The line's verdict, its words split for VerdictLine. */
+/**
+ * The line's verdict, its words split for VerdictLine: its label, its verb, the first ticker's gloss, and, when nothing
+ * is refused, the checks the vault runs on a real trade, linked to the method on /now. Its reasons are running text, so
+ * "Refused · Market closed" stays on one line and only the code wraps.
+ */
 function BuyLine({ state, className }: { state: ShownState; className?: string }) {
   const live = state.status === "live";
+  const h = state.reading.headline;
   return (
     <VerdictLine
-      headline={state.reading.headline}
-      grammar={{ text: buySentence(state), lead: live ? BUY_LEAD : BUY_LEAD_NOT_LIVE, verb: REFUSED }}
+      headline={h}
+      grammar={{ text: buySentence(state), lead: buyLead(h, live), verb: REFUSED, gloss: lineGloss(h), method: OTHER_CHECKS }}
       tone={live ? "ink" : "muted"}
       palette="chassis"
       methodHref="/now#method"
       className={className}
       lead={live}
+      tagLayout="text"
     />
   );
 }
@@ -222,7 +230,7 @@ function Strip({ live }: { live: LiveSnapshotValue }) {
       tabIndex={-1}
       data-live-strip={state.status}
       reserve={STRIP_RESERVE}
-      className="relative flex flex-col justify-center gap-2 pt-2 pb-2 text-[13px] leading-5"
+      className="relative flex flex-col justify-start gap-2 pt-2 pb-2 text-[13px] leading-5 sm:justify-center"
     >
       <LiveAnnouncer state={state} sentence={buySentence} />
       <Body state={state} refreshing={refreshing} onRetry={onRetry} />

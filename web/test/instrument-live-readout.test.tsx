@@ -3,7 +3,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { LiveStrip, STRIP_RESERVE } from "@/components/live/LiveStrip";
 import { VerdictLine } from "@/components/live/VerdictLine";
-import { type Headline, BUY_LEAD, buyLineText, headlineText, REFUSED } from "@/lib/live/verdict";
+import { type Headline, BUY_LEAD, buyLineText, headlineText, lineGloss, REFUSED } from "@/lib/live/verdict";
 import { LIVE_RPCS } from "@/lib/live/rpc";
 import { type Answer, advance, fakeReader, FRI, installLiveClocks, readingAt, SAT } from "./helpers/fake-reader";
 
@@ -65,7 +65,12 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1; s
     // Its label is a kicker of its own, so the verdict, in the vault's grammar, is the line set at the verdict size.
     expect(line.firstElementChild).toHaveAttribute("data-verdict-lead");
     expect(line.firstElementChild!.textContent).toBe("Right now, a buy would be:");
-    expect(verdict).toHaveTextContent("Right now, a buy would be: Refused · Market closedMARKET_CLOSED");
+    expect(verdict).toHaveTextContent("Right now, a buy would be: Refused · Market closed MARKET_CLOSED");
+    // The reason runs as text, not as a box, so "Refused · Market closed" shares a line and only the code wraps (review
+    // of PR #105: at 390 px "Refused ·" stood alone on its line).
+    const tag = line.querySelector("[data-reason-tag]")!;
+    expect(tag).not.toHaveAttribute("class");
+    expect(tag.textContent).toBe("Market closed MARKET_CLOSED");
     expect(block!.querySelector(".readout-figure")).not.toBeNull();
     expect(block).toHaveTextContent("LIVE");
     expect(block).toHaveTextContent("10:00 ET");
@@ -231,18 +236,23 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1; s
       ],
       passed: ["AAPLc"],
     };
-    const buy = (h: Headline) => ({ text: buyLineText(h, []), lead: BUY_LEAD, verb: REFUSED });
+    const buy = (h: Headline) => ({ text: buyLineText(h, []), lead: BUY_LEAD, verb: REFUSED, gloss: lineGloss(h) });
     const all: Headline = { kind: "refuse-all", reason: "MARKET_CLOSED" };
     const { container } = render(
       <>
-        <VerdictLine headline={mixed} grammar={buy(mixed)} palette="chassis" className="readout-verdict" lead />
+        <VerdictLine headline={mixed} grammar={buy(mixed)} palette="chassis" className="readout-verdict" lead tagLayout="text" />
         <VerdictLine headline={mixed} />
-        <VerdictLine headline={all} grammar={buy(all)} palette="chassis" className="readout-verdict" lead />
+        <VerdictLine headline={all} grammar={buy(all)} palette="chassis" className="readout-verdict" lead tagLayout="text" />
       </>,
     );
     const [strip, now, whole] = [...container.querySelectorAll<HTMLElement>("[data-verdict-line]")];
     // The hero's sentence, word for word, with the verb its own span right after the label; /now keeps its own.
-    expect(strip!.textContent).toBe("Right now, a buy would be: Refused for NVDAc: Price feed out of dateFEED_STALE; GOOGLc: Corporate action cooldownMULTIPLIER_COOLDOWN. Market checks pass for AAPLc.");
+    expect(strip!.textContent).toBe(
+      "Right now, a buy would be: Refused for NVDAc (NVIDIA, a B20 token on Base): Price feed out of date FEED_STALE; GOOGLc: Corporate action cooldown MULTIPLIER_COOLDOWN. Market checks pass for AAPLc.",
+    );
+    // The first ticker's gloss is a span of its own, so the strip can set it smaller; /now's line has none.
+    expect(strip!.querySelector("[data-ticker-gloss]")!.textContent).toBe("(NVIDIA, a B20 token on Base)");
+    expect(strip!.querySelectorAll("[data-ticker-gloss]")).toHaveLength(1);
     expect(now!.textContent).toMatch(/^An agent under Maat.s default mandate would REFUSE NVDAc: /);
     expect(headlineText(mixed)).toMatch(/^An agent under Maat.s default mandate would REFUSE /);
     const word = strip!.querySelectorAll("[data-verdict-word]");
@@ -253,7 +263,9 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1; s
     // /now's line and a refuse-all line, set whole at the verdict size, have no such span.
     expect(now!.querySelector("[data-verdict-word]")).toBeNull();
     expect(whole!.querySelector("[data-verdict-word]")).toBeNull();
-    expect(whole!.textContent).toBe("Right now, a buy would be: Refused · Market closedMARKET_CLOSED");
+    expect(whole!.textContent).toBe("Right now, a buy would be: Refused · Market closed MARKET_CLOSED");
+    // A refusal of every token names none, so it has nothing to gloss.
+    expect(whole!.querySelector("[data-ticker-gloss]")).toBeNull();
 
     // The verb takes each size the verdict line takes, base, 40rem and 80rem, in the same order.
     const sizes = (selector: RegExp) =>
@@ -263,13 +275,22 @@ describe("the live strip in its Readout (spec 2026-11-23 sections 3.5 and 6.1; s
     expect(sizes(/\.readout-verdict\[data-verdict-line="mixed"\] \[data-verdict-word\]/)).toEqual(verdict);
   });
 
+  it("labels a pass by what passed, live or not, and never says Allowed (review of PR #105)", () => {
+    const h: Headline = { kind: "pass-all", passed: ["NVDAc", "GOOGLc", "AAPLc"] };
+    expect(buyLineText(h, [])).toBe(
+      "Right now, a buy would pass the market checks: NVDAc (NVIDIA, a B20 token on Base), GOOGLc and AAPLc. The vault runs the other checks on a real trade.",
+    );
+    expect(buyLineText(h, [], { live: false })).toMatch(/^At the last read, a buy would pass the market checks: NVDAc \(NVIDIA, /);
+    expect(buyLineText(h, [])).not.toMatch(/Allowed|vault checks not run|would be:/);
+  });
+
   it("labels a premium refusal with its premium against the limit (spec 2026-11-27 section 4)", () => {
     const reading = readingAt(SAT);
     const nvda = reading.verdicts.find((v) => v.symbol === "NVDAc")!;
     const verdicts = [{ ...nvda, premiumBps: 143n }];
     const h: Headline = { kind: "mixed", refused: [{ symbol: "NVDAc", reason: "PREMIUM_TOO_HIGH" }], passed: ["GOOGLc", "AAPLc"] };
     expect(buyLineText(h, verdicts, { limit: 100 })).toBe(
-      "Right now, a buy would be: Refused for NVDAc: Pool price too far from oracle (PREMIUM_TOO_HIGH) · pool vs Chainlink 143 bps · limit 100. Market checks pass for GOOGLc and AAPLc.",
+      "Right now, a buy would be: Refused for NVDAc (NVIDIA, a B20 token on Base): Pool price too far from oracle (PREMIUM_TOO_HIGH) · pool vs Chainlink 143 bps · limit 100. Market checks pass for GOOGLc and AAPLc.",
     );
   });
 });

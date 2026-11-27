@@ -46,11 +46,17 @@ export function companyName(symbol: string): string | null {
   return name === undefined ? null : name.replace(/,?\s+(?:Inc\.|Corporation|Corp\.|PBC)$/, "");
 }
 
+/** What a ticker stands for, in brackets: "(Alphabet, a B20 token on Base)" for GOOGLc; null for any other symbol. */
+export function companyGloss(symbol: string): string | null {
+  const company = companyName(symbol);
+  return company === null ? null : `(${company}, a B20 token on Base)`;
+}
+
 /**
  * A ticker the first time the landing names it (spec 2026-11-27, landing "explain in 10 seconds", section 4):
  * "GOOGLc (Alphabet, a B20 token on Base)"; null for a symbol that is not a NAV token.
  */
 export function tickerGloss(symbol: string): string | null {
-  const company = companyName(symbol);
-  return company === null ? null : `${symbol} (${company}, a B20 token on Base)`;
+  const gloss = companyGloss(symbol);
+  return gloss === null ? null : `${symbol} ${gloss}`;
 }

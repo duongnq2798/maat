@@ -11,7 +11,7 @@ import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from 
 import { HEAD_MAX_LAG_SEC, LIVE_MAX_AGE_MS, REFRESH_MS } from "@/lib/live/freshness";
 import { LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { decodeSnapshot } from "@/lib/live/snapshot";
-import { buyLineText, headline, judgeToken, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
+import { buyLineText, headline, judgeToken, OTHER_CHECKS, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
 import fixture from "./fixtures/live-aggregate3.json";
 import { failSlot, passingBasket } from "./helpers/live";
 
@@ -184,23 +184,31 @@ describe("the live strip", () => {
     const basket = FACTS.basket.value.map((s) => verdicts.find((v) => v.symbol === s)!);
     const allPass = basket.every((v) => v.mandate === "OK");
     expect(strip()).toHaveTextContent(
-      allPass ? "Right now, a buy would be: Market checks pass for NVDAc, GOOGLc and AAPLc" : "Right now, a buy would be: Refused",
+      allPass
+        ? "Right now, a buy would pass the market checks: NVDAc (NVIDIA, a B20 token on Base), GOOGLc and AAPLc."
+        : "Right now, a buy would be: Refused for NVDAc (NVIDIA, a B20 token on Base)",
     );
     neverSafe();
   });
 
-  it("links vault checks not run to the method on /now when the default mandate refuses no basket token", async () => {
+  it("labels a pass as what passed, glosses its first ticker, and links the checks the vault runs on a real trade to the method", async () => {
     await mount({ timestamp: FRI, edit: passingBasket }, FRI + 14);
     const { headline: h } = expected(FRI, passingBasket);
     expect(h.kind).toBe("pass-all");
     const line = strip().querySelector<HTMLElement>("[data-verdict-line]")!;
     expect(line).toHaveAttribute("data-verdict-line", "pass-all");
-    const link = screen.getByRole("link", { name: VAULT_NOT_RUN });
-    expect(line).toContainElement(link);
+    // Review of PR #105: "a buy would be: Market checks pass for ...; vault checks not run" did not parse after its label.
+    expect(line.querySelector("[data-verdict-lead]")!.textContent).toBe("Right now, a buy would pass the market checks:");
+    expect(line.querySelector("[data-ticker-gloss]")!.textContent).toBe("(NVIDIA, a B20 token on Base)");
+    const link = screen.getByRole("link", { name: OTHER_CHECKS });
+    expect(line.querySelector("[data-verdict-method]")).toContainElement(link);
     expect(link).toHaveAttribute("href", "/now#method");
+    expect(screen.queryByRole("link", { name: VAULT_NOT_RUN })).toBeNull();
     // The link is inside the sentence: it reads as buyLineText, and the announcement stays plain text.
     expect(verdictSentence()).toBe(sentence(FRI, passingBasket));
-    expect(verdictSentence()).toBe(`Right now, a buy would be: Market checks pass for NVDAc, GOOGLc and AAPLc; ${VAULT_NOT_RUN}.`);
+    expect(verdictSentence()).toBe(
+      `Right now, a buy would pass the market checks: NVDAc (NVIDIA, a B20 token on Base), GOOGLc and AAPLc. ${OTHER_CHECKS}.`,
+    );
     expect(screen.getByRole("status").textContent).toBe(`Live. ${sentence(FRI, passingBasket)}`);
     expect(screen.getByRole("status").querySelector("a")).toBeNull();
     // A pass never claims every check: checks 3, 8 and 9 need a vault.
@@ -210,12 +218,12 @@ describe("the live strip", () => {
   it.each([
     ["mixed", FRI, ((r) => failSlot(passingBasket(r), "NVDAc", "observe")) as Edit],
     ["refuse-all", SAT, undefined],
-  ] as const)("does not link vault checks not run when the headline is %s", async (kind, at, edit) => {
+  ] as const)("does not link the method when the headline is %s", async (kind, at, edit) => {
     await mount({ timestamp: at, edit }, at + 14);
     expect(expected(at, edit).headline.kind).toBe(kind);
     expect(strip().querySelector("[data-verdict-line]")).toHaveAttribute("data-verdict-line", kind);
     expect(strip().querySelector("[data-verdict-line] a")).toBeNull();
-    expect(screen.queryByRole("link", { name: VAULT_NOT_RUN })).toBeNull();
+    expect(screen.queryByRole("link", { name: OTHER_CHECKS })).toBeNull();
   });
 
   it("says NOT LIVE when a refresh fails after a good reading, and keeps the old verdict in muted text", async () => {

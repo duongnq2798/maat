@@ -571,9 +571,11 @@
    loudest. Its label, "Right now, a buy would be:", is a kicker on a line of its own at the strip's 13 px in lcd-2. A
    headline that names a reason for each token (mixed) is the longest the strip prints, so its reasons keep the strip's
    own 13 px and weight, and only its verb, Refused, takes the verdict size, on a 20 px line, so the verdict is still the
-   largest text after the H1 in the phone's first screen. The block number, its weight settling from 300 to 560 when a
-   reading lands; the scan line, hidden at rest (useScan shows it for one 400 ms pass); the LIVE pill's lamp; and focus
-   rings in pass-lit on the dark window. */
+   largest text after the H1 in the phone's first screen. The first ticker's gloss, "(NVIDIA, a B20 token on Base)", and
+   the row under a pass that links the method, "The vault runs the other checks on a real trade", keep the strip's 13 px
+   too, so the tickers and the verdict stay the loudest words. The block number, its weight settling from 300 to 560
+   when a reading lands; the scan line, hidden at rest (useScan shows it for one 400 ms pass); the LIVE pill's lamp; and
+   focus rings in pass-lit on the dark window. */
 @layer components {
   .readout-verdict {
     font-size: 22px;
@@ -600,6 +602,20 @@
     letter-spacing: 0;
     font-weight: 400;
     color: var(--color-lcd-2);
+  }
+  .readout-verdict [data-ticker-gloss] {
+    font-size: 13px;
+    letter-spacing: 0;
+    font-weight: 400;
+    color: var(--color-lcd-2);
+  }
+  .readout-verdict [data-verdict-method] {
+    display: block;
+    margin-top: 4px;
+    font-size: 13px;
+    line-height: 20px;
+    letter-spacing: 0;
+    font-weight: 400;
   }
   .readout-verdict[data-verdict-line="mixed"] {
     font-size: 13px;

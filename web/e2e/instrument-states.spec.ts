@@ -89,7 +89,7 @@ const FRAMES: readonly Frame[] = [
     clock: SESSION_TS + 5,
     scenario: { results: passAll(), open: true },
     state: "live",
-    words: ["LIVE", "Right now, a buy would be:", "Market checks pass for"],
+    words: ["LIVE", "Right now, a buy would pass the market checks:", "(NVIDIA, a B20 token on Base)", "The vault runs the other checks on a real trade"],
   },
   {
     name: "live-three-refusals",
@@ -172,6 +172,8 @@ for (const frame of FRAMES) {
       });
       mkdirSync(HEIGHTS, { recursive: true });
       writeFileSync(`${HEIGHTS}/${frame.name}-${width}.txt`, `${Math.ceil(natural)}\n`);
+      // In the run's log too, so CI's Linux heights can be read without an artifact (STRIP_RESERVE comes from them).
+      console.log(`readout-height ${frame.name} ${width} ${Math.ceil(natural)}`);
       await page.screenshot({ path: `test-results/screens/states-${frame.name}-${width}.png` });
       expect(natural, `${frame.name} at ${width} px needs ${Math.ceil(natural)} px`).toBeLessThanOrEqual(reserve);
       expect(box, "the Readout keeps its reserved height").toBe(reserve);
