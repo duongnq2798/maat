@@ -142,7 +142,7 @@ export const DOCS_IA: readonly IaSection[] = [
       page(
         "concepts/treasury-loop",
         "The treasury loop",
-        "How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is still planned.",
+        "How the agent keeps its basket, supplies idle stock, borrows for runway and pays its own compute bill, and what is not built.",
       ),
     ],
   },
