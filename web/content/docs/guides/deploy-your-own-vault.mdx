@@ -4,7 +4,7 @@ description: "Deploy a vault with the default mandate: dry-run it on a fork firs
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-21
+lastReviewed: 2026-11-27
 sources:
   - deployments/README.md
   - contracts/script/Deploy.s.sol
@@ -54,9 +54,9 @@ The owner deployed the four Maat contracts to Base mainnet with the default mand
 
 ## The whole path
 
-<Callout type="note" title="On mainnet, the deploy and two smoke-test buys are recorded">
+<Callout type="note" title="On mainnet, the deploy, two smoke-test buys and the agent's first Decision are recorded">
 
-Nobody has followed this whole path on Base mainnet. The owner deployed the four Maat contracts there, which is step 2 below. After it, these docs record only the vault's first two `Decision` events, on [Status and roadmap](/docs/get-started/status#next-mainnet): a `BUY` the vault refused with `MARKET_CLOSED`, and a `BUY` in a US market session that it allowed. Each step links the sections that explain it.
+Nobody has followed this whole path on Base mainnet. The owner deployed the four Maat contracts there, which is step 2 below. After it, these docs record the owner's two smoke-test `Decision` events, on [Status and roadmap](/docs/get-started/status#next-mainnet): a `BUY` the vault refused with `MARKET_CLOSED`, and a `BUY` in a US market session that it allowed. Since 2026-11-27 they also record the agent's first `Decision`, a `BUY` the vault refused with `MARKET_CLOSED`, sent after the owner made the agent's CDP wallet the executor. Each step links the sections that explain it.
 
 </Callout>
 
