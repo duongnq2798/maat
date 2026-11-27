@@ -45,13 +45,19 @@ frame.
   or by the desktop nav bar that stays there (`unsliceGoal` in `lib/beats.mjs`). The 16:9 offset also leaves room for
   the section label or tabs above a heading.
 - **Nothing per viewer, nothing relative.** The capture adds a style (`FRAME_CSS` in `lib/frame.mjs`) that hides the
-  landing's "Last Decision … ago" line and plate, `/ledger`'s "since your last look" line and "New" marks, and the phone
-  layout's bottom bar, and wraps code blocks so the 9:16 cut films a cast command whole.
-- **Captions on an opaque box**, so the page under a caption cannot show through it.
+  landing's "Last Decision … ago" line and plate, `/ledger`'s "since your last look" line and "New" marks, the desktop
+  nav's live readout (a block number and the market session), and the phone layout's bottom bar, and wraps code blocks
+  so the 9:16 cut films a cast command whole.
+- **Captions on an opaque box**, so the page under a caption cannot show through it. In 9:16 the box spans the frame
+  less 8 px each side, over the phone layout's 16 px text gutter, so no cut glyph of the page shows beside it.
+- **Per-format steps.** A scroll's target and `top` may differ per format (`{ wide, tall }`); a scroll given for one
+  format only does not run in the other. A scroll with `over: 0` jumps before the shot's first frame and films none.
 - **Kept clear.** A shot's `keepClear` names what its caption must not cover: the NVDAc chart on `/gap-index` (in 9:16
-  the shot goes to the NVDAc panel, so the chart's drop sits above the caption) and `/ask`'s form or its notice that
-  the inbox is not open yet. The capture warns when the caption band would cover it at a scroll's stop.
-- **`/proof` is filmed only once its counts are read** ("Counted to block …"), never while it is still reading.
+  the shot jumps to the NVDAc panel before its first frame, so the chart's drop sits above the caption and the first
+  caption never opens over the page's heading), `/ask`'s form or its notice that the inbox is not open yet, and
+  `/proof`'s six counts. The capture warns when the caption band would cover it at a scroll's stop.
+- **`/proof` is filmed only once its counts are read** ("Counted to block …"), never while it is still reading. In 9:16
+  the shot opens on that line, with the counts under it, instead of midway through the notes above them.
 
 ## The title and end cards
 

@@ -4,19 +4,20 @@
 /**
  * The style the capture adds to every page it films. It hides what means nothing to someone who watches the film days
  * later, or what competes with the caption: the landing's "Last Decision … ago" line in its announcement bar and the
- * hero's plate with the same age, /ledger's "since your last look" line and its "New" marks (they are per viewer), and
- * the phone layout's bottom bar ("Basket now … Try to make it say no"), which sits under the caption. Hidden elements
+ * hero's plate with the same age, /ledger's "since your last look" line and its "New" marks (they are per viewer), the
+ * desktop nav's live readout (a block number and the market session, such as "Friday · opens 09:30 ET", which are stale
+ * the day after the render), and the phone layout's bottom bar ("Basket now … Try to make it say no"), which sits under the caption. Hidden elements
  * keep their place, so the layout does not move. It also wraps code blocks, so a cast command that scrolls sideways on
  * a phone is filmed whole instead of cut at the right edge.
  */
 export const FRAME_CSS = `
-[data-vault-bar],[data-vault-plate],[data-since-line],[data-since-new]{visibility:hidden !important}
+[data-vault-bar],[data-vault-plate],[data-since-line],[data-since-new],[data-nav-dock]{visibility:hidden !important}
 [data-thumb-bar]{display:none !important}
 pre,pre code{white-space:pre-wrap !important;overflow-wrap:anywhere !important}
 `;
 
 /** The selectors FRAME_CSS hides, for the tests. */
-export const HIDDEN_IN_FILM = Object.freeze(["[data-vault-bar]", "[data-vault-plate]", "[data-since-line]", "[data-since-new]", "[data-thumb-bar]"]);
+export const HIDDEN_IN_FILM = Object.freeze(["[data-vault-bar]", "[data-vault-plate]", "[data-since-line]", "[data-since-new]", "[data-nav-dock]", "[data-thumb-bar]"]);
 
 /**
  * Runs in the browser. Every line of visible text on the page, as its top and bottom in page px, and the height of the

@@ -27,9 +27,35 @@ const TOP = { wide: 160, tall: 88 };
 /** The mandate panel's card that lists the rule changes waiting out the timelock. */
 const TIMELOCK_PANEL = 'section[aria-label="Mandate"] .card:has(h3:has-text("Rule changes waiting out the timelock"))';
 
-/** A step's value for one format: the value itself, or its `wide` or `tall` entry when it has one per format. */
+/** /proof once its counts are read: "Counted to block …", then the counts. */
+const PROOF_READ = '[data-proof-state="read"]';
+/** /proof's six count lines (Outside briefs, Outside wallets, …), which its caption must not cover. */
+const PROOF_COUNTS = `${PROOF_READ} dl`;
+
+/** The formats a step's value may name, one entry each. */
+const FORMAT_KEYS = Object.freeze(["wide", "tall"]);
+
+/** Whether a step's value is given per format: an object whose keys are all formats. */
+function perFormat(value) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  const keys = Object.keys(value);
+  return keys.length > 0 && keys.every((k) => FORMAT_KEYS.includes(k));
+}
+
+/**
+ * A step's value for one format: the value itself, or its `wide` or `tall` entry when it is given per format. A value
+ * given for one format only is undefined in the other, so a scroll that names only `tall` does not run in 16:9.
+ */
 export function forFormat(value, format) {
-  return value !== null && typeof value === "object" && !Array.isArray(value) && format in value ? value[format] : value;
+  return perFormat(value) ? value[format] : value;
+}
+
+/**
+ * How many frames a scroll of `over` seconds films: none for `over: 0`, which jumps there before the shot's first frame
+ * (the 9:16 gap shot opens on the NVDAc panel this way, not on the window's heading); at least one otherwise.
+ */
+export function scrollFrames(over) {
+  return over > 0 ? Math.max(1, Math.round(over * FPS)) : 0;
 }
 
 /**
@@ -62,10 +88,12 @@ export const BEATS = Object.freeze([
         path: "/gap-index",
         duration: 9,
         // In 9:16 the window's heading at the top would leave the chart's drop under the caption, so that cut goes to
-        // the NVDAc panel instead; the caption names the window.
+        // the NVDAc panel instead; the caption names the window. It jumps there before its first frame, so the first
+        // caption opens over the panel, not over the page's "Three weekends" heading.
         keepClear: "#gap-panel-2026-11-06-NVDAc svg",
         steps: [
           { wait: "#gap-panel-2026-11-06-NVDAc" },
+          { scroll: { tall: "#gap-panel-2026-11-06-NVDAc" }, over: 0, top: TOP },
           { hold: 1 },
           { scroll: { wide: "#window-2026-11-06", tall: "#gap-panel-2026-11-06-NVDAc" }, over: 2, top: TOP },
           { hold: 2.5 },
@@ -269,7 +297,14 @@ export const BEATS = Object.freeze([
         path: "/proof",
         duration: 3.5,
         // The counts are filmed only once read ("Counted to block …"), never while the page says "Reading briefs…".
-        steps: [{ wait: "#counts-title" }, { wait: '[data-proof-state="read"]' }, { scroll: "#counts-title", over: 1.5, top: TOP }],
+        // 16:9 shows the section's heading, its notes and the counts; 9:16 has no room for all of them above the
+        // caption, so it opens on "Counted to block …" (the blank above it starts no sentence midway) and the six counts.
+        keepClear: PROOF_COUNTS,
+        steps: [
+          { wait: "#counts-title" },
+          { wait: PROOF_READ },
+          { scroll: { wide: "#counts-title", tall: PROOF_READ }, over: 1.5, top: { wide: TOP.wide, tall: 24 } },
+        ],
         captions: [{ id: "receipts-proof", at: 0 }],
       },
       // The end card holds the sign-off, the myth line and the builder line (161 characters): 6.5 s at READ_PACE.
@@ -368,8 +403,15 @@ export function validateBeats(beats = BEATS) {
     if (shot.kind === "page") {
       if (typeof shot.path !== "string" || !shot.path.startsWith("/")) problems.push(`${where}: a page shot needs a site path`);
       if (scriptedSeconds(shot) > shot.duration) problems.push(`${where}: its steps take ${scriptedSeconds(shot)} s, longer than the shot's ${shot.duration} s`);
+      let filmed = false;
       for (const step of shot.steps ?? []) {
         if (step.probe !== undefined && !PROBES.includes(step.probe)) problems.push(`${where}: unknown probe ${step.probe}`);
+        if (step.scroll !== undefined) {
+          if (!(typeof step.over === "number" && step.over >= 0)) problems.push(`${where}: a scroll needs over, in seconds, 0 or more`);
+          // A jump mid-shot would be a cut inside the shot: over: 0 only before its first frame.
+          else if (step.over === 0 && filmed) problems.push(`${where}: a scroll with over: 0 jumps, so it must come before the shot's first frame`);
+        }
+        if (step.hold > 0 || step.over > 0) filmed = true;
       }
     } else if (shot.continue !== undefined || shot.keepClear !== undefined) problems.push(`${where}: only a page shot can continue or keep an element clear`);
     if (shot.kind === "tx" && (!Array.isArray(shot.txs) || shot.txs.length === 0 || !shot.caption || !shot.placeholderCaption)) {

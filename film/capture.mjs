@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BEATS, CLIPS, FPS, forFormat, keepClearProblem, scrollGoal, shotCues, timeline, txState, unsliceGoal } from "./lib/beats.mjs";
+import { BEATS, CLIPS, FPS, forFormat, keepClearProblem, scrollFrames, scrollGoal, shotCues, timeline, txState, unsliceGoal } from "./lib/beats.mjs";
 import {
   CAPTION_BAND,
   CARD_READING,
@@ -159,7 +159,10 @@ async function capturePage(page, { site, shot, format, dir, captured, probed, wa
       (probed[step.probe] ??= []).push(read.value);
     } else if (step.hold) await snap(step.hold);
     else if (step.scroll) {
-      const target = page.locator(forFormat(step.scroll, format)).first();
+      // A scroll given for one format only does not run in the other.
+      const selector = forFormat(step.scroll, format);
+      if (!selector) continue;
+      const target = page.locator(selector).first();
       await target.waitFor({ state: "attached", timeout: 90_000 });
       const at = await target.evaluate((el) => {
         const footer = [...document.querySelectorAll("footer")].at(-1);
@@ -177,7 +180,9 @@ async function capturePage(page, { site, shot, format, dir, captured, probed, wa
       const { lines, edge } = await page.evaluate(textLinesInPage);
       const limit = Math.max(0, Math.min(at.max, at.footer === null ? Number.POSITIVE_INFINITY : at.footer - at.height));
       const to = unsliceGoal({ y: goal, lines, edge, limit });
-      const n = Math.max(1, Math.round(step.over * FPS));
+      // over: 0 jumps there without a frame, before the shot's first one.
+      const n = scrollFrames(step.over);
+      if (n === 0) await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), to);
       for (let i = 1; i <= n; i++) {
         await page.evaluate((y) => window.scrollTo({ top: y, behavior: "instant" }), Math.round(from + (to - from) * ease(i / n)));
         await snap(1 / FPS);

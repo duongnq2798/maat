@@ -9,6 +9,7 @@ import {
   effectiveShot,
   forFormat,
   keepClearProblem,
+  scrollFrames,
   scrollGoal,
   shotCues,
   timeline,
@@ -184,11 +185,22 @@ describe("the cut's pace (film v0 review, 2026-11-27)", () => {
     const proof = BEATS.find((b) => b.id === "receipts")?.shots.find((s) => s.id === "proof");
     expect(proof?.steps).toContainEqual({ wait: '[data-proof-state="read"]' });
   });
+
+  it("keeps /proof's counts clear of the caption, and in 9:16 opens on \"Counted to block\", not midway through a sentence", () => {
+    const proof = BEATS.find((b) => b.id === "receipts")?.shots.find((s) => s.id === "proof");
+    expect(proof?.keepClear).toBe('[data-proof-state="read"] dl');
+    const scroll = proof?.steps?.find((s: { scroll?: unknown }) => s.scroll);
+    expect(forFormat(scroll?.scroll, "wide")).toBe("#counts-title");
+    expect(forFormat(scroll?.scroll, "tall")).toBe('[data-proof-state="read"]');
+    expect(forFormat(scroll?.top, "tall")).toBeLessThan(88);
+  });
 });
 
 describe("the frame the capture films", () => {
   it("hides per-viewer and relative lines and the phone layout's bottom bar, and wraps code blocks", () => {
     for (const selector of HIDDEN_IN_FILM) expect(FRAME_CSS).toContain(selector);
+    // The desktop nav's live readout: a block and a market session ("Friday · opens 09:30 ET") stale the day after.
+    expect(HIDDEN_IN_FILM).toContain("[data-nav-dock]");
     expect(FRAME_CSS).toMatch(/\[data-thumb-bar\]\{display:none !important\}/);
     expect(FRAME_CSS).toMatch(/pre,pre code\{white-space:pre-wrap !important/);
   });
@@ -198,14 +210,37 @@ describe("the frame the capture films", () => {
     expect(forFormat("#a", "tall")).toBe("#a");
     expect(forFormat({ wide: 160, tall: 88 }, "wide")).toBe(160);
     expect(forFormat(undefined, "wide")).toBeUndefined();
+    // Given for one format only: nothing in the other, so that step does not run there.
+    expect(forFormat({ tall: "#b" }, "wide")).toBeUndefined();
+    expect(forFormat({ tall: "#b" }, "tall")).toBe("#b");
+    // An object that is not keyed by format is a value of its own.
+    expect(forFormat({ hold: 1 }, "wide")).toEqual({ hold: 1 });
+  });
+
+  it("films no frame for a scroll of over: 0, and at least one for any other", () => {
+    expect(scrollFrames(0)).toBe(0);
+    expect(scrollFrames(0.01)).toBe(1);
+    expect(scrollFrames(1.5)).toBe(1.5 * FPS);
+  });
+
+  it("refuses a scroll that jumps after the shot's first frame, or has no length", () => {
+    const shot = (steps: object[]) => [{ id: "b", title: "B", shots: [{ id: "s", kind: "page", path: "/", duration: TARGET_SECONDS, steps, captions: [] }] }];
+    expect(validateBeats(shot([{ scroll: "#a", over: 0 }, { hold: 1 }]))).toEqual([]);
+    expect(validateBeats(shot([{ hold: 1 }, { scroll: "#a", over: 0 }]))).toEqual(["b/s: a scroll with over: 0 jumps, so it must come before the shot's first frame"]);
+    expect(validateBeats(shot([{ scroll: "#a" }]))).toEqual(["b/s: a scroll needs over, in seconds, 0 or more"]);
   });
 
   it("goes to the NVDAc panel in 9:16, so the chart's drop is not under the caption, and keeps the chart clear", () => {
     const gap = BEATS.find((b) => b.id === "frozen-feed")?.shots.find((s) => s.id === "gap");
     expect(gap?.keepClear).toBe("#gap-panel-2026-11-06-NVDAc svg");
-    const first = gap?.steps?.find((s: { scroll?: unknown }) => s.scroll);
-    expect(forFormat(first?.scroll, "tall")).toBe("#gap-panel-2026-11-06-NVDAc");
-    expect(forFormat(first?.scroll, "wide")).toBe("#window-2026-11-06");
+    const steps = (gap?.steps ?? []) as { scroll?: unknown; over?: number; hold?: number }[];
+    const first = (format: string) => steps.find((s) => s.scroll !== undefined && forFormat(s.scroll, format) !== undefined);
+    expect(forFormat(first("tall")?.scroll, "tall")).toBe("#gap-panel-2026-11-06-NVDAc");
+    expect(forFormat(first("wide")?.scroll, "wide")).toBe("#window-2026-11-06");
+    // 9:16 jumps to the panel before the first frame, so gap-held opens over the panel, not over the window's heading.
+    expect(first("tall")?.over).toBe(0);
+    expect(steps.indexOf(first("tall")!)).toBeLessThan(steps.findIndex((s) => s.hold));
+    expect(gap?.captions?.[0]).toEqual({ id: "gap-held", at: 0 });
   });
 
   it("moves a scroll stop so that no line of text is cut by the top edge or the nav bar", () => {
