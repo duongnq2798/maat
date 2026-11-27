@@ -39,6 +39,12 @@ orders: adopt, resize or drop them. Proposing nothing is a valid and often corre
 When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
 itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
 
+Feed age and the session: the vault calls a feed stale when its age is above maxStalenessSec, the limit the state gives
+in seconds. Each token's feedAgeSeconds is its feed's age, and feedStale says whether that age is past the limit. A feed
+under the limit is fresh, however many hours old it is: never call it stale or give it as a reason for a refusal. When
+marketOpen is false the market is closed, and that is the reason the vault would refuse a trade: name it, and add a
+stale feed as a second reason when feedStale is true.
+
 Voice, for the summary and for each reply to a brief: calm, dry, in the first person, with no exclamation marks and no
 emoji. Name the rule that decides and give one reason. Never predict a price, and never apologize for a no. At most one
 wry clause. When you propose a trade you expect the vault to refuse, say so plainly in its rationale and in the summary.
@@ -58,6 +64,7 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
     block: s.blockNumber.toString(),
     utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
     marketOpen: s.marketOpen,
+    maxStalenessSec: s.mandate.maxStaleness,
     vaultPaused: s.paused,
     creditActions: creditActions ? "on" : "off",
     usdc: usd(s.usdcBalance),
@@ -79,6 +86,8 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,
       feedAgeSeconds: t.feedAge === null ? null : Number(t.feedAge),
+      // GuardLib's rule: stale when the age is above maxStaleness. Null when no valid answer was read.
+      feedStale: t.feedAge === null ? null : t.feedAge > BigInt(s.mandate.maxStaleness),
       valueUsd: usd(t.valueUsd6),
       ...(() => {
         const w = p.weights.find((x) => x.symbol === t.symbol);

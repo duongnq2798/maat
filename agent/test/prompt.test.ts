@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readVaultState } from "../src/chain/state.js";
-import { renderUserMessage, SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
+import { briefSystemPrompt, renderBriefMessage, renderUserMessage, SYSTEM_PROMPT, systemPrompt } from "../src/llm/prompt.js";
+import { ClaudeProposer, type CreateMessage, type ProposerInput } from "../src/llm/proposer.js";
 import { BatchSchema, MAX_AMOUNT_USD, MAX_INTENTS, MAX_RATIONALE_CHARS, MAX_SUMMARY_CHARS } from "../src/llm/schema.js";
 import { evaluatePolicy } from "../src/policy.js";
-import { VAULT, standardScene } from "./fakes/fakeChain.js";
+import { BASKET } from "../src/addresses.js";
+import { CALENDAR, FEEDS, MANDATE, PRICES, VAULT, standardScene } from "./fakes/fakeChain.js";
 
 describe("prompt", () => {
   it("system prompt carries the mandate rules and stays free of volatile data", () => {
@@ -66,6 +68,97 @@ describe("prompt", () => {
       const state = await readVaultState(standardScene().client(), VAULT);
       const policy = evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n });
       expect(renderUserMessage({ state, policy, billUsd6: 0n, creditActions: true })).toContain('"creditActions": "on"');
+    });
+  });
+
+  describe("feed age and the session", () => {
+    // Fri 27 Nov 2026 00:14 ET, journal 2026-11-27.jsonl line 10: market closed, the oldest feed ~2.7 hours old, and the
+    // summary called the feeds stale against a limit of 90,000 s. Ages: 2.7 h, exactly the limit, one second past it.
+    const AGES = [9_720n, 90_000n, 90_001n];
+    async function closedInput(): Promise<ProposerInput> {
+      const f = standardScene().set(CALENDAR, "isOpen", false);
+      BASKET.forEach((_, i) => f.set(FEEDS[i]!, "latestRoundData", [1n, PRICES[i]!, 0n, f.block.timestamp - AGES[i]!, 1n]));
+      const state = await readVaultState(f.client(), VAULT);
+      return { state, policy: evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n }), billUsd6: 0n, creditActions: false };
+    }
+    const view = (msg: string) =>
+      JSON.parse(msg.slice("Current state:\n".length, msg.indexOf("\n\nDecide this round's actions."))) as {
+        marketOpen: boolean | null;
+        maxStalenessSec: number;
+        tokens: { symbol: string; feedAgeSeconds: number | null; feedStale: boolean | null }[];
+      };
+
+    it("the user message carries the vault's maxStalenessSec and each feed's age against it, by the contract's rule", async () => {
+      const v = view(renderUserMessage(await closedInput()));
+      expect(MANDATE.maxStaleness).toBe(90_000);
+      expect(v.marketOpen).toBe(false);
+      expect(v.maxStalenessSec).toBe(90_000);
+      // GuardLib: FEED_STALE when age > maxStaleness, so an age equal to the limit is still fresh.
+      expect(v.tokens.map((t) => [t.symbol, t.feedAgeSeconds, t.feedStale])).toEqual([
+        ["NVDAc", 9_720, false],
+        ["GOOGLc", 90_000, false],
+        ["AAPLc", 90_001, true],
+      ]);
+    });
+
+    it("feedStale is null where no valid answer was read, as feedAgeSeconds is", async () => {
+      const f = standardScene().fail(FEEDS[1]!, "latestRoundData");
+      const state = await readVaultState(f.client(), VAULT);
+      const v = view(renderUserMessage({ state, policy: evaluatePolicy(state, { dailyComputeUsd6: 500_000n, unpaidUsd6: 0n }), billUsd6: 0n, creditActions: false }));
+      expect(v.tokens.map((t) => [t.feedAgeSeconds, t.feedStale])).toEqual([
+        [30, false],
+        [null, null],
+        [30, false],
+      ]);
+    });
+
+    it("the brief message carries the same limit and ages", async () => {
+      const i = await closedInput();
+      const msg = renderBriefMessage({ ...i, briefs: [] }, "0123456789abcdef");
+      expect(view(msg)).toEqual(view(renderUserMessage(i)));
+    });
+
+    it("the system prompt calls a feed stale past maxStalenessSec and no sooner, and names the closed market as the reason", () => {
+      for (const sys of [systemPrompt({ creditActions: false }), systemPrompt({ creditActions: true }), briefSystemPrompt({ creditActions: false })]) {
+        const flat = sys.replace(/\s+/g, " ");
+        for (const rule of [
+          "the vault calls a feed stale when its age is above maxStalenessSec, the limit the state gives in seconds.",
+          "Each token's feedAgeSeconds is its feed's age, and feedStale says whether that age is past the limit.",
+          "A feed under the limit is fresh, however many hours old it is: never call it stale or give it as a reason for a refusal.",
+          "When marketOpen is false the market is closed, and that is the reason the vault would refuse a trade: name it,",
+          "and add a stale feed as a second reason when feedStale is true.",
+        ]) {
+          expect(flat, rule).toContain(rule);
+        }
+      }
+      // The rule sits with the other rules for the round, before the voice paragraph.
+      expect(SYSTEM_PROMPT.indexOf("Feed age and the session:")).toBeGreaterThan(SYSTEM_PROMPT.indexOf("do not propose them."));
+      expect(SYSTEM_PROMPT.indexOf("Feed age and the session:")).toBeLessThan(SYSTEM_PROMPT.indexOf("Voice, for the summary"));
+    });
+
+    it("a fake model receives the rule in the system prompt and the limit and ages in the user message", async () => {
+      const seen: Record<string, unknown>[] = [];
+      const create: CreateMessage = async (p) => {
+        seen.push(p);
+        return {
+          model: "claude-sonnet-5-5",
+          stop_reason: "end_turn",
+          content: [{ type: "text", text: '{"summary":"The market is closed, so the vault would refuse a trade.","intents":[]}' }],
+          usage: { input_tokens: 10_000, output_tokens: 1_000 },
+        };
+      };
+      const i = await closedInput();
+      await new ClaudeProposer({ model: "claude-sonnet-5-5", create }).propose(i);
+      expect(seen).toHaveLength(1);
+      const sys = (seen[0]!.system as { text: string }[])[0]!.text;
+      expect(sys).toBe(SYSTEM_PROMPT);
+      expect(sys).toContain("above maxStalenessSec");
+      const content = (seen[0]!.messages as { content: string }[])[0]!.content;
+      expect(content).toBe(renderUserMessage(i));
+      expect(content).toContain('"maxStalenessSec": 90000');
+      expect(content).toContain('"feedAgeSeconds": 9720');
+      expect(content).toContain('"feedStale": false');
+      expect(content).toContain('"feedStale": true');
     });
   });
 });

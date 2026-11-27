@@ -176,12 +176,13 @@ With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to tha
 
 The agent sends Claude a system prompt and one user message, both built in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts): `systemPrompt`, fixed text apart from its credit lines, which follow `MAAT_CREDIT_ACTIONS`, and `renderUserMessage`. The request gives Claude no tools. This is the whole user message of a round without briefs:
 
-```typescript title="agent/src/llm/prompt.ts#L56-L91"
+```typescript title="agent/src/llm/prompt.ts#L62-L100"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
     utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
     marketOpen: s.marketOpen,
+    maxStalenessSec: s.mandate.maxStaleness,
     vaultPaused: s.paused,
     creditActions: creditActions ? "on" : "off",
     usdc: usd(s.usdcBalance),
@@ -203,6 +204,8 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,
       feedAgeSeconds: t.feedAge === null ? null : Number(t.feedAge),
+      // GuardLib's rule: stale when the age is above maxStaleness. Null when no valid answer was read.
+      feedStale: t.feedAge === null ? null : t.feedAge > BigInt(s.mandate.maxStaleness),
       valueUsd: usd(t.valueUsd6),
       ...(() => {
         const w = p.weights.find((x) => x.symbol === t.symbol);
@@ -217,7 +220,7 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
 
 It holds three kinds of input, all numbers, flags, addresses, fixed names or text the agent builds from them, and no text from outside the agent. Briefs, below, are the one exception:
 
-- **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the market and pause flags, the caps and today's spend, and the Aave position.
+- **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the vault's `maxStalenessSec` and whether each feed's age is past it, the market and pause flags, the caps and today's spend, and the Aave position.
 - **The agent's own unpaid Claude bill**, from its data folder.
 - **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers and from the Claude costs its data folder records for the week before today (`MAAT_DEFAULT_DAILY_COMPUTE_USD` when there are none). Each suggestion's `why` is built from numbers and fixed symbols.
 
