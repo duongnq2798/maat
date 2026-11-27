@@ -2,13 +2,13 @@
 
 import { SourcePlate } from "@/components/instrument/SourcePlate";
 import { ReasonTag, type ReasonTagTone } from "@/components/ui/ReasonTag";
+import { tickerGloss } from "@/content/b20-nav";
 import { billLine } from "@/content/bill";
 import { formatInt } from "@/content/format";
-import { REASON_LABEL } from "@/content/reasons";
 import { basescanDecision } from "@/lib/live/basescan";
 import { formatAge, formatBlock } from "@/lib/live/format";
 import { useNowSec, useVault, type VaultView } from "./VaultDecisions";
-import { intentText, intentWithSender, type PlateKind, plateOf, type VaultRow } from "./vault-rows";
+import { intentText, type PlateKind, plateOf, type VaultRow } from "./vault-rows";
 
 /** How many Decisions the card lists; /ledger lists them all. */
 const LISTED = 3;
@@ -30,22 +30,9 @@ function whenText(row: VaultRow): string {
 /** "0x6162…23c8". */
 const shortHash = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
 
-/** "Refused · Market closed", or "Allowed" for a Decision every check passed. */
-function verdictText(row: VaultRow): string {
-  return row.allowed ? "Allowed" : `Refused · ${REASON_LABEL[row.reason]}`;
-}
-
 /** "Compute bill paid · $1.00 · to the owner's allowlisted address" for a paid bill; null for any other Decision. */
 function paidBill(row: VaultRow): string | null {
   return plateOf(row) === "bill" && row.bill !== null ? billLine(row.bill) : null;
-}
-
-/**
- * How the hero plate and the bar's title read a Decision: a paid bill by its bill line, else verdict, intent and, when
- * known, who sent it, with /ledger's label ("agent", "owner, by hand").
- */
-function summaryText(row: VaultRow): string {
-  return paidBill(row) ?? `${verdictText(row)} · ${intentWithSender(row)}`;
 }
 
 /**
@@ -62,49 +49,6 @@ export function VaultBarStatus() {
     <span data-vault-bar="" className="max-sm:hidden">
       Last Decision {age}.
     </span>
-  );
-}
-
-/**
- * The hero's first line: the vault's latest Decision on Base mainnet, linked to its transaction on Basescan. Live, it
- * gives the Decision's age; before the read lands, or when it fails, it names the recorded Decision and its time. From
- * sm it keeps to one line, so a long refusal never pushes the CTAs below the first screen: what does not fit ends in an
- * ellipsis (the bar gives the age from sm, the engine card the whole Decision), and the link's name keeps all of it.
- */
-export function VaultPlate() {
-  const view = useVault();
-  const now = useNowSec();
-  const latest = view.decisions[0];
-  const chip = (
-    <span className="shrink-0 rounded-full bg-accent-tint px-2 py-[3px] font-mono text-[11px] font-semibold text-accent">BASE MAINNET</span>
-  );
-  const frame =
-    "inline-flex max-w-full flex-wrap items-center gap-x-2.5 gap-y-1 self-start rounded-[20px] border border-line bg-white py-[7px] pl-2 pr-3.5 text-[13px] text-ink-2 sm:flex-nowrap";
-  if (latest === undefined) {
-    return (
-      <span data-vault-plate={view.status} className={frame}>
-        {chip} The vault has made no Decision yet.
-      </span>
-    );
-  }
-  const age = ageOf(view, latest, now);
-  const label = view.status === "live" ? "Last Decision" : "Recorded Decision";
-  const when = age ?? whenText(latest);
-  const bill = paidBill(latest);
-  return (
-    <a
-      data-vault-plate={view.status}
-      href={basescanDecision(latest.txHash)}
-      title={`${label}: ${summaryText(latest)} · ${when}`}
-      className={`${frame} hover:border-line-strong`}
-    >
-      {chip}{" "}
-      <span className="min-w-0 sm:truncate">
-        {label}: <span className="font-medium text-ink">{bill ?? verdictText(latest)}</span>
-        {bill === null ? ` · ${intentWithSender(latest)}` : null} · {when}
-        <span aria-hidden="true"> ↗</span>
-      </span>
-    </a>
   );
 }
 
@@ -177,6 +121,7 @@ export function VaultCard() {
   const [latest] = view.decisions;
   const age = latest === undefined ? null : ageOf(view, latest, now);
   const latestBill = latest === undefined ? null : paidBill(latest);
+  const latestGloss = latest === undefined || latest.bill !== null ? null : tickerGloss(latest.symbol);
   return (
     <div
       data-vault-card={view.status}
@@ -201,9 +146,17 @@ export function VaultCard() {
             <span className="font-mono text-[11px] text-ink-2">{view.status === "live" ? "LATEST DECISION" : "LATEST RECORDED DECISION"}</span>
             {/* Below the plate's 26 px word, so the verdict is the card's largest text; a bill's line smaller still, never a trade's. */}
             {latestBill === null ? (
-              <span data-latest-line="" className="text-[24px] font-semibold tracking-[-0.03em]">
-                {intentText(latest)}
-              </span>
+              <>
+                <span data-latest-line="" className="text-[24px] font-semibold tracking-[-0.03em]">
+                  {intentText(latest)}
+                </span>
+                {/* The first ticker on the page, named (spec 2026-11-27 section 4). */}
+                {latestGloss === null ? null : (
+                  <span data-ticker-gloss="" className="text-[13px] text-ink-2">
+                    {latestGloss}
+                  </span>
+                )}
+              </>
             ) : (
               <span data-latest-line="" className="text-[19px] font-semibold leading-[1.3] tracking-[-0.02em]">
                 {latestBill}

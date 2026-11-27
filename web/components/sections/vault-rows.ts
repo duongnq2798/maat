@@ -133,11 +133,6 @@ function recordedRow(l: RecordedLog): VaultRow {
   };
 }
 
-/** "BUY NVDAc · $5.00 · agent": the intent, then who sent it when that is known. */
-export function intentWithSender(r: VaultRow): string {
-  return r.sender === null ? intentText(r) : `${intentText(r)} · ${r.sender}`;
-}
-
 /** The Decisions recorded in this build (FACTS.mainnetDecisions), newest first. */
 export const RECORDED_ROWS: readonly VaultRow[] = [...FACTS.mainnetDecisions.value]
   .sort((a, b) => (a.blockNumber === b.blockNumber ? a.logIndex - b.logIndex : Number(BigInt(a.blockNumber) - BigInt(b.blockNumber))))

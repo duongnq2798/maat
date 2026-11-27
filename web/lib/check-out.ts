@@ -5,6 +5,7 @@ import { DEFAULT_SCENARIO, evaluate, replay } from "../content/simulator";
 import { DATA_COMPONENTS } from "./docs/data-components";
 import { INDEX_NOTE_START, markdownLines, markdownUrl } from "./docs/markdown";
 import { OG_IMAGE_SIZE, ogImageUrl } from "./docs/og";
+import { noteSuperseded } from "./live/hero-note";
 import { SITE } from "./site";
 
 /** Problems with the exported landing page; an empty list means it is ready to ship. */
@@ -63,6 +64,24 @@ export function checkExport(html: string): string[] {
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
   return problems;
+}
+
+/**
+ * Warnings, not problems: the landing still ships. The hero quotes the agent's note recorded in this build
+ * (content/generated/agent-note.json) and hides the quote while the vault's latest Decision is newer than the note's
+ * round (components/sections/HeroNote.tsx). When a Decision recorded in this build already is, every visitor sees the
+ * one line that points to /now instead of the note, until a data PR records a newer note.
+ */
+export function checkAgentNote(
+  note: { ts: number; when: string } | null,
+  decisions: readonly { blockNumber: string; blockTime: number }[],
+): string[] {
+  if (note === null) return ["the build records no note of Maat's agent, so the hero shows none (npm run agent-note)"];
+  const newest = [...decisions].sort((a, b) => b.blockTime - a.blockTime)[0];
+  if (newest === undefined || !noteSuperseded(note.ts, newest.blockTime)) return [];
+  return [
+    `the agent's note recorded in this build (${note.when}) is older than the Decision recorded at block ${newest.blockNumber}, so the hero hides it: run npm run agent-note -- --git origin/agent-journal and commit content/generated/agent-note.json`,
+  ];
 }
 
 /** Records `problem` when `ok` is false. Each page's check passes its own, which puts the page's name before it. */
