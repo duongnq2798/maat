@@ -240,6 +240,27 @@
     "reads the daily LLM cap in dollars; 0 is allowed and a negative cap is not": 83,
     "reads the smallest bill repayment in dollars, above 0": 89
   },
+  "agent/test/container.test.ts": {
+    "agent/Dockerfile": 39,
+    "builds on node:24-slim, optionally pinned by digest": 40,
+    "runs under tini from the Debian package": 44,
+    "switches to the node user before CMD and stays there": 49,
+    "keeps state in a /data volume that the node user owns": 55,
+    "installs the locked production dependencies, and tsx is one of them": 61,
+    "starts the agent loop with node and tsx, not through npm": 71,
+    "bakes no secret into the image": 75,
+    "copies only the runtime files and the heartbeat check, and never .env": 81,
+    "agent/.dockerignore": 102,
+    "keeps secrets, local state and installed modules out of the build context": 103,
+    "keeps the lockfile that npm ci installs from": 111,
+    "keeps every file the Dockerfile copies in the build context, and no other script": 115,
+    "Run in a container, in agent/README.md": 121,
+    "is found": 131,
+    "names every setting of .env.example": 136,
+    "passes every secret at run time, and fly.toml holds none of them and no unknown setting": 140,
+    "mounts deployments/README.md where the agent in the image reads the MaatInbox row from": 147,
+    "checks the agent's health with the heartbeat script that the image holds": 154
+  },
   "agent/test/evalBriefs.test.ts": {
     "npm run eval:briefs": 24,
     "is the owner-run script package.json names": 25,

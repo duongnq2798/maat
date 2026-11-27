@@ -1,0 +1,20 @@
+# The build context is agent/ and it is uploaded to the builder: secrets and local state never go in it.
+.env
+.env.*
+# data/, and the soak's data-dryrun/ in the Windows runbook.
+data*
+node_modules
+# Not needed at runtime. The image keeps one script, the heartbeat check.
+test
+coverage
+logs
+*.log
+scripts/*
+!scripts/heartbeat.ts
+README.md
+vitest.config.ts
+vitest.integration.config.ts
+fly.toml
+Dockerfile
+.dockerignore
+.gitignore
