@@ -34,7 +34,12 @@ const SENDER: Address = "0x00000000000000000000000000000000000A11cE";
 const DEPLOY = 2_000_000n;
 const SENT: Hash = `0x${"5e".repeat(32)}`;
 
-describe("/ask while deployments/README.md records no MaatInbox", () => {
+describe("/ask while the owner's switch in web/content/ask-open.ts is off", () => {
+  it("is closed with the committed switch and deployments table", () => {
+    expect(ASK_OPEN).toBe(false);
+    expect(askIsOpen(askConfig(docsData.deployments))).toBe(false);
+  });
+
   it("shows the notice word for word, the not-open state and the free preview, with no way to send", () => {
     render(<AskPage />);
     expect(screen.getByRole("heading", { level: 1, name: "Brief the agent" })).toBeInTheDocument();
@@ -76,8 +81,9 @@ describe("/ask while deployments/README.md records no MaatInbox", () => {
 });
 
 describe("the owner's switch: /ask opens only when it is on and the inbox and the vault are recorded", () => {
+  // The committed table without its MaatInbox row, plus a test inbox when `inbox` is true.
   const rows = (inbox: boolean) => [
-    ...docsData.deployments,
+    ...docsData.deployments.filter((r) => r.contract !== "MaatInbox"),
     ...(inbox ? [{ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: hash32(4242), date: "2026-11-25" }] : []),
   ];
 

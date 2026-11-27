@@ -25,6 +25,8 @@ const INBOX_TX: Hash = `0x${"d1".repeat(32)}`;
 const UID: Hex = `0x${"a1".repeat(32)}`;
 const ZERO32: Hex = `0x${"0".repeat(64)}`;
 const VAULT = getAddress(deployments.find((r) => r.network === "Base mainnet" && r.contract === "MandateVault")!.address);
+/** How many sends the owner's committed list holds: in the chain below, its nonces 0 to OWNER_SENDS - 1. */
+const OWNER_SENDS = PROOF_SENDS.find((s) => s.wallet.toLowerCase() === OWNER.toLowerCase())!.txs.length;
 
 /**
  * A chain for `briefs`, with the committed team lists as its own record: the owner's committed transactions come
@@ -37,7 +39,7 @@ function chain(inbox: Address, deployTx: Hash | null, briefs: ProofChain["briefs
     vault: { address: VAULT, owner: OWNER, executor: EXECUTOR, payees: [OWNER] },
     txs: [
       ...plainSends(PROOF_SENDS, DEPLOY),
-      { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: 9, to: VAULT, block: DEPLOY + 1n, logs: [executorSetLog(VAULT, EXECUTOR)] },
+      { hash: `0x${"e1".repeat(32)}`, from: OWNER, nonce: OWNER_SENDS, to: VAULT, block: DEPLOY + 1n, logs: [executorSetLog(VAULT, EXECUTOR)] },
       ...[0, 1, 2].map((i) => ({
         hash: `0x${(0xe2 + i).toString(16).repeat(32)}` as Hash,
         from: EXECUTOR,
@@ -179,7 +181,12 @@ test.describe("/proof with a test MaatInbox served in deployments.json", () => {
 
     const verified = seen.calls.filter((c) => c.to !== VAULT.toLowerCase());
     expect(verified.map((c) => c.functionName).sort()).toEqual(["getAttestation", "getAttestationUid", "getAttestationUid"]);
-    expect(seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName)).toEqual(["owner", "executor", "payees"]);
+    // The page starts reading with the build's table, which records the real inbox, and reads again once
+    // /data/deployments.json serves the test one; each read asks the vault owner(), executor() and payees() once, together.
+    const vaultCalls = seen.calls.filter((c) => c.to === VAULT.toLowerCase()).map((c) => c.functionName);
+    const reads = vaultCalls.length / 3;
+    expect([1, 2]).toContain(reads);
+    expect([...vaultCalls].sort()).toEqual(Array.from({ length: reads }, () => ["executor", "owner", "payees"]).flat().sort());
     expect(new Set(seen.calls.map((c) => c.block))).toEqual(new Set([`0x${HEAD.toString(16)}`]));
     expect(await serious(page)).toEqual([]);
     expect(errors).toEqual([]);

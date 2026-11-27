@@ -36,7 +36,8 @@ const DEPLOY = 61_698_517n;
 const HEAD = DEPLOY + 120_000n;
 const OWNER = getAddress("0x00000000000000000000000000000000000000a1");
 const SENDER = getAddress("0x00000000000000000000000000000000000a11ce");
-// A test inbox, served to the real build only by the second describe below; deployments/README.md records none.
+// A test inbox, served to the real build only by the second describe below, in place of the one deployments/README.md
+// records.
 const INBOX = getAddress("0x00000000000000000000000000000000000b0001");
 const INBOX_TX = hash32(4242);
 const SENT: Hash = `0x${"5e".repeat(32)}`;
@@ -128,7 +129,7 @@ async function serious(page: Page): Promise<string[]> {
     .map((v) => `${v.id}: ${v.help} (${v.nodes.map((n) => n.target.join(" ")).join(", ")})`);
 }
 
-test.describe("/ask with the committed deployments table, which records no MaatInbox", () => {
+test.describe("/ask with the committed deployments table and the owner's switch off", () => {
   test("says the inbox is not open, offers no send, and asks the real vault for free", async ({ page }) => {
     const errors = collectErrors(page);
     await installWallet(page);
@@ -177,12 +178,18 @@ async function serveJournal(page: Page) {
   });
 }
 
-/** Serves the test inbox in /data/deployments.json, and the owner's switch in /data/ask.json as `open`. */
+/**
+ * Serves the test inbox in /data/deployments.json, in place of any MaatInbox row the table records, and the owner's
+ * switch in /data/ask.json as `open`.
+ */
 async function serveInbox(page: Page, open: boolean) {
   await page.route("**/data/deployments.json", async (route) => {
     const res = await route.fetch();
-    const file = (await res.json()) as { contracts: unknown[] };
-    file.contracts.push({ network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: INBOX_TX, date: "2026-11-25" });
+    const file = (await res.json()) as { contracts: { contract: string }[] };
+    file.contracts = [
+      ...file.contracts.filter((r) => r.contract !== "MaatInbox"),
+      { network: "Base mainnet", contract: "MaatInbox", address: INBOX, tx: INBOX_TX, date: "2026-11-25" } as never,
+    ];
     await route.fulfill({ response: res, json: file });
   });
   await page.route("**/data/ask.json", async (route) => route.fulfill({ response: await route.fetch(), json: { open } }));

@@ -144,22 +144,47 @@ describe("the caption sources read the committed files", () => {
     expect([files.values["gap.hours"], files.values["gap.swaps"], files.values["gap.gapBps"], files.values["gap.side"]]).toEqual(["51.35", "10,138", "490", "below"]);
   });
 
-  it("counts the Base mainnet rows of the deployments table and reads the date Basescan showed them verified", () => {
+  it("counts the Base mainnet rows of the deployments table, and reads the date Basescan showed them verified only while the note counts every row", () => {
     const md = lf("deployments/README.md");
     const rows = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address);
     expect(rows.map((r) => r.contract)).toContain("MandateVault");
     expect(files.values["deployments.count"]).toBe(String(rows.length));
-    // The verification note must count the same contracts as the table: the caption claims it for every row.
+    // The caption claims the verification for every row, so it may name the date only while the note counts them all.
     const [, iso = "", noted = ""] = /On (\d{4}-\d{2}-\d{2}), Basescan showed the source of all (\w+) contracts as verified/.exec(md) ?? [];
-    expect(noted, "the note's count").toBe(COUNT_WORDS[rows.length]);
+    const counted = COUNT_WORDS.indexOf(noted);
+    expect(counted, "the note's count").toBeGreaterThan(0);
+    expect(counted, "the note's count").toBeLessThanOrEqual(rows.length);
+    if (counted < rows.length) {
+      // Today: the note counts the four contracts Basescan showed verified on 2026-11-24. MaatInbox's own paragraph gives
+      // its later date, 2026-11-27, so no one date covers every row and the caption names none.
+      expect(files.values["deployments.verifiedOn"]).toBeUndefined();
+      expect(files.values["deployments.verifiedOnIso"]).toBeUndefined();
+      return;
+    }
     expect(files.values["deployments.verifiedOnIso"]).toBe(iso);
     const [y, m, d] = iso.split("-").map(Number);
     expect(files.values["deployments.verifiedOn"]).toBe(`${d} ${new Date(Date.UTC(y ?? 0, (m ?? 1) - 1, d)).toLocaleString("en-US", { month: "short", timeZone: "UTC" })} ${y}`);
   });
 
   it("drops the verification date once the table has a row the note does not count, and the caption claims less", () => {
-    const md = withInboxRow(lf("deployments/README.md"));
+    // The table as it was before the inbox's deploy, with the note counting every row: the date is there.
+    const real = lf("deployments/README.md");
+    const recount = (md: string, n: number) => md.replace(/(source of all )\w+( contracts)/, `$1${COUNT_WORDS[n]}$2`);
+    const noInbox = real
+      .split("\n")
+      .filter((l) => !/^\| Base mainnet \| MaatInbox \|/.test(l))
+      .join("\n");
+    const before = deploymentRows(noInbox).filter((r) => r.network === "Base mainnet" && r.address).length;
+    const verified = deploymentFigures(recount(noInbox, before));
+    const iso = /On (\d{4}-\d{2}-\d{2}), Basescan showed/.exec(real)?.[1] ?? "";
+    const [y, m, d] = iso.split("-").map(Number);
+    expect(verified["deployments.verifiedOnIso"]).toBe(iso);
+    expect(verified["deployments.verifiedOn"]).toBe(`${d} ${new Date(Date.UTC(y ?? 0, (m ?? 1) - 1, d)).toLocaleString("en-US", { month: "short", timeZone: "UTC" })} ${y}`);
+    expect(verified["deployments.inbox"]).toBeUndefined();
+    // An inbox row the note does not count: no date, and the receipts card falls back to the caption that claims less.
+    const md = withInboxRow(recount(noInbox, before));
     const n = deploymentRows(md).filter((r) => r.network === "Base mainnet" && r.address).length;
+    expect(n).toBe(before + 1);
     const stale = deploymentFigures(md);
     expect(stale["deployments.count"]).toBe(String(n));
     expect(stale["deployments.verifiedOn"]).toBeUndefined();
@@ -169,8 +194,7 @@ describe("the caption sources read the committed files", () => {
     expect(picked.id).toBe("receipts-contracts-listed");
     expect(renderCaption(picked.text, values).text).not.toMatch(/verified/);
     // Once the note counts the new row too, the date is back.
-    const recounted = deploymentFigures(md.replace(/(source of all )\w+( contracts)/, `$1${COUNT_WORDS[n]}$2`));
-    expect(recounted["deployments.verifiedOn"]).toBe(files.values["deployments.verifiedOn"]);
+    expect(deploymentFigures(recount(md, n))["deployments.verifiedOn"]).toBe(verified["deployments.verifiedOn"]);
   });
 
   it("reads each CI figure from its row of the README's Tested, in numbers table", () => {
