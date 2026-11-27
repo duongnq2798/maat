@@ -2,7 +2,7 @@
 
 This runbook takes Maat from a green `main` to its first mainnet `Decision` events and then to the agent. You, the owner, run every command in it, in bash, with your own wallet. Nothing here was run for you. The deploy details live in [`README.md`](README.md) in this folder and the agent's in [`agent/README.md`](../agent/README.md); this page puts them in order and adds the first-decision steps.
 
-The plan:
+The plan, as written before the deploy. All of it is done: the owner deployed and sent the two first-decision BUYs on 2026-11-24 (see [`README.md`](README.md) and the root README's Deployments and traction), and on 2026-11-27 at 01:04 UTC the owner sent `setExecutor` to the agent's CDP Server Wallet account `0x9bC6E49d42e0659f3ef667B09B67506B348e115A` (tx [`0x6f866bf7...f483`](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)). The agent has run live since then; as of 2026-11-27 it has sent no transaction.
 
 - **Saturday 2026-11-21:** deploy to Base mainnet with your wallet as owner, executor and first payee, fund the vault with 20 to 100 USDC, and send a 5 USD NVDAc BUY while NYSE is closed. The vault answers `allowed=false`, reason `MARKET_CLOSED` (6).
 - **Monday 2026-11-23, at or after 14:30 UTC:** send the same intent with a new id. The vault answers `allowed=true`, reason `OK` (0).

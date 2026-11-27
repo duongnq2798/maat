@@ -263,7 +263,7 @@ The agent's fork run, [`agent.fork.test.ts`](https://github.com/duongnq2798/maat
 
 <Callout type="warning" title="Not exercised">
 
-Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no output from the real Claude API is committed. The CDP code is tested against a fake client only, and has never run against the real CDP. These tests show the agent's logic, not what those services do.
+Claude and the CDP wallet are fakes in every agent test. The Claude proposer is tested against a fake client, and no output from the real Claude API is committed. The CDP code is tested against a fake client only. Outside the tests, Maat's live agent has run with its real CDP account since 2026-11-27 but, as of 2026-11-27, has sent no transaction through it. These tests show the agent's logic, not what those services do.
 
 </Callout>
 

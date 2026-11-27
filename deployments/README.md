@@ -11,7 +11,7 @@ To deploy, fund and send the first intents on Base mainnet, follow the owner's r
 
 On 2026-11-24, Basescan showed the source of all four contracts as verified, with an exact match, on each address's Contract tab.
 
-Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet, plus an optional second payee.
+Owner = your wallet. The executor is your wallet at first, until you hand it to the CDP Server Wallet (see "Switch the executor to the CDP Server Wallet" below). Payee = the compute-expense wallet, plus an optional second payee. For the vault above: on 2026-11-27 at 01:04:08 UTC (block 62,755,363) the owner handed the executor role to the agent's CDP Server Wallet account [`0x9bC6E49d42e0659f3ef667B09B67506B348e115A`](https://basescan.org/address/0x9bC6E49d42e0659f3ef667B09B67506B348e115A), tx [`0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483`](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483); `owner()` is unchanged.
 
 ## Environment
 

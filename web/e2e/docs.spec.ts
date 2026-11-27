@@ -837,7 +837,7 @@ test.describe("glossary previews", () => {
     return term.page().locator(`[id="${id}"]`);
   }
   /** The CDP Server Wallet entry's last sentence, its status. */
-  const CDP_STATUS = "has never run against the real CDP";
+  const CDP_STATUS = "no transaction has gone through it";
   /** Whether these words of a preview are inside the part of it the window shows. */
   const inView = (preview: Locator, words: string) =>
     preview.evaluate((el, w) => {
@@ -885,7 +885,7 @@ test.describe("glossary previews", () => {
     const b20 = await entryWithoutPointer(page, "b20");
     const cdp = await entryWithoutPointer(page, "cdp-server-wallet");
     // The status of the term is in its last sentence.
-    expect(cdp).toContain("has never run against the real CDP");
+    expect(cdp).toContain(CDP_STATUS);
     await page.goto(WHAT_IS_MAAT, { waitUntil: "networkidle" });
     const first = termOf(page, "b20");
     await first.focus();

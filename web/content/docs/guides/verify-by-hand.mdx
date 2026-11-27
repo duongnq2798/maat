@@ -24,7 +24,7 @@ Maat's [vault](/docs/help/glossary#vault) runs on [Base](/docs/help/glossary#bas
 
 <Callout type="note" title="What was run">
 
-Every output on this page was printed by the command above it, run on 2026-11-25 with `cast` from Foundry 1.9.0 against the keyless public RPC `https://base-rpc.publicnode.com`. Long hashes and the owner's address are shortened here with an ellipsis; your terminal prints them in full. The same day, `https://mainnet.base.org` printed the same output for commands 1, 2 and 4, and refused the log query of command 3 with HTTP 429 (`request limit reached`), so the page uses the first RPC. Command 5 needs no RPC: it hashes a text on your machine. Commands 1, 3 and 4 read records at fixed blocks, which do not change. Command 2 reads the vault at the latest block, so its executor line changes once the owner hands that role to another address, and its mandate lines change if the owner applies a queued mandate change (a `MandateApplied` event, no sooner than <Fact name="timelockHours" /> after the change was queued).
+Every output on this page was printed by the command above it, run on 2026-11-25 with `cast` from Foundry 1.9.0 against the keyless public RPC `https://base-rpc.publicnode.com`. Long hashes and the owner's address are shortened here with an ellipsis; your terminal prints them in full. The same day, `https://mainnet.base.org` printed the same output for commands 1, 2 and 4, and refused the log query of command 3 with HTTP 429 (`request limit reached`), so the page uses the first RPC. Command 5 needs no RPC: it hashes a text on your machine. Commands 1, 3 and 4 read records at fixed blocks, which do not change. Command 2 reads the vault at the latest block, so its executor line changed when the owner handed that role to the agent's CDP Server Wallet on 2026-11-27, and changes again with any later `setExecutor`, and its mandate lines change if the owner applies a queued mandate change (a `MandateApplied` event, no sooner than <Fact name="timelockHours" /> after the change was queued).
 
 </Callout>
 
@@ -98,7 +98,7 @@ Output:
 28800 [2.88e4]
 ```
 
-The first line is the owner, fixed when the vault was created. The second is the executor, the one address whose `execute` calls the vault accepts. On 2026-11-25 it was the owner's own wallet, as the go-live runbook has it until the owner hands the role to the agent's [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) ([Status and roadmap](/docs/get-started/status#next-mainnet), step 4). After that, this line prints the new address, and an `ExecutorSet` event records the change ([Instant actions give no notice](/docs/guides/watch-decisions-onchain#instant-actions-give-no-notice)).
+The first line is the owner, fixed when the vault was created. The second is the executor, the one address whose `execute` calls the vault accepts. On 2026-11-25 it was the owner's own wallet, as the go-live runbook has it until the handover ([Status and roadmap](/docs/get-started/status#next-mainnet), step 4). On 2026-11-27 at 01:04:08 UTC, in block `62755363`, the owner handed the role to the agent's [CDP Server Wallet](/docs/help/glossary#cdp-server-wallet) in transaction [`0x6f866bf7...f483`](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483). This line now prints `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, and an `ExecutorSet` event records the change ([Instant actions give no notice](/docs/guides/watch-decisions-onchain#instant-actions-give-no-notice)).
 
 The other fourteen lines are the mandate, one field per line in the order of [Types](/docs/reference/types#mandate). `mandate()` returns one struct; writing its field types without the outer parentheses makes `cast` print each field on its own line. The right-hand column renders the default mandate from the repository's code ([Default parameters](/docs/reference/default-parameters#vault-and-mandate)), and on 2026-11-25 each value read from the vault equalled it:
 
@@ -191,7 +191,7 @@ Output:
 80218021802180218021802180218021
 ```
 
-Both came from the owner's wallet, the first line of command 2, which was also the executor then. Once the owner hands the executor role to the agent's CDP Server Wallet, the agent's transactions come from that address instead. The input of each ends in `8021` eight times, the marker that closes an ERC-8021 [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix; [Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round) shows a whole suffix and how to read the code out of it.
+Both came from the owner's wallet, the first line of command 2, which was also the executor then. Since 2026-11-27 the executor is the agent's CDP Server Wallet, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, so any transaction the agent sends comes from that address; as of 2026-11-27 it has sent none. The input of each ends in `8021` eight times, the marker that closes an ERC-8021 [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix; [Switch to live mode and run one round](/docs/guides/run-the-agent#switch-to-live-mode-and-run-one-round) shows a whole suffix and how to read the code out of it.
 
 </Step>
 

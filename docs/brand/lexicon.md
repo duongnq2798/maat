@@ -31,7 +31,7 @@ a line for another reason code waits until that code has fired on Base mainnet.
 | Maat's agent | The AI that proposes trades, which is Claude | "Maat" alone |
 | Claude | The model Maat's agent runs on, named in plain text | Tagged on X |
 | the vault | `MandateVault` on Base, which checks every intent against the mandate and records its verdict | "the contract decides" |
-| the operator | The owner, sending an intent to the vault by hand | "the agent" |
+| the operator | The owner. Until 2026-11-27 it was also the vault's executor and sent intents to the vault by hand; since then the executor is the CDP Server Wallet account of Maat's agent, which the owner runs on its own PC | "the agent" |
 | outside wallet | A wallet that is not the team's, counted under the published rule, zero included | "user", for a team or red-team wallet |
 
 ## The words

@@ -22,14 +22,14 @@ sources:
 next: [security/threat-model, security/testing]
 ---
 
-This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "Claude proposes. The vault decides." against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet) have never run, so the agent-side rows describe code that was tested against fakes.
+This page lists the rules the [vault](/docs/help/glossary#vault) enforces, the code that enforces each one and a test that shows it, so you can check the claim "Claude proposes. The vault decides." against the code and not only against the README. Everything here is built and fork-tested. The owner deployed the four Maat contracts to Base mainnet, they are unaudited ([What Maat does not claim](/docs/security/not-claimed) says so first), and the agent has run in live mode on Base mainnet only since 2026-11-27, with the real Claude API and the real [CDP wallet](/docs/help/glossary#cdp-server-wallet). As of 2026-11-27 it has sent no transaction, so the agent-side rows describe code that was tested against fakes and on a fork.
 
 ## At a glance
 
 | Question | Answer | Where it is shown |
 | --- | --- | --- |
 | **Audit** | None. No third party has reviewed the contracts or the agent | [Unaudited](/docs/security/not-claimed#unaudited) |
-| **Deployment** | The owner deployed the four Maat contracts to [Base](/docs/help/glossary#base) mainnet, with the default mandate. The agent has run in [live mode](/docs/help/glossary#live-mode) only on a fork | [Base addresses](/docs/reference/base-addresses), and [The agent has not run live on mainnet](/docs/security/not-claimed#the-agent-has-not-run-live-on-mainnet) |
+| **Deployment** | The owner deployed the four Maat contracts to [Base](/docs/help/glossary#base) mainnet, with the default mandate. The agent has run in [live mode](/docs/help/glossary#live-mode) on Base mainnet since 2026-11-27 and, as of 2026-11-27, has sent no transaction | [Base addresses](/docs/reference/base-addresses), and [The agent has made no Decision on mainnet yet](/docs/security/not-claimed#the-agent-has-made-no-decision-on-mainnet-yet) |
 | **Contract code** | No proxy, `delegatecall` or `selfdestruct`, so the contracts cannot be upgraded and deployed code cannot change. Behind the [timelock](/docs/help/glossary#timelock), the [owner](/docs/help/glossary#owner) can point the vault at a different calendar, swap adapter, credit adapter, feed or pool, or list a new stock token | [Trust boundaries](#trust-boundaries) |
 | **Owner** | One key, fixed at deployment, with no transfer function. Pausing, replacing the [executor](/docs/help/glossary#executor) and withdrawing to the owner are instant | [The owner key](/docs/security/threat-model#the-owner-key) |
 | **Mandate, stock and payee changes** | Queued, then applied with the exact queued values between <Fact name="timelockHours" /> after queueing and <Fact name="gracePeriodDays" /> after that, or cancelled. A change not applied in that window expires | [What the contract enforces](#what-the-contract-enforces) |
@@ -196,9 +196,9 @@ The guarded sender and the CDP policy are the two layers that sit closest to the
 
 The two layers cover different things. The policy limits where a transaction may go, on which network and with how much value. It does not limit which function is called. The function limit is in the guarded sender, and the guarded sender runs inside the agent process. So the policy and the sender do not add up to a function allowlist for someone who holds the CDP credentials: they could ask CDP to send any calldata to the vault. That is acceptable only because the vault decides. Every function other than `execute` is open to anyone and harmless, or owner-only and reverts for the executor.
 
-<Callout type="warning" title="Not yet run against the real CDP">
+<Callout type="warning" title="Not yet shown against the real CDP">
 
-The CDP policy is tested for its shape only. [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the rules the code builds and parses them with the CDP SDK's own schema, and no test shows that CDP enforces them, because the CDP code has never run against the real service. Treat the policy as one more layer that is untested where it counts, not as a guarantee.
+The CDP policy is tested for its shape only. [`cdpPolicy.test.ts`](https://github.com/duongnq2798/maat/blob/main/agent/test/cdpPolicy.test.ts) checks the rules the code builds and parses them with the CDP SDK's own schema, and no test shows that CDP enforces them. Since 2026-11-27 the live agent runs with its real CDP Server Wallet account, but as of 2026-11-27 it has sent no transaction through it, so nothing yet shows CDP enforcing the policy. Treat the policy as one more layer that is untested where it counts, not as a guarantee.
 
 </Callout>
 

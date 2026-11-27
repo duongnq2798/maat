@@ -25,7 +25,7 @@ sources:
 next: [concepts/nine-checks, get-started/read-a-decision, concepts/treasury-loop]
 ---
 
-This page follows one trade from the moment the agent reads the [vault](/docs/help/glossary#vault) to the moment the vault records its verdict. You will see which steps belong to the agent, which one belongs to the contract, and why only the contract's step is trusted. The agent has run in live mode only on a [fork](/docs/help/glossary#fork-test), so the page describes how the code is built to work, and its example comes from that fork run.
+This page follows one trade from the moment the agent reads the [vault](/docs/help/glossary#vault) to the moment the vault records its verdict. You will see which steps belong to the agent, which one belongs to the contract, and why only the contract's step is trusted. The agent has run in live mode on Base mainnet since 2026-11-27, but as of 2026-11-27 it has sent no transaction there, so the page describes how the code is built to work, and its example comes from a run on a [fork](/docs/help/glossary#fork-test).
 
 ## The loop in four steps
 
@@ -53,7 +53,7 @@ The agent's end-to-end test runs this on a fork of [Base](/docs/help/glossary#ba
 
 <Callout type="fork" title="Fork only">
 
-The Saturday round is the same fork with the clock moved forward, not a real Saturday block. The proposer is scripted, the sender is local rather than the CDP wallet, and no output from the real Claude API is committed yet. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it, and [Read a decision](/docs/get-started/read-a-decision) shows all four decisions of the run.
+The Saturday round is the same fork with the clock moved forward, not a real Saturday block. The proposer is scripted, so Claude was not called, and the sender is local rather than the CDP wallet. [Reproduce the fork run](/docs/guides/reproduce-the-fork-run) reruns it, and [Read a decision](/docs/get-started/read-a-decision) shows all four decisions of the run.
 
 </Callout>
 
@@ -256,7 +256,7 @@ An intent whose preview is `OK` is sent. A refused intent is sent only when the 
 
 Sending goes through `GuardedSender`, which refuses everything except a call to the vault's `execute`, `syncMultiplier` or `notifyRevenue`. `notifyRevenue` is on that list, but the agent never sends it: no code in `agent/src` encodes it. The vault records new USDC itself whenever an `execute` passes its checks, and anyone may call `notifyRevenue`. Every send carries an explicit gas limit, at least <Fact name="executeGasFloor" /> for `execute` and never more than <Fact name="maxGas" />, because the vault catches inner failures and a plain gas estimate can come out too low for the swap. It also carries the [Builder Code](/docs/help/glossary#builder-code-erc-8021) suffix, after the blob of an `execute`.
 
-In live mode the wallet behind the sender is meant to be a [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). Its account policy allows only zero-value transactions to the vault (they carry no ETH; the wallet pays only gas), limits sending to Base, and rejects hash, message and typed-data signing. [What the agent adds](/docs/security/model#what-the-agent-adds) says what the policy does not cover. That path is tested against a fake CDP client only and has never run against the real CDP. The fork run signs with a local sender instead.
+In live mode the wallet behind the sender is a [Coinbase CDP Server Wallet](/docs/help/glossary#cdp-server-wallet). Its account policy allows only zero-value transactions to the vault (they carry no ETH; the wallet pays only gas), limits sending to Base, and rejects hash, message and typed-data signing. [What the agent adds](/docs/security/model#what-the-agent-adds) says what the policy does not cover. That path is tested against a fake CDP client. Maat's live agent has run with its real CDP account since 2026-11-27, but as of 2026-11-27 it has sent no transaction through it. The fork run signs with a local sender instead.
 
 Two guards protect the round itself. The agent stores each `execute` as pending before it sends it. A pending send, such as one that fails after broadcast, is settled in the next round, from the transaction's receipt once it is mined, or else against `usedIntent`, so a lost receipt alone does not pay a bill twice. A pending send whose intent is still unused, and whose transaction the agent cannot find, is dropped after at least <Fact name="pendingWindowMinutes" /> of chain time; [What the agent adds](/docs/security/model#what-the-agent-adds) explains the one case where a bill can then be paid twice. And if an intent the preview called `OK` comes back refused, the agent journals a mismatch and halts the round.
 

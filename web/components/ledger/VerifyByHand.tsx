@@ -32,7 +32,7 @@ function steps(t: VerifyTargets): Step[] {
     },
     {
       title: "Read the owner, the executor and the mandate",
-      body: "The first line is the owner, fixed when the vault was created; the second is the executor, the one address whose execute calls the vault accepts. On 2026-11-25 both were the owner's wallet; once the owner hands the executor role to the agent, the second line prints the new address. The other fourteen lines are the mandate, one field per line.",
+      body: "The first line is the owner, fixed when the vault was created; the second is the executor, the one address whose execute calls the vault accepts. On 2026-11-25, when the output below was printed, both were the owner's wallet. Since 2026-11-27, when the owner sent setExecutor (block 62,755,363), the second line prints the agent's executor, 0x9bC6E49d…115A, the agent's CDP Server Wallet account. The other fourteen lines are the mandate, one field per line.",
       command: [
         "MANDATE='(uint8,uint16,uint16,uint32,uint32,uint32,uint128,uint128,address,address,address,uint64,uint64,uint32)'",
         'for f in "owner()(address)" "executor()(address)" "mandate()$MANDATE"; do cast call "$VAULT" "$f" --rpc-url "$RPC"; done',
