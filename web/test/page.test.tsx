@@ -94,6 +94,14 @@ describe("landing page", () => {
     const fixed = [...sim.querySelectorAll("li[data-fixed]")];
     expect(fixed.length).toBeGreaterThan(0);
     for (const row of fixed) expect(badges(row, "fork")).toEqual(["fork · 5-7 Nov"]);
+    // The notes under the simulator that give the fork test's block, feed age, premiums and starting balance carry its
+    // badge too; the note on what the simulator simulates carries none.
+    const notes = [...sim.querySelectorAll<HTMLElement>("p[data-try-note]")];
+    expect(notes.map((n) => [n.dataset.tryNote, badges(n, "fork")])).toEqual([
+      ["Simulated", []],
+      ["Fixed at fork values", ["fork · 5-7 Nov"]],
+      ["Starting point", ["fork · 5-7 Nov"]],
+    ]);
     // Every badge sits on a number of the fork test or the simulator: none elsewhere on the page.
     const elsewhere = [...c.querySelectorAll("[data-badge]")].filter((b) => !problem.contains(b) && !sim.contains(b) && !replay.contains(b));
     expect(elsewhere).toEqual([]);

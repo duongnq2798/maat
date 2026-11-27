@@ -300,9 +300,10 @@ describe("Simulator", () => {
     if (!shown) throw new Error("no Now note");
     expect(shown.tagName).toBe("P");
     expect(shown).toHaveTextContent(
-      `Now sets the time only. The rows tagged fork value hold Base block ${formatInt(FACTS.forkBlock.value)} (${dayLabel(FACTS.forkDay.value)}, ${FACTS.forkTimeEt.value} ET), not now. Read the live values on Right now on Base`,
+      `Now sets the time only. The rows tagged fork value hold what the fork test of 5-7 Nov read at Base block ${formatInt(FACTS.forkBlock.value)} (${dayLabel(FACTS.forkDay.value)}, ${FACTS.forkTimeEt.value} ET), not now. Read the live values on Right now on Base`,
     );
-    expect(shown).toHaveTextContent("Base block 53,551,627 (Thu 5 Nov, 10:30 ET), not now.");
+    // The badge's days, 5-7 Nov, are the fork test's; the note names the one its values were read on.
+    expect(shown).toHaveTextContent("the fork test of 5-7 Nov read at Base block 53,551,627 (Thu 5 Nov, 10:30 ET), not now.");
     expect(within(shown).getByRole("link", { name: "Read the live values on Right now on Base" })).toHaveAttribute("href", "/now");
     expect(shown).not.toHaveTextContent(/safe/i);
     // Under the checks, above the verdict box, and outside the one live region.

@@ -5,6 +5,7 @@ import { RealVault, type RealVaultDeps } from "@/components/RealVault";
 import { DataBadge } from "@/components/ui/DataBadge";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { isoOfDay, localTime, parseIsoDay, sessionWindow, WINDOW } from "@/content/calendar";
+import { FORK_DAYS } from "@/content/badges";
 import type { CheckMark } from "@/content/engine";
 import { FACTS } from "@/content/facts";
 import { clockLabel, dayLabel, formatInt } from "@/content/format";
@@ -367,8 +368,9 @@ export function Simulator({ vaultDeps }: { vaultDeps?: RealVaultDeps } = {}) {
 
         {atNow ? (
           <p className="m-0 mx-5 mb-3 text-[13px] leading-normal text-ink-2">
-            Now sets the time only. The rows tagged fork value hold Base block {formatInt(FACTS.forkBlock.value)} (
-            {dayLabel(FACTS.forkDay.value)}, {FACTS.forkTimeEt.value} ET), not now.{" "}
+            {/* The badge names the fork test's days, 5-7 Nov; the note says which of them these values were read on. */}
+            Now sets the time only. The rows tagged fork value hold what the fork test of {FORK_DAYS} read at Base block{" "}
+            {formatInt(FACTS.forkBlock.value)} ({dayLabel(FACTS.forkDay.value)}, {FACTS.forkTimeEt.value} ET), not now.{" "}
             <a href="/now" className="font-medium">
               Read the live values on Right now on Base
             </a>
