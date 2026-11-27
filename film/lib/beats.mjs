@@ -10,16 +10,34 @@ export const TOLERANCE_SECONDS = 2;
 /** The layouts a tx shot may ask for besides the default one card per tx. */
 export const LAYOUTS = Object.freeze(["persuasion"]);
 
+/** What a page shot's probe step can read from the live page: whether /ask takes briefs (lib/sources.mjs askOpenValue). */
+export const PROBES = Object.freeze(["ask.open"]);
+
 /** The two Basescan clips the owner records by hand, by the base name they drop into film/input/. */
 export const CLIPS = Object.freeze({ decisionLog: "basescan-decision-log", inputUtf8: "basescan-input-utf8" });
 
-/** Where a page shot puts the element it scrolls to, in CSS px from the top of the viewport, per format. */
-const TOP = { wide: 112, tall: 88 };
+/**
+ * Where a page shot puts the element it scrolls to, in CSS px from the top of the viewport, per format. The 16:9 cut
+ * shows the site's desktop layout, whose nav bar stays at the top (82 px), so the offset also clears the section label
+ * or tabs above a heading; the phone layout has no sticky bar. The capture then moves each stop by a few px so that no
+ * line of text is cut by the top edge of the frame or by the nav bar (unsliceGoal).
+ */
+const TOP = { wide: 160, tall: 88 };
+
+/** The mandate panel's card that lists the rule changes waiting out the timelock. */
+const TIMELOCK_PANEL = 'section[aria-label="Mandate"] .card:has(h3:has-text("Rule changes waiting out the timelock"))';
+
+/** A step's value for one format: the value itself, or its `wide` or `tall` entry when it has one per format. */
+export function forFormat(value, format) {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && format in value ? value[format] : value;
+}
 
 /**
  * A shot is one of:
- * - page: the live site at `path`, driven by `steps` (wait, scroll, hold, click, capture); its last frame is held to
- *   the end of `duration`;
+ * - page: the live site at `path`, driven by `steps` (wait, scroll, hold, click, capture, probe); its last frame is held
+ *   to the end of `duration`. A scroll's target and `top` may differ per format ({ wide, tall }). `continue: true` goes
+ *   on from where the page shot before it left the same path, instead of loading the page again from its top.
+ *   `keepClear` names an element the caption must not cover: the capture warns when it does at a scroll's stop;
  * - card: a still the capture renders from repository files (`card` names it), held for `duration`;
  * - tx: one card per key of film/txs.json in `txs`; `caption` when every hash is set, `placeholderCaption` when none
  *   is, and `partialCaption` (needed for two or more txs) when only some are. `layout: "persuasion"` (a brief and the
@@ -36,22 +54,26 @@ export const BEATS = Object.freeze([
     id: "frozen-feed",
     title: "The frozen feed",
     shots: [
-      { id: "title", kind: "card", card: "title", duration: 3, captions: [] },
+      // The title card holds 145 characters to read: 6 s at READ_PACE (cardReading in lib/cards.mjs).
+      { id: "title", kind: "card", card: "title", duration: 6, captions: [] },
       {
         id: "gap",
         kind: "page",
         path: "/gap-index",
-        duration: 10,
+        duration: 9,
+        // In 9:16 the window's heading at the top would leave the chart's drop under the caption, so that cut goes to
+        // the NVDAc panel instead; the caption names the window.
+        keepClear: "#gap-panel-2026-11-06-NVDAc svg",
         steps: [
           { wait: "#gap-panel-2026-11-06-NVDAc" },
           { hold: 1 },
-          { scroll: "#window-2026-11-06", over: 2, top: TOP },
+          { scroll: { wide: "#window-2026-11-06", tall: "#gap-panel-2026-11-06-NVDAc" }, over: 2, top: TOP },
           { hold: 2.5 },
           { scroll: "#gap-panel-2026-11-06-NVDAc svg", over: 1.5, top: { wide: 260, tall: 220 } },
         ],
         captions: [
           { id: "gap-held", at: 0 },
-          { id: "gap-swaps", at: 5.5 },
+          { id: "gap-swaps", at: 4.5 },
         ],
       },
     ],
@@ -78,6 +100,7 @@ export const BEATS = Object.freeze([
           id: "reasons",
           kind: "page",
           path: "/",
+          continue: true,
           duration: 5,
           steps: [{ wait: "#reasons" }, { scroll: "#reasons-title", over: 1.5, top: TOP }],
           captions: [{ id: "decides-log", at: 0 }],
@@ -87,13 +110,13 @@ export const BEATS = Object.freeze([
   },
   {
     id: "mandate",
-    title: "The brief and the approved mandate",
+    title: "The basket and the approved mandate",
     shots: [
       {
         id: "mandate",
         kind: "page",
         path: "/ledger",
-        duration: 12,
+        duration: 10.5,
         steps: [
           // The panel shows the configured defaults until it has read the vault; the captions take only the onchain mandate.
           { wait: 'section[aria-label="Mandate"] caption:has-text("The mandate onchain")' },
@@ -102,14 +125,20 @@ export const BEATS = Object.freeze([
           { capture: "ledger.perDay" },
           { capture: "ledger.weightCapPct" },
           { scroll: 'section[aria-label="Mandate"]', over: 2, top: TOP },
-          { hold: 4 },
-          { scroll: 'section[aria-label="Mandate"] tr:has-text("maxWeightBps")', over: 1.5, top: { wide: 420, tall: 300 } },
+          { hold: 3 },
+          // 16:9 holds the weight cap row and the timelock panel side by side; 9:16 stacks them and ends on the panel
+          // the timelock line points at (the capture warns when the reserve line shows over it instead).
+          {
+            scroll: { wide: 'section[aria-label="Mandate"] tr:has-text("maxWeightBps")', tall: TIMELOCK_PANEL },
+            over: 1.5,
+            top: { wide: 420, tall: 300 },
+          },
         ],
         // mandate-reserve shows only once the vault's cap equals the reserve script's; until then, mandate-timelock.
         captions: [
-          { id: "mandate-brief", at: 0 },
-          { id: "mandate-caps", at: 4 },
-          { id: "mandate-reserve", at: 8 },
+          { id: "mandate-basket", at: 0 },
+          { id: "mandate-caps", at: 3.5 },
+          { id: "mandate-reserve", at: 7 },
         ],
       },
     ],
@@ -122,7 +151,9 @@ export const BEATS = Object.freeze([
         id: "trail",
         kind: "page",
         path: "/ledger",
-        duration: 6,
+        continue: true,
+        // The one shot with Claude's own words, the model, the sources and the hash tick, so it holds longer.
+        duration: 7.5,
         steps: [
           { wait: '[aria-label="Mainnet decisions"]' },
           { scroll: "#trail-panel-decisions", over: 2, top: TOP },
@@ -139,6 +170,7 @@ export const BEATS = Object.freeze([
           id: "verify",
           kind: "page",
           path: "/ledger",
+          continue: true,
           duration: 5,
           steps: [{ wait: "#verify" }, { scroll: "#verify-title", over: 1.5, top: TOP }],
           captions: [{ id: "proposal-verify", at: 0 }],
@@ -148,7 +180,7 @@ export const BEATS = Object.freeze([
   },
   {
     id: "thanksgiving",
-    title: "Thanksgiving: MARKET_CLOSED from the agent",
+    title: "Thanksgiving: MARKET_CLOSED from Maat's agent",
     shots: [
       {
         id: "sim",
@@ -167,12 +199,13 @@ export const BEATS = Object.freeze([
   },
   {
     id: "early-close",
-    title: "The early-close pair",
+    title: "The early-close probes",
     shots: [
       {
         id: "sim",
         kind: "page",
         path: "/",
+        continue: true,
         duration: 3.5,
         steps: [
           { wait: "#try" },
@@ -185,7 +218,7 @@ export const BEATS = Object.freeze([
         id: "tx",
         kind: "tx",
         txs: ["earlyCloseAllowed", "earlyCloseRefused"],
-        duration: 8,
+        duration: 7,
         caption: "early-tx",
         placeholderCaption: "early-placeholder",
         partialCaption: "pair-partial",
@@ -201,15 +234,19 @@ export const BEATS = Object.freeze([
         kind: "page",
         path: "/ask",
         duration: 5,
-        steps: [{ wait: "#send-title" }, { hold: 1 }, { scroll: "#send-title", over: 1.5, top: TOP }],
+        // The invitation shows only while the live page takes briefs (the probe ask.open, lib/sources.mjs
+        // askOpenValue). The shot ends with the form, or the notice that the inbox is not open yet, above the caption:
+        // in 9:16 the page stays near its top, so the caption sits over the next section's heading, not a form's fields.
+        keepClear: 'section[aria-labelledby="send-title"] > :last-child',
+        steps: [{ wait: "#send-title" }, { probe: "ask.open" }, { hold: 1 }, { scroll: "#send-title", over: 1.5, top: { wide: TOP.wide, tall: 400 } }],
         captions: [{ id: "brief-ask", at: 0 }],
       },
       {
         id: "tx",
         kind: "tx",
         // Once both are on Base: the brief, Maat's agent's reply from the published journal, then the vault's verdict.
-        // No card has more to read, so How it works, the decision trail, the two simulator shots and both clip slots
-        // are kept short for it: the cut lasts 100 s, and no caption reads faster than READ_PACE (lib/cards.mjs).
+        // No card has more to read, so How it works, the two simulator shots and both clip slots are kept short for
+        // it: the cut lasts 100 s, and no caption reads faster than READ_PACE (lib/cards.mjs).
         layout: "persuasion",
         txs: ["strangerBrief", "vaultAnswer"],
         duration: 11.5,
@@ -224,17 +261,19 @@ export const BEATS = Object.freeze([
     title: "Receipts",
     shots: [
       { id: "contracts", kind: "card", card: "deployments", duration: 4, captions: [{ id: "receipts-contracts", at: 0 }] },
-      { id: "ci", kind: "card", card: "ci", duration: 4, captions: [{ id: "receipts-ci", at: 0 }] },
+      // The card shows the figures under a dated heading; its caption says only what the card does not.
+      { id: "ci", kind: "card", card: "ci", duration: 3, captions: [{ id: "receipts-ci", at: 0 }] },
       {
         id: "proof",
         kind: "page",
         path: "/proof",
-        duration: 4,
-        steps: [{ wait: "#counts-title" }, { scroll: "#counts-title", over: 1.5, top: TOP }],
+        duration: 3.5,
+        // The counts are filmed only once read ("Counted to block …"), never while the page says "Reading briefs…".
+        steps: [{ wait: "#counts-title" }, { wait: '[data-proof-state="read"]' }, { scroll: "#counts-title", over: 1.5, top: TOP }],
         captions: [{ id: "receipts-proof", at: 0 }],
       },
-      // The end card holds the sign-off, the myth line, the builder line and where to find Maat: 6 s to read them.
-      { id: "end", kind: "card", card: "end", duration: 6, captions: [] },
+      // The end card holds the sign-off, the myth line and the builder line (161 characters): 6.5 s at READ_PACE.
+      { id: "end", kind: "card", card: "end", duration: 6.5, captions: [] },
     ],
   },
 ]);
@@ -270,6 +309,32 @@ export function scrollGoal({ target, offset, max, footer, height }) {
   return Math.max(0, Math.round(y));
 }
 
+/**
+ * A scroll stop moved so that no line of text is cut in two by the top edge of the frame, or by the bottom of the
+ * site's sticky nav bar, `edge` px tall: the nearest stop within `reach` px of `y`, between 0 and `limit`, at which no
+ * line (its top and bottom in page px) crosses y + edge; `y` itself when there is none. On a tie it scrolls up, which
+ * shows the line rather than hides it.
+ * @param {{ y: number, lines: readonly { top: number, bottom: number }[], edge?: number, limit: number, reach?: number }} at
+ */
+export function unsliceGoal({ y, lines, edge = 0, limit, reach = 120 }) {
+  const cuts = (/** @type {number} */ at) => lines.some((l) => l.top < at + edge - 0.5 && l.bottom > at + edge + 0.5);
+  if (!cuts(y)) return y;
+  for (let d = 1; d <= reach; d++) {
+    for (const c of [y - d, y + d]) if (c >= 0 && c <= limit && !cuts(c)) return c;
+  }
+  return y;
+}
+
+/**
+ * Why a caption would cover an element a page shot keeps clear, in one line; null when it does not. `element` is its
+ * top and bottom in the frame, `captionTop` the top of the band the caption may take, `height` the frame's height.
+ * @param {string} where @param {{ top: number, bottom: number }} element @param {number} captionTop @param {number} height
+ */
+export function keepClearProblem(where, element, captionTop, height) {
+  if (element.bottom <= captionTop || element.top >= height) return null;
+  return `${where}: the caption band starts at ${Math.round(captionTop)} px and would cover the element it keeps clear, which ends at ${Math.round(element.bottom)} px`;
+}
+
 /** Seconds of a page shot that its steps animate or hold; the rest holds the last frame. */
 export function scriptedSeconds(shot) {
   return (shot.steps ?? []).reduce((s, step) => s + (step.over ?? 0) + (step.hold ?? 0), 0);
@@ -303,7 +368,10 @@ export function validateBeats(beats = BEATS) {
     if (shot.kind === "page") {
       if (typeof shot.path !== "string" || !shot.path.startsWith("/")) problems.push(`${where}: a page shot needs a site path`);
       if (scriptedSeconds(shot) > shot.duration) problems.push(`${where}: its steps take ${scriptedSeconds(shot)} s, longer than the shot's ${shot.duration} s`);
-    }
+      for (const step of shot.steps ?? []) {
+        if (step.probe !== undefined && !PROBES.includes(step.probe)) problems.push(`${where}: unknown probe ${step.probe}`);
+      }
+    } else if (shot.continue !== undefined || shot.keepClear !== undefined) problems.push(`${where}: only a page shot can continue or keep an element clear`);
     if (shot.kind === "tx" && (!Array.isArray(shot.txs) || shot.txs.length === 0 || !shot.caption || !shot.placeholderCaption)) {
       problems.push(`${where}: a tx shot needs txs, a caption and a placeholder caption`);
     }

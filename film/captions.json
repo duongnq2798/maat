@@ -1,35 +1,40 @@
 {
-  "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise.",
+  "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise; an else caption may have its own when. In a sentence, the AI is always Maat's agent, never the agent alone, and a brief is only an outside wallet's MaatInbox message.",
   "captions": {
     "gap-held": "{gap.close} → {gap.open}. NYSE is closed, and the NVDAc price feed held one answer for {gap.hours} h.",
     "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the held answer.",
     "decides-how": "Claude proposes. The vault decides. It is a contract on Base that checks every intent.",
     "decides-log": "A refusal does not revert: the vault records a typed Decision either way, with its reason code.",
     "decides-clip": "On Basescan: the vault's Decision event, with its reason code.",
-    "mandate-brief": "The owner's brief: a basket of NVDAc, GOOGLc and AAPLc, kept inside a mandate the vault enforces.",
+    "mandate-basket": "The owner's basket: NVDAc, GOOGLc and AAPLc, held inside a mandate the vault enforces.",
     "mandate-caps": "The mandate onchain: {ledger.perTrade} per trade, {ledger.perDay} a day, no stock above {ledger.weightCapPct}% of the vault.",
     "mandate-reserve": {
       "text": "Each stock is capped at {reserve.capPct}%, so buys can never take the USDC reserve below {reserve.floorPct}%.",
       "when": { "equal": ["ledger.weightCapPct", "reserve.capPct"] },
       "else": "mandate-timelock"
     },
-    "mandate-timelock": "The agent cannot loosen it: every rule change waits out a public timelock.",
+    "mandate-timelock": "Maat's agent cannot loosen it: every rule change waits out a public timelock.",
     "proposal-tick": "Each Decision commits to its rationale's hash. The ledger hashes the text in your browser and ticks a match.",
     "proposal-clip": "On Basescan, the input read as text: the rationale and its sources travel in the same transaction.",
     "proposal-verify": "Or check it by hand with read-only cast commands: no wallet, no key.",
     "thanksgiving-sim": "Simulated in the browser: on Thanksgiving the market-session check fails.",
-    "thanksgiving-tx": "On Base: the agent's own intent on Thanksgiving, refused with MARKET_CLOSED and recorded.",
-    "thanksgiving-placeholder": "Placeholder: the agent's Thanksgiving Decision is not on Base yet.",
+    "thanksgiving-tx": "On Base: Maat's agent's own intent on Thanksgiving. Refused · Market closed (MARKET_CLOSED), and recorded.",
+    "thanksgiving-placeholder": "Placeholder: Maat's agent's Thanksgiving Decision is not on Base yet.",
     "early-sim": "Simulated: on Friday, after the early close, the same check fails.",
-    "early-tx": "On Base: the agent's two Decisions that Friday. Allowed before the early close, refused after it.",
-    "early-placeholder": "Placeholder: the early-close pair is not on Base yet.",
+    "early-tx": "On Base: two probes sent by Maat's agent's executor, not Claude proposals. Allowed before the early close, refused after it.",
+    "early-placeholder": "Placeholder: the early-close probes are not on Base yet.",
     "pair-partial": "Placeholder: one of the two transactions is not on Base yet.",
     "brief-ask": {
       "text": "Try to talk Maat's agent into a bad trade. The vault has the last word.",
-      "when": { "present": "deployments.inbox" },
+      "when": { "present": "ask.open" },
       "else": "brief-ask-soon"
     },
-    "brief-ask-soon": "Once the inbox contract is on Base, any wallet can try to talk Maat's agent into a bad trade. The vault has the last word.",
+    "brief-ask-soon": {
+      "text": "The inbox contract is on Base. Once /ask opens, any wallet can try to talk Maat's agent into a bad trade.",
+      "when": { "present": "deployments.inbox" },
+      "else": "brief-ask-later"
+    },
+    "brief-ask-later": "Once the inbox contract is on Base, any wallet can try to talk Maat's agent into a bad trade. The vault has the last word.",
     "brief-tx": "On Base: an outside wallet's brief to Maat's agent, and the vault's verdict on its answer.",
     "brief-placeholder": "Placeholder: no outside brief to Maat's agent, and no verdict on its answer, on Base yet.",
     "receipts-contracts": {
@@ -38,7 +43,7 @@
       "else": "receipts-contracts-listed"
     },
     "receipts-contracts-listed": "{deployments.count} contracts on Base mainnet, each at the address deployments/README.md records.",
-    "receipts-ci": "CI on main, {readme.ciDate}: {readme.contractTests} contract, {readme.agentTests} agent, {readme.webUnitTests} website unit and {readme.e2eTests} browser tests passed.",
+    "receipts-ci": "Every figure links its CI job in the README.",
     "receipts-proof": "Every count on /proof has a written rule, and anyone can recount it from Base."
   }
 }

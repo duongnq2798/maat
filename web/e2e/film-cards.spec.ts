@@ -15,7 +15,7 @@ import {
   titleCardHtml,
 } from "../../film/lib/cards.mjs";
 import { FORMATS } from "../../film/lib/formats.mjs";
-import { ciFigures, deploymentRows, fileSources, verifiedNote } from "../../film/lib/sources.mjs";
+import { ciFigures, deploymentRows, fileSources } from "../../film/lib/sources.mjs";
 import { BRIEF_TOPIC, persuasionCardHtml, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
 import { BRIEF_TX, CONTRACTS, OWNER, briefData as strangerBrief, verdict } from "../test/helpers/film-persuasion";
 
@@ -194,13 +194,17 @@ for (const format of ["wide", "tall"] as const) {
       const dir = info.outputPath();
       const rows = deploymentRows(read("deployments/README.md")).filter((r) => r.network === "Base mainnet" && r.address);
       const more = [...rows, { ...rows[rows.length - 1]!, contract: "MaatInbox" }];
-      const note = verifiedNote(read("deployments/README.md"));
-      expect(note, "the line under the contracts card").not.toBe("");
+      const figures = ciFigures(read("README.md"));
       const problems = [
-        ...(await measure(page, dir, "contracts", deploymentsCardHtml({ format, rows: more, verifiedNote: note, fontsDir }), ["receipts-contracts", "receipts-contracts-listed"], format)),
-        ...(await measure(page, dir, "ci", ciCardHtml({ format, figures: ciFigures(read("README.md")), fontsDir }), ["receipts-ci"], format)),
+        ...(await measure(page, dir, "contracts", deploymentsCardHtml({ format, rows: more, fontsDir }), ["receipts-contracts", "receipts-contracts-listed"], format)),
+        ...(await measure(page, dir, "ci", ciCardHtml({ format, figures, fontsDir }), ["receipts-ci"], format)),
       ];
       expect(problems).toEqual([]);
+      // The caption says which contracts Basescan showed verified; the card does not say it a second time.
+      expect(deploymentsCardHtml({ format, rows: more, fontsDir })).not.toMatch(/verified/);
+      // The CI card's heading names the day of the run it reads, from the README.
+      await page.setContent(ciCardHtml({ format, figures, fontsDir }));
+      await expect(page.locator("h2")).toHaveText(`CI on main, ${figures["readme.ciDate"]}, all passed`);
     });
   });
 }
