@@ -85,7 +85,7 @@ export function MainnetStrip({
           Reading Base mainnet · block <span className="font-mono tabular-nums">{formatInt(Number(scan.head))}</span>
           <span className="text-ink-2">· read at {etClock(snapshot.updatedAt)}</span>
         </p>
-        <a href={basescanAddress(vault)} className="text-sm font-medium">
+        <a href={basescanAddress(vault)} className="tap text-sm font-medium">
           View the vault on Basescan<span aria-hidden="true"> ↗</span>
         </a>
       </div>

@@ -2,6 +2,7 @@
 import { keccak_256 } from "@noble/hashes/sha3.js";
 import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils.js";
 import { describe, expect, it } from "vitest";
+import { inboxAbi } from "@/lib/chain/inbox";
 import { ABI_NAMES, abiFile, abiUrl } from "@/lib/docs/abi";
 import {
   generateAbis,
@@ -330,6 +331,7 @@ describe("the published ABIs", () => {
     ["MandateVault", "mandateVaultAbi"],
     ["ICreditAdapter", "creditAdapterAbi"],
     ["MarketCalendar", "marketCalendarAbi"],
+    ["MaatInbox", "maatInboxAbi"],
   ] as const)("%s.json is {source, note, abi}, with exactly %s from agent/src/abi/generated.ts", (name, abiName) => {
     const file = abiFile(name);
     expect(Object.keys(file)).toEqual(["source", "note", "abi"]);
@@ -338,14 +340,29 @@ describe("the published ABIs", () => {
       `${abiName} in agent/src/abi/generated.ts (https://github.com/duongnq2798/maat/blob/main/agent/src/abi/generated.ts), which npm run gen:abi in agent/ generates from the compiled contracts in contracts/out.`,
     );
     expect(file.note).toBe(
-      "ABI of contracts that are built and fork-tested. The four Maat contracts are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.",
+      "ABI of contracts that are built and fork-tested. The four core Maat contracts and MaatInbox (five in all) are deployed to Base mainnet, at the addresses in deployments/README.md. The contracts are unaudited.",
     );
     expect(abiUrl(name)).toBe(`/data/abi/${name}.json`);
   });
 
   it("publishes Maat's own contracts only: no third-party interface, and no swap adapter, which generated.ts does not hold", () => {
-    expect(ABI_NAMES).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar"]);
-    expect(Object.keys(parseAbis(readRepo("agent/src/abi/generated.ts")))).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar"]);
+    expect(ABI_NAMES).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar", "MaatInbox"]);
+    expect(Object.keys(parseAbis(readRepo("agent/src/abi/generated.ts")))).toEqual(["MandateVault", "ICreditAdapter", "MarketCalendar", "MaatInbox"]);
+  });
+
+  it("publishes the ABI of every Maat contract the deployments table records on Base mainnet but the two adapters, MaatInbox included", () => {
+    const recorded = generateDocsData(REPO_ROOT).deployments.filter((d) => d.network === "Base mainnet").map((d) => d.contract);
+    expect(recorded).toContain("MaatInbox");
+    // The adapters publish their interface (ICreditAdapter) or none (the swap adapter, which generated.ts does not hold).
+    const own = recorded.filter((c) => !c.endsWith("Adapter"));
+    for (const contract of own) expect(ABI_NAMES as readonly string[], contract).toContain(contract);
+  });
+
+  it("serves the same MaatInbox ABI that /ask calls the inbox with (lib/chain/inbox.ts), item for item", () => {
+    const key = (x: { type: string; name?: string }) => `${x.type} ${x.name ?? ""}`;
+    const published = [...(abiFile("MaatInbox").abi as { type: string; name?: string }[])].sort((a, b) => key(a).localeCompare(key(b)));
+    const used = [...(inboxAbi as readonly { type: string; name?: string }[])].sort((a, b) => key(a).localeCompare(key(b)));
+    expect(published).toEqual(used);
   });
 
   it("reads the ABIs the same from a CRLF checkout", () => {

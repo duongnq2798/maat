@@ -110,15 +110,20 @@ describe("the /now page", () => {
     );
   });
 
-  it("opens with a skip link to its main content and its own small header, never the landing's in-page links", () => {
+  it("opens with a skip link to its main content and the site's nav, with its phone Menu, never the landing's in-page links", () => {
     const c = setup();
     const skip = c.querySelector('a[href="#main"]');
     expect(skip).toHaveClass("skip-link");
     expect(c.querySelector("main#main")).not.toBeNull();
     const nav = screen.getByRole("navigation", { name: "Main" });
     expect(within(nav).getByRole("link", { name: "Maat home" })).toHaveAttribute("href", "/");
-    expect(within(nav).getByRole("link", { name: "How Maat decides" })).toHaveAttribute("href", "/#how");
-    expect(within(nav).getByRole("link", { name: "Docs" })).toHaveAttribute("href", SITE.docsUrl);
+    // The same nav as /ledger and /proof: on a phone the Menu lists the ledger, so /now always leads to the Decisions.
+    expect(nav.querySelector("[data-phone-menu] > summary")).toHaveTextContent("Menu");
+    const menu = within(within(nav).getByRole("list", { name: "Pages" }));
+    expect(menu.getByRole("link", { name: "Ledger" })).toHaveAttribute("href", "/ledger");
+    expect(menu.getByRole("link", { name: "Now" })).toHaveAttribute("href", "/now");
+    expect(within(nav).queryByRole("link", { name: "How Maat decides" })).toBeNull();
+    expect(within(nav).getAllByRole("link", { name: "Docs" })[0]).toHaveAttribute("href", SITE.docsUrl);
     expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
     expect([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href"))).toEqual(["#main"]);
   });

@@ -163,6 +163,14 @@ describe("the agent trail on each Decision row", () => {
       "https://github.com/duongnq2798/maat/commit/0123456789abcdef0123456789abcdef01234567",
     );
     expect(fields).toHaveTextContent("Journal head0x892d2dce…84ff · no journal published yet");
+    // Judge rehearsal 2026-11-27, m6: the dd wraps by word, so "journal" never splits on a phone; only the hash may
+    // break anywhere, in its own span.
+    const head = [...fields.querySelectorAll("dt")].find((dt) => dt.textContent === "Journal head")!.nextElementSibling!;
+    expect(head.tagName).toBe("DD");
+    expect(head.className.split(" ")).toContain("break-words");
+    expect(head.className.split(" ")).not.toContain("break-all");
+    const breakAll = [...head.querySelectorAll(".break-all")];
+    expect(breakAll.map((el) => el.textContent)).toEqual(["0x892d2dce…84ff"]);
     const sources = [...within(row).getByRole("group", { name: "Sources" }).querySelectorAll("[data-source]")];
     expect(sources.map((s) => s.textContent)).toEqual([
       expect.stringMatching(/^NVDAcround 36893488147419105055updated Tue 24 Nov 11:\d\d ETpremium \+19 bps$/),

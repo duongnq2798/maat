@@ -5,7 +5,7 @@ import { GapWindow } from "@/components/gap/GapWindow";
 import { BlockLink, INLINE_LINK } from "@/components/gap/WindowTable";
 import { DockedPlate } from "@/components/instrument/DockedPlate";
 import { Footer } from "@/components/sections/Footer";
-import { Mark } from "@/components/ui/Mark";
+import { Nav } from "@/components/sections/Nav";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { B20_DECIMALS, NAV_TOKENS } from "@/content/b20-nav";
 import { formatInt } from "@/content/format";
@@ -79,33 +79,6 @@ function RepoFile({ path }: { path: string }) {
     <a href={repoFileUrl(path)} {...EXTERNAL} className="font-mono text-[0.9em] [overflow-wrap:anywhere]">
       {path}
     </a>
-  );
-}
-
-/** Its own small header, as on /now: the landing's Nav links anchors on the landing itself. */
-function Header() {
-  return (
-    <header>
-      <nav aria-label="Main" className="wrap flex flex-wrap items-center justify-between gap-3 py-[18px]">
-        <a href="/" aria-label="Maat home" className="flex items-center gap-2.5 text-ink">
-          <Mark />
-          <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
-        </a>
-        <div className="flex flex-wrap items-center gap-1">
-          <DockedPlate className="mr-2 hidden md:inline-flex" />
-          <a href="/#how" className="navlink max-[720px]:hidden">
-            How Maat decides
-          </a>
-          <a href={SITE.docsUrl} className="navlink">
-            Docs
-          </a>
-          <a href={SITE.repoUrl} {...EXTERNAL} className="pill-dark ml-2 px-[18px] py-[11px]">
-            View on GitHub
-            <span aria-hidden="true"> ↗</span>
-          </a>
-        </div>
-      </nav>
-    </header>
   );
 }
 
@@ -317,7 +290,7 @@ export default function GapIndexPage() {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <Header />
+      <Nav onLanding={false} plate={<DockedPlate className="mr-2 hidden min-[900px]:inline-flex" />} />
       <main id="main" tabIndex={-1} className="outline-none">
         <div className="wrap flex flex-col gap-6 pb-16 pt-8 sm:pt-14 md:pb-20">
           <h1 className="m-0 text-[clamp(40px,5.4vw,72px)] font-semibold leading-none tracking-[-0.045em]">{HEADING}</h1>

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { NowBoard } from "@/components/live/NowBoard";
 import { Footer } from "@/components/sections/Footer";
-import { Mark } from "@/components/ui/Mark";
+import { Nav } from "@/components/sections/Nav";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { MULTICALL3, NAV_TOKENS } from "@/content/b20-nav";
@@ -66,32 +66,6 @@ function RepoFile({ path }: { path: string }) {
     <a href={repoFileUrl(path)} {...EXTERNAL} className="font-mono text-[0.9em] [overflow-wrap:anywhere]">
       {path}
     </a>
-  );
-}
-
-/** Its own small header: the landing's Nav links anchors on the landing itself. */
-function Header() {
-  return (
-    <header>
-      <nav aria-label="Main" className="wrap flex flex-wrap items-center justify-between gap-3 py-[18px]">
-        <a href="/" aria-label="Maat home" className="flex items-center gap-2.5 text-ink">
-          <Mark />
-          <span className="text-[21px] font-semibold tracking-[-0.03em]">maat</span>
-        </a>
-        <div className="flex flex-wrap items-center gap-1">
-          <a href="/#how" className="navlink max-[720px]:hidden">
-            How Maat decides
-          </a>
-          <a href={SITE.docsUrl} className="navlink">
-            Docs
-          </a>
-          <a href={SITE.repoUrl} {...EXTERNAL} className="pill-dark ml-2 px-[18px] py-[11px]">
-            View on GitHub
-            <span aria-hidden="true"> ↗</span>
-          </a>
-        </div>
-      </nav>
-    </header>
   );
 }
 
@@ -360,7 +334,7 @@ export default function NowPage() {
       <a href="#main" className="skip-link">
         Skip to content
       </a>
-      <Header />
+      <Nav onLanding={false} />
       <main id="main" tabIndex={-1} className="outline-none">
         <div className="wrap flex flex-col gap-10 pb-20 pt-8 sm:pt-14 md:pb-28">
           <div className="flex max-w-[820px] flex-col gap-5">

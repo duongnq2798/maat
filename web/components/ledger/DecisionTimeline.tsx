@@ -179,7 +179,7 @@ function Row(props: RowProps & { isNew: boolean; fresh: boolean; onPrinted: (key
       </div>
       <div className="flex flex-row flex-wrap gap-x-4 font-mono text-[12px] text-ink-2 md:flex-col md:items-end md:text-right">
         <span>{d.gasUsed === null ? "gas unknown" : `${formatInt(Number(d.gasUsed))} gas`}</span>
-        <a href={basescanDecision(d.txHash)} aria-label={`Transaction ${d.txHash.slice(0, 10)}… on Basescan`}>
+        <a href={basescanDecision(d.txHash)} aria-label={`Transaction ${d.txHash.slice(0, 10)}… on Basescan`} className="tap">
           Basescan<span aria-hidden="true"> ↗</span>
         </a>
       </div>

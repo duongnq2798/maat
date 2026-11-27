@@ -108,7 +108,7 @@ describe("landing page", () => {
       ["Mainnet ledger", "/ledger"],
       ["Docs", SITE.docsUrl],
       ["Source on GitHub", SITE.repoUrl],
-      ["Verify in 5 minutes", SITE.quickstartUrl],
+      ["Run the tests in 5 minutes", SITE.quickstartUrl],
       ["Fork evidence", SITE.forkEvidenceUrl],
       ["MIT License", SITE.licenseUrl],
       [SITE.xHandle, SITE.xUrl],

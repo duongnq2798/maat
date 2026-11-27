@@ -76,7 +76,7 @@ function Landing({ reader }: { reader: LiveReader }) {
     <LiveSnapshotProvider reader={reader}>
       <LiveStrip />
       <a data-hero-cta="" href="/quickstart">
-        Verify it in 5 minutes
+        Run the tests in 5 minutes
       </a>
       <a data-hero-cta="" href="#try">
         Try to make it say no

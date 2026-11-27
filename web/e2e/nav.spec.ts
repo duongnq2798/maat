@@ -70,3 +70,21 @@ for (const width of [360, 390, 768, 1024, 1440, 1920]) {
     expect(errors).toEqual([]);
   });
 }
+
+// /gap-index adds its unlit docked plate before the links. It shows only where the row still fits with it, so the
+// page's nav stays one row, as tall as /ledger's, which has no plate (judge rehearsal 2026-11-27 follow-up).
+for (const width of [768, 820, 900, 1440]) {
+  test(`at ${width} px the /gap-index nav keeps one row, as tall as the /ledger nav`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await routeLiveRpc(page, "weekend");
+    const height = async (path: string) => {
+      await page.goto(path);
+      await page.evaluate(() => document.fonts.ready);
+      return (await page.locator("[data-nav-bar]").boundingBox())!.height;
+    };
+    const ledger = await height("/ledger");
+    const gap = await height("/gap-index");
+    expect(gap).toBe(ledger);
+    await expect(page.locator("[data-nav-bar] [data-docked-plate]")).toBeVisible({ visible: width >= 900 });
+  });
+}

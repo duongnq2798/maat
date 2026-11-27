@@ -78,9 +78,15 @@ export function Sep({ mark = "·" }: { mark?: "·" | "—" }) {
   );
 }
 
+/**
+ * The strip's rows are a line apart, so its block link and "All 13 B20s" cannot share a 44 px tap area: below sm each is
+ * set on a 44 px line of its own instead, and from sm it is a plain link (judge rehearsal 2026-11-27, m4).
+ */
+export const STRIP_TAP = "max-sm:inline-block max-sm:leading-[44px]";
+
 const BLOCK_LINK: Readonly<Record<Surface, string>> = {
-  faceplate: "whitespace-nowrap font-mono text-[12px]",
-  chassis: "whitespace-nowrap font-mono text-[12px] text-pass-lit",
+  faceplate: "tap whitespace-nowrap font-mono text-[12px]",
+  chassis: `whitespace-nowrap font-mono text-[12px] text-pass-lit ${STRIP_TAP}`,
 };
 
 /**

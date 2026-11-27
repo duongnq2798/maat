@@ -6,6 +6,14 @@ import { ASK_OPEN } from "@/content/ask-open";
 import { deploymentConfig } from "@/lib/chain/config";
 import { inboxDeployment, type InboxDeployment } from "@/lib/chain/inbox";
 import type { Deployment } from "@/lib/docs/docs-data";
+import type { SitePage } from "@/lib/docs/markdown";
+
+/** /ask as llms.txt lists it under Site once the page is open; its description is its meta description, word for word. */
+export const ASK_SITE_PAGE: SitePage = {
+  path: "/ask",
+  title: "Brief the agent",
+  description: "Send Maat's agent a public brief from your wallet on Base, and ask the live vault, for free, what it would answer to any intent.",
+};
 
 /** What /ask reads: the vault it previews against, the inbox it sends to, the owner's switch, and the deploy rows. */
 export interface AskConfig {

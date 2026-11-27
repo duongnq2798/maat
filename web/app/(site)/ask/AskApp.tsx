@@ -38,10 +38,22 @@ function Section({ id, title, lead, children }: { id: string; title: string; lea
   );
 }
 
-/** What the page shows instead of the form until it is open: before the inbox is recorded, and after, until the owner's switch. */
+/**
+ * Why /ask is closed once the inbox is recorded: the running agent reads no briefs. A plan, not a promise: the owner
+ * opens the page with content/ask-open.ts, in its own pull request, after the agent restarts on a release that reads
+ * them. The other condition, the /proof counting rule live for 24 hours (inbox spec §5), is met: the rule last changed
+ * on 25 Nov.
+ */
+export const ASK_CLOSED_REASON =
+  "Closed on purpose: the release of Maat's agent that runs now, agent-r2, reads no briefs. /ask is planned to open after the agent restarts on a release that does, after Sat 28 Nov 02:00 UTC; the /proof counting rule has been live since 25 Nov.";
+
+/**
+ * What the page shows above "Send a brief" until it is open, before the inbox is recorded and after, until the owner's
+ * switch: that it is closed, and why.
+ */
 function NotOpen({ recorded }: { recorded: boolean }) {
   return (
-    <div data-ask-state="not-open" className="card flex flex-col gap-2 p-5 sm:p-6">
+    <div data-ask-state="not-open" className="card flex max-w-[820px] flex-col gap-2 p-5 sm:p-6">
       <p className="m-0 text-[17px] font-semibold text-ink">The inbox is not open yet.</p>
       <p className="m-0 text-[15px] leading-relaxed text-ink-body">
         {recorded
@@ -49,6 +61,11 @@ function NotOpen({ recorded }: { recorded: boolean }) {
           : "Briefs open once the MaatInbox contract is deployed on Base and its address is recorded in deployments/README.md."}{" "}
         Until then you can still ask the real vault below: it is free, and nothing is signed.
       </p>
+      {recorded ? (
+        <p data-ask-closed-reason="" className="m-0 text-[15px] leading-relaxed text-ink-body">
+          {ASK_CLOSED_REASON}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -91,6 +108,8 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
         </p>
       </header>
 
+      {open ? null : <NotOpen recorded={config.inbox !== null} />}
+
       <Section
         id="send-title"
         title="Send a brief"
@@ -99,7 +118,7 @@ export function AskApp({ initial, deps = {} }: { initial: AskConfig; deps?: AskD
         {open ? (
           <BriefForm inbox={config.inbox} vault={config.vault} deployTx={config.deployTx} client={client} onIncluded={() => setReloadKey((n) => n + 1)} deps={deps} />
         ) : (
-          <NotOpen recorded={config.inbox !== null} />
+          <p className="m-0 text-[15px] text-ink-2">The form appears here once /ask opens.</p>
         )}
       </Section>
 

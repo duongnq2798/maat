@@ -131,11 +131,12 @@ const ANCHOR_VIEW: Record<Exclude<AnchorView, AnchorState>, string> = {
   "chain-broken": "not checked: the published journal's chain is broken",
 };
 
+/** A dt/dd pair. Words wrap whole, so "journal" never splits on a phone; a hash breaks anywhere, in its own span. */
 function Fact({ term, children }: { term: string; children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-wrap gap-x-2">
       <dt className="text-ink-2">{term}</dt>
-      <dd className="m-0 min-w-0 break-all text-ink">{children}</dd>
+      <dd className="m-0 min-w-0 break-words text-ink">{children}</dd>
     </div>
   );
 }
@@ -216,7 +217,7 @@ export function BlobView({ blob, hashOk, anchor }: { blob: Extract<DecodedBlob, 
             <CommitRef commit={f.c} />
           </Fact>
           <Fact term="Journal head">
-            {f.j === GENESIS ? "GENESIS (empty journal)" : shortHash(f.j)} · {anchorText}
+            {f.j === GENESIS ? "GENESIS (empty journal)" : <span className="break-all">{shortHash(f.j)}</span>} · {anchorText}
           </Fact>
           <Sources s={f.s} />
         </dl>
