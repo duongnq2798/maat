@@ -111,6 +111,8 @@ export const CAPTION_BOTTOM = Object.freeze({ wide: 56, tall: 150 });
  * render when one would cover a row (overlapProblem); web/e2e/film-cards.spec.ts does the same with the longest txs.
  */
 export const CAPTION_BAND = Object.freeze({ wide: 240, tall: 290 });
+/** CSS px between the 9:16 caption box and each side of the frame: half the phone layout's 16 px text gutter. */
+export const TALL_CAPTION_SIDE = 8;
 /** CSS px kept clear between a card's content and the top of a caption box. */
 export const CAPTION_CLEARANCE = 16;
 
@@ -153,14 +155,17 @@ export function paceProblem(where, chars, seconds) {
 /**
  * The caption overlay: a clear frame with the caption in an opaque dark box near the bottom, so the page under it
  * cannot show through and ghost its words. Its lines are balanced, so a caption that wraps never leaves one word alone
- * on its last line.
+ * on its last line. In 9:16 the box spans the frame less TALL_CAPTION_SIDE px each side, whatever the caption's length:
+ * the phone layout's text column starts 16 px from the edge, so a narrower box would leave the cut-off glyphs of the
+ * page's lines showing beside it.
  */
 export function captionHtml({ format, text, fontsDir }) {
   const wide = format === "wide";
   const placeholder = /^Placeholder:/.test(text);
   const body = placeholder ? text.replace(/^Placeholder:\s*/, "") : text;
+  const width = wide ? "max-width:1560px;width:max-content" : `width:calc(100% - ${2 * TALL_CAPTION_SIDE}px)`;
   const css = `
-.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${CAPTION_BOTTOM[format]}px;max-width:${wide ? 1560 : 500}px;width:max-content;
+.cap{position:absolute;left:50%;transform:translateX(-50%);bottom:${CAPTION_BOTTOM[format]}px;${width};
 background:var(--chassis);color:#fff;border-radius:${wide ? 18 : 12}px;padding:${wide ? "22px 34px" : "13px 18px"};
 font-size:${wide ? 40 : 21}px;line-height:1.3;font-weight:500;text-align:center;letter-spacing:-.005em;text-wrap:balance}
 .cap .tag{font-size:${wide ? 22 : 12}px;padding:${wide ? "4px 10px" : "2px 6px"};margin-right:${wide ? 14 : 8}px;vertical-align:${wide ? "6px" : "3px"}}`;

@@ -173,10 +173,11 @@ for (const format of ["wide", "tall"] as const) {
       expect(problems).toEqual([]);
     });
 
-    test("leave no caption with one word alone on its last line", async ({ page }, info) => {
+    test("leave no caption with one word alone on its last line, and in 9:16 no caption box narrower than 524 px", async ({ page }, info) => {
       const dir = info.outputPath();
       mkdirSync(dir, { recursive: true });
       const lonely: string[] = [];
+      const narrow: string[] = [];
       for (const [id, entry] of Object.entries(captions)) {
         // Each entry's own text, whether or not its `when` holds here: an `else` caption is an entry of its own.
         const text = renderCaption(typeof entry === "string" ? entry : (entry as { text: string }).text, values).text;
@@ -185,9 +186,13 @@ for (const format of ["wide", "tall"] as const) {
         await page.goto(pathToFileURL(file).href);
         await page.evaluate(() => document.fonts.ready);
         for (const words of await page.evaluate(lonelyLastWords, ".cap")) lonely.push(`${id}: ${words}`);
+        // The box covers the phone layout's 16 px text gutter, so no cut glyph of the page shows beside it.
+        const width = (await page.locator(".cap").boundingBox())?.width ?? 0;
+        if (format === "tall" && width < 524) narrow.push(`${id}: ${width} px`);
       }
       expect(Object.keys(captions).length).toBeGreaterThan(0);
       expect(lonely).toEqual([]);
+      expect(narrow).toEqual([]);
     });
 
     test("keep the receipts cards above their captions, with one more contract than the table holds", async ({ page }, info) => {

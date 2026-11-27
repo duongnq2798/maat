@@ -6,7 +6,7 @@
     "decides-how": "Claude proposes. The vault decides. It is a contract on Base that checks every intent.",
     "decides-log": "A refusal does not revert: the vault records a typed Decision either way, with its reason code.",
     "decides-clip": "On Basescan: the vault's Decision event, with its reason code.",
-    "mandate-basket": "The owner's basket: NVDAc, GOOGLc and AAPLc, held inside a mandate the vault enforces.",
+    "mandate-basket": "The owner's basket: NVDAc, GOOGLc and AAPLc, kept to a mandate the vault enforces.",
     "mandate-caps": "The mandate onchain: {ledger.perTrade} per trade, {ledger.perDay} a day, no stock above {ledger.weightCapPct}% of the vault.",
     "mandate-reserve": {
       "text": "Each stock is capped at {reserve.capPct}%, so buys can never take the USDC reserve below {reserve.floorPct}%.",

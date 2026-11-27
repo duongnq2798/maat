@@ -369,6 +369,13 @@ describe("the words of the captions, the tx labels and the beat titles", () => {
     for (const [id, t] of mandate) expect(t, id).not.toMatch(/\bbrief\b/i);
   });
 
+  it("never say the vault holds the owner's basket: it is the mandate's list, and the trail shows GOOGLc at 0%", () => {
+    const mandate = texts().filter(([id]) => /^mandate-/.test(id));
+    expect(mandate.length).toBeGreaterThan(0);
+    for (const [id, t] of mandate) expect(t, id).not.toMatch(/\b(held|holds|holding)\b/i);
+    expect(captionsFile.captions["mandate-basket"]).toMatch(/kept to a mandate the vault enforces/);
+  });
+
   it("name the early-close pair as probes, never as Decisions or proposals of Maat's agent", () => {
     for (const id of ["early-tx", "early-placeholder"]) {
       const c = captionsFile.captions[id];

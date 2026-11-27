@@ -328,7 +328,7 @@ const shortCommit = (c) => String(c).replace(/^([0-9a-f]{7})[0-9a-f]{33}/, "$1")
 function replyStep(reply) {
   if (reply?.kind !== "reply") {
     return `<li class="step"><div class="k">${esc("2 · Maat's agent's reply")}</div><div class="missing"><span class="tag ph">NOT IN THE JOURNAL YET</span><p>${esc(
-      "Maat's agent's reply to this brief is not in the published journal yet. The film shows it once the agent-journal branch holds its row.",
+      "Maat's agent's reply to this brief is not in the published journal yet.",
     )}</p></div></li>`;
   }
   // The row's commit is the git commit of the agent code that wrote the row (agent/src/ledger/journal.ts), which

@@ -7,8 +7,9 @@ import { plainBriefText } from "@/lib/chain/inbox";
 import { JOURNAL_RAW_URL as SITE_JOURNAL_RAW_URL } from "@/lib/chain/ledger";
 import { BEATS, TARGET_SECONDS, timeline, validateBeats } from "../../film/lib/beats.mjs";
 import { pickCaption, renderCaption } from "../../film/lib/captions.mjs";
-import { CARD_READING, LINES, READ_PACE, TITLE_DESCRIPTOR, captionHtml, endCardHtml, esc, fitProblem, paceProblem, titleCardHtml } from "../../film/lib/cards.mjs";
+import { CARD_READING, LINES, READ_PACE, TALL_CAPTION_SIDE, TITLE_DESCRIPTOR, captionHtml, endCardHtml, esc, fitProblem, paceProblem, titleCardHtml } from "../../film/lib/cards.mjs";
 import { finalArgs } from "../../film/lib/ffmpeg.mjs";
+import { FORMATS } from "../../film/lib/formats.mjs";
 import { JOURNAL_RAW_URL, briefReply, readJournal } from "../../film/lib/journal.mjs";
 import { fileSources } from "../../film/lib/sources.mjs";
 import { persuasionCardHtml, persuasionProblems, persuasionReading, plainText, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
@@ -149,6 +150,14 @@ describe("the identity rules on both cards", () => {
     }
   });
 
+  it("spans the 9:16 caption box over the phone layout's 16 px text gutter, so no cut glyph shows beside it", () => {
+    const css = /\.cap\{[^}]*\}/.exec(captionHtml({ format: "tall", text: "Short.", fontsDir: undefined }))?.[0] ?? "";
+    expect(css).toMatch(new RegExp(`width:calc\\(100% - ${2 * TALL_CAPTION_SIDE}px\\)`));
+    expect(css).not.toMatch(/max-content|max-width/);
+    expect(TALL_CAPTION_SIDE).toBeLessThan(16);
+    expect(FORMATS.tall.viewport.width - 2 * TALL_CAPTION_SIDE).toBeGreaterThanOrEqual(524);
+  });
+
   it("balances the lines of every text on them and of every caption, so none ends on one word alone (web/e2e/film-cards.spec.ts measures it)", () => {
     for (const format of ["wide", "tall"]) {
       for (const html of [titleCardHtml({ format, mark: MARK }), endCardHtml({ format, mark: MARK })]) expect(html).toMatch(/\.frame>h1,\.frame>p\{text-wrap:balance\}/);
@@ -253,6 +262,8 @@ describe("the persuasion beat (beat 7)", () => {
       expect(reply.kind).toBe("missing");
       const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply, answer: answer() }));
       expect(body).toContain("NOT IN THE JOURNAL YET");
+      // A shipped cut prints no repository instruction.
+      expect(body).not.toContain("agent-journal branch");
       expect(body).not.toContain("Maat&#39;s agent replied");
       expect(body).toContain("Refused · Market closed (MARKET_CLOSED)");
     }
