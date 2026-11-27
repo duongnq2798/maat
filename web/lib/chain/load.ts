@@ -20,8 +20,11 @@ export type LedgerClient = Pick<
 const TIMELOCK_SEC = 86_400n;
 /** Below this span a range error gives up instead of halving again (50,000 / 8), so a 200-block RPC fails fast. */
 const MIN_SPAN = 6_250n;
-/** A scan stops after this many chunks fail, so an RPC that is down is not asked for every remaining chunk. */
-const MAX_FAILED = 3;
+/**
+ * A load stops scanning after this many chunks fail, so an RPC that is down is not asked for every remaining chunk. The
+ * scan reads the newest chunks first, so what stops it leaves out the oldest blocks, and the page names them.
+ */
+export const MAX_FAILED = 3;
 /** Block and receipt reads go out this many at a time (the http transport batches them). */
 const LOOKUP_BATCH = 50;
 
@@ -306,15 +309,21 @@ interface ScanTuning {
   onChunk?: () => void;
 }
 
-/** Reads the vault's logs over every part of [floor, head] that `reads` does not cover, newest first. */
+/**
+ * Reads the vault's logs over every part of [floor, head] that `reads` does not cover: the newest gap first, each
+ * newest chunk first. Once MAX_FAILED chunks have failed in all, no older chunk is asked for, so the gaps left open are
+ * the oldest blocks, and the newest logs are in `reads`.
+ */
 async function scanGaps(client: LedgerClient, vault: Address, floor: bigint, head: bigint, reads: Reads, tuning: ScanTuning): Promise<void> {
+  let failed = 0;
   for (const gap of scanState(floor, head, reads.covered, null).gaps) {
-    await scanLogs<CachedLog>({
+    if (failed >= MAX_FAILED) return;
+    const result = await scanLogs<CachedLog>({
       ...gap,
       span: tuning.span,
       minSpan: tuning.minSpan ?? MIN_SPAN,
       concurrency: tuning.concurrency,
-      maxFailed: MAX_FAILED,
+      maxFailed: MAX_FAILED - failed,
       signal: tuning.signal,
       getLogs: async (r) =>
         (await client.getLogs({ address: vault, fromBlock: r.from, toBlock: r.to })).flatMap((l) =>
@@ -328,6 +337,7 @@ async function scanGaps(client: LedgerClient, vault: Address, floor: bigint, hea
         tuning.onChunk?.();
       },
     });
+    failed += result.failed.length;
   }
 }
 
