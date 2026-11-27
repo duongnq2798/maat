@@ -2,7 +2,6 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
 import { FACTS } from "@/content/facts";
-import { FILM } from "@/content/film";
 import { REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
@@ -24,9 +23,9 @@ describe("landing page", () => {
     const c = setup();
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
     // The nav lists pages, not the landing's sections, so the in-page links are the skip link, the home link and the
-    // hero's and the sections' own links. The hero's three steps open How it works (spec 2026-11-27 section 1), and its
-    // first CTA the film band only while the landing has one (content/film.ts), else How it works too.
-    expect([...ids].sort()).toEqual([...(FILM.onLanding ? ["film"] : []), "how", "main", "reasons", "top", "try"].sort());
+    // hero's and the sections' own links. The hero's three steps open How it works (spec 2026-11-27 section 1); its first
+    // CTA and the footer's "Watch the film" open the film band (section 2).
+    expect([...ids].sort()).toEqual(["film", "how", "main", "reasons", "top", "try"]);
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
   });
 
@@ -45,10 +44,11 @@ describe("landing page", () => {
     expect(text.slice(at)).toMatch(/^mandate \(the vault's public rule set\)/);
   });
 
-  it("orders the sections like the comp", () => {
+  it("orders the sections like the comp, with the film band directly under the hero (spec 2026-11-27 section 2)", () => {
     const c = setup();
-    const ids = [...c.querySelectorAll("#top, #how, #reasons, #try, #ledger, #mandate")].map((el) => el.id);
-    expect(ids).toEqual(["top", "how", "reasons", "try", "ledger", "mandate"]);
+    const ids = [...c.querySelectorAll("#top, #film, #how, #reasons, #try, #ledger, #mandate")].map((el) => el.id);
+    expect(ids).toEqual(["top", "film", "how", "reasons", "try", "ledger", "mandate"]);
+    expect(c.querySelector("#top")!.nextElementSibling).toBe(c.querySelector("#film"));
   });
 
   it("lists all nineteen refusals once, each titled by its plain label, and highlights only MARKET_CLOSED", () => {
@@ -117,6 +117,8 @@ describe("landing page", () => {
   it("closes with the CTA, disclaimer and tagline verbatim", () => {
     setup();
     expect(screen.getByRole("link", { name: "Follow @maatonbase" })).toHaveAttribute("href", SITE.xUrl);
+    // Spec 2026-11-27 section 2: "Watch it say no." gains the film, in the page on the landing.
+    expect(screen.getByRole("link", { name: "Watch the film" })).toHaveAttribute("href", "#film");
     expect(screen.getByRole("link", { name: "Read the code" })).toHaveAttribute("href", SITE.repoUrl);
     const links = within(screen.getByRole("list", { name: "Project links" }))
       .getAllByRole("link")
@@ -144,6 +146,7 @@ describe("landing page", () => {
   });
 
   it("uses no raster images", () => {
+    // The film's poster is its <video>'s own attribute, not an <img> (spec 2026-11-27 section 2).
     expect(setup().querySelectorAll("img")).toHaveLength(0);
   });
 });

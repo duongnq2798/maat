@@ -1,9 +1,19 @@
 # Film
 
-The demo film: 100 seconds, no voice and no sound (the audio track is silent), captions burned in, in two cuts, 16:9
-(1920x1080) and 9:16 (1080x1920). It is built only from the live site, [maatonbase.xyz](https://maatonbase.xyz), which
-Playwright opens read-only, from Base mainnet transactions shown as text beside a Basescan link card, and from the
-published agent journal. ffmpeg assembles it. Nothing here signs, sends or uploads anything.
+The demo film: 100 seconds, captions burned in, in two cuts, 16:9 (1920x1080) and 9:16 (1080x1920). Its picture is
+built only from the live site, [maatonbase.xyz](https://maatonbase.xyz), which Playwright opens read-only, from Base
+mainnet transactions shown as text beside a Basescan link card, and from the published agent journal. ffmpeg assembles
+it. Nothing here signs, sends or uploads anything.
+
+The film has a voice-over and music, both made with ElevenLabs: the narration with its text-to-speech, the score with
+Eleven Music. They are mixed onto the picture after the render, outside this folder: this pipeline renders the picture
+with a silent audio track, and `film/` holds no audio file (`web/test/film-identity.test.ts` checks both); it holds the
+narration's words and times, in `narration.json`, for the landing's captions. The same step draws one more line on the
+end card, under its disclaimer, from 93.9 s; the landing prints it under the player too:
+
+> Voice and music: AI-generated with ElevenLabs
+
+The landing serves the 16:9 cut itself ([On the landing](#on-the-landing)).
 
 It opens on the title card and closes on the end card, and both draw the mark of `web/brand/src/mark.svg`, so the
 first and the last frame show it: the cut fades at the edges of each beat, but never on its first or last frame.
@@ -82,10 +92,12 @@ decides says the mechanism line word for word.
 | `render.mjs` | The one command: `capture.mjs`, then `assemble.mjs` |
 | `capture.mjs` | Opens each page with Playwright at each cut's viewport (16:9 at 1920x1080; 9:16 at 540x960 with a pixel ratio of 2, the site's phone layout) and screenshots every frame of each scroll; renders the cards and the caption overlays; reads the tx receipts; writes `work/manifest.json` |
 | `assemble.mjs` | Runs ffmpeg: one H.264 segment per shot with its captions burned in, then the segments joined, with a silent audio track |
+| `vtt.mjs` | Writes a cut's two text tracks as WebVTT from `work/manifest.json`, for the landing's player: the captions of the voice-over, from `narration.json`, and the on-screen text, its burned-in captions ([On the landing](#on-the-landing)) |
 | `captions.json` | Every caption. Each number in a caption is a `{placeholder}` |
+| `narration.json` | The voice-over, word for word, each line under the shot it is spoken over, with its times in that shot |
 | `txs.json` | The transactions of beats 5 to 7, by hash, and what each receipt must show |
 | `input/` | Where the owner drops the two Basescan clips; git ignores everything in it but its README |
-| `lib/` | The beat plan, the caption sources, the cards, the frame style and measures (`frame.mjs`), the tx decoder, the journal reader (`journal.mjs`, beat 7's reply) and the ffmpeg argument builder |
+| `lib/` | The beat plan, the caption sources, the cards, the frame style and measures (`frame.mjs`), the tx decoder, the journal reader (`journal.mjs`, beat 7's reply), the ffmpeg argument builder and the WebVTT writer (`vtt.mjs`) |
 
 ## Commands
 
@@ -234,3 +246,84 @@ label and `/ask`'s brief-to-Decision map):
 - when the journal has the brief's row, its `adopted` flag is `true`.
 
 The verdict step then says what ties it to the brief: "brief-driven, adopts brief #N", and "sent by" the executor.
+
+## On the landing
+
+The landing's film band, `#film` directly under the hero (`web/components/sections/Film.tsx`, spec 2026-11-27 section
+2), plays the 16:9 cut from the site itself. Its four files are in `web/public/film/`:
+
+| File | What it is |
+| --- | --- |
+| `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,129,355 bytes |
+| `maat-film-poster.webp` | The poster: the 9:16 cut's frame at 53.5 s, cropped to the tx card of Maat's agent's Thanksgiving Decision, its heading "Thanksgiving: MARKET_CLOSED from Maat's agent" and its rows down to "Refused · Market closed (MARKET_CLOSED)", at 1280x720; 51,962 bytes |
+| `maat-film.en.vtt` | The captions track: the voice-over's 16 lines from `narration.json`, in 19 cues at the cut's times, on the top line of the picture, written by `vtt.mjs` |
+| `maat-film.on-screen.en.vtt` | The on-screen text track: the cut's 18 burned-in captions, at the cut's times, written by `vtt.mjs` |
+
+The player has `preload="none"` and no autoplay, so a visitor's browser fetches the poster on arrival and no byte of
+the cut before play, and nothing on the band loads from a third party (`checkExport` in `web/lib/check-out.ts` and
+`web/e2e/film.spec.ts` check both). `web/test/film-band.test.tsx` checks the four files: the cut's codec, size, weight
+and index, the poster's size and weight, that the captions are what `vtt.mjs` writes from `narration.json` over the
+beat plan's shots, and that every on-screen cue says the words of its caption in `captions.json`, with only the
+placeholders filled.
+
+### The two text tracks
+
+Both are off by default, and the browser fetches neither until a viewer turns one on.
+
+- **Captions** (`<track kind="captions">`, "English", the one the player's captions menu lists): the voice-over, the
+  sound a viewer who cannot hear the film misses. The captions in the picture are burned in already, but the 16
+  spoken lines are other words ("Maat's agent runs on Claude, and only proposes.", "On Basescan, a refusal reads
+  Success."), so the track carries those, at the times the voice says them. Each cue sits on the top line of the
+  picture (`line:0`), so it never covers the captions burned in at the bottom.
+- **On-screen text** (`<track kind="descriptions">`, "English, on-screen text"): the burned-in captions as text, for
+  screen readers and search. A player draws no descriptions track, so turning captions on never draws the burned-in
+  words a second time.
+
+The spec of 27 Nov asked for one captions track built from `captions.json`. That track gave a viewer who cannot hear
+the film none of the narration and drew the picture's own captions twice, so it became the descriptions track and the
+captions track carries the voice-over (review of PR #112, 28 Nov).
+
+`narration.json` gives each cue's time in its shot: from the line's first to its last sound in the v1 mix, held 0.3 s
+longer, never past the shot's end; lines 1, 4 and 12, of two long sentences, split at the pause between them. A cut
+with the same shot list keeps these times. A new shot list moves the voice too, so it needs a new mix, and new times
+here.
+
+### The cut there today
+
+`FILM.youtubeUrl` in `web/content/film.ts` is null. Once the owner has uploaded the film to YouTube, set it to the
+video's URL, and the band shows a plain "Watch on YouTube" link under the player. The landing never embeds a player.
+
+The cut there today is the v1 cut of 27 Nov 2026 with beat 6 rendered again on 28 Nov: its tx shot (59.5 to 66.5 s)
+shows the two early-close probes of Fri 27 Nov from Base, both hashes set in `txs.json`, under the caption `early-tx`.
+Every other segment is the v1 file as `assemble.mjs` wrote it on 27 Nov, joined with the 28 Nov segment by the same
+concat step, and the sound is the v1 mix, unchanged, since the shot list is the same. Beat 7 still shows its labelled
+placeholders: no outside brief was on Base yet.
+
+Only beat 6 was taken from the 28 Nov render because that render warned about beat 8: `/proof` now also counts the
+Decision lines, so its counts run lower on the page, and the `/proof` shot's caption would cover a row of them.
+Before the next full render, move that shot's scroll stop so the counts end above the caption band (`keepClear` in
+`lib/beats.mjs`).
+
+### Put a new cut on the landing
+
+Run from the repository root, with `<cut>` the 16:9 MP4 with its sound, `<tall>` the 9:16 one, and `<work>` the work
+folder of the render their picture comes from:
+
+```bash
+ffmpeg -i <cut> -map 0:v:0 -map 0:a:0 -map_metadata -1 -vf "scale=1280:720:flags=lanczos" \
+  -c:v libx264 -preset slow -crf 26 -profile:v high -level:v 3.1 -pix_fmt yuv420p -r 30 \
+  -c:a aac -b:a 128k -ar 48000 -ac 2 -movflags +faststart web/public/film/maat-film-720p.mp4
+ffmpeg -ss 53.5 -i <tall> -frames:v 1 -vf "crop=1080:720:0:410,pad=1280:720:100:0:white" -map_metadata -1 \
+  -c:v libwebp -quality 82 -compression_level 6 web/public/film/maat-film-poster.webp
+node film/vtt.mjs --manifest <work>/manifest.json --captions web/public/film/maat-film.en.vtt \
+  --on-screen web/public/film/maat-film.on-screen.en.vtt
+```
+
+53.5 s is the middle of the Thanksgiving tx shot (51 to 56 s) in today's beat plan; if the plan moves that shot, take
+the middle of its new span. The poster comes from the 9:16 cut because its card is laid out for a phone: the same card
+in the 16:9 frame is small at the player's width, about 8 px of verdict at 1440 px and 4 px at 390 px, and its
+burned-in caption sits where the player draws its controls. The crop starts 43 px above the card's heading and keeps
+the whole card, with the verdict about 60% down the frame, above the controls' shade, and no caption in it; the pad
+widens it to 16:9 in the frame's own white. If the card moves, set the crop's top from a new frame.
+`film-band.test.tsx` keeps the cut between 5 and 6 MB: raise the CRF a step if a cut comes out heavier. `vtt.mjs`
+writes nothing while a narration cue leaves its shot or a cue's words are not its caption's.
