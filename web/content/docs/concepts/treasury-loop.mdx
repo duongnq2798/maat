@@ -113,7 +113,7 @@ When USDC falls below the runway plus the unpaid bill, the policy suggests a bor
 
 The policy never computes a health factor. The vault checks one, through its credit adapter, and it refuses a borrow when the market is closed, when a supplied stock is not allowed, is paused, has no valid, fresh feed answer or has no stable multiplier, when a credit view cannot be read, or when the projected health factor would fall below the floor, <Fact name="mandate.minHealthFactor" /> by default. Inside the de-risk window the target applies instead ([Credit and the health factor](/docs/concepts/credit-and-health-factor)). The agent's preview shows these refusals before it sends.
 
-The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet, which is why [earning](#earning-not-built) is planned.
+The policy also suggests a `REPAY` when new revenue arrives while there is debt. It repays up to the debt, from cash beyond the runway and the unpaid bill. The vault counts USDC that reaches it by a plain transfer as revenue. Borrowed USDC and the owner's `fund` deposits are not revenue (`test_borrowedUsdcIsNotRevenue`, `test_fundIsNotCountedAsRevenue`). If the vault is paused, the policy suggests nothing but a repay. Nothing on `main` sends the vault revenue yet: [earning](#earning-not-built) is not built.
 
 ## Paying its own bill
 

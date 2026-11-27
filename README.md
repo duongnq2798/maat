@@ -779,9 +779,9 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
 
 **The case against Maat.** It is unaudited, and its live record is short: Maat's agent has run on Base mainnet only
 since 2026-11-27, and when this README was last read against Base, at 17:34 UTC that day, that record was one refusal
-while NYSE was closed and two allowed buys of $4.64 each. Its sells and credit actions have run only in fork tests, with
-a scripted proposer in place of Claude, so nothing here yet shows how the real model trades over many sessions or
-through a sell. Its session check is only as good as a calendar the owner must keep current;
+while NYSE was closed and two allowed buys of $4.64 each. Its sells and credit actions have run only in fork tests: the
+contracts' fork tests send them with no proposer, and the agent's fork run used a scripted proposer in place of Claude.
+So nothing here yet shows how the real model trades over many sessions or through a sell. Its session check is only as good as a calendar the owner must keep current;
 its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
 counters; and one immutable owner key, with no multisig, controls the vault.
 
