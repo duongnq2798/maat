@@ -2,20 +2,28 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import { type LedgerDeps, useLedger } from "@/components/ledger/useLedger";
+import { FACTS } from "@/content/facts";
+import type { DecisionTrail, MainnetDecision } from "@/lib/chain/ledger";
 import type { LedgerSnapshot } from "@/lib/chain/load";
 import { SNAPSHOT_REORG_WINDOW, SNAPSHOT_URL } from "@/lib/chain/snapshot";
 import { LIVE_RPCS } from "@/lib/live/rpc";
 import type { WeekDecision, WeekDecisionsView, WeekSnapshot } from "./MarketWeek";
 
+/** The sender this build records for a Decision (content/facts.ts), for a row whose transaction is not read yet. */
+function recordedSender(txHash: string): string | null {
+  return FACTS.mainnetDecisions.value.find((l) => l.transactionHash.toLowerCase() === txHash.toLowerCase())?.sender ?? null;
+}
+
 /**
  * The vault's Decisions as /now's week draws them, newest first: each one's time, verdict, intent, the sender /ledger
  * names (§4 of the maat:v1 spec, owner first, so an operator Decision is never the agent's), and its Weighing number,
- * its place among all of them in chain order.
+ * its place among all of them in chain order. A Decision whose transaction is not read yet (no trail, as in the
+ * committed snapshot's preview) takes the sender this build records for it, if any.
  */
-export function weekDecisions(snapshot: LedgerSnapshot): WeekDecision[] {
-  const n = snapshot.decisions.length;
-  return snapshot.decisions.map((d, i) => {
-    const trail = snapshot.trails.get(d.key);
+export function weekDecisions(decisions: readonly MainnetDecision[], trails?: ReadonlyMap<string, DecisionTrail>): WeekDecision[] {
+  const n = decisions.length;
+  return decisions.map((d, i) => {
+    const trail = trails?.get(d.key);
     return {
       key: d.key,
       txHash: d.txHash,
@@ -24,7 +32,7 @@ export function weekDecisions(snapshot: LedgerSnapshot): WeekDecision[] {
       allowed: d.allowed,
       reason: d.reason,
       intent: `${d.action} ${d.symbol} · ${d.amountLabel}`,
-      sender: trail === undefined ? "sender not read" : (trail.label ?? "sender unknown"),
+      sender: trail?.label ?? recordedSender(d.txHash) ?? (trail === undefined ? "sender not read" : "sender unknown"),
       ordinal: n - i,
     };
   });
@@ -45,17 +53,27 @@ export function weekSnapshot(snapshot: LedgerSnapshot): WeekSnapshot | null {
  * so the page reads no environment variable. A read counts once it is whole: every block from the deploy to the head
  * scanned or taken from the committed snapshot, and every Decision's transaction asked for, so each tick has its sender
  * and its number. A refresh that misses a chunk keeps the last whole read: its ticks stay, true up to its own head. Only
- * a first read that is not whole says so. Renders nothing; it reports through `onView`. Loaded once the page has
- * mounted, in its own chunk.
+ * a first read that is not whole says so. Until the first whole read, the Decisions known so far are reported as
+ * confirming: the committed snapshot's, then the ones Base has given. Renders nothing; it reports through `onView`.
+ * Loaded once the page has mounted, in its own chunk.
  */
 export default function NowDecisions({ deps, onView }: { deps?: LedgerDeps; onView: (view: WeekDecisionsView) => void }) {
   const ledger = useLedger({ endpoints: LIVE_RPCS, ...deps });
   const snapshot = ledger.mode === "mainnet" ? ledger.snapshot : null;
   const whole = snapshot !== null && snapshot.scan.done && snapshot.txState === "read";
   const read = useMemo<WeekDecisionsView | null>(
-    () => (whole && snapshot !== null ? { state: "read", decisions: weekDecisions(snapshot), snapshot: weekSnapshot(snapshot) } : null),
+    () => (whole && snapshot !== null ? { state: "read", decisions: weekDecisions(snapshot.decisions, snapshot.trails), snapshot: weekSnapshot(snapshot) } : null),
     [whole, snapshot],
   );
+  // Before the first whole read: the committed snapshot's Decisions while Base confirms the file, then the ones Base has
+  // given so far while the tail scan runs, so a phone sees the week's Decisions before the scan reaches the head.
+  const preview = ledger.mode === "loading-config" ? (ledger.preview ?? null) : null;
+  const partial = snapshot !== null && !whole && snapshot.decisions.length > 0 ? snapshot : null;
+  const confirming = useMemo<WeekDecisionsView | null>(() => {
+    if (preview !== null) return { state: "confirming", status: "confirming", block: preview.block, decisions: weekDecisions(preview.decisions) };
+    if (partial !== null) return { state: "confirming", status: "reading", block: null, decisions: weekDecisions(partial.decisions, partial.trails) };
+    return null;
+  }, [preview, partial]);
   const message = ledger.mode === "error" ? ledger.message : null;
   const settled = ledger.mode === "mainnet" && !ledger.loading;
   const { mode, retry } = ledger;
@@ -70,8 +88,8 @@ export default function NowDecisions({ deps, onView }: { deps?: LedgerDeps; onVi
     else if (mode === "waiting") onView({ state: "none" });
     else if (message !== null) onView({ state: "error", message, retry });
     else if (settled) onView({ state: "error", message: "some blocks up to the head could not be read", retry });
-    else onView({ state: "reading" });
-  }, [read, mode, message, settled, retry, onView]);
+    else onView(confirming ?? { state: "reading" });
+  }, [read, confirming, mode, message, settled, retry, onView]);
 
   return null;
 }

@@ -5,13 +5,13 @@ import { describe, expect, it, vi } from "vitest";
 import { AgentNote } from "@/components/live/AgentNote";
 import { MarketWeek, type WeekDecision, type WeekDecisionsView } from "@/components/live/MarketWeek";
 import { NowBoard } from "@/components/live/NowBoard";
-import NowDecisions from "@/components/live/NowDecisions";
+import NowDecisions, { weekDecisions } from "@/components/live/NowDecisions";
 import type { LedgerDeps } from "@/components/ledger/useLedger";
 import { type Hex, MULTICALL3 } from "@/content/b20-nav";
 import { regularSession } from "@/content/calendar";
 import { FACTS } from "@/content/facts";
 import { memoryStorage } from "@/lib/chain/cache";
-import { verifyJournal, type JournalRead } from "@/lib/chain/ledger";
+import { type MainnetDecision, verifyJournal, type JournalRead } from "@/lib/chain/ledger";
 import { canon, type RationaleSource } from "@/lib/chain/rationale";
 import { SNAPSHOT_REORG_WINDOW } from "@/lib/chain/snapshot";
 import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from "@/lib/live/abi";
@@ -358,11 +358,67 @@ describe("NowDecisions", () => {
     expect(read.snapshot).toEqual({ url: "/data/decisions-snapshot.json", block: SNAP_BLOCK, logsTo: SNAP_BLOCK - SNAPSHOT_REORG_WINDOW - 1n });
   });
 
+  it("reports the committed snapshot's Decisions as confirming before Base answers, and the whole read once it has", async () => {
+    // Base answers nothing until the gate opens, so the only Decisions known are the committed file's.
+    let open!: () => void;
+    const gate = new Promise<void>((r) => (open = r));
+    const base = fakeLedgerClient(snapshotChain());
+    const client = new Proxy(base, {
+      get(target, prop, receiver) {
+        const v: unknown = Reflect.get(target, prop, receiver);
+        if (typeof v !== "function") return v;
+        return async (...args: unknown[]) => {
+          await gate;
+          return (v as (...a: unknown[]) => unknown).apply(target, args);
+        };
+      },
+    });
+    const views = mount(client, { fetchDeployments: async () => ({ vault: FAKE_VAULT, deployTx: SNAP_DEPLOY_TX }), fetchSnapshot: async () => snapshotFixture as unknown });
+    await waitFor(() => expect(views.at(-1)?.state).toBe("confirming"));
+    const confirming = views.at(-1);
+    if (confirming?.state !== "confirming") throw new Error("not confirming");
+    expect(confirming.status).toBe("confirming");
+    expect(confirming.block).toBe(SNAP_BLOCK);
+    // The file's three Decisions, newest first, numbered in chain order; no transaction is read, so no sender is known.
+    expect(confirming.decisions.map((d) => [d.txHash, d.ordinal, d.sender])).toEqual([
+      [hash32(3), 3, "sender not read"],
+      [hash32(2), 2, "sender not read"],
+      [hash32(1), 1, "sender not read"],
+    ]);
+    open();
+    await waitFor(() => expect(views.at(-1)?.state).toBe("read"));
+    const read = views.at(-1);
+    expect(read?.state === "read" && read.decisions.map((d) => d.ordinal)).toEqual([4, 3, 2, 1]);
+  });
+
+  it("gives a Decision whose transaction is not read yet the sender this build records for it", () => {
+    const row = (txHash: Hash, key: string) =>
+      ({ key, txHash, timestamp: null, timeLabel: "block 1", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", allowed: false, reason: "MARKET_CLOSED" }) as unknown as MainnetDecision;
+    const rows = weekDecisions([row(REFUSED!.transactionHash, "a"), row(hash32(9) as Hash, "b")]);
+    expect(rows.map((r) => r.sender)).toEqual([REFUSED!.sender, "sender not read"]);
+  });
+
   it("says no snapshot when every block from the deploy was scanned", async () => {
     const views = mount(fakeLedgerClient(ledgerChain()));
     await waitFor(() => expect(views.at(-1)?.state).toBe("read"));
     const read = views.at(-1);
     expect(read?.state === "read" && read.snapshot).toBeNull();
+  });
+});
+
+describe("MarketWeek's confirming list", () => {
+  it("lists the Decisions known so far with what is still being read, and no source line until the whole read", () => {
+    const { container, rerender } = render(
+      <MarketWeek nowSec={SATURDAY} line={null} decisions={{ state: "confirming", status: "confirming", block: 62_875_303n, decisions: RECORDED }} />,
+    );
+    expect(container.querySelectorAll("[data-week-decisions] > li")).toHaveLength(2);
+    expect(container.querySelector("[data-week-confirming]")).toHaveTextContent("From the committed snapshot of block 62,875,303 · confirming on Base…");
+    expect(container.querySelector("[data-week-source]")).toBeNull();
+    rerender(<MarketWeek nowSec={SATURDAY} line={null} decisions={{ state: "confirming", status: "reading", block: null, decisions: RECORDED }} />);
+    expect(container.querySelector("[data-week-confirming]")).toHaveTextContent("Read from Base so far · reading newer blocks…");
+    rerender(<MarketWeek nowSec={SATURDAY} line={null} decisions={{ state: "read", decisions: RECORDED, snapshot: null }} />);
+    expect(container.querySelector("[data-week-confirming]")).toBeNull();
+    expect(container.querySelector("[data-week-source]")).not.toBeNull();
   });
 });
 
