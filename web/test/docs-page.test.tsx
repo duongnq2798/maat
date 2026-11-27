@@ -432,7 +432,7 @@ describe("llmsIndex", () => {
     const today = home.split("\n\n").find((p) => p.startsWith("Today ")) ?? "";
     const words = today.replace(/\[([^\]]+)\]\([^)]+\)/g, "$1").toLowerCase();
     const clauses = LLMS_STATUS.replace(/\.$/, "").split(/[.,:] /);
-    expect(clauses).toHaveLength(5);
+    expect(clauses).toHaveLength(8);
     for (const clause of clauses) expect(words, clause).toContain(clause.toLowerCase());
   });
 });

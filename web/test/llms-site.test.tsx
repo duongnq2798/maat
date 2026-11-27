@@ -28,16 +28,20 @@ describe("llms.txt's Site section", () => {
 });
 
 // m12: the five Base mainnet rows of deployments/README.md are the four core contracts and MaatInbox. The generated
-// lines an AI reads first, llms.txt's status and every ABI file's note, give that count, not four alone.
+// lines an AI reads first, llms.txt's status and every ABI file's note, give that count, not four alone. llms.txt's
+// status quotes the docs home's Today paragraph (test/docs-page.test.tsx), so it says it in that paragraph's words.
 describe("the five-contract wording of the generated files", () => {
   const recorded = docsData.deployments.filter((d) => d.network === "Base mainnet" && /^0x[0-9a-fA-F]{40}$/.test(d.address.trim()));
+  /** The sentences of `text` that give "four Maat contracts" in the present tense without naming MaatInbox. */
+  const fourAlone = (text: string) =>
+    text.split(/(?<=\.)\s+/).filter((s) => /\bfour (?:core )?Maat contracts,? (?:are|is)\b/i.test(s) && !s.includes("MaatInbox"));
 
   it("counts every recorded Base mainnet contract, MaatInbox included, in llms.txt's status and the ABI note", () => {
     expect(recorded.map((d) => d.contract)).toContain("MaatInbox");
-    const five = `the four core Maat contracts and MaatInbox (five in all) are deployed to Base mainnet`;
     expect(recorded).toHaveLength(5);
-    expect(LLMS_STATUS).toContain(five);
-    expect(ABI_NOTE.toLowerCase()).toContain(five.toLowerCase());
-    for (const text of [LLMS_STATUS, ABI_NOTE]) expect(text).not.toMatch(/\bthe four Maat contracts are deployed\b/i);
+    expect(LLMS_STATUS).toContain("the four Maat contracts are deployed to Base mainnet, and so is `MaatInbox`, the inbox for briefs: five contracts in all.");
+    expect(ABI_NOTE).toContain("The four core Maat contracts and MaatInbox (five in all) are deployed to Base mainnet");
+    for (const text of [LLMS_STATUS, ABI_NOTE]) expect(fourAlone(text)).toEqual([]);
+    expect(fourAlone("Today the four Maat contracts are deployed to Base mainnet. The contracts are unaudited.")).toHaveLength(1);
   });
 });

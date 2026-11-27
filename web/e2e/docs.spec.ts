@@ -780,7 +780,7 @@ test.describe("files for tools", () => {
   }) => {
     const llms = await (await request.get("/llms.txt")).text();
     expect(llms).toMatch(
-      /^> .+\n\nStatus: built and fork-tested, and the four core Maat contracts and MaatInbox \(five in all\) are deployed to Base mainnet\. The contracts are unaudited, /m,
+      /^> .+\n\nStatus: built and fork-tested, and the four Maat contracts are deployed to Base mainnet, and so is `MaatInbox`, the inbox for briefs: five contracts in all\. The contracts are unaudited, /m,
     );
     // The site's pages that show Maat on Base come before the docs pages, each linked as the static host serves it.
     const site = [...(llms.split("\n## Site\n")[1]?.split("\n## Pages\n")[0] ?? "").matchAll(/^- \[[^\]]+\]\((https?:\/\/[^)]+)\): /gm)];
