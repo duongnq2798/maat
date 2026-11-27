@@ -72,7 +72,8 @@ test("at 1280 px the docked reading keeps the bar on one row, even with the long
   await page.goto("/");
   const strip = page.locator("#top [data-live-strip]");
   await expect(strip).toHaveAttribute("data-live-strip", "live");
-  await expect(strip).toContainText("MarketCalendar unreadable · counted closed");
+  // The hero's line names only the verdict (spec 2026-11-27 section 1); the session detail is the docked reading's.
+  await expect(strip).toContainText("Refused · Market closed");
   const before = await navBar(page).evaluate((el) => el.getBoundingClientRect().height);
   await scrollTo(page, "#how");
   await expect(dock(page)).toBeVisible();

@@ -11,7 +11,7 @@ import { type CallResult, decodeAggregate3, encodeAggregate3Result, word } from 
 import { HEAD_MAX_LAG_SEC, LIVE_MAX_AGE_MS, REFRESH_MS } from "@/lib/live/freshness";
 import { LIVE_RPCS, type LiveReader, RpcError } from "@/lib/live/rpc";
 import { decodeSnapshot } from "@/lib/live/snapshot";
-import { headline, headlineText, judgeToken, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
+import { buyLineText, headline, judgeToken, OTHER_CHECKS, sessionAt, VAULT_NOT_RUN } from "@/lib/live/verdict";
 import fixture from "./fixtures/live-aggregate3.json";
 import { failSlot, passingBasket } from "./helpers/live";
 
@@ -35,6 +35,12 @@ function expected(timestamp: number, edit: Edit = (r) => r) {
   const session = sessionAt({ timestamp: s.timestamp, calendar: { source: "repo" } });
   const verdicts = s.tokens.map((t) => judgeToken(t, { timestamp: s.timestamp, session }));
   return { headline: headline(verdicts), verdicts };
+}
+
+/** The hero's sentence for that answer (spec 2026-11-27 section 1), as the strip writes and announces it. */
+function sentence(timestamp: number, edit?: Edit, live = true): string {
+  const { headline: h, verdicts } = expected(timestamp, edit);
+  return buyLineText(h, verdicts, { live });
 }
 
 /**
@@ -118,7 +124,7 @@ async function mount(first: Answer, wallSec: number) {
 
 const strip = () => document.querySelector<HTMLElement>("[data-live-strip]")!;
 
-/** The verdict line as one sentence: each ReasonTag read as "Label (CODE)", the way headlineText writes it. */
+/** The verdict line as one sentence: each ReasonTag read as "Label (CODE)", the way buyLineText writes it. */
 function verdictSentence(): string {
   const copy = strip().querySelector("[data-verdict-line]")!.cloneNode(true) as Element;
   for (const tag of copy.querySelectorAll("[data-reason-tag]")) tag.replaceWith(reasonText(tag.getAttribute("data-reason-tag") as ReasonCode));
@@ -134,12 +140,14 @@ describe("the live strip", () => {
     expect(html).toContain("Reading Base mainnet");
     expect(html).toMatch(/<noscript>[\s\S]*The live line needs JavaScript\.[\s\S]*Right now on Base[\s\S]*explains what it reads\.[\s\S]*<\/noscript>/);
     expect(html).toMatch(/<noscript>[\s\S]*href="\/now"[\s\S]*<\/noscript>/);
-    for (const value of ["60,013,066", "60013066", ">LIVE<", "basescan.org/block/", "REFUSE"]) expect(html).not.toContain(value);
+    for (const value of ["60,013,066", "60013066", ">LIVE<", "basescan.org/block/", "REFUSE", "Refused", "a buy would be"]) {
+      expect(html).not.toContain(value);
+    }
     expect(html).not.toMatch(/safe/i);
     expect(fake.call).not.toHaveBeenCalled();
   });
 
-  it("shows the reading state in the first client render, then a weekend reading as live with its block, session and refusal", async () => {
+  it("shows the reading state in the first client render, then a weekend reading as live with its block, time and refusal", async () => {
     vi.setSystemTime((SAT + 14) * 1000);
     const fake = fakeReader({ timestamp: SAT });
     render(<LiveStrip reader={fake.reader} />);
@@ -154,43 +162,54 @@ describe("the live strip", () => {
     expect(block).toHaveAttribute("href", "https://basescan.org/block/60013066");
     expect(block).toHaveAttribute("target", "_blank");
     expect(block).toHaveAttribute("rel", "noopener noreferrer");
-    expect(strip()).toHaveTextContent("15:00:00 UTC · 10:00 ET");
-    expect(strip()).toHaveTextContent("Saturday · NYSE closed");
-    expect(strip()).toHaveTextContent("An agent under Maat's default mandate would REFUSE");
+    expect(strip()).toHaveTextContent("10:00 ET");
+    // Spec 2026-11-27 section 1: a labelled line in the vault's verdict grammar.
+    expect(strip()).toHaveTextContent("Right now, a buy would be: Refused · Market closed");
     expect(screen.getByText("Market closed")).toBeInTheDocument();
     expect(screen.getByText("MARKET_CLOSED")).toBeInTheDocument();
-    expect(verdictSentence()).toBe(headlineText(h));
-    expect(screen.getByRole("link", { name: "All 13 B20s" })).toHaveAttribute("href", "/now");
+    expect(verdictSentence()).toBe("Right now, a buy would be: Refused · Market closed (MARKET_CLOSED)");
+    expect(verdictSentence()).toBe(sentence(SAT));
+    expect(screen.getByRole("link", { name: "All 13 tokenized stocks" })).toHaveAttribute("href", "/now");
     expect(screen.queryByText("Reading Base mainnet…")).toBeNull();
     neverSafe();
   });
 
   it("shows the recorded in-session reading with the verdict the default mandate gives it", async () => {
     await mount({ timestamp: FRI }, FRI + 14);
-    const { headline: h, verdicts } = expected(FRI);
+    const { verdicts } = expected(FRI);
     expect(screen.getByText("LIVE")).toBeInTheDocument();
-    expect(strip()).toHaveTextContent("16:43:08 UTC · 11:43 ET");
-    expect(strip()).toHaveTextContent("Friday · open until 16:00 ET");
-    expect(verdictSentence()).toBe(headlineText(h));
+    expect(strip()).toHaveTextContent("11:43 ET");
+    expect(verdictSentence()).toBe(sentence(FRI));
     // The fixture's basket feeds and premiums, against FACTS.mandate: all within limits means all three pass.
     const basket = FACTS.basket.value.map((s) => verdicts.find((v) => v.symbol === s)!);
     const allPass = basket.every((v) => v.mandate === "OK");
-    expect(strip()).toHaveTextContent(allPass ? "would pass the market checks for NVDAc, GOOGLc and AAPLc" : "would REFUSE");
+    expect(strip()).toHaveTextContent(
+      allPass
+        ? "Right now, a buy would pass the market checks: NVDAc (NVIDIA, a B20 token on Base), GOOGLc and AAPLc."
+        : "Right now, a buy would be: Refused for NVDAc (NVIDIA, a B20 token on Base)",
+    );
     neverSafe();
   });
 
-  it("links vault checks not run to the method on /now when the default mandate refuses no basket token", async () => {
+  it("labels a pass as what passed, glosses its first ticker, and links the checks the vault runs on a real trade to the method", async () => {
     await mount({ timestamp: FRI, edit: passingBasket }, FRI + 14);
     const { headline: h } = expected(FRI, passingBasket);
     expect(h.kind).toBe("pass-all");
     const line = strip().querySelector<HTMLElement>("[data-verdict-line]")!;
     expect(line).toHaveAttribute("data-verdict-line", "pass-all");
-    const link = screen.getByRole("link", { name: VAULT_NOT_RUN });
-    expect(line).toContainElement(link);
+    // Review of PR #105: "a buy would be: Market checks pass for ...; vault checks not run" did not parse after its label.
+    expect(line.querySelector("[data-verdict-lead]")!.textContent).toBe("Right now, a buy would pass the market checks:");
+    expect(line.querySelector("[data-ticker-gloss]")!.textContent).toBe("(NVIDIA, a B20 token on Base)");
+    const link = screen.getByRole("link", { name: OTHER_CHECKS });
+    expect(line.querySelector("[data-verdict-method]")).toContainElement(link);
     expect(link).toHaveAttribute("href", "/now#method");
-    // The link is inside the sentence: it reads as headlineText, and the announcement stays plain text.
-    expect(verdictSentence()).toBe(headlineText(h));
-    expect(screen.getByRole("status").textContent).toBe(`Live. ${headlineText(h)}`);
+    expect(screen.queryByRole("link", { name: VAULT_NOT_RUN })).toBeNull();
+    // The link is inside the sentence: it reads as buyLineText, and the announcement stays plain text.
+    expect(verdictSentence()).toBe(sentence(FRI, passingBasket));
+    expect(verdictSentence()).toBe(
+      `Right now, a buy would pass the market checks: NVDAc (NVIDIA, a B20 token on Base), GOOGLc and AAPLc. ${OTHER_CHECKS}.`,
+    );
+    expect(screen.getByRole("status").textContent).toBe(`Live. ${sentence(FRI, passingBasket)}`);
     expect(screen.getByRole("status").querySelector("a")).toBeNull();
     // A pass never claims every check: checks 3, 8 and 9 need a vault.
     expect(strip()).not.toHaveTextContent(REASON_LABEL.OK);
@@ -199,12 +218,12 @@ describe("the live strip", () => {
   it.each([
     ["mixed", FRI, ((r) => failSlot(passingBasket(r), "NVDAc", "observe")) as Edit],
     ["refuse-all", SAT, undefined],
-  ] as const)("does not link vault checks not run when the headline is %s", async (kind, at, edit) => {
+  ] as const)("does not link the method when the headline is %s", async (kind, at, edit) => {
     await mount({ timestamp: at, edit }, at + 14);
     expect(expected(at, edit).headline.kind).toBe(kind);
     expect(strip().querySelector("[data-verdict-line]")).toHaveAttribute("data-verdict-line", kind);
     expect(strip().querySelector("[data-verdict-line] a")).toBeNull();
-    expect(screen.queryByRole("link", { name: VAULT_NOT_RUN })).toBeNull();
+    expect(screen.queryByRole("link", { name: OTHER_CHECKS })).toBeNull();
   });
 
   it("says NOT LIVE when a refresh fails after a good reading, and keeps the old verdict in muted text", async () => {
@@ -218,12 +237,14 @@ describe("the live strip", () => {
     expect(strip()).toHaveTextContent("last read block 60,013,066, 30 s ago");
     expect(strip()).toHaveTextContent("the RPC did not answer since");
     expect(screen.getByRole("link", { name: "60,013,066" })).toHaveAttribute("href", "https://basescan.org/block/60013066");
-    expect(verdictSentence()).toBe(headlineText(expected(SAT).headline));
+    // An old verdict never says "Right now".
+    expect(verdictSentence()).toBe(sentence(SAT, undefined, false));
+    expect(verdictSentence()).toMatch(/^At the last read, a buy would be: Refused · /);
     expect(strip().querySelector("[data-verdict-line]")).toHaveAttribute("data-tone", "muted");
     // An old verdict never shouts: only a live one is set at the verdict size, above the block number.
     expect(strip().querySelector("[data-verdict-line]")!.className.split(" ")).not.toContain("readout-verdict");
     expect(strip().querySelector("[data-verdict-lead]")).toBeNull();
-    expect(screen.getByRole("status").textContent).toBe(`Not live. ${headlineText(expected(SAT).headline)}`);
+    expect(screen.getByRole("status").textContent).toBe(`Not live. ${sentence(SAT, undefined, false)}`);
     // The next good answer makes it live again.
     fake.set({ timestamp: SAT + 30 });
     await advance(REFRESH_MS);
@@ -387,7 +408,7 @@ describe("the live strip", () => {
     expect(status).toHaveAttribute("aria-live", "polite");
     expect(status).toHaveClass("sr-only");
     await advance(0);
-    const said = `Live. ${headlineText(expected(SAT).headline)}`;
+    const said = `Live. ${sentence(SAT)}`;
     expect(status.textContent).toBe(said);
 
     fake.set({ timestamp: SAT + 30, block: BLOCK + 15n });
