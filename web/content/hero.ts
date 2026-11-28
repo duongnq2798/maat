@@ -36,7 +36,7 @@ export interface HeroCta {
   href: string;
 }
 
-/** The hero's two CTAs, in order: the film band right under the hero (components/sections/Film.tsx), then the simulator. */
+/** The hero's two CTAs, in order: the film band (components/sections/Film.tsx), then the simulator. */
 export const HERO_CTAS: readonly [HeroCta, HeroCta] = [
   { label: `Watch the film (${FILM.length})`, href: "#film" },
   { label: "Try to make it say no", href: "#try" },

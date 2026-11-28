@@ -158,6 +158,8 @@ describe("the nav bar and its docked reading (spec 2026-11-23 sections 6.1 and 7
       ["maat", "#top"],
       ...pages,
       ...pages,
+      // Spec 2026-11-28 section 3: the phone menu ends on the repository, then the pill the bar shows from 721 px.
+      ["View on GitHub ↗", SITE.repoUrl],
       ["View on GitHub ↗", SITE.repoUrl],
     ]);
     expect(read("components/sections/Nav.tsx")).toContain("{onLanding ? <NavDock /> : null}");

@@ -1,7 +1,8 @@
 import { type Film as FilmContent, FILM } from "@/content/film";
 
 /**
- * The film band, `#film`, directly under the hero (spec 2026-11-27, landing "explain in 10 seconds", section 2). The site
+ * The film band, `#film`, under the hero after "On the record" (spec 2026-11-27, landing "explain in 10 seconds",
+ * section 2, amended by spec 2026-11-28 section 2). The site
  * serves the cut itself: the player has controls, no autoplay, and preload="none", so the browser fetches no byte of the
  * cut, and plays no sound, until the visitor presses play. Before that it shows the poster, a frame of the Thanksgiving
  * refusal; a video poster is not an <img>, so the landing still uses no raster image. Two WebVTT tracks, both off by

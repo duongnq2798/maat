@@ -114,7 +114,10 @@ describe("the /gap-index page", () => {
     expect(nav.querySelector("[data-phone-menu] > summary")).toHaveTextContent("Menu");
     expect(within(within(nav).getByRole("list", { name: "Pages" })).getByRole("link", { name: "Ledger" })).toHaveAttribute("href", "/ledger");
     expect(within(nav).getAllByRole("link", { name: "Docs" })[0]).toHaveAttribute("href", SITE.docsUrl);
-    expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
+    // The pill (from 721 px) and the foot of the phone menu (spec 2026-11-28 section 3) both open the repository.
+    const github = within(nav).getAllByRole("link", { name: /View on GitHub/ });
+    expect(github).toHaveLength(2);
+    for (const a of github) expect(a).toHaveAttribute("href", SITE.repoUrl);
   });
 
   it("names itself in its metadata: title, description, canonical /gap-index and its own link preview image", () => {
