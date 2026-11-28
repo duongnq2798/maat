@@ -1,30 +1,102 @@
 {
-  "rule": "The transactions beats 5 to 7 show. Beat 7 shows strangerBrief's brief, then Maat's agent's reply to it from the published agent-journal branch, then vaultAnswer's verdict. Set hash to the tx hash once it is on Base mainnet and render again; while hash is null the film shows a card labelled PLACEHOLDER. Before it shows a tx, the render reads its receipt and calldata and stops unless it matches expect: the event, the contract of deployments/README.md that emitted it, the vault's reason, who sent it (sender: for a Decision, /ledger's sender label, agent, probe, brief-driven or owner, by hand; for a Brief, outside or team), the New York date, and for the early-close pair the side of the early close (etBefore: before that New York time; etFrom: at or after it).",
+  "rule": "The transactions beats 5 to 7 show. Beat 7 shows strangerBrief's brief, then Maat's agent's reply to it from the published agent-journal branch, then vaultAnswer's verdict. Set hash to the tx hash once it is on Base mainnet and render again; while hash is null the film shows a card labelled PLACEHOLDER, except in beat 7, which shows a stand-in instead (beat7). Before it shows a tx, the render reads its receipt and calldata and stops unless it matches expect: the event, the contract of deployments/README.md that emitted it, the vault's reason, who sent it (sender: for a Decision, /ledger's sender label, agent, probe, brief-driven or owner, by hand; for a Brief, outside or team), the New York date, and for the early-close pair the side of the early close (etBefore: before that New York time; etFrom: at or after it).",
+  "beat7": {
+    "rule": "Beat 7, dated Sat 28 Nov 2026 (film/README.md, \"Beat 7: the rule\"). strangerBrief and vaultAnswer show only when both are set and the intent that adopted the brief was decided on Base by cutoff (Mon 7 Dec 2026 21:00 UTC); set them only for a brief that /proof counts as an outside brief. Until then the beat shows its first stand-in whose txs are all set: teamBrief and teamAnswer, a team wallet brief and the vault's verdict on the intent that adopted it, labelled team brief and never counted as a user; otherwise agentAllowedGoogl and agentAllowedAapl, two of Maat's agent's own intents of Fri 27 Nov, both allowed, under a caption with /proof's live counts. A placeholder never shows.",
+    "cutoff": "2026-12-07T21:00:00Z"
+  },
   "txs": {
     "thanksgiving": {
       "label": "Maat's agent's intent on Thanksgiving",
       "hash": "0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6",
-      "expect": { "event": "Decision", "contract": "MandateVault", "reason": "MARKET_CLOSED", "sender": "agent", "etDate": "2026-11-26" }
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "reason": "MARKET_CLOSED",
+        "sender": "agent",
+        "etDate": "2026-11-26"
+      }
     },
     "earlyCloseAllowed": {
       "label": "Probe before the early close",
       "hash": "0x605ea741681e3a105020a2de2491829b2cc58707b5f2f89b8f7c7cf58986e0e2",
-      "expect": { "event": "Decision", "contract": "MandateVault", "reason": "OK", "sender": "probe", "etDate": "2026-11-27", "etBefore": "13:00" }
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "reason": "OK",
+        "sender": "probe",
+        "etDate": "2026-11-27",
+        "etBefore": "13:00"
+      }
     },
     "earlyCloseRefused": {
       "label": "Probe after the early close",
       "hash": "0x7c086145003fde5a42437d9d3637d51e694f6b371d63fbb9669a9538745c1f0f",
-      "expect": { "event": "Decision", "contract": "MandateVault", "reason": "MARKET_CLOSED", "sender": "probe", "etDate": "2026-11-27", "etFrom": "13:00" }
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "reason": "MARKET_CLOSED",
+        "sender": "probe",
+        "etDate": "2026-11-27",
+        "etFrom": "13:00"
+      }
     },
     "strangerBrief": {
       "label": "An outside wallet's brief",
       "hash": null,
-      "expect": { "event": "Brief", "contract": "MaatInbox", "sender": "outside" }
+      "expect": {
+        "event": "Brief",
+        "contract": "MaatInbox",
+        "sender": "outside"
+      }
     },
     "vaultAnswer": {
       "label": "The vault's verdict on Maat's agent's answer",
       "hash": null,
-      "expect": { "event": "Decision", "contract": "MandateVault", "sender": "brief-driven" }
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "sender": "brief-driven"
+      }
+    },
+    "teamBrief": {
+      "label": "A team brief",
+      "hash": null,
+      "expect": {
+        "event": "Brief",
+        "contract": "MaatInbox",
+        "sender": "team"
+      }
+    },
+    "teamAnswer": {
+      "label": "The vault's verdict on Maat's agent's answer",
+      "hash": null,
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "sender": "brief-driven"
+      }
+    },
+    "agentAllowedGoogl": {
+      "label": "Maat's agent's intent, Claude's proposal",
+      "hash": "0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503",
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "reason": "OK",
+        "sender": "agent",
+        "etDate": "2026-11-27"
+      }
+    },
+    "agentAllowedAapl": {
+      "label": "Maat's agent's intent, Claude's proposal",
+      "hash": "0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69",
+      "expect": {
+        "event": "Decision",
+        "contract": "MandateVault",
+        "reason": "OK",
+        "sender": "agent",
+        "etDate": "2026-11-27"
+      }
     }
   }
 }

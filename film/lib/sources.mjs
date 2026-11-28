@@ -232,6 +232,10 @@ export const CAPTURED = Object.freeze({
   "ledger.perTrade": { path: "/ledger", selector: 'section[aria-label="Mandate"] tr:has-text("perTradeCapUsd") td', pattern: /(\$\d[\d,]*(?:\.\d+)?)/ },
   "ledger.perDay": { path: "/ledger", selector: 'section[aria-label="Mandate"] tr:has-text("dailyCapUsd") td', pattern: /(\$\d[\d,]*(?:\.\d+)?)/ },
   "ledger.weightCapPct": { path: "/ledger", selector: 'section[aria-label="Mandate"] tr:has-text("maxWeightBps") td', pattern: /\d+ bps · (\d+(?:\.\d+)?)%/ },
+  // /proof's counts once read, for beat 7's stand-in caption: a number, 0 as 0. A count that says why it has none
+  // ("not read", "incomplete") stops the render.
+  "proof.outsideBriefs": { path: "/proof", selector: '[data-proof-state="read"] [data-testid="proof-outside-briefs"]', pattern: /^\s*(\d[\d,]*)\s*$/ },
+  "proof.briefDecisions": { path: "/proof", selector: '[data-proof-state="read"] [data-testid="proof-brief-decisions"]', pattern: /^\s*(\d[\d,]*)\s*$/ },
 });
 
 /**

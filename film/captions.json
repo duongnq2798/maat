@@ -1,5 +1,5 @@
 {
-  "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise; an else caption may have its own when. In a sentence, the AI is always Maat's agent, never the agent alone, and a brief is only an outside wallet's MaatInbox message.",
+  "rule": "Every number comes from a {placeholder} that lib/sources.mjs fills from a committed file or from the live site at capture time. A digit typed into a caption fails web/test/film-captions.test.ts. A caption with when shows only while its condition holds (equal: two values match; present: a source gives the value), and its else caption otherwise; an else caption may have its own when. In a sentence, the AI is always Maat's agent, never the agent alone, and a brief is a MaatInbox message: an outside wallet's, or a team wallet's, which a caption calls a team brief.",
   "captions": {
     "gap-held": "{gap.close} → {gap.open}. NYSE is closed, and the NVDAc price feed held one answer for {gap.hours} h.",
     "gap-swaps": "Its Aerodrome pool on Base kept trading: {gap.swaps} swaps meanwhile, up to {gap.gapBps} bps {gap.side} the held answer.",
@@ -36,7 +36,8 @@
     },
     "brief-ask-later": "Once the inbox contract is on Base, any wallet can try to talk Maat's agent into a bad trade. The vault has the last word.",
     "brief-tx": "On Base: an outside wallet's brief to Maat's agent, and the vault's verdict on its answer.",
-    "brief-placeholder": "Placeholder: no outside brief to Maat's agent, and no verdict on its answer, on Base yet.",
+    "brief-team": "A team brief, not an outside one, and never counted as a user. Then the vault's verdict on Maat's agent's answer.",
+    "brief-agent": "On /proof: {proof.outsideBriefs} outside briefs, {proof.briefDecisions} brief-driven Decisions. In their place, two of Maat's agent's own intents, both allowed.",
     "receipts-contracts": {
       "text": "{deployments.count} contracts on Base mainnet, verified on Basescan: {deployments.verified}.",
       "when": { "present": "deployments.verified" },

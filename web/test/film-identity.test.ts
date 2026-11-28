@@ -12,16 +12,17 @@ import { finalArgs } from "../../film/lib/ffmpeg.mjs";
 import { FORMATS } from "../../film/lib/formats.mjs";
 import { JOURNAL_RAW_URL, briefReply, readJournal } from "../../film/lib/journal.mjs";
 import { fileSources } from "../../film/lib/sources.mjs";
-import { persuasionCardHtml, persuasionProblems, persuasionReading, plainText, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
+import { cutoffProblem, persuasionCardHtml, persuasionProblems, persuasionReading, plainText, txCardHtml, txCardModel } from "../../film/lib/tx.mjs";
 import { GENESIS, canon, rowHash } from "../../ops/journal/lib/spec.mjs";
-import { BRIEF_TX, CONTRACTS, EXECUTOR, INBOX, OWNER, STRANGER, VAULT as CONTRACTS_VAULT, blobAdopting, briefData, verdict } from "./helpers/film-persuasion";
+import { BRIEF_TX, CONTRACTS, EXECUTOR, INBOX, OWNER, STRANGER, VAULT as CONTRACTS_VAULT, VERDICT_TX as VERDICT, blobAdopting, briefData, verdict } from "./helpers/film-persuasion";
 import { VECTORS } from "./helpers/maat-v1";
 import { REPO_ROOT, readRepo } from "./helpers/solidity";
 
 // Move 6 of the culture plan (.superpowers/ecosystem/11-culture-2026-11-26.md): the film carries Maat's identity. It
 // opens and closes on the real mark, says the mechanism line word for word, ends on the sign-off, the short myth line
 // and the builder line, and its persuasion beat shows a real brief, Maat's agent's reply from the published journal,
-// then the vault's verdict, or a labelled placeholder until those transactions are on Base. No sound is added.
+// then the vault's verdict, or, under beat 7's rule of 28 Nov 2026, a labelled team brief or Maat's agent's own allowed
+// pair: never a placeholder. No sound is added.
 
 const lf = (rel: string) => readRepo(rel).replace(/\r\n/g, "\n");
 const MARK = lf("web/brand/src/mark.svg").trim();
@@ -207,7 +208,7 @@ describe("the film's captions", () => {
     expect(open).toEqual({ id: "brief-ask", text: LINES.invitation });
     expect(pickCaption(captions, "brief-ask", { "deployments.inbox": INBOX }).id).toBe("brief-ask-soon");
     const shot = BEATS.find((b) => b.id === "stranger-brief")?.shots.find((s) => s.kind === "tx");
-    const ids = ["brief-ask", "brief-ask-soon", "brief-ask-later", shot?.caption, shot?.placeholderCaption];
+    const ids = ["brief-ask", "brief-ask-soon", "brief-ask-later", shot?.caption, ...(shot?.standIns ?? []).map((s: { caption: string }) => s.caption)];
     for (const id of ids) {
       const text = textOf(String(id));
       expect(text, String(id)).toContain("Maat's agent");
@@ -215,7 +216,10 @@ describe("the film's captions", () => {
     }
     expect(textOf("brief-ask-soon")).toMatch(/^The inbox contract is on Base\. Once \/ask opens, any wallet can try to talk Maat's agent into a bad trade\.$/);
     expect(textOf("brief-ask-later")).toMatch(/^Once the inbox contract is on Base, .*Maat's agent into a bad trade\. The vault has the last word\.$/);
-    expect(textOf(String(shot?.placeholderCaption))).toMatch(/^Placeholder: /);
+    // Beat 7 never shows a placeholder (film/README.md, "Beat 7: the rule"): no caption of the film says it has none.
+    expect(shot?.placeholderCaption).toBeUndefined();
+    expect(Object.keys(captions).filter((id) => /brief/.test(id) && /^Placeholder/.test(textOf(id)))).toEqual([]);
+    expect(textOf("brief-team")).toMatch(/^A team brief, not an outside one, and never counted as a user\./);
   });
 
   it("never call the AI Maat", () => {
@@ -274,6 +278,38 @@ describe("the persuasion beat (beat 7)", () => {
     const body = bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply: unanswered, answer: answer() }));
     expect(body).toContain("Sent to Claude, which gave no reply.");
     expect(body).toContain("Claude persuaded: yes, adopted into an intent");
+  });
+
+  it("shows a team brief only from a team wallet, tagged TEAM BRIEF, never as an outside one", () => {
+    const team = (from: string) => txCardModel("teamBrief", { label: "A team brief", hash: BRIEF_TX, expect: { event: "Brief" } }, briefData(BRIEF_TEXT, { from }), ctx);
+    const teamAnswer = txCardModel("teamAnswer", { label: "The vault's verdict on Maat's agent's answer", hash: VERDICT, expect: { event: "Decision" } }, verdict().data, ctx);
+    const reply = briefReply(journal(runRow, briefRow()), BRIEF);
+    const fromTeam = [team(PROOF_TEAM[1]!.address), teamAnswer];
+    expect(persuasionProblems(fromTeam, { ...answer(), reply, briefFrom: "team" })).toEqual([]);
+    const body = bodyOf(persuasionCardHtml(fromTeam, { ...opts, title: "A team brief and the vault's answer", reply, answer: answer(), briefFrom: "team" }));
+    expect(body).toContain('<span class="team">TEAM BRIEF</span>');
+    expect(body).toContain("1 · A team brief · #7 from 0x9bc6…115a");
+    // An outside wallet's brief is never shown as a team brief, and a team brief never as an outside one.
+    const fromOutside = [team(STRANGER), teamAnswer];
+    expect(persuasionProblems(fromOutside, { ...answer(), reply, briefFrom: "team" })).toEqual([
+      "teamBrief: brief #7 comes from 0xabab…abab, not a team wallet, so it cannot be shown as a team brief",
+    ]);
+    expect(() => persuasionCardHtml(fromOutside, { ...opts, reply, answer: answer(), briefFrom: "team" })).toThrow(/a team brief: teamBrief: brief #7 comes from 0xabab…abab, not a team wallet/);
+    expect(persuasionProblems(fromTeam, { ...answer(), reply })).toEqual(["teamBrief: brief #7 comes from 0x9bc6…115a, a team wallet, not an outside one"]);
+    expect(bodyOf(persuasionCardHtml([briefModel, verdictModel], { ...opts, reply, answer: answer() }))).not.toContain("TEAM BRIEF");
+  });
+
+  it("takes an outside brief only when the vault decided the intent that adopted it by beat 7's cutoff", () => {
+    const decided = new Date(Number(verdictModel.timestamp) * 1000);
+    const iso = (d: Date) => `${d.toISOString().slice(0, 19)}Z`;
+    expect(cutoffProblem([briefModel, verdictModel], undefined)).toBeNull();
+    expect(cutoffProblem([briefModel, verdictModel], iso(decided))).toBeNull();
+    const before = iso(new Date(decided.getTime() - 1000));
+    expect(cutoffProblem([briefModel, verdictModel], before)).toBe(
+      `vaultAnswer: the vault decided the intent that adopted the brief at ${decided.toISOString()}, after beat 7's cutoff ${before}, so the beat keeps its stand-in: set strangerBrief and vaultAnswer back to null`,
+    );
+    const txs = JSON.parse(lf("film/txs.json")) as { beat7: { cutoff: string } };
+    expect(txs.beat7.cutoff).toBe("2026-12-07T21:00:00Z");
   });
 
   it("stops the card when its Decision is not the vault's verdict on Maat's agent's answer to the brief shown", () => {

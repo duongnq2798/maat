@@ -4,6 +4,7 @@ import {
   BEATS,
   CLIPS,
   FPS,
+  chosenTxShot,
   TARGET_SECONDS,
   TOLERANCE_SECONDS,
   effectiveShot,
@@ -83,6 +84,10 @@ describe("the film's beat plan", () => {
       { key: "earlyCloseRefused", beat: "early-close" },
       { key: "strangerBrief", beat: "stranger-brief" },
       { key: "vaultAnswer", beat: "stranger-brief" },
+      { key: "teamBrief", beat: "stranger-brief" },
+      { key: "teamAnswer", beat: "stranger-brief" },
+      { key: "agentAllowedGoogl", beat: "stranger-brief" },
+      { key: "agentAllowedAapl", beat: "stranger-brief" },
     ]);
     const tx = BEATS.find((b) => b.id === "thanksgiving")?.shots.find((s) => s.kind === "tx");
     expect(tx).toBeDefined();
@@ -101,9 +106,60 @@ describe("the film's beat plan", () => {
     expect(shotCues(pair, "all")).toEqual([{ id: "early-tx", at: 0 }]);
     expect(shotCues(pair, "some")).toEqual([{ id: "pair-partial", at: 0 }]);
     expect(shotCues(pair, "none")).toEqual([{ id: "early-placeholder", at: 0 }]);
-    for (const shot of BEATS.flatMap((b) => b.shots).filter((s) => s.kind === "tx" && s.txs.length > 1)) {
+    for (const shot of BEATS.flatMap((b) => b.shots).filter((s) => s.kind === "tx" && s.txs.length > 1 && !s.standIns)) {
       expect(shot.partialCaption, shot.id).toBe("pair-partial");
     }
+  });
+
+  // Beat 7's rule (film/README.md, dated 28 Nov 2026): an outside brief once both of its txs are set, else a team brief
+  // labelled as one, else Maat's agent's own allowed pair of Fri 27 Nov. Never a placeholder.
+  it("shows beat 7's outside brief once both txs are set, else its first stand-in whose txs are, never a placeholder", () => {
+    const beat7 = BEATS.find((b) => b.id === "stranger-brief")?.shots.find((s) => s.kind === "tx");
+    expect(beat7).toBeDefined();
+    if (!beat7) return;
+    expect(beat7.placeholderCaption).toBeUndefined();
+    expect(beat7.partialCaption).toBeUndefined();
+    const setOnly = (...keys: string[]) => (key: string) => keys.includes(key);
+    const agent = ["agentAllowedGoogl", "agentAllowedAapl"];
+    const outside = chosenTxShot(beat7, setOnly("strangerBrief", "vaultAnswer", ...agent));
+    expect(outside).toMatchObject({ layout: "persuasion", txs: ["strangerBrief", "vaultAnswer"], caption: "brief-tx", standIn: null });
+    expect(outside).not.toHaveProperty("standIns");
+    // One of the pair alone is not enough: the stand-in shows, not a partial pair.
+    expect(chosenTxShot(beat7, setOnly("strangerBrief", "teamBrief", "teamAnswer", ...agent))).toMatchObject({
+      layout: "persuasion",
+      txs: ["teamBrief", "teamAnswer"],
+      caption: "brief-team",
+      title: "A team brief and the vault's answer",
+      standIn: "team",
+    });
+    const own = chosenTxShot(beat7, setOnly(...agent));
+    expect(own).toMatchObject({ txs: agent, caption: "brief-agent", title: "Maat's agent's own intents, weighed", standIn: "agent", duration: 11.5 });
+    expect(own).not.toHaveProperty("layout");
+    expect(shotCues(own, "all")).toEqual([{ id: "brief-agent", at: 0 }]);
+    expect(chosenTxShot(beat7, setOnly())).toBeNull();
+    // A shot without stand-ins is itself, placeholders and all.
+    const thanksgiving = BEATS.find((b) => b.id === "thanksgiving")?.shots.find((s) => s.kind === "tx");
+    expect(thanksgiving).toBeDefined();
+    if (!thanksgiving) return;
+    expect(chosenTxShot(thanksgiving, setOnly())).toMatchObject({ txs: ["thanksgiving"], placeholderCaption: "thanksgiving-placeholder", standIn: null });
+  });
+
+  it("names a stand-in that lacks txs, a caption or a title, and stand-ins on a shot that is not a tx shot", () => {
+    const broken = [
+      {
+        id: "b",
+        title: "broken",
+        shots: [
+          { id: "tx", kind: "tx", txs: ["a", "b"], duration: 100, caption: "c", standIns: [{ id: "s", txs: ["c"], caption: "d" }, { id: "p", layout: "persuasion", txs: ["e"], caption: "f", title: "t" }] },
+          { id: "card", kind: "card", card: "end", duration: 1, captions: [], standIns: [] },
+        ],
+      },
+    ];
+    const problems = validateBeats(broken).join("\n");
+    expect(problems).toMatch(/b\/tx stand-in s: a stand-in needs an id, txs, a caption and a card title/);
+    expect(problems).toMatch(/b\/tx stand-in p: the persuasion layout needs two txs, a brief and the vault's Decision/);
+    expect(problems).toMatch(/b\/card: only a tx shot has stand-ins, at least one/);
+    expect(problems).not.toMatch(/b\/tx: a tx shot (needs|of two)/);
   });
 
   it("reads the mandate only once /ledger shows the onchain mandate, not the configured defaults", () => {

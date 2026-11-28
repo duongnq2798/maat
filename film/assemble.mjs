@@ -60,6 +60,7 @@ export function assemble({ work, out }) {
     outputs: results,
     placeholders: manifest.placeholders,
     fallbacks: manifest.fallbacks,
+    standIns: manifest.standIns ?? [],
     clips: manifest.clips,
     captured: manifest.captured,
     warnings: manifest.warnings,

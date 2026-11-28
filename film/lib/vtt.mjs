@@ -6,7 +6,13 @@
 //   in at the bottom.
 // - The on-screen text track (<track kind="descriptions">) carries the captions the cut burns in, at the same times, for
 //   screen readers and search. It is built from a render's work/manifest.json, whose shots list each caption the cut
-//   burned in: its id in film/captions.json, its text with the placeholders filled, and its span inside the shot.
+//   burned in: its id in film/captions.json, its text with the placeholders filled, and its span inside the shot. The
+//   title and end cards have no caption, so it carries their words too, while each card is on screen (CARD_CUES).
+
+import { CARD_READING } from "./cards.mjs";
+
+/** The words of the title and end cards, by the id of their cue in the on-screen text track (lib/cards.mjs). */
+export const CARD_CUES = Object.freeze({ "card-title": CARD_READING.title.join(" "), "card-end": CARD_READING.end.join(" ") });
 
 const PLACEHOLDER = /\{([a-zA-Z][\w.]*)\}/g;
 
@@ -44,8 +50,9 @@ export function vttSeconds(time) {
 
 /**
  * The cues of one cut, in order: each caption of each shot, from the shot's start plus the cue's `from` to its start
- * plus `to`. `shots` is one format's `shots` in a render's work/manifest.json; a shot's `duration` places the next one.
- * @param {readonly { duration: number, cues?: readonly ShotCue[] }[]} shots
+ * plus `to`, and the words of the title and end cards for as long as each is on screen (CARD_CUES). `shots` is one
+ * format's `shots` in a render's work/manifest.json; a shot's `duration` places the next one.
+ * @param {readonly { duration: number, kind?: string, slot?: string, cues?: readonly ShotCue[] }[]} shots
  * @returns {Cue[]}
  */
 export function vttCues(shots) {
@@ -53,6 +60,10 @@ export function vttCues(shots) {
   const cues = [];
   let at = 0;
   for (const shot of shots) {
+    const card = `card-${shot.slot}`;
+    if (shot.kind === "card" && card in CARD_CUES) {
+      cues.push({ id: card, start: at, end: Math.round((at + shot.duration) * 1000) / 1000, text: CARD_CUES[/** @type {keyof typeof CARD_CUES} */ (card)] });
+    }
     for (const cue of shot.cues ?? []) {
       cues.push({ id: cue.id, start: Math.round((at + cue.from) * 1000) / 1000, end: Math.round((at + cue.to) * 1000) / 1000, text: cue.text });
     }
@@ -116,8 +127,8 @@ export function fills(template, text) {
 
 /**
  * What is wrong with the cues of a cut that lasts `length` seconds, one line each; [] when nothing is. A cue must name a
- * caption of film/captions.json and say its words, with only its placeholders filled; the cues must be in order, never
- * overlap, have unique ids and end within the cut.
+ * caption of film/captions.json and say its words, with only its placeholders filled, or name a card of CARD_CUES and
+ * say its words; the cues must be in order, never overlap, have unique ids and end within the cut.
  * @param {readonly Cue[]} cues
  * @param {Record<string, unknown>} captions
  * @param {number} length
@@ -129,7 +140,7 @@ export function vttProblems(cues, captions, length) {
   const seen = new Set();
   let last = 0;
   for (const cue of cues) {
-    const template = templateOf(captions[cue.id]);
+    const template = Object.hasOwn(CARD_CUES, cue.id) ? CARD_CUES[/** @type {keyof typeof CARD_CUES} */ (cue.id)] : templateOf(captions[cue.id]);
     if (template === undefined) problems.push(`cue ${cue.id}: no caption ${cue.id} in film/captions.json`);
     else if (!fills(template, cue.text)) problems.push(`cue ${cue.id}: "${cue.text}" is not the words of caption ${cue.id}`);
     if (seen.has(cue.id)) problems.push(`cue ${cue.id}: a second cue with this id`);

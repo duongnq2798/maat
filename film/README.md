@@ -32,7 +32,7 @@ ffmpeg nor the network, and one Playwright spec that lays the cards out in Chrom
 | 4 | The sourced proposal and its hash tick | `/ledger`, the decision trail with its hash tick; the owner's Basescan input clip, or `/ledger`'s verify-by-hand commands without it | |
 | 5 | Thanksgiving: `MARKET_CLOSED` from Maat's agent | the simulator on Thanksgiving; the tx card of Maat's agent's Decision on Thanksgiving | |
 | 6 | The early-close probes | the simulator after the early close; the two tx cards of the probes sent before and after the 13:00 ET early close | placeholder cards |
-| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line while it takes briefs; one card: an outside wallet's brief, Maat's agent's reply from the published journal, then the vault's verdict on the intent that adopted the brief | the two tx cards labelled PLACEHOLDER; while `/ask` is closed, its caption says the inbox is on Base and the invitation waits for `/ask` to open |
+| 7 | A stranger's brief and the vault's answer | `/ask` under the invitation line while it takes briefs; one card: an outside wallet's brief, Maat's agent's reply from the published journal, then the vault's verdict on the intent that adopted the brief | a stand-in under [beat 7's rule](#beat-7-the-rule), never a placeholder; while `/ask` is closed, its caption says the inbox is on Base and the invitation waits for `/ask` to open |
 | 8 | Receipts | the deployed contracts; the README's CI figures under a dated heading; `/proof`; the end card: the mark, the sign-off, the short myth line, the builder line | |
 
 `lib/beats.mjs` holds the plan: every shot, its length, its page steps and its caption cues. The title card holds 6 s
@@ -44,6 +44,32 @@ capture warns when a caption with the numbers it read, or beat 7's card with its
 would go faster. A page shot's scroll stops before the site's footer enters the frame, so its display line never sits
 behind a caption (`scrollGoal` in `lib/beats.mjs`), and the capture warns if a shot still ends with the footer in the
 frame.
+
+## Beat 7: the rule
+
+Dated Sat 28 Nov 2026. Beat 7 is the film's turn: a stranger tries to talk Maat's agent into a trade, and the vault
+answers. Nobody may be asked to send a brief to fill it, and the cut has to be ready for the demo post and the upload
+before one may come, so the beat no longer waits on a stranger. It shows the first of these whose transactions are
+all set in `txs.json` (`chosenTxShot` in `lib/beats.mjs`), and never a placeholder:
+
+1. **An outside brief**: `strangerBrief` and `vaultAnswer`, only for a brief that `/proof` counts as an outside brief
+   and that an intent adopted, with the vault's Decision on that intent on Base by **Mon 7 Dec 2026 21:00 UTC**
+   (`beat7.cutoff` in `txs.json`). The capture checks the pair as below and stops on a Decision after the cutoff
+   (`cutoffProblem` in `lib/tx.mjs`): set both hashes back to null then. The caption is `brief-tx`.
+2. **A team brief**: `teamBrief` and `teamAnswer`, a brief from a `/proof` team wallet and the vault's verdict on the
+   intent that adopted it, checked as an outside pair is, except that the brief must come from a team wallet. The card
+   tags it TEAM BRIEF, and its caption `brief-team` says it is not an outside one and never counts as a user.
+3. **Maat's agent's own allowed pair**, the default: `agentAllowedGoogl` and `agentAllowedAapl`, two Decisions of
+   Fri 27 Nov 2026 on Claude's proposals, BUY GOOGLc and BUY AAPLc for $4.64 each, both "Allowed · All checks passed
+   (OK)" ([`0xff1f…c503`](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503#eventlog),
+   [`0xdd01…ff69`](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69#eventlog)),
+   under the card title "Maat's agent's own intents, weighed" and the caption `brief-agent`, which gives `/proof`'s
+   live counts of outside briefs and brief-driven Decisions, zero as zero. `/ask` shows its counters only once it is
+   open; `/proof` counts outside briefs by the same rule at all times, so the capture reads both counts there, on
+   beat 8's `/proof` shot, once the page has read them (`proof.*` in `lib/sources.mjs`).
+
+`--final` renders with any of the three, since each shows real transactions. The render prints which one beat 7 used
+(`stand-ins` in its summary and in `report.json`).
 
 ## The frame of a page shot
 
@@ -83,7 +109,8 @@ The capture reads the mark from `web/brand/src/mark.svg` and draws it as it is; 
 the render. The cards use the site's colours and its Geist type only, and balance the lines of each text, and of each
 caption, so none ends on one word alone (`web/e2e/film-cards.spec.ts` measures it in both cuts). `web/test/film-identity.test.ts` checks the
 lines, the mark, the first and last shots and the silent track, and that every caption that says who proposes and who
-decides says the mechanism line word for word.
+decides says the mechanism line word for word. The cards carry no caption, so the landing's on-screen text track
+carries their words, the builder line among them, for as long as each card is on screen (`CARD_CUES` in `lib/vtt.mjs`).
 
 ## Files
 
@@ -92,10 +119,10 @@ decides says the mechanism line word for word.
 | `render.mjs` | The one command: `capture.mjs`, then `assemble.mjs` |
 | `capture.mjs` | Opens each page with Playwright at each cut's viewport (16:9 at 1920x1080; 9:16 at 540x960 with a pixel ratio of 2, the site's phone layout) and screenshots every frame of each scroll; renders the cards and the caption overlays; reads the tx receipts; writes `work/manifest.json` |
 | `assemble.mjs` | Runs ffmpeg: one H.264 segment per shot with its captions burned in, then the segments joined, with a silent audio track |
-| `vtt.mjs` | Writes a cut's two text tracks as WebVTT from `work/manifest.json`, for the landing's player: the captions of the voice-over, from `narration.json`, and the on-screen text, its burned-in captions ([On the landing](#on-the-landing)) |
+| `vtt.mjs` | Writes a cut's two text tracks as WebVTT from `work/manifest.json`, for the landing's player: the captions of the voice-over, from `narration.json`, and the on-screen text, its burned-in captions and the words of its title and end cards ([On the landing](#on-the-landing)) |
 | `captions.json` | Every caption. Each number in a caption is a `{placeholder}` |
 | `narration.json` | The voice-over, word for word, each line under the shot it is spoken over, with its times in that shot |
-| `txs.json` | The transactions of beats 5 to 7, by hash, and what each receipt must show |
+| `txs.json` | The transactions of beats 5 to 7, by hash, and what each receipt must show; beat 7's stand-ins and its cutoff ([Beat 7: the rule](#beat-7-the-rule)) |
 | `input/` | Where the owner drops the two Basescan clips; git ignores everything in it but its README |
 | `lib/` | The beat plan, the caption sources, the cards, the frame style and measures (`frame.mjs`), the tx decoder, the journal reader (`journal.mjs`, beat 7's reply), the ffmpeg argument builder and the WebVTT writer (`vtt.mjs`) |
 
@@ -119,7 +146,7 @@ any warning. git ignores `film/out/`. Options:
 | `--input <dir>` | `film/input` | Where the owner's clips are |
 | `--formats <list>` | `wide,tall` | `wide` is 16:9, `tall` is 9:16 |
 | `--site <url>` | `https://maatonbase.xyz` | The site to capture, for example a local `npm run dev` |
-| `--final` | off | Stops before capturing while any transaction of beats 5 to 7 has no hash, so a final cut never shows a PLACEHOLDER card |
+| `--final` | off | Stops before capturing while any transaction the cut would show has no hash, so a final cut never shows a PLACEHOLDER card. Beat 7's stand-ins are real transactions, so a cut with one renders |
 
 `node film/capture.mjs --work <dir>` and `node film/assemble.mjs --work <dir> --out <dir>` run the two halves alone,
 for example to assemble again without capturing again.
@@ -150,6 +177,7 @@ at render time from:
 | `reserve.*` | `RESERVE_CAP_BPS` in `contracts/script/QueueReserveCaps.s.sol` and the basket in `contracts/script/MaatConfig.sol` |
 | `ledger.*` | the live `/ledger` page's mandate panel, read by the capture once the panel shows the onchain mandate; a cell it cannot read, or one tagged `configured` (the panel could not read the vault), stops the render |
 | `ask.open` | the live `/ask` page, read by the capture on beat 7's `/ask` shot; set only while the page takes briefs |
+| `proof.*` | the live `/proof` page's counts of outside briefs and brief-driven Decisions, read by the capture on beat 8's `/proof` shot once the page has read them; a count that shows no number ("not read", "incomplete") stops the render |
 
 `web/test/film-captions.test.ts` fails on a digit typed into a caption, on a placeholder no source fills, and when a
 source no longer reads its file the way the test reads it. A change to one of those files flows into the next render.
@@ -193,8 +221,12 @@ and stops the render if a caption box would come within 16 px of the card's cont
    - `strangerBrief`: an outside wallet's `Brief` transaction to the inbox, once `deployments/README.md` records the
      `MaatInbox`. Pick a brief that `/proof` counts as an outside brief, and one that an intent adopted: Claude was
      persuaded, so the vault weighed it. `vaultAnswer`: the vault's Decision on that intent, the Decision `/ask` lists
-     under the brief. Beat 7 shows Maat's agent's reply between the two, from the published journal (below). A brief
-     Claude did not adopt has no verdict to show.
+     under the brief, on Base by Mon 7 Dec 2026 21:00 UTC ([Beat 7: the rule](#beat-7-the-rule)). Beat 7 shows Maat's
+     agent's reply between the two, from the published journal (below). A brief Claude did not adopt has no verdict
+     to show;
+   - `teamBrief` and `teamAnswer`: optional, the same pair for a brief from a `/proof` team wallet, shown only while
+     no outside pair is set, and labelled a team brief. Until either pair is set, beat 7 shows Maat's agent's own
+     allowed pair of Fri 27 Nov, whose hashes are set.
 4. **Render, review, upload.** Refresh the root README's "Tested, in numbers" table from a current CI run on `main`,
    run `node film/render.mjs`, watch both cuts, then upload the 16:9 cut to Loom (a free account) on Wed 9 Dec.
    Uploads are the owner's: nothing in this folder posts anything.
@@ -215,10 +247,11 @@ and stops the render if a caption box would come within 16 px of the card's cont
    `k = "probe"`, `brief-driven` when it adopts a brief, and `agent` for Maat's agent's own intent, each only from a
    direct `execute` call whose blob hashes to the Decision's `rationaleHash`. For a Brief it is `outside`, or `team`
    when a `/proof` team wallet or the vault's owner sent it. So a probe can never be shown as Claude's intent.
-3. Check the printed summary: `placeholders: none` once all five hashes are set, and each placeholder caption replaced
-   by the beat's own.
+3. Check the printed summary: `placeholders: none` (beats 5 and 6 have all three hashes, and beat 7 shows no
+   placeholder), and the `stand-ins` line, which says whether beat 7 shows a team brief or Maat's agent's own pair
+   instead of an outside brief.
 
-Once both of beat 7's hashes are set, the capture also reads the public `agent-journal` branch
+Once a pair of beat 7's brief hashes is set (an outside or a team brief), the capture also reads the public `agent-journal` branch
 (`https://raw.githubusercontent.com/duongnq2798/maat/agent-journal/journal/`, the files the site's `/ledger` reads),
 checks every line's hash chain as the browser verifier does, and takes the `brief` row that names the brief by its id,
 tx hash and log index. Its sanitized reply shows between the brief and the verdict, with its day file, line and row
@@ -254,10 +287,10 @@ The landing's film band, `#film` under the hero after "On the record" (`web/comp
 
 | File | What it is |
 | --- | --- |
-| `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,129,355 bytes |
+| `maat-film-720p.mp4` | The 16:9 cut at 1280x720: H.264 High, CRF 26, 30 fps, AAC 128 kbps 48 kHz stereo, its index at the front of the file (`+faststart`) so it starts before it has loaded; 5,160,458 bytes |
 | `maat-film-poster.webp` | The poster: the 9:16 cut's frame at 53.5 s, cropped to the tx card of Maat's agent's Thanksgiving Decision, its heading "Thanksgiving: MARKET_CLOSED from Maat's agent" and its rows down to "Refused · Market closed (MARKET_CLOSED)", at 1280x720; 51,962 bytes |
 | `maat-film.en.vtt` | The captions track: the voice-over's 16 lines from `narration.json`, in 19 cues at the cut's times, on the top line of the picture, written by `vtt.mjs` |
-| `maat-film.on-screen.en.vtt` | The on-screen text track: the cut's 18 burned-in captions, at the cut's times, written by `vtt.mjs` |
+| `maat-film.on-screen.en.vtt` | The on-screen text track: the cut's 18 burned-in captions and the words of its title and end cards, 20 cues at the cut's times, written by `vtt.mjs` |
 
 The player has `preload="none"` and no autoplay, so a visitor's browser fetches the poster on arrival and no byte of
 the cut before play, and nothing on the band loads from a third party (`checkExport` in `web/lib/check-out.ts` and
@@ -276,7 +309,8 @@ Both are off by default, and the browser fetches neither until a viewer turns on
   Success."), so the track carries those, at the times the voice says them. Each cue sits on the top line of the
   picture (`line:0`), so it never covers the captions burned in at the bottom.
 - **On-screen text** (`<track kind="descriptions">`, "English, on-screen text"): the burned-in captions as text, for
-  screen readers and search. A player draws no descriptions track, so turning captions on never draws the burned-in
+  screen readers and search, and the words of the title and end cards, which have no caption, the builder line among
+  them. A player draws no descriptions track, so turning captions on never draws the burned-in
   words a second time.
 
 The spec of 27 Nov asked for one captions track built from `captions.json`. That track gave a viewer who cannot hear
@@ -293,13 +327,24 @@ here.
 `FILM.youtubeUrl` in `web/content/film.ts` is null. Once the owner has uploaded the film to YouTube, set it to the
 video's URL, and the band shows a plain "Watch on YouTube" link under the player. The landing never embeds a player.
 
-The cut there today is the v1 cut of 27 Nov 2026 with beat 6 rendered again on 28 Nov: its tx shot (59.5 to 66.5 s)
-shows the two early-close probes of Fri 27 Nov from Base, both hashes set in `txs.json`, under the caption `early-tx`.
-Every other segment is the v1 file as `assemble.mjs` wrote it on 27 Nov, joined with the 28 Nov segment by the same
-concat step, and the sound is the v1 mix, unchanged, since the shot list is the same. Beat 7 still shows its labelled
-placeholders: no outside brief was on Base yet.
+The cut there today is the v1 cut of 27 Nov 2026 with two shots rendered again on 28 Nov, and one line voiced again:
 
-Only beat 6 was taken from the 28 Nov render because that render warned about beat 8: `/proof` now also counts the
+- **Beat 6's tx shot** (59.5 to 66.5 s) shows the two early-close probes of Fri 27 Nov from Base, both hashes set in
+  `txs.json`, under the caption `early-tx`.
+- **Beat 7's tx shot** (71.5 to 83 s) follows [beat 7's rule](#beat-7-the-rule): no outside brief was on Base, so it
+  shows Maat's agent's own allowed pair of Fri 27 Nov under the caption `brief-agent`, with `/proof`'s counts as the
+  render read them, 0 outside briefs and 0 brief-driven Decisions. The render that made it ran with `--final`.
+- **Line 10**, over beat 6's tx shot, said "The plan: ask the vault twice that day, once before the close and once
+  after." before the probes ran. It now says, in the past tense, "Two probes asked the vault that day: allowed before
+  the close, refused after.", voiced again on 28 Nov with ElevenLabs in the same voice, model and settings as the
+  other fifteen lines (77 characters, two takes; the second, whose speech-to-text read back the same words, is used).
+  The other fifteen lines, the score and the mix graph are unchanged; the mix was rebuilt with the new line, which
+  ends 1.36 s before its shot does.
+
+Every other segment is the v1 file as `assemble.mjs` wrote it on 27 Nov, joined with the two 28 Nov segments by the
+same concat step.
+
+Only those two shots were taken from the 28 Nov renders because they warned about beat 8: `/proof` now also counts the
 Decision lines, so its counts run lower on the page, and the `/proof` shot's caption would cover a row of them.
 Before the next full render, move that shot's scroll stop so the counts end above the caption band (`keepClear` in
 `lib/beats.mjs`).

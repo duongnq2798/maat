@@ -154,15 +154,26 @@ describe("the film's files in web/public/film", () => {
     expect(cues.at(-1)!.end).toBeLessThanOrEqual(TARGET_SECONDS);
     // The Thanksgiving line, said over the tx card of Maat's agent's Decision (51 to 56 s).
     expect(cues.find((c) => c.text === "On a market holiday, the vault refuses every trade.")).toMatchObject({ start: 51.4, end: 55.5 });
+    // The early-close line, said in the past tense over the two probes, which both landed on Fri 27 Nov (59.5 to 66.5 s).
+    expect(cues.find((c) => c.id === "voice-10-1")).toMatchObject({ start: 59.9, end: 65.5, text: "Two probes asked the vault that day: allowed before the close, refused after." });
+    expect(cues.filter((c) => /plan/i.test(c.text))).toEqual([]);
   });
 
   it("the on-screen text: each cue says the words of its caption in film/captions.json, in order and inside the cut", () => {
     const vtt = publicFile(FILM.onScreenText).toString("utf8");
     const cues = parseVtt(vtt);
     expect(vttProblems(cues, captions, TARGET_SECONDS)).toEqual([]);
-    // The cut's sixteen shots with a caption, two of them with two cues and one with three.
-    expect(cues).toHaveLength(18);
+    // The cut's sixteen shots with a caption, two of them with two cues and one with three, and the title and end
+    // cards, whose words the track carries while each is on screen.
+    expect(cues).toHaveLength(20);
     expect(cues.map((c) => c.id)).toContain("thanksgiving-tx");
+    expect(cues[0]).toMatchObject({ id: "card-title", start: 0, end: 6 });
+    expect(cues.at(-1)).toMatchObject({ id: "card-end", start: 93.5, end: 100 });
+    expect(cues.at(-1)!.text).toContain("Built by one developer with Claude Code.");
+    // Beat 7 shows Maat's agent's own allowed pair under its rule of 28 Nov 2026, with /proof's counts, never a
+    // placeholder (film/README.md, "Beat 7: the rule").
+    expect(cues.find((c) => c.id === "brief-agent")).toMatchObject({ start: 71.5, end: 83 });
+    expect(cues.filter((c) => /placeholder/i.test(`${c.id} ${c.text}`))).toEqual([]);
     // The cut shows the early-close probes of Fri 27 Nov from Base (film/txs.json sets both hashes), as the hero's
     // latest Decisions do, never their placeholder.
     expect(cues.find((c) => c.id === "early-tx")).toMatchObject({ start: 59.5, end: 66.5 });
