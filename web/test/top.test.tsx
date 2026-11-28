@@ -140,10 +140,10 @@ describe("hero", () => {
     // 2026-11-28); the words are the spec's.
     expect(steps.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
       ["1Maat's agent proposes a trade", "#how"],
-      ["2The vault checks 9 public rules", "#how"],
-      ["3Yes or no is recorded on Base", "#how"],
+      ["2The vault checks 9\u00a0public rules", "#how"],
+      ["3Yes or no is recorded on\u00a0Base", "#how"],
     ]);
-    expect(HERO_STEPS.map((s) => s.replace(/ /g, " "))).toEqual([
+    expect(HERO_STEPS.map((s) => s.replace(/\u00a0/g, " "))).toEqual([
       "Maat's agent proposes a trade",
       "The vault checks 9 public rules",
       "Yes or no is recorded on Base",
