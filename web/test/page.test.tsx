@@ -200,10 +200,21 @@ describe("landing page", () => {
     expect(within(section).getByText(/waits 24 hours/)).toBeInTheDocument();
   });
 
-  it("explains the treasury loop with fact-backed numbers", () => {
+  it("explains the treasury loop with fact-backed numbers and where each step stands", () => {
     setup();
-    expect(screen.getByText(/pay about one cent/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "One step is live." })).toBeInTheDocument();
     expect(screen.getByText(/rebalanced past a 5% drift/)).toBeInTheDocument();
+    // README "Status": x402 was dropped for this season. On Base mainnet the vault has recorded buys only:
+    // supply and borrow ran in fork tests, and no PAY_EXPENSE has been sent.
+    const labels = [...document.querySelectorAll("section[aria-labelledby=loop-title] li > span")].map((el) => el.textContent);
+    expect(labels).toEqual([
+      "01 · EARN · DROPPED",
+      "02 · BUY · LIVE",
+      "03 · SUPPLY · FORK ONLY",
+      "04 · BORROW · FORK ONLY",
+      "05 · PAY · NOT YET",
+    ]);
+    expect(screen.queryByText(/pays its own way/)).toBeNull();
   });
 
   it("closes with the CTA, disclaimer and tagline verbatim", () => {
