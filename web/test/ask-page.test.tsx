@@ -146,9 +146,11 @@ describe("the owner's switch: /ask opens only when it is on and the inbox and th
     const send = screen.getByRole("heading", { name: "Send a brief" });
     expect(notice.compareDocumentPosition(send) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(within(notice as HTMLElement).getByText(ASK_CLOSED_REASON)).toBeInTheDocument();
-    expect(ASK_CLOSED_REASON).toContain("agent-r2, reads no briefs");
-    expect(ASK_CLOSED_REASON).toContain("planned to open");
-    expect(ASK_CLOSED_REASON).toContain("after Sat 28 Nov 02:00 UTC");
+    expect(ASK_CLOSED_REASON).toContain("has run agent-r3, a release that reads briefs, since Sat 28 Nov 04:05 UTC");
+    expect(ASK_CLOSED_REASON).toContain("planned to open once the owner has checked how the agent handles briefs");
+    expect(ASK_CLOSED_REASON).toContain("with the brief evaluation and one team brief");
+    // The agent runs agent-r3 now: the reason names no older release and no restart still to come.
+    expect(ASK_CLOSED_REASON).not.toMatch(/agent-r2|reads no briefs|after the agent restarts/);
     // The rule's 24 hours ran out on 26 Nov: the reason states it as met, not as a condition still to come.
     expect(ASK_CLOSED_REASON).toContain("has been live since 25 Nov");
     expect(ASK_CLOSED_REASON).not.toMatch(/once the \/proof counting rule/);

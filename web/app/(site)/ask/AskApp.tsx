@@ -39,13 +39,14 @@ function Section({ id, title, lead, children }: { id: string; title: string; lea
 }
 
 /**
- * Why /ask is closed once the inbox is recorded: the running agent reads no briefs. A plan, not a promise: the owner
- * opens the page with content/ask-open.ts, in its own pull request, after the agent restarts on a release that reads
- * them. The other condition, the /proof counting rule live for 24 hours (inbox spec §5), is met: the rule last changed
- * on 25 Nov.
+ * Why /ask is closed once the inbox is recorded: Maat's agent has run agent-r3, a release that reads briefs, since it
+ * restarted on Sat 28 Nov at 04:05 UTC, and the page waits for the owner's check of how it handles them. A plan, not a
+ * promise: the owner opens the page with content/ask-open.ts, in its own pull request, after running the brief
+ * evaluation (npm run eval:briefs -- --call-claude, in agent/) and sending one team brief. The other condition, the
+ * /proof counting rule live for 24 hours (inbox spec §5), is met: the rule last changed on 25 Nov.
  */
 export const ASK_CLOSED_REASON =
-  "Closed on purpose: the release of Maat's agent that runs now, agent-r2, reads no briefs. /ask is planned to open after the agent restarts on a release that does, after Sat 28 Nov 02:00 UTC; the /proof counting rule has been live since 25 Nov.";
+  "Closed on purpose: Maat's agent has run agent-r3, a release that reads briefs, since Sat 28 Nov 04:05 UTC. /ask is planned to open once the owner has checked how the agent handles briefs, with the brief evaluation and one team brief; the /proof counting rule has been live since 25 Nov.";
 
 /**
  * What the page shows above "Send a brief" until it is open, before the inbox is recorded and after, until the owner's

@@ -4,7 +4,7 @@ description: "Configure and start the agent loop: dry-run and live modes, its se
 type: guide
 audience: [builder]
 status: fork-tested
-lastReviewed: 2026-11-27
+lastReviewed: 2026-11-28
 sources:
   - agent/README.md
   - agent/src/main.ts
@@ -438,7 +438,7 @@ To rehearse the probes before their instants, run [probe-fork.ts](/docs/referenc
 
 ## Briefs
 
-The agent reads [MaatInbox](/docs/guides/brief-the-agent) briefs only once the table in `deployments/README.md` records a `MaatInbox` address and its deploy transaction. No `agent/.env` setting turns them on. Until then the start line ends with `briefs=off`, the next line says why, and the agent reads no inbox log. With an inbox recorded, the start line ends with `briefs=on`, and each round, before it calls Claude, reads the inbox's `Brief` logs from where the last read stopped, the deploy block at first, up to the `safe` block, in windows of at most 9,000 blocks. A read that fails is journaled as an `error` that begins `briefs not read:`, and the round goes on without briefs. The table has recorded Maat's `MaatInbox` since 2026-11-27, so an agent built from `main` starts with `briefs=on`. The agent that runs on Maat's vault now, from the tag `agent-r2`, predates briefs: its start line has no `briefs=` field, and it reads no inbox log.
+The agent reads [MaatInbox](/docs/guides/brief-the-agent) briefs only once the table in `deployments/README.md` records a `MaatInbox` address and its deploy transaction. No `agent/.env` setting turns them on. Until then the start line ends with `briefs=off`, the next line says why, and the agent reads no inbox log. With an inbox recorded, the start line ends with `briefs=on`, and each round, before it calls Claude, reads the inbox's `Brief` logs from where the last read stopped, the deploy block at first, up to the `safe` block, in windows of at most 9,000 blocks. A read that fails is journaled as an `error` that begins `briefs not read:`, and the round goes on without briefs. The table has recorded Maat's `MaatInbox` since 2026-11-27, so the agent starts with `briefs=on`. Maat's agent has run on the vault from the tag `agent-r3`, the first release that reads briefs, since 2026-11-28.
 
 | Limit | Value | What happens at the limit |
 | --- | --- | --- |
