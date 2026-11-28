@@ -126,6 +126,21 @@ export function docsLinks(source: string): string[] {
 
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
+/**
+ * Every github.com or raw.githubusercontent.com link, fenced code included, whose owner is not `owner` and whose
+ * owner/repo is not in `cited`. A typo in the owner sends a reader to an account anyone could register.
+ */
+export function foreignGithubLinks(source: string, owner: string, cited: ReadonlySet<string>): Finding[] {
+  const re = /(?<![\w.-])(?:raw\.githubusercontent\.com|github\.com)\/([\w.-]+)(?:\/([\w.-]+))?/g;
+  return source.split("\n").flatMap((line, i) =>
+    [...line.matchAll(re)].flatMap((m) => {
+      const who = m[1] ?? "";
+      const repo = `${who}/${(m[2] ?? "").replace(/\.git$/, "")}`;
+      return who === owner || cited.has(repo) ? [] : [{ line: i + 1, text: m[0] }];
+    }),
+  );
+}
+
 /** Repo paths linked as `<repoUrl>/blob/main/<path>` or `/tree/main/<path>`, without any #L anchor. */
 export function repoPaths(source: string, repoUrl: string): string[] {
   return [...source.matchAll(new RegExp(`${escapeRegExp(repoUrl)}/(?:blob|tree)/main/([^)\\s"'#?]+)`, "g"))].map((m) => m[1] ?? "");
