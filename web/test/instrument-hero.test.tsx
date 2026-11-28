@@ -6,7 +6,6 @@ import { HeroNote, type RecordedNote } from "@/components/sections/HeroNote";
 import type { VaultStatus, VaultView } from "@/components/sections/VaultDecisions";
 import { RECORDED_ROWS } from "@/components/sections/vault-rows";
 import { FACTS } from "@/content/facts";
-import { FILM } from "@/content/film";
 import agentNote from "@/content/generated/agent-note.json";
 import { HERO_CTAS, HERO_DEFINITION } from "@/content/hero";
 import { etLabel } from "@/lib/chain/ledger";
@@ -66,8 +65,8 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
     expect(group.previousElementSibling).toHaveAttribute("data-live-strip");
   });
 
-  it("names the film CTA only while the landing has the film band, and How it works until then", () => {
-    expect(HERO_CTAS[0]).toEqual(FILM.onLanding ? { label: "Watch the film (1:40)", href: "#film" } : { label: "How it works", href: "#how" });
+  it("opens the film band with the first CTA and the simulator with the second", () => {
+    expect(HERO_CTAS[0]).toEqual({ label: "Watch the film (1:40)", href: "#film" });
     expect(HERO_CTAS[1]).toEqual({ label: "Try to make it say no", href: "#try" });
   });
 

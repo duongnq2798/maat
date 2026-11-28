@@ -4,7 +4,6 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import LedgerPage from "@/app/(site)/ledger/page";
 import { HowWeRead } from "@/components/ledger/HowWeRead";
 import { LedgerApp } from "@/components/ledger/LedgerApp";
-import { Ledger } from "@/components/sections/Ledger";
 import type { LedgerState } from "@/components/ledger/useLedger";
 import { formatInt } from "@/content/format";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
@@ -312,10 +311,15 @@ describe("/ledger when Base cannot be read", () => {
   });
 });
 
-describe("the landing's ledger section", () => {
-  it("links to the mainnet ledger page", () => {
-    render(<Ledger />);
-    expect(screen.getByRole("link", { name: "Open the mainnet ledger" })).toHaveAttribute("href", "/ledger");
+describe("the fork run's ledger", () => {
+  // Spec 2026-11-27, landing "explain in 10 seconds", section 3: the fork ledger leaves the landing (test/page.test.tsx)
+  // and stays here, under the mainnet ledger, with the fork badge every fork number carries.
+  it("is on /ledger, under the mainnet ledger, badged as the fork test of 5-7 Nov", () => {
+    render(<LedgerPage />);
+    const fork = document.getElementById("fork")!;
+    expect(within(fork).getByRole("heading", { level: 2 })).toHaveTextContent("The fork run");
+    expect(fork.querySelector('[data-badge="fork"]')).toHaveTextContent("fork · 5-7 Nov");
+    expect(within(fork).getByRole("region", { name: "Decision ledger" })).toBeInTheDocument();
   });
 });
 

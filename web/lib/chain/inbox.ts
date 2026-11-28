@@ -7,9 +7,9 @@ import type { CachedLog } from "./cache";
 import { SCAN_FLOOR_BLOCK } from "./config";
 import { decodeVaultLogs } from "./events";
 import { decisionTrails, toMainnetDecisions, type DecisionTrail, type MainnetDecision, type TxInput } from "./ledger";
-import type { LedgerClient } from "./load";
+import { confirmBriefsSnapshot, MAX_FAILED, readBriefsSnapshot, type LedgerClient, type TakenSnapshot } from "./load";
 import { COMMIT_RE } from "./rationale";
-import { scanLogs } from "./scan";
+import { scanLogs, type BlockRange } from "./scan";
 import { shortAddress } from "./tokens";
 
 // MaatInbox (contracts/src/MaatInbox.sol) as /ask reads and calls it: docs/superpowers/specs/2026-11-25-maat-inbox-design.md.
@@ -116,6 +116,11 @@ export interface BriefRead {
   /** False when a chunk of the log scan failed, so briefs may be missing. */
   complete: boolean;
   head: bigint;
+  /**
+   * The committed Brief snapshot this read took the logs of blocks [from, to] from, once Base gave its block N the hash
+   * it records and each of those logs' receipts held it; null when every block was read from Base.
+   */
+  fromSnapshot: { block: bigint; from: bigint; to: bigint } | null;
 }
 
 async function deployBlock(client: LedgerClient, deployTx: Hash | null): Promise<bigint> {
@@ -139,27 +144,57 @@ function toBrief(log: { blockNumber: bigint | null; transactionHash: Hash | null
   }
 }
 
+/** The parts of [from, to] outside `covered`, newest first. */
+function uncovered(from: bigint, to: bigint, covered: BlockRange | null): BlockRange[] {
+  if (!covered || covered.to < from || covered.from > to) return from <= to ? [{ from, to }] : [];
+  const out: BlockRange[] = [];
+  if (covered.to < to) out.push({ from: covered.to + 1n, to });
+  if (covered.from > from) out.push({ from, to: covered.from - 1n });
+  return out;
+}
+
 /**
  * Every Brief the inbox emitted, from its deploy block (or SCAN_FLOOR_BLOCK when the deploy tx is unknown) to `head`,
  * the head block when it is not given, `concurrency` chunks at a time (scanLogs' default when it is not given).
+ *
+ * `snapshot` is the committed Brief snapshot (/data/briefs-snapshot.json, parsed JSON, or a promise of it). Once Base
+ * gives its block N the hash the file records, N is not above `head`, and the receipt of each log below
+ * N - SNAPSHOT_REORG_WINDOW holds that log of the inbox, the read takes those logs from the file and scans only the
+ * blocks the file does not stand for: from N minus the window to the head, newest first. Without one, or with one that
+ * fails that check, it scans from the deploy block. So the file can leave a brief out but cannot add or change one.
  */
 export async function readBriefs(
   client: LedgerClient,
-  opts: { inbox: Address; deployTx: Hash | null; head?: bigint; signal?: AbortSignal; concurrency?: number },
+  opts: { inbox: Address; deployTx: Hash | null; head?: bigint; signal?: AbortSignal; concurrency?: number; snapshot?: unknown },
 ): Promise<BriefRead> {
-  const head = opts.head ?? (await client.getBlockNumber());
-  const from = await deployBlock(client, opts.deployTx);
-  const result = await scanLogs({
-    from,
-    to: head,
-    signal: opts.signal,
-    concurrency: opts.concurrency,
-    maxFailed: 3,
-    getLogs: async (r) => (await client.getLogs({ address: opts.inbox, event: briefEvent, fromBlock: r.from, toBlock: r.to })).flatMap((l) => toBrief(l as never) ?? []),
-  });
-  const byKey = new Map(result.logs.map((b) => [`${b.txHash.toLowerCase()}:${b.logIndex}`, b]));
+  const file = readBriefsSnapshot(opts.snapshot, opts.inbox);
+  // The file is checked while the head and the deploy block are read.
+  const confirmed = file.then((s) => (s ? confirmBriefsSnapshot(client, opts.inbox, s) : null)).catch(() => null);
+  const [head, from, taken] = await Promise.all([opts.head ?? client.getBlockNumber(), deployBlock(client, opts.deployTx), confirmed]);
+  const seed: TakenSnapshot | null = taken && taken.block <= head ? taken : null;
+
+  const found: Brief[] = seed ? seed.logs.flatMap((l) => toBrief({ ...l, blockNumber: BigInt(l.blockNumber) }) ?? []) : [];
+  let failed = 0;
+  let stopped = false;
+  for (const gap of uncovered(from, head, seed && { from: seed.from, to: seed.to })) {
+    if (failed >= MAX_FAILED) {
+      stopped = true;
+      break;
+    }
+    const result = await scanLogs({
+      ...gap,
+      signal: opts.signal,
+      concurrency: opts.concurrency,
+      maxFailed: MAX_FAILED - failed,
+      getLogs: async (r) => (await client.getLogs({ address: opts.inbox, event: briefEvent, fromBlock: r.from, toBlock: r.to })).flatMap((l) => toBrief(l as never) ?? []),
+    });
+    found.push(...result.logs);
+    failed += result.failed.length;
+    stopped ||= result.stopped;
+  }
+  const byKey = new Map(found.map((b) => [`${b.txHash.toLowerCase()}:${b.logIndex}`, b]));
   const briefs = [...byKey.values()].sort((a, b) => a.id - b.id);
-  return { briefs, complete: result.failed.length === 0 && !result.stopped, head };
+  return { briefs, complete: failed === 0 && !stopped, head, fromSnapshot: seed && { block: seed.block, from: seed.from, to: seed.to } };
 }
 
 export interface ReceiptWait {

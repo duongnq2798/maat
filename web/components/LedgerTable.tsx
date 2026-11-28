@@ -62,7 +62,10 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
         </div>
       </div>
 
-      <div role="region" aria-label="Decision ledger" tabIndex={0} data-scroll-x className="card scroll-x-cue overflow-x-auto">
+      {/* From 640 px, the table. Below it a table of 820 px would hide its DECISION column off the screen, so a phone
+          reads one card per decision instead, its verdict whole on screen (spec 2026-11-27, landing "explain in 10
+          seconds", section 4). */}
+      <div role="region" aria-label="Decision ledger" tabIndex={0} data-scroll-x className="card scroll-x-cue hidden overflow-x-auto sm:block">
         <table className="w-full min-w-[820px] table-fixed border-collapse text-left">
           <colgroup>
             <col className="w-[150px]" />
@@ -114,11 +117,39 @@ export function LedgerTable({ rows, heading }: { rows: readonly DecisionRow[]; h
         </table>
       </div>
 
+      <ol data-ledger-cards="" aria-label="Decisions" className="m-0 flex list-none flex-col gap-3 p-0 sm:hidden">
+        {shown.length === 0 ? (
+          <li className="card px-5 py-4 text-sm text-ink-2">{EMPTY[filter]}</li>
+        ) : (
+          shown.map((r) => (
+            <li key={rowKey(r)} data-allowed={r.allowed} className="card flex flex-col gap-2.5 p-4">
+              <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                <span className="text-base font-medium">{intentLabel(r)}</span>
+                <span className="font-mono text-xs text-ink-2">{r.timeLabel} ET</span>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span
+                  data-card-verdict=""
+                  className={`inline-block rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
+                    r.allowed ? "bg-accent-tint text-accent" : "bg-refuse-tint text-refuse"
+                  }`}
+                >
+                  {decisionLabel(r)}
+                </span>
+                <code className="font-mono text-[11px] text-ink-2">{r.reason}</code>
+              </div>
+              {noteOf(r) ? <p className="m-0 text-sm leading-normal text-ink-2">{noteOf(r)}</p> : null}
+              <span className="font-mono text-xs text-ink-2">gas used {gasLabel(r)}</span>
+            </li>
+          ))
+        )}
+      </ol>
+
       {fork ? (
         <p className="m-0 font-mono text-xs text-ink-2">
           Recorded by the agent loop on a fork of Base mainnet at block {formatInt(fork.block)}, against the real B20
           tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault&apos;s mainnet decisions, each linked to Basescan,
-          are on the mainnet ledger.
+          are in the mainnet ledger above.
         </p>
       ) : null}
     </>

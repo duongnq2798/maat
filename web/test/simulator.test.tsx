@@ -300,9 +300,10 @@ describe("Simulator", () => {
     if (!shown) throw new Error("no Now note");
     expect(shown.tagName).toBe("P");
     expect(shown).toHaveTextContent(
-      `Now sets the time only. The rows tagged fork value hold Base block ${formatInt(FACTS.forkBlock.value)} (${dayLabel(FACTS.forkDay.value)}, ${FACTS.forkTimeEt.value} ET), not now. Read the live values on Right now on Base`,
+      `Now sets the time only. The rows tagged fork value hold what the fork test of 5-7 Nov read at Base block ${formatInt(FACTS.forkBlock.value)} (${dayLabel(FACTS.forkDay.value)}, ${FACTS.forkTimeEt.value} ET), not now. Read the live values on Right now on Base`,
     );
-    expect(shown).toHaveTextContent("Base block 53,551,627 (Thu 5 Nov, 10:30 ET), not now.");
+    // The badge's days, 5-7 Nov, are the fork test's; the note names the one its values were read on.
+    expect(shown).toHaveTextContent("the fork test of 5-7 Nov read at Base block 53,551,627 (Thu 5 Nov, 10:30 ET), not now.");
     expect(within(shown).getByRole("link", { name: "Read the live values on Right now on Base" })).toHaveAttribute("href", "/now");
     expect(shown).not.toHaveTextContent(/safe/i);
     // Under the checks, above the verdict box, and outside the one live region.
@@ -313,12 +314,13 @@ describe("Simulator", () => {
     expect(status).not.toContainElement(shown);
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(fixedRows()).toBeGreaterThan(0);
-    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork value"));
+    // Each fixed row carries the fork badge of spec 2026-11-27 section 3; under Now its first word says it is a value.
+    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork value · 5-7 Nov"));
 
     await ui.user.click(ui.button("Thu 5 Nov · 10:30"));
     expect(note()).toBeNull();
     expect(fixedRows()).toBeGreaterThan(0);
-    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork"));
+    expect(forkTags()).toEqual(Array(fixedRows()).fill("fork · 5-7 Nov"));
   });
 
   it("drops the Now note once the time moves off the clock's minute", async () => {
@@ -330,7 +332,7 @@ describe("Simulator", () => {
     fireEvent.change(screen.getByLabelText("Time"), { target: { value: "901" } });
     expect(ui.button("Now")).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByText(/^Now sets the time only\./)).toBeNull();
-    expect([...document.querySelectorAll("[data-fork-tag]")].every((t) => t.textContent === "fork")).toBe(true);
+    expect([...document.querySelectorAll("[data-fork-tag]")].every((t) => t.textContent === "fork · 5-7 Nov")).toBe(true);
   });
 });
 

@@ -6,6 +6,7 @@ import { LedgerApp } from "@/components/ledger/LedgerApp";
 import { VerifyByHand, type VerifyTargets } from "@/components/ledger/VerifyByHand";
 import { Footer } from "@/components/sections/Footer";
 import { Nav } from "@/components/sections/Nav";
+import { DataBadge } from "@/components/ui/DataBadge";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { getDecisions } from "@/content/decisions";
 import { pageOgImage } from "@/content/page-cards";
@@ -52,8 +53,10 @@ export default function LedgerPage() {
             <LedgerTable
               rows={getDecisions()}
               heading={
-                <div className="max-w-[720px]">
+                <div className="flex max-w-[720px] flex-col items-start gap-3">
                   <SectionHeading id="fork-title" eyebrow="Before mainnet" title="The fork run" />
+                  {/* The fork badge the landing puts on every number of this run (spec 2026-11-27 section 3). */}
+                  <DataBadge kind="fork" />
                 </div>
               }
             />

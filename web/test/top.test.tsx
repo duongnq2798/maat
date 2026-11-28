@@ -5,7 +5,6 @@ import { BuiltOn } from "@/components/sections/BuiltOn";
 import { Hero } from "@/components/sections/Hero";
 import { Nav } from "@/components/sections/Nav";
 import { ASK_OPEN } from "@/content/ask-open";
-import { FILM } from "@/content/film";
 import { HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 
@@ -122,10 +121,10 @@ describe("hero", () => {
     expect(stat("CHECKS PER TRADE")).toBe("9");
     expect(stat("TYPED REFUSALS")).toBe("19");
     expect(stat("RULE TIMELOCK")).toBe("24h");
-    // The film CTA shows only while the landing has the film band; until then the first CTA opens How it works.
+    // Spec 2026-11-27 section 1: the film first (its band is directly under the hero, section 2), then the simulator.
     const ctas = [...document.querySelectorAll<HTMLAnchorElement>("[data-hero-cta]")].map((a) => [a.textContent, a.getAttribute("href")]);
     expect(ctas).toEqual([
-      FILM.onLanding ? ["Watch the film (1:40)", "#film"] : ["How it works", "#how"],
+      ["Watch the film (1:40)", "#film"],
       ["Try to make it say no", "#try"],
     ]);
     expect(screen.queryByRole("link", { name: "See the vault's last decision" })).toBeNull();
@@ -134,7 +133,8 @@ describe("hero", () => {
     expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
     // The engine card opens on the mainnet vault; the fork replay is the other tab, its moments in the hidden panel.
     expect(screen.getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Fork replay" })).toHaveAttribute("aria-selected", "false");
+    // Spec 2026-11-27 section 3: the replay's tab says when it ran and what it was.
+    expect(screen.getByRole("tab", { name: "Before mainnet (fork test)" })).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("group", { name: "Choose a moment", hidden: true })).not.toBeVisible();
     expect(document.getElementById("top")).not.toBeNull();
   });

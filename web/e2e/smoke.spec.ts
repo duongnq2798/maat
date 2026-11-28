@@ -11,10 +11,10 @@ test.beforeEach(async ({ page }) => {
 
 /**
  * The hero's engine card opens on the mainnet vault; the scripted fork run, with its moment toggle and its verdict
- * window, is the "Fork replay" tab.
+ * window, is the "Before mainnet (fork test)" tab (spec 2026-11-27 section 3).
  */
 async function openForkReplay(page: Page) {
-  const tab = page.locator("#top").getByRole("tab", { name: "Fork replay" });
+  const tab = page.locator("#top").getByRole("tab", { name: "Before mainnet (fork test)" });
   await tab.click();
   await expect(tab).toHaveAttribute("aria-selected", "true");
 }
@@ -158,35 +158,92 @@ for (const width of [375, 1440]) {
   });
 }
 
-test("the ledger filters", async ({ page }) => {
-  await page.goto("/#ledger");
-  const rows = page.getByRole("table").locator("tbody tr");
+// The fork run's ledger left the landing for /ledger, under the mainnet ledger (spec 2026-11-27 section 3).
+test("the fork ledger filters, on /ledger", async ({ page }) => {
+  await page.goto("/ledger#fork");
+  const fork = page.locator("#fork");
+  const rows = fork.getByRole("table").locator("tbody tr");
   await expect(rows).toHaveCount(4);
-  await page.getByRole("button", { name: "Refused", exact: true }).click();
+  await fork.getByRole("button", { name: "Refused", exact: true }).click();
   await expect(rows).toHaveCount(1);
   await expect(rows.first()).toContainText("Refused · Market closed");
   await expect(rows.first().locator("code")).toHaveText("MARKET_CLOSED");
-  await page.getByRole("button", { name: "Allowed", exact: true }).click();
+  await fork.getByRole("button", { name: "Allowed", exact: true }).click();
   await expect(rows).toHaveCount(3);
 });
 
-test("the Refusals section fills only the recorded refusal's label in red", async ({ page }) => {
+// Spec 2026-11-27 section 3: the five groups show their plain labels by default, and "Show all 19" opens the codes;
+// MARKET_CLOSED, the refusal the vault recorded, is the one label filled in red in both views.
+test("the Refusals section fills only the recorded refusal's label in red, in the groups and in all 19", async ({ page }) => {
   await page.goto("/");
-  const hot = page.locator('#reasons li[data-hot] [data-reason-tag="MARKET_CLOSED"]');
+  const section = page.locator("#reasons");
+  const chip = section.locator('li[data-label][data-hot="true"]');
+  await expect(chip).toHaveText("Market closed");
+  await expect(chip).toBeVisible();
+  // --color-refuse #C2410C, white text on it.
+  await expect(chip).toHaveCSS("background-color", "rgb(194, 65, 12)");
+  await expect(chip).toHaveCSS("color", "rgb(255, 255, 255)");
+  await expect(section.locator('li[data-label="FEED_STALE"]')).not.toHaveCSS("background-color", "rgb(194, 65, 12)");
+  await expect(section.locator("li[data-code]").first()).toBeHidden();
+
+  await section.getByRole("button", { name: "Show all 19" }).click();
+  await expect(section.locator("li[data-code]")).toHaveCount(19);
+  for (const li of await section.locator("li[data-code]").all()) await expect(li).toBeVisible();
+  await expect(chip).toBeHidden();
+  const hot = section.locator('li[data-hot] [data-reason-tag="MARKET_CLOSED"]');
   const label = hot.locator("> :first-child");
   await expect(label).toHaveText("Market closed");
-  // --color-refuse #C2410C, white text on it.
   await expect(label).toHaveCSS("background-color", "rgb(194, 65, 12)");
   await expect(label).toHaveCSS("color", "rgb(255, 255, 255)");
   // The code beside it stays a muted tag: --color-ink-2 #5A6170, nothing filled.
   await expect(hot.locator("> :last-child")).toHaveCSS("color", "rgb(90, 97, 112)");
   await expect(hot.locator("> :last-child")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   // Any other refusal's label has no fill.
-  await expect(page.locator('#reasons li[data-code="FEED_STALE"] [data-reason-tag] > :first-child')).toHaveCSS(
+  await expect(section.locator('li[data-code="FEED_STALE"] [data-reason-tag] > :first-child')).toHaveCSS(
     "background-color",
     "rgba(0, 0, 0, 0)",
   );
+  await section.getByRole("button", { name: "Show the groups only" }).click();
+  await expect(section.locator("li[data-code]").first()).toBeHidden();
+  await expect(chip).toBeVisible();
+  // Closing the long list keeps its toggle on screen, so the reader does not lose their place.
+  await expect(section.getByRole("button", { name: "Show all 19" })).toBeInViewport();
 });
+
+// On a phone "Show all 19" opens the codes where the reader is (review of PR #116): its toggle sits above the groups,
+// and tapped from low on the screen it moves to the top, so the toggle stays on screen and MARKET_CLOSED, the first
+// code, shows under it, above the thumb bar. Tapped from the middle of the screen, nothing needs to move.
+for (const [where, at] of [
+  ["the middle", 0.5],
+  ["low on the screen", 0.88],
+] as const) {
+  test(`at 390 px Show all 19, tapped from ${where}, opens the codes on screen from MARKET_CLOSED down`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/");
+    await page.evaluate(() => document.fonts.ready);
+    const section = page.locator("#reasons");
+    const open = section.getByRole("button", { name: "Show all 19" });
+    await open.evaluate((el, at) => {
+      const box = el.getBoundingClientRect();
+      window.scrollBy({ top: box.top + box.height / 2 - window.innerHeight * at, behavior: "instant" });
+    }, at);
+    await open.click();
+    const close = section.getByRole("button", { name: "Show the groups only" });
+    await expect(close).toHaveAttribute("aria-expanded", "true");
+    await expect(close).toBeInViewport({ ratio: 1 });
+    const code = section.locator('li[data-code="MARKET_CLOSED"]');
+    await expect(code).toBeInViewport({ ratio: 1 });
+    // Whole above the thumb bar, once any scroll has settled.
+    await expect
+      .poll(() =>
+        code.evaluate((el) => {
+          const bar = document.querySelector('[data-thumb-bar="shown"]');
+          return el.getBoundingClientRect().bottom <= (bar ? bar.getBoundingClientRect().top : window.innerHeight);
+        }),
+      )
+      .toBe(true);
+  });
+}
 
 test("reduced motion shows the final state at once", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -204,8 +261,8 @@ test("reduced motion shows the final state at once", async ({ page }) => {
 
 // The same check as e2e/docs-a11y.spec.ts, on the landing. The landing has one theme (no dark variant), so it runs
 // once. Its default state holds the vault card's recorded Decisions and the simulator's allowed verdict on accent
-// (verdict), the problem cards (refuse) and the Refusals list (neutral), and the ledger's code tags (`text-ink-2` on
-// white, components/LedgerTable.tsx); the hero's fork replay adds its refused verdict on ink.
+// (verdict), the problem cards (refuse) with their fork badges, the simulator's badges and the Refusals groups; the
+// hero's fork replay adds its refused verdict on ink and its fork badge, and "Show all 19" the nineteen codes.
 test("the landing has no serious or critical axe violations", async ({ page }) => {
   // Reduced motion shows the hero's intro in its final state at once, so axe never measures a row mid-fade.
   await page.emulateMedia({ reducedMotion: "reduce" });
@@ -216,14 +273,17 @@ test("the landing has no serious or critical axe violations", async ({ page }) =
   const { violations } = await new AxeBuilder({ page }).analyze();
   await openForkReplay(page);
   const replay = await new AxeBuilder({ page }).include("#top").analyze();
-  const blocking = [...violations, ...replay.violations]
+  await page.locator("#reasons").getByRole("button", { name: "Show all 19" }).click();
+  await expect(page.locator('#reasons li[data-code="MARKET_CLOSED"]')).toBeVisible();
+  const refusals = await new AxeBuilder({ page }).include("#reasons").analyze();
+  const blocking = [...violations, ...replay.violations, ...refusals.violations]
     .filter((v) => v.impact === "serious" || v.impact === "critical")
     .map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")).slice(0, 5) }));
   expect(blocking).toEqual([]);
 });
 
 // On a phone every label must wrap inside its own box: the default page holds all nineteen refusal labels in the
-// Refusals list, the three problem cards, the hero and simulator verdicts and the decoded event. The page never scrolls
+// Refusals groups, the three problem cards and their badges, the hero and simulator verdicts and the decoded event. The page never scrolls
 // sideways, the simulator's verdict tag stays flush right, and the decoded reason's "//" stays on the line of the label
 // after it. The problem cards and the hero verdict have their own tests at this width above.
 test("at 375 px the landing does not scroll sideways, and the simulator verdict and the decoded note stay whole", async ({

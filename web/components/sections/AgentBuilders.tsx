@@ -21,15 +21,15 @@ const CHECKS = [
 ] as const;
 
 /**
- * For agent builders: the market-guard skill and its two chain checks. It is the last section above the footer, so it
- * ends on the footer's own top padding rather than a section's full one, and no empty band opens above "Watch it say
- * no." (spec 2026-11-27 section 4; e2e/landing-mainnet.spec.ts bounds the gap).
+ * For agent builders: the market-guard skill and its two chain checks. It follows How it works (spec 2026-11-27,
+ * landing "explain in 10 seconds", section 3), so a builder reads the reuse story before the simulator and the
+ * reference; the rule above it is How it works' own bottom border.
  */
 export function AgentBuilders() {
   const refusals = numberWord(FACTS.refusalCount.value).toLowerCase();
   return (
-    <section id="agents" aria-labelledby="agents-title" className="border-t border-line">
-      <div className="wrap flex flex-col gap-10 pb-14 pt-20 md:pb-16 md:pt-32">
+    <section id="agents" aria-labelledby="agents-title">
+      <div className="wrap flex flex-col gap-10 py-20 md:py-32">
         <SectionHeading
           id="agents-title"
           layout="split"
@@ -51,9 +51,10 @@ export function AgentBuilders() {
             Read /skill.md
             <span aria-hidden="true"> →</span>
           </a>
+          {/* The Refusals section comes after this one, below the simulator (spec 2026-11-27 section 3). */}
           <a href="#reasons">
             See the {refusals} refusals
-            <span aria-hidden="true"> ↑</span>
+            <span aria-hidden="true"> ↓</span>
           </a>
           <a href={`${SITE.repoUrl}/tree/main/skills/${SKILL}`}>
             The skill on GitHub

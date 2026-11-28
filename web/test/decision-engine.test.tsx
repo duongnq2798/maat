@@ -30,7 +30,8 @@ describe("DecisionEngine", () => {
     expect(ui.verdict().firstElementChild).toHaveAttribute("data-reason", "MARKET_CLOSED");
     // lib/check-out.ts finds this verdict in the exported HTML by this markup: data-verdict, then data-reason, on the first child.
     expect(ui.verdict().outerHTML).toMatch(/role="status"[^>]*><div[^>]*\sdata-verdict="refused"[^>]*\sdata-reason="MARKET_CLOSED"/);
-    expect(screen.getByText("replay · Base fork · block 53,551,627")).toBeInTheDocument();
+    // Spec 2026-11-27 section 3: the replay carries the fork badge, with the block the test forked Base at.
+    expect(screen.getByText("fork · 5-7 Nov · block 53,551,627")).toHaveAttribute("data-badge", "fork");
     expect(screen.getByText("INTENT · SCRIPTED FORK RUN")).toBeInTheDocument();
   });
 

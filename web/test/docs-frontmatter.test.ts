@@ -66,3 +66,22 @@ describe("headerFrame", () => {
     expect(frames.filter((f) => f.frame?.lastReviewed === undefined).map((f) => f.slug)).toEqual(["index"]);
   });
 });
+
+describe("the Live on mainnet label", () => {
+  it("is on exactly the pages the status page's table names for it: that page and every page it links in the row", () => {
+    const pages = docsPages();
+    const slugs = new Set(pages.map((p) => p.slug));
+    const status = pages.find((p) => p.slug === "get-started/status")?.source ?? "";
+    const row = status.split("\n").find((l) => l.startsWith('| <StatusBadge status="live" /> |'));
+    expect(row).toBeDefined();
+    // The row's cells: the label, its meaning, and Today, which says "this page" and links every other page.
+    const today = (row ?? "").split("|")[3] ?? "";
+    expect(today).toContain("this page");
+    const paths = [...today.matchAll(/\]\(\/docs\/([a-z0-9/-]+)\)/g)].map((m) => m[1] ?? "");
+    const linked = paths.map((path) => (slugs.has(path) ? path : `${path}/index`));
+    const named = ["get-started/status", ...linked].sort();
+    const labeled = pages.filter((p) => (parse(frontmatterOf(p.source)) as { status: DocStatus }).status === "live").map((p) => p.slug);
+    expect(linked.length).toBeGreaterThan(0);
+    expect([...labeled].sort()).toEqual(named);
+  });
+});

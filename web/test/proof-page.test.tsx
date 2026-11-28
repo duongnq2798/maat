@@ -15,6 +15,7 @@ import { PROOF_STOPS } from "@/content/proof-stops";
 import { PROOF_TEAM } from "@/content/proof-team";
 import { memoryStorage, saveCache } from "@/lib/chain/cache";
 import { inboxDeployment } from "@/lib/chain/inbox";
+import { takeBriefsSnapshot } from "@/lib/chain/load";
 import { docsData } from "@/lib/docs/generated";
 import { answer, decisionLog, executorSetLog, newRpcLog, plainSends, proofChainClient, vaultSnapshot, type ProofChain } from "./helpers/fake-proof-chain";
 
@@ -429,6 +430,41 @@ describe("/proof with a MaatInbox recorded", () => {
       render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client: proofChainClient(failing), fetchConfig: never, fetchSnapshot: async () => snapshot, storage: null }} />);
       await waitFor(() => expect(screen.getByText(/The briefs could not be read/)).toBeInTheDocument(), { timeout: 15_000 });
       for (const key of BRIEF_LINES) expect(value(key)).not.toMatch(/^\d/);
+    });
+  });
+
+  describe("with the Brief logs from the committed Brief snapshot", () => {
+    const N = DEPLOY + 900n;
+    /** The Brief snapshot npm run snapshot would write for CHAIN at block N, taken by the script's own code. */
+    const briefsFile = async () => {
+      const client = proofChainClient(CHAIN);
+      const at = await client.getBlock({ blockNumber: N });
+      return takeBriefsSnapshot({ client, inbox: INBOX, deployTx: DEPLOY_TX, block: { number: N, hash: at.hash } });
+    };
+    const inboxScans = (seen: { logRanges: { from: bigint; address: string }[] }) => seen.logRanges.filter((r) => r.address === INBOX.toLowerCase());
+
+    it("takes the Brief logs below the file's window once Base holds each one, scans above it, counts the same, and says so", async () => {
+      const file = await briefsFile();
+      expect(file.logs).toHaveLength(4);
+      const client = proofChainClient(CHAIN);
+      render(<ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchBriefsSnapshot: async () => file, storage: null }} />);
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(value("outside-briefs")).toBe("3");
+      expect(document.querySelector("[data-proof-briefs-snapshot]")).toHaveTextContent(
+        "The Brief logs to block 62,000,749 are from the committed Brief snapshot of block 62,000,900: Base gave that block the same hash, and each log's transaction receipt holds it. The rest were read from Base.",
+      );
+      expect(inboxScans(client.seen).map((r) => r.from)).toEqual([N - 150n]);
+    });
+
+    it("reads the Brief logs from the inbox's deploy block, and says nothing of the file, when its fetch fails", async () => {
+      const client = proofChainClient(CHAIN);
+      render(
+        <ProofApp initial={proofConfig(ROWS(true))} deps={{ client, fetchConfig: never, fetchBriefsSnapshot: async () => Promise.reject(new Error("offline")), storage: null }} />,
+      );
+      await waitFor(() => expect(document.querySelector('[data-proof-state="read"]')).not.toBeNull(), { timeout: 15_000 });
+      expect(value("outside-briefs")).toBe("3");
+      expect(document.querySelector("[data-proof-briefs-snapshot]")).toBeNull();
+      expect(inboxScans(client.seen).map((r) => r.from)).toEqual([DEPLOY]);
     });
   });
 

@@ -290,7 +290,7 @@ describe("the hero's engine card", () => {
     const tabs = within(screen.getByRole("tablist", { name: "Decision engine" })).getAllByRole("tab");
     expect(tabs.map((t) => [t.textContent, t.getAttribute("aria-selected")])).toEqual([
       ["Base mainnet", "true"],
-      ["Fork replay", "false"],
+      ["Before mainnet (fork test)", "false"],
     ]);
     const mainnet = document.getElementById("engine-panel-mainnet")!;
     const fork = document.getElementById("engine-panel-fork")!;
