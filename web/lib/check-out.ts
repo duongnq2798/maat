@@ -63,6 +63,23 @@ export function checkExport(html: string): string[] {
     need((src ?? "").startsWith("/_next/"), `third-party script: ${src}`);
   }
   need(!/fonts\.(googleapis|gstatic)\.com/.test(html), "the page loads Google Fonts at runtime");
+
+  // The film band (spec 2026-11-27 section 2): the site serves the cut, its poster and its captions itself, and the
+  // browser fetches no byte of the cut before the visitor presses play. An embed would load a third party on arrival.
+  // Attribute names are matched in any case: React writes some in camelCase (playsInline=""), and HTML reads them so.
+  const media = [...html.matchAll(/<(video|audio|source|track)\b[^>]*>/gi)];
+  const videos = media.filter(([, tag]) => tag?.toLowerCase() === "video").map(([el]) => el);
+  need(videos.length > 0, "the film band's <video> is missing");
+  for (const video of videos) {
+    need(/\spreload="none"/i.test(video), `a <video> without preload="none" loads the film before play: ${video.slice(0, 80)}`);
+    need(!/\sautoplay\b/i.test(video), `a <video> plays on its own: ${video.slice(0, 80)}`);
+  }
+  for (const [el] of media) {
+    for (const [, attr, url] of el.matchAll(/\s(src|poster)="([^"]+)"/gi)) {
+      need(/^\/(?!\/)/.test(url ?? ""), `a media ${attr} loads from outside the site: ${url}`);
+    }
+  }
+  need(!/<(?:iframe|embed|object)\b/i.test(html), "the page embeds an iframe, embed or object, which loads before a click");
   return problems;
 }
 
@@ -451,10 +468,12 @@ export function docsLocalhostUrls(mdx: Iterable<string>): Set<string> {
  * Gzipped bytes the search index may take. The budget was set at 760,000, 691,009 plus about 10%. A local build of the
  * merge that added the docs on the invariant suite, the malformed-ABI tests and the calendar vectors measured 773,483,
  * so it was raised to that plus about 10%. The CI build of the branch that makes the agent read its Claude key from
- * agent/.env measured 850,415, so it is now that plus about 10%. A bigger index is a choice to make here, not an
- * accident: every reader downloads it before their first result, often on a phone.
+ * agent/.env measured 850,415, so it was raised to 935,000. The CI build of the branch that adds the Static analysis
+ * page, whose per-finding verdict tables are meant to be found by search, measured 951,985 at a405b2f against 920,790
+ * on main before it, so it is now that plus about 10%. A bigger index is a choice to make here, not an accident: every
+ * reader downloads it before their first result, often on a phone.
  */
-export const SEARCH_INDEX_GZIP_BUDGET = 935_000;
+export const SEARCH_INDEX_GZIP_BUDGET = 1_047_000;
 
 /**
  * Problems with the exported search index (out/api/search.json): over its gzipped budget, empty, or with a result

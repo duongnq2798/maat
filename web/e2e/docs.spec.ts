@@ -40,6 +40,7 @@ const PAGES: string[] = [
   "/docs/security/threat-model",
   "/docs/security/not-claimed",
   "/docs/security/testing",
+  "/docs/security/static-analysis",
   "/docs/security/report-a-vulnerability",
   "/docs/help/troubleshooting",
   "/docs/help/changelog",

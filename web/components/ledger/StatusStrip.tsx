@@ -61,6 +61,25 @@ function blocksRead(scan: LedgerSnapshot["scan"]): bigint {
   return total - scan.gaps.reduce((n, g) => n + (g.to - g.from + 1n), 0n);
 }
 
+/** How many unread ranges the note names; it counts the rest. */
+const NAMED_GAPS = 3;
+
+/**
+ * Which blocks a finished read could not read, newest range first, and, when every block from some block to the head
+ * was read, from where: the scan reads the newest chunks first, so a scan that stopped still shows the newest decisions.
+ */
+export function missingBlocksText(scan: Pick<LedgerSnapshot["scan"], "gaps" | "scannedFrom" | "head">): string {
+  const named = scan.gaps.slice(0, NAMED_GAPS).map((g) => `${formatInt(Number(g.from))} to ${formatInt(Number(g.to))}`);
+  const more = scan.gaps.length - named.length;
+  const items = more > 0 ? [...named, `${formatInt(more)} more ${more === 1 ? "range" : "ranges"}`] : named;
+  const list = items.length > 1 ? `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}` : (items[0] ?? "");
+  const read =
+    scan.scannedFrom === null
+      ? ""
+      : ` Every block from ${formatInt(Number(scan.scannedFrom))} to the head, block ${formatInt(Number(scan.head))}, was read, so the newest decisions are shown.`;
+  return `Blocks ${list} could not be read, so decisions in them are missing here.${read}`;
+}
+
 export function MainnetStrip({
   snapshot,
   endpoints,
@@ -109,9 +128,8 @@ export function MainnetStrip({
             Reading the vault&apos;s history since block {formatInt(Number(scan.floor))}: {pct.toFixed(1)}% of blocks so far.
           </p>
         ) : (
-          <p className="mt-2 text-xs text-refuse">
-            {formatInt(scan.gaps.length)} block {scan.gaps.length === 1 ? "range" : "ranges"} could not be read, so decisions in them
-            are missing here.{" "}
+          <p data-ledger-missing="" className="mt-2 text-xs text-refuse">
+            {missingBlocksText(scan)}{" "}
             <button type="button" onClick={onRetry} className="font-semibold underline">
               Read again
             </button>

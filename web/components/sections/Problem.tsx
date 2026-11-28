@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { PremiumChart } from "@/components/charts/PremiumChart";
 import { WeekChart } from "@/components/charts/WeekChart";
+import { DataBadge } from "@/components/ui/DataBadge";
 import { ReasonTag } from "@/components/ui/ReasonTag";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { FACTS } from "@/content/facts";
@@ -69,9 +70,13 @@ export function Problem() {
           body={`Each trade compares a ${m.twapWindowSec / 60}-minute Aerodrome TWAP with Chainlink. We measured these premiums in session before setting the limit.`}
         >
           <div className="flex flex-col gap-2">
-            <span data-chart-label="" className="font-mono text-[11px] text-ink-2">
-              pool vs Chainlink, in bps · limit {m.maxPremiumBps}
-            </span>
+            {/* The premiums were measured at the fork block, so the chart carries the fork badge (spec 2026-11-27 section 3). */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <span data-chart-label="" className="font-mono text-[11px] text-ink-2">
+                pool vs Chainlink, in bps · limit {m.maxPremiumBps}
+              </span>
+              <DataBadge kind="fork" />
+            </div>
             <PremiumChart />
           </div>
         </ProblemCard>
@@ -82,7 +87,11 @@ export function Problem() {
           body={`When the B20 multiplier moves, the vault records it and pauses that token for ${cooldownH} hours while prices settle.`}
         >
           <div className="flex flex-col gap-2.5 rounded-[14px] bg-surface-soft p-[18px]">
-            <span className="font-mono text-[11px] text-ink-2">NVDAc · split multiplier</span>
+            {/* The multiplier is NVDAc's at the fork block: the fork badge again. */}
+            <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+              <span className="font-mono text-[11px] text-ink-2">NVDAc · split multiplier</span>
+              <DataBadge kind="fork" />
+            </div>
             <span
               title={`uiMultiplier ${FACTS.nvdaUiMultiplier.value}`}
               className="break-all font-mono text-[clamp(18px,1.8vw,22px)] font-medium tracking-[-0.02em]"

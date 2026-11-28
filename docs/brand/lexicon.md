@@ -86,7 +86,8 @@ The test fails on each of these in public copy. Each has one replacement.
 ## What the test reads
 
 The scan covers the public copy: `README.md`, Markdown under `docs/`, and everything under `web/content/`,
-`web/components/`, `web/app/` and `skills/`, plus `film/captions.json`, `ops/journal/README.md` and `agent/README.md`.
+`web/components/`, `web/app/` and `skills/`, plus `film/captions.json`, `film/narration.json`, `ops/journal/README.md`
+and `agent/README.md`.
 It reads prose only:
 
 - **Markdown and MDX:** the text, including the frontmatter and the alt, title and aria-label values of tags. It skips

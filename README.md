@@ -25,7 +25,7 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 > Claude proposes. The vault decides.
 
 > [!IMPORTANT]
-> **On Base mainnet now** (read from Base on 2026-11-27, 17:34 UTC). Since 2026-11-27 at 01:04 UTC the vault's executor has been
+> **On Base mainnet now** (read from Base on 2026-11-27, 23:10 UTC). Since 2026-11-27 at 01:04 UTC the vault's executor has been
 > the Coinbase CDP Server Wallet account of Maat's agent, `0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, and the agent
 > runs in live mode with the real Claude API.
 >
@@ -36,9 +36,13 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 >   ([tx](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503#eventlog)) and a $4.64 AAPLc buy
 >   ([tx](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69#eventlog)), both Allowed · All checks
 >   passed (OK).
-> - **Claude's reason is onchain.** Each of the three carries Claude's reason in its calldata, as a maat:v1 rationale
+> - **The vault noticed the early close.** NYSE closed early, at 13:00 ET, on Friday 27 Nov. Two labelled $1 probes,
+>   not Claude: an AAPLc buy at 12:58 ET, Allowed · All checks passed (OK) ([tx](https://basescan.org/tx/0x605ea741681e3a105020a2de2491829b2cc58707b5f2f89b8f7c7cf58986e0e2#eventlog)),
+>   and a GOOGLc buy at 13:01 ET, Refused · Market closed (MARKET_CLOSED) ([tx](https://basescan.org/tx/0x7c086145003fde5a42437d9d3637d51e694f6b371d63fbb9669a9538745c1f0f#eventlog)).
+>   The calendar contract has held that close since its deploy on Tuesday 24 Nov.
+> - **Claude's reason is onchain.** Each of Claude's three carries its reason in its calldata, as a maat:v1 rationale
 >   blob whose keccak256 equals the `Decision`'s `rationaleHash`; the [mainnet ledger](https://maatonbase.xyz/ledger)
->   checks that hash again in your browser.
+>   checks that hash again in your browser. A probe's blob says `PROBE v1, not a Claude proposal`.
 > - **Unaudited.** No third party has reviewed the contracts. Every `Decision` is on
 >   [maatonbase.xyz/ledger](https://maatonbase.xyz/ledger); the deploy history is under [Status](#status).
 
@@ -55,7 +59,7 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
   Credit runs on the Aave V4 MAG7 Spoke. Agent transactions carry an ERC-8021 Builder Code, and since 2026-11-27 the executor
   is the agent's Coinbase CDP Server Wallet account.
 - **What is built and tested.** The vault, guard library, onchain NYSE calendar, Aerodrome and Aave V4
-  adapters, the briefs inbox, deploy scripts, agent runtime, and the website with a 53-page docs center. CI on `main`
+  adapters, the briefs inbox, deploy scripts, agent runtime, and the website with a 54-page docs center. CI on `main`
   ([run 45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120), `e578733`, 2026-11-27): 265
   contract, 734 agent, 3,719 website unit and 480 end-to-end tests passed; 1 end-to-end test, which reads Base mainnet
   and runs only with `MAAT_E2E_LIVE=1`, was skipped. [Tested, in numbers](#tested-in-numbers).
@@ -108,8 +112,8 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
    mainnet in your browser, at a block it links on Basescan, and judges a BUY of each with the vault's checks, in
    its order. Checks 3, 8 and 9 need a vault's address or balances, so these per-stock verdicts do not run them. Its
    week marks the deployed vault's `Decision` events, read from Base, and shows the agent's newest round note.
-4. **Read the fork ledger.** [maatonbase.xyz/#ledger](https://maatonbase.xyz/#ledger) shows the four decisions
-   of the agent's run on a Base mainnet fork, labelled as a fork.
+4. **Read the fork ledger.** [maatonbase.xyz/ledger#fork](https://maatonbase.xyz/ledger#fork) shows the four
+   decisions of the agent's run on a Base mainnet fork, labelled as a fork, under the mainnet ledger.
 5. **Open the CI run.** [Run 45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120) on
    `main`, 2026-11-27; [Tested, in numbers](#tested-in-numbers) links the job log behind each CI figure.
 6. **See what is built.** [Status and roadmap](https://maatonbase.xyz/docs/get-started/status).
@@ -119,10 +123,11 @@ Named for Ma'at, whose feather every heart was weighed against. Here the feather
 
 <p align="center">
   <a href="docs/assets/readme/simulator-size-limit.png"><img src="docs/assets/readme/simulator-size-limit.png" width="49%" alt="The Try to make it say no simulator. A BUY of NVDAc for $51 on Thu 5 Nov at 10:30 ET passes checks 01 to 07, fails check 08 Size limits because $51 is over the $50 per-trade cap, skips check 09, and shows the simulated result Refused: Over the size limit (SIZE_LIMIT)."></a>
-  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The decision ledger, headed Every answer is public. Especially no. Four rows: BUY NVDAc $20, Allowed · All checks passed (OK), gas 758,192; SUPPLY NVDAc $15, Allowed · All checks passed (OK), 286,707; BORROW USDC $5, Allowed · All checks passed (OK), 484,173; BUY GOOGLc $10 on Sat 7 Nov, Refused · Market closed (MARKET_CLOSED), 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627."></a>
+  <a href="docs/assets/readme/fork-ledger.png"><img src="docs/assets/readme/fork-ledger.png" width="49%" alt="The fork run's ledger on the mainnet ledger page, /ledger#fork, headed Before mainnet, The fork run, with a fork · 5-7 Nov badge. Four rows: BUY NVDAc $20, Allowed · All checks passed (OK), gas 758,192; SUPPLY NVDAc $15, Allowed · All checks passed (OK), 286,707; BORROW USDC $5, Allowed · All checks passed (OK), 484,173; BUY GOOGLc $10 on Sat 7 Nov, Refused · Market closed (MARKET_CLOSED), 111,116. A note says the rows were recorded on a fork of Base mainnet at block 53,551,627, and that the vault's mainnet decisions are in the mainnet ledger above."></a>
 </p>
 
-Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Right: the fork ledger.
+Left: the simulator refusing a $51 buy as over the size limit (`SIZE_LIMIT`). Right: the fork ledger, on
+[`/ledger#fork`](https://maatonbase.xyz/ledger#fork).
 
 ## By track: Agentic Stock Finance
 
@@ -158,6 +163,7 @@ BankrBot's skills repository.
 | Contract fork tests | 14 passed (7 files), run by hand | recorded at `4492eed`, 2026-11-07 | [`contracts/test/fork/`](contracts/test/fork) |
 | Agent fork integration tests | 3 passed, run by hand | recorded at `4492eed`, 2026-11-07 | [`agent.fork.test.ts`](agent/test/integration/agent.fork.test.ts) |
 | Gas used in the agent fork run | BUY 758,192 · SUPPLY 286,707 · BORROW 484,173 · refusal log 111,116 | run by hand, 2026-11-07 | [`fork-gas.json`](agent/test/integration/fork-gas.json) |
+| Static analysis of `contracts/src` (Slither 0.11.6, forge lint from Foundry 1.9.0, solc 0.8.28) | Slither: 2 high and 35 medium; forge lint: 2 high and 32 medium. Each checked against the code: none is a bug in Maat's code, by the project's own reading. Aderyn was not run: it is retired | run by hand at `9553d31`, 2026-11-27 | [Static analysis](https://maatonbase.xyz/docs/security/static-analysis), raw output in [`docs/security/static-analysis/`](docs/security/static-analysis) |
 
 The CI figures are from push run [45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120) on
 `e578733`, 2026-11-27, the latest green CI run on `main` when this table was read; each figure is the count its
@@ -230,8 +236,18 @@ links; the docs show the same table on
   whose keccak256 is the `rationaleHash`
   (`0x95696cf56c271cd3c34db96f578e1dec94da7cb802b39e64d13067c542fe8f87` and
   `0x090ac5b4aab31b23b17dd934e2fa563dcf81f0d8a74c169a6fbc5b2ecf6b8118`), and the Builder Code `bc_w7i5vjdv`.
-- **Mainnet `Decision` events.** This README keeps no running count: when it was last read from Base, at 17:34 UTC
-  on 2026-11-27, the vault had emitted five, the owner's two smoke-test buys and the agent's three above. Every
+- **The early-close probes.** NYSE closed early on 2026-11-27, at 13:00 ET (18:00 UTC), and `MarketCalendar` has held
+  that early close, at minute 780, since its constructor ran at its deploy on 2026-11-24. At 17:58:02 and 18:01:03 UTC,
+  in blocks 63,059,534 and 63,060,437, the agent's executor sent two owner-scheduled `MAAT_PROBES` intents, each a
+  `BUY` of 1,000,000 USDC units ($1) with no Claude call: AAPLc, allowed with reason 0, `OK`
+  ([`0x605ea741...e0e2`](https://basescan.org/tx/0x605ea741681e3a105020a2de2491829b2cc58707b5f2f89b8f7c7cf58986e0e2#eventlog)), which swapped 1 USDC for 0.00279064 AAPLc, and GOOGLc, refused with
+  reason 6, `MARKET_CLOSED`
+  ([`0x7c086145...1f0f`](https://basescan.org/tx/0x7c086145003fde5a42437d9d3637d51e694f6b371d63fbb9669a9538745c1f0f#eventlog)). Each blob carries
+  `"k":"probe"` and a text that begins `PROBE v1, not a Claude proposal`. The calendar gives anyone the same answers:
+  `isOpen(1795802282, 0)` is `true` and `isOpen(1795802463, 0)` is `false`.
+- **Mainnet `Decision` events.** This README keeps no running count: when it was last read from Base, at 23:10 UTC
+  on 2026-11-27, the vault had emitted seven: the owner's two smoke-test buys, the agent's three above and its two
+  probes. Every
   `Decision` the vault emits is public in its events on Basescan, at the `MandateVault` address in
   [`deployments/README.md`](deployments/README.md). The
   [mainnet ledger](https://maatonbase.xyz/ledger) reads them from Base in your browser, with the vault's
@@ -426,7 +442,7 @@ website and its docs are online at [maatonbase.xyz](https://maatonbase.xyz).
 | Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (734 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, from tag `agent-r2` (`b8c914a`), with the real Claude API; its first live round (01:14 UTC) proposed no trade because NYSE was closed for Thanksgiving, its first `Decision`, at 02:14 UTC, was a GOOGLc buy that the vault refused with `MARKET_CLOSED` ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6#eventlog)), and at 15:15 UTC the vault allowed its GOOGLc and AAPLc buys ([tx](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503#eventlog), [tx](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69#eventlog)) | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, unit-tested against a fake CDP client. The vault's executor since 2026-11-27 (`0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, [`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), used by the live agent, which sent its first `Decision` through it at 02:14 UTC that day ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6#eventlog)) and its first allowed buys at 15:15 UTC | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
-| Website: landing page with the decision engine, the simulator and the labelled fork ledger, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Fork replay. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (3,719 unit tests and 480 Playwright tests passed, and 1 Playwright test that reads Base mainnet was skipped, in CI run [45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120) at `e578733`, 2026-11-27; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
+| Website: landing page with the decision engine and the simulator, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser and keeps the labelled fork ledger under it, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Before mainnet (fork test); every fork or simulated number on the landing carries a badge. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (3,719 unit tests and 480 Playwright tests passed, and 1 Playwright test that reads Base mainnet was skipped, in CI run [45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120) at `e578733`, 2026-11-27; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |
 | The agent's public journal: `ops/journal/publish.mjs` copies the public fields of the agent's hash-chained journal to the public [`agent-journal`](https://github.com/duongnq2798/maat/tree/agent-journal) branch every 15 minutes, and the mainnet ledger's Rounds tab and `/now` read it | **Built**. Running beside the live agent since 2026-11-27 (first push `23e2df8`, 01:23 UTC, 1 row) | [`ops/journal/`](ops/journal) |
 | A rationale store the agent writes as it runs, read by the mainnet ledger (W2 follow-up). The public journal above leaves out the raw `rationale` text, which stays on the owner's PC | **Planned** | [W2 spec §10](docs/superpowers/specs/2026-11-20-maat-web-w2-ledger-design.md) |
 | Daily diary and replay page (W3) | **Planned** | [web spec §10](docs/superpowers/specs/2026-11-07-maat-web-design.md) |
@@ -659,8 +675,8 @@ it has not been re-timed.
     Test Files  164 passed (164)
          Tests  3719 passed (3719)
    ...
-   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and 53 docs pages checked)
-   search index: … bytes gzipped, budget 935000
+   out/ is ready to deploy (landing, /now, /gap-index, /ledger, /proof, the link previews of those four and /ask, and 54 docs pages checked)
+   search index: … bytes gzipped, budget 1047000
    ```
 
    The same site is live at [maatonbase.xyz](https://maatonbase.xyz); `npm run dev` serves it on
@@ -778,8 +794,8 @@ runs by hand ([`web/README.md`](web/README.md#deploy-owner)).
   Neither package ships in the static site.
 
 **The case against Maat.** It is unaudited, and its live record is short: Maat's agent has run on Base mainnet only
-since 2026-11-27, and when this README was last read against Base, at 17:34 UTC that day, that record was one refusal
-while NYSE was closed and two allowed buys of $4.64 each. Its sells and credit actions have run only in fork tests: the
+since 2026-11-27, and when this README was last read against Base, at 23:10 UTC that day, that record was one refusal
+while NYSE was closed and two allowed buys of $4.64 each from Claude, plus two $1 probes around the early close. Its sells and credit actions have run only in fork tests: the
 contracts' fork tests send them with no proposer, and the agent's fork run used a scripted proposer in place of Claude.
 So nothing here yet shows how the real model trades over many sessions or through a sell. Its session check is only as good as a calendar the owner must keep current;
 its price check assumes the feed includes the multiplier, which no real split has tested; its caps are simple
@@ -887,6 +903,8 @@ film/                      the demo film: captures the live site with Playwright
 docs/superpowers/          design specs and implementation plans
 docs/brand/lexicon.md      the approved lines, names and words, and the variants they retired
 docs/assets/readme/        the screenshots in this README
+docs/security/static-analysis/
+                           the raw Slither and forge lint output that the Static analysis docs page triages
 SECURITY.md                how to report a security problem privately
 ```
 

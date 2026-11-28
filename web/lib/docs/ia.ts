@@ -315,6 +315,11 @@ export const DOCS_IA: readonly IaSection[] = [
         "How each guarantee is tested: contract unit and fork suites, agent tests, parity tests between the site and the code.",
       ),
       page(
+        "security/static-analysis",
+        "Static analysis",
+        "Slither and forge lint run over the contracts, every high and medium finding checked against the code, and why Aderyn was not run.",
+      ),
+      page(
         "security/report-a-vulnerability",
         "Report a vulnerability",
         "How to report a security problem in Maat privately, what to include, and what to expect after you report it.",

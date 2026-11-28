@@ -42,6 +42,9 @@ const GOOD = [
   '<section id="try"><div role="status" aria-live="polite" aria-atomic="true" class="s">',
   '<div data-verdict="allowed" data-reason="OK" class="v"></div></div></section>',
   '<section id="ledger"></section>',
+  '<section id="film"><video data-film-video="" controls="" preload="none" playsInline="" poster="/film/maat-film-poster.webp"',
+  ' src="/film/maat-film-720p.mp4" width="1280" height="720"><track kind="captions" src="/film/maat-film.en.vtt" srcLang="en"/>',
+  "</video></section>",
   "</body></html>",
 ].join("");
 
@@ -81,6 +84,20 @@ describe("checkExport", () => {
       "a baked live verdict",
       GOOD.replace("</h1>", '</h1><span data-verdict-line="refuse-all">An agent under Maat&#x27;s default mandate would REFUSE</span>'),
       /holds a verdict line/,
+    ],
+    // The film band (spec 2026-11-27 section 2): the cut, its poster and its captions come from the site, and nothing of
+    // the cut loads before play.
+    ["no film band", GOOD.replace(/<video[^]*<\/video>/, ""), /<video> is missing/],
+    ["a film that loads before play", GOOD.replace('preload="none"', 'preload="metadata"'), /without preload="none"/],
+    ["a film that plays on its own", GOOD.replace('preload="none"', 'preload="none" autoplay=""'), /plays on its own/],
+    ["a film that plays on its own, as React writes it", GOOD.replace('preload="none"', 'preload="none" autoPlay=""'), /plays on its own/],
+    ["a film from another host", GOOD.replace('src="/film/maat-film-720p.mp4"', 'src="https://cdn.example/film.mp4"'), /src loads from outside/],
+    ["a protocol-relative poster", GOOD.replace('poster="/film/', 'poster="//cdn.example/film/'), /poster loads from outside/],
+    ["captions from another host", GOOD.replace('src="/film/maat-film.en.vtt"', 'src="https://cdn.example/x.vtt"'), /src loads from outside/],
+    [
+      "an embedded player",
+      GOOD.replace("</section></body>", '<iframe src="https://www.youtube-nocookie.com/embed/x"></iframe></section></body>'),
+      /embeds an iframe/,
     ],
   ])("flags %s", (_name, html, problem) => {
     expect(checkExport(html).join("\n")).toMatch(problem);

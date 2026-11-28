@@ -43,7 +43,8 @@ describe("the engine card, verdict first (spec 2026-11-23 sections 3.6 and 6.1)"
   it("keeps the pinned texts as HTML outside the Balance, and labels the order pan from CSS", () => {
     const ui = setup();
     const plate = ui.container.querySelector('[data-plate="replay"]')!;
-    expect(screen.getByText("replay · Base fork · block 53,551,627")).toBe(plate);
+    // The replay plate is the fork badge of spec 2026-11-27 section 3, with the fork block.
+    expect(screen.getByText("fork · 5-7 Nov · block 53,551,627")).toBe(plate);
     expect(plate).toHaveAttribute("data-fact", "forkBlock");
     expect(screen.getByText("INTENT · SCRIPTED FORK RUN")).toBeInTheDocument();
     expect(screen.getByText(MOMENTS.sat.intent)).toBeInTheDocument();

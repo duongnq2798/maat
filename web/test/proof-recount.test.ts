@@ -13,6 +13,7 @@ import { COINBASE_INDEXER, EAS_ADDRESS, easAbi, indexerAbi, VERIFIED_ACCOUNT_SCH
 import type { TeamWallet } from "@/content/proof-team";
 import { memoryStorage, saveCache } from "@/lib/chain/cache";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
+import { takeBriefsSnapshot } from "@/lib/chain/load";
 import { senderLabel } from "@/lib/chain/ledger";
 import { canon, decodeExecuteInput, EXECUTE_SELECTOR } from "@/lib/chain/rationale";
 import { parseSnapshot, snapshotId } from "@/lib/chain/snapshot";
@@ -1017,3 +1018,48 @@ describe("what the script hard-codes, since it has no keccak", () => {
   });
 });
 
+
+describe("the page with the Brief logs from the committed Brief snapshot, and the recount from the inbox's deploy block", () => {
+  /** The Brief snapshot npm run snapshot would write for CHAIN at block N, taken by the script's own code. */
+  const briefsFile = async () => {
+    const client = proofChainClient(CHAIN);
+    const at = await client.getBlock({ blockNumber: N });
+    return takeBriefsSnapshot({ client, inbox: INBOX, deployTx: DEPLOY_TX, block: { number: N, hash: at.hash } });
+  };
+  /** The lowest block of an eth_getLogs of the inbox. */
+  const lowestBriefs = (seen: ProofRpcLog) => seen.logRanges.filter((r) => r.address === lower(INBOX)).reduce((m, r) => (r.from < m ? r.from : m), HEAD + 1n);
+
+  it("print the same lines, while the page reads the Brief logs only above the file's reorg window and says which blocks the file gave", async () => {
+    const file = await briefsFile();
+    expect(file.logs.length).toBeGreaterThan(0);
+    const plainClient = proofChainClient(CHAIN);
+    const seededClient = proofChainClient(CHAIN);
+    const page = await readProof(plainClient, CONFIG, LISTS);
+    const seeded = await readProof(seededClient, CONFIG, LISTS, undefined, { briefs: file, storage: null });
+    expect([page.complete, seeded.complete]).toEqual([true, true]);
+    expect(page.briefsFrom).toBeNull();
+    expect(seeded.briefsFrom).toEqual({ block: N, from: DEPLOY, to: N - 151n });
+    expect(pageLines(seeded)).toEqual(pageLines(page));
+    expect(lowestBriefs(plainClient.seen)).toBe(DEPLOY);
+    expect(lowestBriefs(seededClient.seen)).toBe(N - 150n);
+    const rpc = await serveProofChain(CHAIN);
+    try {
+      const out = await recountRun(["--rpc", rpc.url, "--root", fixtureRoot(true)]);
+      expect([out.code, out.stderr]).toEqual([0, ""]);
+      expect(reportOf(out.stdout)).toEqual(pageLines(seeded));
+    } finally {
+      await rpc.close();
+    }
+  });
+
+  it("drop a file with an invented brief, read the Brief logs from the inbox's deploy block and print the same lines", async () => {
+    const file = await briefsFile();
+    // A Brief the inbox never emitted, in the owner's plain ETH send.
+    const forged = { ...file.logs[0]!, blockNumber: String(DEPLOY + 5n), transactionHash: FUND_TX };
+    const client = proofChainClient(CHAIN);
+    const page = await readProof(client, CONFIG, LISTS, undefined, { briefs: { ...file, logs: [...file.logs, forged] }, storage: null });
+    expect(page.briefsFrom).toBeNull();
+    expect(lowestBriefs(client.seen)).toBe(DEPLOY);
+    expect(pageLines(page)).toEqual(pageLines(await readProof(proofChainClient(CHAIN), CONFIG, LISTS)));
+  });
+});

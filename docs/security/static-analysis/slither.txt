@@ -1,0 +1,447 @@
+
+Detector: arbitrary-send-erc20
+AaveV4CreditAdapter.supply(address,uint256) (src/adapters/AaveV4CreditAdapter.sol#74-83) uses arbitrary from in transferFrom: token.safeTransferFrom(vault,address(this),amount) (src/adapters/AaveV4CreditAdapter.sol#76)
+AaveV4CreditAdapter.repay(uint256) (src/adapters/AaveV4CreditAdapter.sol#105-117) uses arbitrary from in transferFrom: usdc.safeTransferFrom(vault,address(this),repaid) (src/adapters/AaveV4CreditAdapter.sol#109)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#arbitrary-from-in-transferfrom
+
+Detector: incorrect-exp
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) has bitwise-xor operator ^ instead of the exponentiation operator **: 
+	 - inv = (3 * denominator) ^ 2 (lib/v4-core/src/libraries/FullMath.sol#81)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#incorrect-exponentiation
+
+Detector: incorrect-shift
+BitMath.mostSignificantBit(uint256) (lib/v4-core/src/libraries/BitMath.sol#11-23) contains an incorrect shift operation: r = r | byte(uint256,uint256)(0x1f & 0x8421084210842108cc6318c6db6d54be >> x >> r,0x0706060506020500060203020504000106050205030304010505030400000000) (lib/v4-core/src/libraries/BitMath.sol#21-23)
+BitMath.leastSignificantBit(uint256) (lib/v4-core/src/libraries/BitMath.sol#30-46) contains an incorrect shift operation: r = 0x8040405543005266443200005020610674053026020000107506200176117077 << x * 0xb6db6db6ddddddddd34d34d349249249210842108c6318c639ce739cffffffff >> 250 << 2 >> 252 << 5 (lib/v4-core/src/libraries/BitMath.sol#39-42)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#incorrect-shift-in-assembly
+
+Detector: divide-before-multiply
+CustomRevert.bubbleUpAndRevertWith(address,bytes4,bytes4) (lib/v4-core/src/libraries/CustomRevert.sol#81-115) performs a multiplication on the result of a division:
+	- encodedDataSize_bubbleUpAndRevertWith_asm_0 = returndatasize()() + 31 / 32 * 32 (lib/v4-core/src/libraries/CustomRevert.sol#89-90)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv = (3 * denominator) ^ 2 (lib/v4-core/src/libraries/FullMath.sol#81)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv *= 2 - denominator * inv (lib/v4-core/src/libraries/FullMath.sol#84-85)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv *= 2 - denominator * inv (lib/v4-core/src/libraries/FullMath.sol#85-86)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv *= 2 - denominator * inv (lib/v4-core/src/libraries/FullMath.sol#86-87)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv *= 2 - denominator * inv (lib/v4-core/src/libraries/FullMath.sol#87-88)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv *= 2 - denominator * inv (lib/v4-core/src/libraries/FullMath.sol#88-89)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- denominator = denominator / twos (lib/v4-core/src/libraries/FullMath.sol#60-61)
+	- inv *= 2 - denominator * inv (lib/v4-core/src/libraries/FullMath.sol#89-90)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) performs a multiplication on the result of a division:
+	- prod0 = prod0 / twos (lib/v4-core/src/libraries/FullMath.sol#65-66)
+	- result = prod0 * inv (lib/v4-core/src/libraries/FullMath.sol#97)
+TickMath.maxUsableTick(int24) (lib/v4-core/src/libraries/TickMath.sol#38-41) performs a multiplication on the result of a division:
+	- (MAX_TICK / tickSpacing) * tickSpacing (lib/v4-core/src/libraries/TickMath.sol#39-41)
+TickMath.minUsableTick(int24) (lib/v4-core/src/libraries/TickMath.sol#45-48) performs a multiplication on the result of a division:
+	- (MIN_TICK / tickSpacing) * tickSpacing (lib/v4-core/src/libraries/TickMath.sol#46-48)
+TickMath.getSqrtPriceAtTick(int24) (lib/v4-core/src/libraries/TickMath.sol#55-110) performs a multiplication on the result of a division:
+	- price = (price * 0x48a170391f7dc42444e8fa2) >> 128 (lib/v4-core/src/libraries/TickMath.sol#99)
+	- price = ~ 0 / price (lib/v4-core/src/libraries/TickMath.sol#103)
+DateLib.daysFromCivil(uint256,uint256,uint256) (src/lib/DateLib.sol#6-14) performs a multiplication on the result of a division:
+	- yoe = yy - era * 400 (src/lib/DateLib.sol#9)
+	- era = yy - 399 / 400 (src/lib/DateLib.sol#8)
+DateLib.daysFromCivil(uint256,uint256,uint256) (src/lib/DateLib.sol#6-14) performs a multiplication on the result of a division:
+	- uint256(era * 146097 + doe - 719468) (src/lib/DateLib.sol#13)
+	- era = yy - 399 / 400 (src/lib/DateLib.sol#8)
+DateLib.civilFromDays(uint256) (src/lib/DateLib.sol#16-27) performs a multiplication on the result of a division:
+	- era = z / 146097 (src/lib/DateLib.sol#18)
+	- doe = z - era * 146097 (src/lib/DateLib.sol#19)
+DateLib.civilFromDays(uint256) (src/lib/DateLib.sol#16-27) performs a multiplication on the result of a division:
+	- era = z / 146097 (src/lib/DateLib.sol#18)
+	- yy = yoe + era * 400 (src/lib/DateLib.sol#21)
+DateLib.civilFromDays(uint256) (src/lib/DateLib.sol#16-27) performs a multiplication on the result of a division:
+	- yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365 (src/lib/DateLib.sol#20)
+	- doy = doe - (365 * yoe + yoe / 4 - yoe / 100) (src/lib/DateLib.sol#22)
+DateLib.civilFromDays(uint256) (src/lib/DateLib.sol#16-27) performs a multiplication on the result of a division:
+	- mp = (5 * doy + 2) / 153 (src/lib/DateLib.sol#23)
+	- d = uint256(doy - (153 * mp + 2) / 5 + 1) (src/lib/DateLib.sol#24)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#divide-before-multiply
+
+Detector: incorrect-equality
+MandateVault._consume(bytes32) (src/MandateVault.sol#768-775) uses a dangerous strict equality:
+	- t == 0 (src/MandateVault.sol#770)
+MandateVault._inDeriskWindow() (src/MandateVault.sol#403-419) uses a dangerous strict equality:
+	- wd == FRIDAY (src/MandateVault.sol#409)
+MandateVault._inDeriskWindow() (src/MandateVault.sol#403-419) uses a dangerous strict equality:
+	- wd == 0 || wd == 6 (src/MandateVault.sol#410)
+MandateVault._weightAfterBuyBps(address,uint256,uint256) (src/MandateVault.sol#512-542) uses a dangerous strict equality:
+	- bal == 0 (src/MandateVault.sol#524)
+MandateVault._weightAfterBuyBps(address,uint256,uint256) (src/MandateVault.sol#512-542) uses a dangerous strict equality:
+	- total == 0 (src/MandateVault.sol#540)
+MandateVault.execute(Intent) (src/MandateVault.sol#102-113) uses a dangerous strict equality:
+	- reason == Reason.OK (src/MandateVault.sol#110)
+MandateVault.execute(Intent) (src/MandateVault.sol#102-113) uses a dangerous strict equality:
+	- allowed = reason == Reason.OK (src/MandateVault.sol#111)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#dangerous-strict-equalities
+
+Detector: reentrancy-no-eth
+Reentrancy in MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593):
+	External calls:
+	- ! usdc.tryTransfer(intent.payee,intent.amount) (src/MandateVault.sol#563)
+	- ! tokenIn.tryApprove(adapter,intent.amount) (src/MandateVault.sol#577)
+	- ISwapAdapter(adapter).swapExactIn(tokenConfig[intent.token].pool,tokenIn,intent.amount,minOut,address(this)) (src/MandateVault.sol#581-588)
+	- tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#584)
+	State variables written after the call(s):
+	- recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this)) (src/MandateVault.sol#591)
+	MandateVault.recordedUsdc (src/MandateVault.sol#49) can be used in cross function reentrancies:
+	- MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593)
+	- MandateVault._performCredit(Intent) (src/MandateVault.sol#611-638)
+	- MandateVault.fund(uint256) (src/MandateVault.sol#159-163)
+	- MandateVault.notifyRevenue() (src/MandateVault.sol#124-131)
+	- MandateVault.recordedUsdc (src/MandateVault.sol#49)
+	- MandateVault.withdraw(address,uint256) (src/MandateVault.sol#150-155)
+Reentrancy in MandateVault.withdraw(address,uint256) (src/MandateVault.sol#150-155):
+	External calls:
+	- token.safeTransfer(owner,amount) (src/MandateVault.sol#152)
+	State variables written after the call(s):
+	- recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this)) (src/MandateVault.sol#153)
+	MandateVault.recordedUsdc (src/MandateVault.sol#49) can be used in cross function reentrancies:
+	- MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593)
+	- MandateVault._performCredit(Intent) (src/MandateVault.sol#611-638)
+	- MandateVault.fund(uint256) (src/MandateVault.sol#159-163)
+	- MandateVault.notifyRevenue() (src/MandateVault.sol#124-131)
+	- MandateVault.recordedUsdc (src/MandateVault.sol#49)
+	- MandateVault.withdraw(address,uint256) (src/MandateVault.sol#150-155)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-2
+
+Detector: uninitialized-local
+MandateVault._requireValidTokenConfig(address,TokenConfig).t1 (src/MandateVault.sol#717) is a local variable never initialized
+MandateVault._requireValidTokenConfig(address,TokenConfig).t0 (src/MandateVault.sol#716) is a local variable never initialized
+MandateVault._weightAfterBuyBps(address,uint256,uint256).tokenValue (src/MandateVault.sol#514) is a local variable never initialized
+MandateVault._creditPathAuthorized(ICreditAdapter,address,bool).operator (src/MandateVault.sol#444) is a local variable never initialized
+MandateVault._creditPathAuthorized(ICreditAdapter,address,bool).custodian (src/MandateVault.sol#443) is a local variable never initialized
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#uninitialized-local-variables
+
+Detector: unused-return
+GuardLib.collateralHealthy(GuardLib.CollateralCheck) (src/GuardLib.sol#84-94) ignores return value by (ok,None,age) = PriceLib.readFeed(c.feed) (src/GuardLib.sol#87)
+MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593) ignores return value by tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#578)
+MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593) ignores return value by ISwapAdapter(adapter).swapExactIn(tokenConfig[intent.token].pool,tokenIn,intent.amount,minOut,address(this)) (src/MandateVault.sol#581-588)
+MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593) ignores return value by tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#584)
+MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593) ignores return value by tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#586)
+MandateVault._performCredit(Intent) (src/MandateVault.sol#611-638) ignores return value by token.tryApprove(ca,0) (src/MandateVault.sol#618)
+MandateVault._performCredit(Intent) (src/MandateVault.sol#611-638) ignores return value by token.tryApprove(ca,0) (src/MandateVault.sol#627)
+MarketCalendar.etOffsetSeconds(uint256) (src/MarketCalendar.sol#60-65) ignores return value by (y,None,None) = DateLib.civilFromDays(ts / 86400) (src/MarketCalendar.sol#61)
+AaveV4CreditAdapter.supply(address,uint256) (src/adapters/AaveV4CreditAdapter.sol#74-83) ignores return value by spoke.supply(id,amount,address(this)) (src/adapters/AaveV4CreditAdapter.sol#78)
+AaveV4CreditAdapter.supply(address,uint256) (src/adapters/AaveV4CreditAdapter.sol#74-83) ignores return value by (enabled,None) = spoke.getUserReserveStatus(id,address(this)) (src/adapters/AaveV4CreditAdapter.sol#81)
+AaveV4CreditAdapter.withdraw(address,uint256,uint256) (src/adapters/AaveV4CreditAdapter.sol#85-96) ignores return value by spoke.withdraw(id,amount,address(this)) (src/adapters/AaveV4CreditAdapter.sol#92)
+AaveV4CreditAdapter.borrow(uint256,uint256) (src/adapters/AaveV4CreditAdapter.sol#98-103) ignores return value by spoke.borrow(usdcReserveId,amount,address(this)) (src/adapters/AaveV4CreditAdapter.sol#100)
+AaveV4CreditAdapter.repay(uint256) (src/adapters/AaveV4CreditAdapter.sol#105-117) ignores return value by spoke.repay(usdcReserveId,repaid,address(this)) (src/adapters/AaveV4CreditAdapter.sol#111)
+PriceLib.readFeed(address) (src/lib/PriceLib.sol#13-20) ignores return value by (answer,updatedAt) = IAggregatorV3(feed).latestRoundData() (src/lib/PriceLib.sol#14-19)
+PriceLib.twapPrice(address,address,uint32) (src/lib/PriceLib.sol#23-40) ignores return value by (cum) = ICLPool(pool).observe(ago) (src/lib/PriceLib.sol#27-39)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#unused-return
+
+Detector: missing-zero-check
+AerodromeSwapAdapter.swapExactIn(address,address,uint256,uint256,address).pool (src/adapters/AerodromeSwapAdapter.sol#19) lacks a zero-check on :
+		- _activePool = pool (src/adapters/AerodromeSwapAdapter.sol#30)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#missing-zero-address-validation
+
+Detector: calls-loop
+MandateVault._requireValidTokenConfig(address,TokenConfig) (src/MandateVault.sol#714-744) has external calls inside a loop: a = ICLPool(c.pool).token0() (src/MandateVault.sol#718-722)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+		MandateVault._setToken(address,TokenConfig)
+MandateVault._requireValidTokenConfig(address,TokenConfig) (src/MandateVault.sol#714-744) has external calls inside a loop: b = ICLPool(c.pool).token1() (src/MandateVault.sol#723-727)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+		MandateVault._setToken(address,TokenConfig)
+MandateVault._requireValidTokenConfig(address,TokenConfig) (src/MandateVault.sol#714-744) has external calls inside a loop: d = IAggregatorV3(c.feed).decimals() (src/MandateVault.sol#733-737)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+		MandateVault._setToken(address,TokenConfig)
+MandateVault._requireValidTokenConfig(address,TokenConfig) (src/MandateVault.sol#714-744) has external calls inside a loop: d_scope_0 = IERC20Minimal(token).decimals() (src/MandateVault.sol#738-742)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+		MandateVault._setToken(address,TokenConfig)
+MandateVault._setToken(address,TokenConfig) (src/MandateVault.sol#694-712) has external calls inside a loop: cur = IB20Asset(token).uiMultiplier() (src/MandateVault.sol#706)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+MandateVault._weightAfterBuyBps(address,uint256,uint256) (src/MandateVault.sol#512-542) has external calls inside a loop: bal = IB20Asset(t).balanceOf(address(this)) (src/MandateVault.sol#518)
+	Calls stack containing the loop:
+		MandateVault.execute(Intent)
+		MandateVault._check(Intent)
+MandateVault._valueUsd(address,uint256,uint256) (src/MandateVault.sol#505-507) has external calls inside a loop: raw * price8 / 10 ** (uint256(IB20Asset(token).decimals()) + 2) (src/MandateVault.sol#506)
+	Calls stack containing the loop:
+		MandateVault.execute(Intent)
+		MandateVault._check(Intent)
+		MandateVault._weightAfterBuyBps(address,uint256,uint256)
+MandateVault._weightAfterBuyBps(address,uint256,uint256) (src/MandateVault.sol#512-542) has external calls inside a loop: bal = IB20Asset(t).balanceOf(address(this)) (src/MandateVault.sol#518)
+	Calls stack containing the loop:
+		MandateVault.previewIntent(Intent)
+		MandateVault._check(Intent)
+MandateVault._valueUsd(address,uint256,uint256) (src/MandateVault.sol#505-507) has external calls inside a loop: raw * price8 / 10 ** (uint256(IB20Asset(token).decimals()) + 2) (src/MandateVault.sol#506)
+	Calls stack containing the loop:
+		MandateVault.previewIntent(Intent)
+		MandateVault._check(Intent)
+		MandateVault._weightAfterBuyBps(address,uint256,uint256)
+AaveV4CreditAdapter.constructor(address,address,address,uint256,address[],uint256[]) (src/adapters/AaveV4CreditAdapter.sol#42-70) has external calls inside a loop: r = s.getReserve(reserveIds_[i]) (src/adapters/AaveV4CreditAdapter.sol#57)
+AaveV4CreditAdapter.suppliedOf(address) (src/adapters/AaveV4CreditAdapter.sol#129-132) has external calls inside a loop: spoke.getUserSuppliedAssets(p - 1,address(this)) (src/adapters/AaveV4CreditAdapter.sol#131)
+	Calls stack containing the loop:
+		AaveV4CreditAdapter.hasPosition()
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation/#calls-inside-a-loop
+
+Detector: reentrancy-benign
+Reentrancy in MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593):
+	External calls:
+	- ! usdc.tryTransfer(intent.payee,intent.amount) (src/MandateVault.sol#563)
+	- ! tokenIn.tryApprove(adapter,intent.amount) (src/MandateVault.sol#577)
+	- ISwapAdapter(adapter).swapExactIn(tokenConfig[intent.token].pool,tokenIn,intent.amount,minOut,address(this)) (src/MandateVault.sol#581-588)
+	- tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#584)
+	State variables written after the call(s):
+	- spentOnDay[today()] += notional (src/MandateVault.sol#590)
+Reentrancy in MandateVault._performCredit(Intent) (src/MandateVault.sol#611-638):
+	External calls:
+	- ! token.tryApprove(ca,amount) (src/MandateVault.sol#617)
+	- token.tryApprove(ca,0) (src/MandateVault.sol#627)
+	- (ok,None) = ca.call(abi.encodeCall(ICreditAdapter.supply,(token,amount))) (src/MandateVault.sol#621-625)
+	- (ok,None) = ca.call(abi.encodeCall(ICreditAdapter.repay,(amount))) (src/MandateVault.sol#621-625)
+	- (ok_scope_0,err) = ca.call(abi.encodeCall(ICreditAdapter.borrow,(amount,minHf))) (src/MandateVault.sol#630-634)
+	- (ok_scope_0,err) = ca.call(abi.encodeCall(ICreditAdapter.withdraw,(intent.token,amount,minHf))) (src/MandateVault.sol#630-634)
+	State variables written after the call(s):
+	- recordedUsdc = IERC20Minimal(usdc).balanceOf(address(this)) (src/MandateVault.sol#637)
+Reentrancy in MandateVault.fund(uint256) (src/MandateVault.sol#159-163):
+	External calls:
+	- usdc.safeTransferFrom(msg.sender,address(this),amount) (src/MandateVault.sol#160)
+	State variables written after the call(s):
+	- recordedUsdc += amount (src/MandateVault.sol#161)
+Reentrancy in AerodromeSwapAdapter.swapExactIn(address,address,uint256,uint256,address) (src/adapters/AerodromeSwapAdapter.sol#19-45):
+	External calls:
+	- tokenIn.safeTransferFrom(msg.sender,address(this),amountIn) (src/adapters/AerodromeSwapAdapter.sol#28)
+	State variables written after the call(s):
+	- _activePool = pool (src/adapters/AerodromeSwapAdapter.sol#30)
+Reentrancy in AerodromeSwapAdapter.swapExactIn(address,address,uint256,uint256,address) (src/adapters/AerodromeSwapAdapter.sol#19-45):
+	External calls:
+	- tokenIn.safeTransferFrom(msg.sender,address(this),amountIn) (src/adapters/AerodromeSwapAdapter.sol#28)
+	- (a0,a1) = ICLPool(pool).swap(recipient,zeroForOne,int256(amountIn),TickMath.MIN_SQRT_PRICE + 1,abi.encode(tokenIn)) (src/adapters/AerodromeSwapAdapter.sol#31-37)
+	- (a0,a1) = ICLPool(pool).swap(recipient,zeroForOne,int256(amountIn),TickMath.MAX_SQRT_PRICE - 1,abi.encode(tokenIn)) (src/adapters/AerodromeSwapAdapter.sol#31-37)
+	State variables written after the call(s):
+	- _activePool = address(0) (src/adapters/AerodromeSwapAdapter.sol#38)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-3
+
+Detector: reentrancy-events
+Reentrancy in MandateVault.execute(Intent) (src/MandateVault.sol#102-113):
+	External calls:
+	- reason = _perform(intent,price) (src/MandateVault.sol#110)
+		- (ok,ret) = token.call(data) (src/lib/TokenTransfer.sol#35)
+		- ! token.tryApprove(ca,amount) (src/MandateVault.sol#617)
+		- token.tryApprove(ca,0) (src/MandateVault.sol#618)
+		- ! usdc.tryTransfer(intent.payee,intent.amount) (src/MandateVault.sol#563)
+		- token.tryApprove(ca,0) (src/MandateVault.sol#627)
+		- ! tokenIn.tryApprove(adapter,intent.amount) (src/MandateVault.sol#577)
+		- tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#578)
+		- ISwapAdapter(adapter).swapExactIn(tokenConfig[intent.token].pool,tokenIn,intent.amount,minOut,address(this)) (src/MandateVault.sol#581-588)
+		- tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#584)
+		- tokenIn.tryApprove(adapter,0) (src/MandateVault.sol#586)
+		- (ok,None) = ca.call(abi.encodeCall(ICreditAdapter.supply,(token,amount))) (src/MandateVault.sol#621-625)
+		- (ok,None) = ca.call(abi.encodeCall(ICreditAdapter.repay,(amount))) (src/MandateVault.sol#621-625)
+		- (ok_scope_0,err) = ca.call(abi.encodeCall(ICreditAdapter.borrow,(amount,minHf))) (src/MandateVault.sol#630-634)
+		- (ok_scope_0,err) = ca.call(abi.encodeCall(ICreditAdapter.withdraw,(intent.token,amount,minHf))) (src/MandateVault.sol#630-634)
+	Event emitted after the call(s):
+	- Decision(intent.id,intent.action,intent.token,intent.amount,allowed,reason,intent.rationaleHash) (src/MandateVault.sol#112)
+Reentrancy in MandateVault.fund(uint256) (src/MandateVault.sol#159-163):
+	External calls:
+	- usdc.safeTransferFrom(msg.sender,address(this),amount) (src/MandateVault.sol#160)
+	Event emitted after the call(s):
+	- Funded(amount) (src/MandateVault.sol#162)
+Reentrancy in MandateVault.withdraw(address,uint256) (src/MandateVault.sol#150-155):
+	External calls:
+	- token.safeTransfer(owner,amount) (src/MandateVault.sol#152)
+	Event emitted after the call(s):
+	- Withdrawn(token,amount) (src/MandateVault.sol#154)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#reentrancy-vulnerabilities-4
+
+Detector: timestamp
+GuardLib.multiplierBlocked(IB20Asset,uint256,uint256,uint32) (src/GuardLib.sol#118-142) uses timestamp for comparisons
+	Dangerous comparisons:
+	- changedAt != 0 && block.timestamp < changedAt + cooldown (src/GuardLib.sol#131)
+	- eff > block.timestamp (src/GuardLib.sol#139)
+	- eff != 0 && block.timestamp < eff + cooldown (src/GuardLib.sol#141)
+MandateVault.execute(Intent) (src/MandateVault.sol#102-113) uses timestamp for comparisons
+	Dangerous comparisons:
+	- reason == Reason.OK (src/MandateVault.sol#110)
+	- allowed = reason == Reason.OK (src/MandateVault.sol#111)
+MandateVault._check(Intent) (src/MandateVault.sol#257-282) uses timestamp for comparisons
+	Dangerous comparisons:
+	- r != Reason.OK (src/MandateVault.sol#268)
+MandateVault._healthReason(uint256) (src/MandateVault.sol#390-394) uses timestamp for comparisons
+	Dangerous comparisons:
+	- hf < _mandate.targetHealthFactor && _inDeriskWindow() (src/MandateVault.sol#392)
+MandateVault._inDeriskWindow() (src/MandateVault.sol#403-419) uses timestamp for comparisons
+	Dangerous comparisons:
+	- minute >= FEED_FREEZE_MINUTE || minute + w / 60 < FEED_FREEZE_MINUTE (src/MandateVault.sol#408)
+	- wd == FRIDAY (src/MandateVault.sol#409)
+	- wd == 0 || wd == 6 (src/MandateVault.sol#410)
+MandateVault._withinCaps(uint256) (src/MandateVault.sol#500-502) uses timestamp for comparisons
+	Dangerous comparisons:
+	- usd <= _mandate.perTradeCapUsd && spentOnDay[today()] + usd <= _mandate.dailyCapUsd (src/MandateVault.sol#501)
+MandateVault._weightAfterBuyBps(address,uint256,uint256) (src/MandateVault.sol#512-542) uses timestamp for comparisons
+	Dangerous comparisons:
+	- d >= total (src/MandateVault.sol#533)
+	- total == 0 (src/MandateVault.sol#540)
+MandateVault._perform(Intent,uint256) (src/MandateVault.sol#557-593) uses timestamp for comparisons
+	Dangerous comparisons:
+	- intent.minOut > floorOut (src/MandateVault.sol#572)
+MandateVault._consume(bytes32) (src/MandateVault.sol#768-775) uses timestamp for comparisons
+	Dangerous comparisons:
+	- t == 0 (src/MandateVault.sol#770)
+	- block.timestamp < t + TIMELOCK (src/MandateVault.sol#771)
+	- block.timestamp > t + TIMELOCK + GRACE_PERIOD (src/MandateVault.sol#773)
+PriceLib.readFeed(address) (src/lib/PriceLib.sol#13-20) uses timestamp for comparisons
+	Dangerous comparisons:
+	- answer <= 0 || updatedAt == 0 || updatedAt > block.timestamp (src/lib/PriceLib.sol#15)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#block-timestamp
+
+Detector: assembly
+BitMath.mostSignificantBit(uint256) (lib/v4-core/src/libraries/BitMath.sol#11-23) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/BitMath.sol#13-23)
+BitMath.leastSignificantBit(uint256) (lib/v4-core/src/libraries/BitMath.sol#30-46) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/BitMath.sol#32-46)
+CustomRevert.revertWith(bytes4) (lib/v4-core/src/libraries/CustomRevert.sol#13-17) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#14-17)
+CustomRevert.revertWith(bytes4,address) (lib/v4-core/src/libraries/CustomRevert.sol#21-26) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#22-26)
+CustomRevert.revertWith(bytes4,int24) (lib/v4-core/src/libraries/CustomRevert.sol#30-35) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#31-35)
+CustomRevert.revertWith(bytes4,uint160) (lib/v4-core/src/libraries/CustomRevert.sol#39-44) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#40-43)
+CustomRevert.revertWith(bytes4,int24,int24) (lib/v4-core/src/libraries/CustomRevert.sol#48-54) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#49-54)
+CustomRevert.revertWith(bytes4,uint160,uint160) (lib/v4-core/src/libraries/CustomRevert.sol#59-65) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#60-65)
+CustomRevert.revertWith(bytes4,address,address) (lib/v4-core/src/libraries/CustomRevert.sol#70-76) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#71-76)
+CustomRevert.bubbleUpAndRevertWith(address,bytes4,bytes4) (lib/v4-core/src/libraries/CustomRevert.sol#81-115) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/CustomRevert.sol#87-115)
+FullMath.mulDiv(uint256,uint256,uint256) (lib/v4-core/src/libraries/FullMath.sol#13-98) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#22-25)
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#33-35)
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#45-48)
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#50-53)
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#60-62)
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#65-66)
+	- INLINE ASM (lib/v4-core/src/libraries/FullMath.sol#70-72)
+TickMath.getSqrtPriceAtTick(int24) (lib/v4-core/src/libraries/TickMath.sol#55-110) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#58-67)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#77-80)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#100-110)
+TickMath.getTickAtSqrtPrice(uint160) (lib/v4-core/src/libraries/TickMath.sol#120-232) uses assembly
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#136-142)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#142-148)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#148-154)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#154-160)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#160-166)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#166-171)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#172-177)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#178-183)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#183-189)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#189-195)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#195-201)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#201-207)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#207-212)
+	- INLINE ASM (lib/v4-core/src/libraries/TickMath.sol#213-217)
+MandateVault._creditFailure(bytes) (src/MandateVault.sol#423-433) uses assembly
+	- INLINE ASM (src/MandateVault.sol#426-428)
+TokenTransfer._call(address,bytes) (src/lib/TokenTransfer.sol#41-49) uses assembly
+	- INLINE ASM (src/lib/TokenTransfer.sol#44-46)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#assembly-usage
+
+Detector: pragma
+2 different versions of Solidity are used:
+	- Version constraint ^0.8.0 is used by:
+		-^0.8.0 (lib/v4-core/src/libraries/BitMath.sol#1-2)
+		-^0.8.0 (lib/v4-core/src/libraries/CustomRevert.sol#1-2)
+		-^0.8.0 (lib/v4-core/src/libraries/FullMath.sol#1-2)
+		-^0.8.0 (lib/v4-core/src/libraries/TickMath.sol#1-2)
+	- Version constraint 0.8.28 is used by:
+		-0.8.28 (src/GuardLib.sol#2)
+		-0.8.28 (src/IMandateVaultEvents.sol#2)
+		-0.8.28 (src/MaatInbox.sol#2)
+		-0.8.28 (src/MandateVault.sol#2)
+		-0.8.28 (src/MarketCalendar.sol#2)
+		-0.8.28 (src/Types.sol#2)
+		-0.8.28 (src/adapters/AaveV4CreditAdapter.sol#2)
+		-0.8.28 (src/adapters/AerodromeSwapAdapter.sol#2)
+		-0.8.28 (src/adapters/ICreditAdapter.sol#2)
+		-0.8.28 (src/adapters/ISwapAdapter.sol#2)
+		-0.8.28 (src/interfaces/IAaveV4.sol#2)
+		-0.8.28 (src/interfaces/IB20Asset.sol#2)
+		-0.8.28 (src/interfaces/IExternal.sol#2)
+		-0.8.28 (src/lib/DateLib.sol#2)
+		-0.8.28 (src/lib/PriceLib.sol#2)
+		-0.8.28 (src/lib/TokenTransfer.sol#2)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#different-pragma-directives-are-used
+
+Detector: costly-loop
+MandateVault._setPayee(address,bool) (src/MandateVault.sol#746-760) has costly operations inside a loop:
+	- _payees.pop() (src/MandateVault.sol#755)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+MandateVault._setPayee(address,bool) (src/MandateVault.sol#746-760) has costly operations inside a loop:
+	- delete _payeeIndex[payee] (src/MandateVault.sol#756)
+	Calls stack containing the loop:
+		MandateVault.constructor(address,address,address,address,Mandate,address[],TokenConfig[],address[])
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#costly-operations-inside-a-loop
+
+Detector: cyclomatic-complexity
+TickMath.getSqrtPriceAtTick(int24) (lib/v4-core/src/libraries/TickMath.sol#55-110) has a high cyclomatic complexity (22).
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#cyclomatic-complexity
+
+Detector: solc-version
+Version constraint ^0.8.0 contains known severe issues (https://solidity.readthedocs.io/en/latest/bugs.html)
+	- FullInlinerNonExpressionSplitArgumentEvaluationOrder
+	- MissingSideEffectsOnSelectorAccess
+	- AbiReencodingHeadOverflowWithStaticArrayCleanup
+	- DirtyBytesArrayToStorage
+	- DataLocationChangeInInternalOverride
+	- NestedCalldataArrayAbiReencodingSizeValidation
+	- SignedImmutables
+	- ABIDecodeTwoDimensionalArrayMemory
+	- KeccakCaching.
+It is used by:
+	- ^0.8.0 (lib/v4-core/src/libraries/BitMath.sol#1-2)
+	- ^0.8.0 (lib/v4-core/src/libraries/CustomRevert.sol#1-2)
+	- ^0.8.0 (lib/v4-core/src/libraries/FullMath.sol#1-2)
+	- ^0.8.0 (lib/v4-core/src/libraries/TickMath.sol#1-2)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#incorrect-versions-of-solidity
+
+Detector: low-level-calls
+Low level call in MandateVault._performCredit(Intent) (src/MandateVault.sol#611-638):
+	- (ok,None) = ca.call(abi.encodeCall(ICreditAdapter.supply,(token,amount))) (src/MandateVault.sol#621-625)
+	- (ok,None) = ca.call(abi.encodeCall(ICreditAdapter.repay,(amount))) (src/MandateVault.sol#621-625)
+	- (ok_scope_0,err) = ca.call(abi.encodeCall(ICreditAdapter.borrow,(amount,minHf))) (src/MandateVault.sol#630-634)
+	- (ok_scope_0,err) = ca.call(abi.encodeCall(ICreditAdapter.withdraw,(intent.token,amount,minHf))) (src/MandateVault.sol#630-634)
+Low level call in TokenTransfer._tryCall(address,bytes) (src/lib/TokenTransfer.sol#34-39):
+	- (ok,ret) = token.call(data) (src/lib/TokenTransfer.sol#35)
+Low level call in TokenTransfer._call(address,bytes) (src/lib/TokenTransfer.sol#41-49):
+	- (ok,ret) = token.call(data) (src/lib/TokenTransfer.sol#42)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#low-level-calls
+
+Detector: naming-convention
+Function IAaveV4Spoke.ORACLE() (src/interfaces/IAaveV4.sol#39) is not in mixedCase
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#conformance-to-solidity-naming-conventions
+
+Detector: too-many-digits
+BitMath.mostSignificantBit(uint256) (lib/v4-core/src/libraries/BitMath.sol#11-23) uses literals with too many digits:
+	- r = r | byte(uint256,uint256)(0x1f & 0x8421084210842108cc6318c6db6d54be >> x >> r,0x0706060506020500060203020504000106050205030304010505030400000000) (lib/v4-core/src/libraries/BitMath.sol#21-23)
+CustomRevert.bubbleUpAndRevertWith(address,bytes4,bytes4) (lib/v4-core/src/libraries/CustomRevert.sol#81-115) uses literals with too many digits:
+	- mstore(uint256,uint256)(fmp_bubbleUpAndRevertWith_asm_0 + 0x24,revertingFunctionSelector & 0xffffffff00000000000000000000000000000000000000000000000000000000) (lib/v4-core/src/libraries/CustomRevert.sol#97-100)
+CustomRevert.bubbleUpAndRevertWith(address,bytes4,bytes4) (lib/v4-core/src/libraries/CustomRevert.sol#81-115) uses literals with too many digits:
+	- mstore(uint256,uint256)(fmp_bubbleUpAndRevertWith_asm_0 + 0xc4 + encodedDataSize_bubbleUpAndRevertWith_asm_0,additionalContext & 0xffffffff00000000000000000000000000000000000000000000000000000000) (lib/v4-core/src/libraries/CustomRevert.sol#110-115)
+Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#too-many-digits
+
+Detector: cache-array-length
+Loop condition i < _tokens.length (src/MandateVault.sol#369) should use cached array length instead of referencing `length` member of the storage array.
+ Loop condition i < _collaterals.length (src/adapters/AaveV4CreditAdapter.sol#144) should use cached array length instead of referencing `length` member of the storage array.
+ Loop condition i < _tokens.length (src/MandateVault.sol#516) should use cached array length instead of referencing `length` member of the storage array.
+ Reference: https://github.com/crytic/slither/wiki/Detector-Documentation#cache-array-length
+. analyzed (25 contracts with 102 detectors), 112 result(s) found
