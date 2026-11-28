@@ -183,7 +183,8 @@ controls the vault ([Known limitations](#known-limitations)).
 
 ## Check it yourself in 60 seconds
 
-No clone, no wallet, no key. Steps 1 and 2 take a minute; the simulator and the live page take a few more.
+No wallet, no key. Steps 1 and 2 take a minute; the simulator and the live page take a few more. Step 5 is the one
+that needs a clone.
 
 1. **Open [the ledger](https://maatonbase.xyz/ledger)** and find Thu 26 Nov 21:14 ET: BUY · GOOGLc · $4.68,
    Refused · Market closed (MARKET_CLOSED), its rationale marked Hash verified. Your browser read that from Base.
@@ -198,6 +199,34 @@ No clone, no wallet, no key. Steps 1 and 2 take a minute; the simulator and the 
 4. **See [right now on Base](https://maatonbase.xyz/now):** all 13 tokenized stocks on Base with a NAV, read live in
    your browser and judged as a buy by every vault check that does not need a vault's own address or balances, beside
    this week's `Decision` events and the agent's latest round note.
+5. **Check that the agent decided, without trusting the site.** The ledger's Hash verified mark is the site's word.
+   This runs the repository's own verifier, keyless, on the agent's first allowed buy (GOOGLc, Fri 27 Nov). It
+   re-derives the maat:v1 blob from the transaction's calldata, with the model and the agent's commit, hashes it,
+   matches the hash to the vault's `Decision` log, and finds the blob's anchor in the agent's hash-chained public
+   journal. It needs git and Node 22.9 or later, and sends nothing.
+
+   ```bash
+   git clone --depth 1 https://github.com/duongnq2798/maat.git && cd maat
+   git fetch --depth 1 origin agent-journal && git show FETCH_HEAD:journal/2026-11-27.jsonl > 2026-11-27.jsonl
+   cd agent && npm ci
+   npm run verify -- --tx 0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503 --rpc https://mainnet.base.org --journal ../2026-11-27.jsonl
+   ```
+
+   Run from a fresh clone on 2026-11-28, the last command took 14 seconds, and 8 on a second run; `npm ci` was the slow
+   part, 12 minutes on a busy Windows PC. It printed, with long hashes shortened here:
+
+   ```text
+   PASS calldata  228-byte execute call to the vault 0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b, 499-byte blob, suffix codes bc_w7i5vjdv
+   PASS blob      maat:v1, 499 bytes: block 63010793, run 1795792534276-47ea132c, m claude-sonnet-5-5, commit b8c914a7…275f, j 0x4546bd09…a8d0
+   PASS hash      keccak256(blob) = rationaleHash 0x95696cf5…8f87
+   PASS decision  the Decision log's rationaleHash is the intent's
+   PASS journal   46 chained rows, head 0xf3a54b1a…f810
+   PASS anchor    j 0x4546bd09…a8d0 is the hash of 2026-11-27.jsonl:20, before 2026-11-27.jsonl:21 (the sent row for tx 0xff1f5a3b…c503)
+   PASS
+   ```
+
+   Exit code 0 means PASS. To check another of the agent's transactions, swap in its hash and its day's journal file;
+   `--journal` takes several files in order, for an anchor on the day before.
 
 With 100 more seconds, watch [the film](https://maatonbase.xyz/#film): *One trade, weighed*, that Thanksgiving trade in
 1:40 (voice and music AI-generated with ElevenLabs).

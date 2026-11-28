@@ -1,10 +1,10 @@
 ---
 title: Verify Maat by hand
-description: "Five read-only commands to check the mainnet vault: its source, owner, executor and mandate, its first three Decisions, the calendar and the rationale hashes."
+description: "Five read-only commands to check the mainnet vault: its source, owner, executor and mandate, three of its Decisions, the calendar and the rationale hashes."
 type: guide
 audience: [watcher, developer, evaluator]
 status: live
-lastReviewed: 2026-11-27
+lastReviewed: 2026-11-28
 sources:
   - deployments/README.md
   - contracts/src/MandateVault.sol
@@ -130,7 +130,7 @@ The other fourteen lines are the mandate, one field per line in the order of [Ty
 
 ### Read the vault's Decisions
 
-[Status and roadmap](/docs/get-started/status#next-mainnet) records the blocks of the vault's first three `Decision` events on mainnet: `61700601` and `61745836`, the owner's two smoke-test buys, and `62776552`, the first `Decision` of Maat's agent. This reads the vault's `Decision` logs in each of those blocks. A one-block range keeps the query small enough for providers that limit how many blocks one log query may cover, and `grep` keeps the lines of each log from its transaction hash to the end of its decoded fields; drop the `| grep ...` to see the raw log as well.
+[Status and roadmap](/docs/get-started/status#next-mainnet) records the blocks of the vault's `Decision` events on mainnet. This step reads the earliest three: `61700601` and `61745836`, the owner's two smoke-test buys, and `62776552`, the first `Decision` of Maat's agent, a refusal. It reads the vault's `Decision` logs in each of those blocks. A one-block range keeps the query small enough for providers that limit how many blocks one log query may cover, and `grep` keeps the lines of each log from its transaction hash to the end of its decoded fields; drop the `| grep ...` to see the raw log as well.
 
 ```bash
 DECISION='Decision(bytes32 indexed intentId, uint8 action, address indexed token, uint256 amount, bool allowed, uint8 reason, bytes32 rationaleHash)'
@@ -330,5 +330,6 @@ Output:
 ## Next steps
 
 - [Watch decisions onchain](/docs/guides/watch-decisions-onchain) reads every `Decision` from the deploy block, decodes them as the agent does and watches the owner's actions.
+- [`npm run verify`](/docs/reference/agent-scripts#verify) checks any of the agent's Decisions whose journal day is published, such as its first allowed buy, from a clone of the repository: it re-derives the blob from the calldata, matches its hash to the `Decision` log and finds its anchor in the agent's hash-chained journal. Step 5 of the README's [Check it yourself](https://github.com/duongnq2798/maat#check-it-yourself-in-60-seconds) runs it, with its output.
 - [Read a decision](/docs/get-started/read-a-decision) explains every field of a `Decision` and how to read a refusal.
 - [Market hours](/docs/concepts/market-hours) explains the session, the holidays and the early closes the calendar knows.
