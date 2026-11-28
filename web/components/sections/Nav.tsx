@@ -23,11 +23,16 @@ const ASK_PAGES = [
 
 const DOCS = { href: SITE.docsUrl, label: "Docs" } as const;
 
+/** The repository link's words, the same in the pill and at the foot of the phone menu. */
+const GITHUB = "View on GitHub";
+
 /**
  * The site's top bar, in NavBar: white, and pinned from lg. On the landing (`onLanding`) the home link goes to the top
  * of the page and the bar docks the page's live reading once the hero has scrolled away; elsewhere the home link goes
  * to the landing. Up to 720 px the links give way to a Menu disclosure, a <details>, so it opens without JavaScript; it
- * lists the same pages. `askOpen` is the owner's switch, content/ask-open.ts: while it is off, the nav links neither
+ * lists the same pages and, under them, the repository, whose pill the bar shows only from 721 px (spec 2026-11-28,
+ * landing "a calmer first screen", section 3): on a phone the bar holds the wordmark and Menu alone, on one row even at
+ * 360 px. `askOpen` is the owner's switch, content/ask-open.ts: while it is off, the nav links neither
  * /ask nor /proof. `plate` goes before the first link: /gap-index, which reads no chain, puts its unlit docked plate there.
  */
 export function Nav({ onLanding = true, askOpen = ASK_OPEN, plate }: { onLanding?: boolean; askOpen?: boolean; plate?: ReactNode }) {
@@ -42,7 +47,7 @@ export function Nav({ onLanding = true, askOpen = ASK_OPEN, plate }: { onLanding
         <div className="flex flex-wrap items-center gap-1">
           {plate}
           {pages.map((l) => (
-            <a key={l.href} href={l.href} className="navlink max-[720px]:hidden">
+            <a key={l.href} href={l.href} className="navlink max-[721px]:hidden">
               {l.label}
             </a>
           ))}
@@ -53,21 +58,26 @@ export function Nav({ onLanding = true, askOpen = ASK_OPEN, plate }: { onLanding
                 ▾
               </span>
             </summary>
-            <ul
-              aria-label="Pages"
-              className="absolute left-0 top-full z-40 m-0 mt-2 flex w-48 list-none flex-col gap-0.5 rounded-[14px] border border-line bg-white p-1.5 shadow-[0_18px_40px_-18px_color-mix(in_srgb,var(--color-ink)_35%,transparent)]"
-            >
-              {pages.map((l) => (
-                <li key={l.href}>
-                  <a href={l.href} className="flex min-h-11 items-center rounded-[10px] px-3 py-2.5 text-[15px] text-ink hover:bg-line-soft">
-                    {l.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
+            <div className="absolute right-0 top-full z-40 mt-2 flex w-52 flex-col gap-1 rounded-[14px] border border-line bg-white p-1.5 shadow-[0_18px_40px_-18px_color-mix(in_srgb,var(--color-ink)_35%,transparent)]">
+              <ul aria-label="Pages" className="m-0 flex list-none flex-col gap-0.5 p-0">
+                {pages.map((l) => (
+                  <li key={l.href}>
+                    <a href={l.href} className="flex min-h-11 items-center rounded-[10px] px-3 py-2.5 text-[15px] text-ink hover:bg-line-soft">
+                      {l.label}
+                    </a>
+                  </li>
+                ))}
+              </ul>
+              <div className="border-t border-line pt-1">
+                <a href={SITE.repoUrl} className="flex min-h-11 items-center gap-1.5 rounded-[10px] px-3 py-2.5 text-[15px] font-medium text-ink hover:bg-line-soft">
+                  {GITHUB}
+                  <span aria-hidden="true"> ↗</span>
+                </a>
+              </div>
+            </div>
           </details>
-          <a href={SITE.repoUrl} className="pill-dark ml-2 px-[18px] py-[11px]">
-            View on GitHub
+          <a href={SITE.repoUrl} className="pill-dark ml-2 px-[18px] py-[11px] max-[721px]:hidden">
+            {GITHUB}
             <span aria-hidden="true"> ↗</span>
           </a>
           {onLanding ? <NavDock /> : null}

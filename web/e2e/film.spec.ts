@@ -6,7 +6,8 @@ import { LIVE_RPCS } from "../lib/live/rpc";
 import { routeLiveRpc } from "./fake-live-rpc";
 import { collectErrors, expectTapTargets, JOURNAL_RAW_URL, serveEmptyJournal } from "./helpers";
 
-// The film band, #film, directly under the hero (spec 2026-11-27, landing "explain in 10 seconds", section 2). The site
+// The film band, #film, under the hero after "On the record" (spec 2026-11-27, landing "explain in 10 seconds",
+// section 2, amended by spec 2026-11-28 section 2). The site
 // serves the cut, its poster and its captions itself; the browser fetches no byte of the cut before the visitor presses
 // play, and the band adds no host to the ones the landing already reads, Base's two RPCs. The live strip reads the
 // recorded weekend of e2e/fake-live-rpc.ts, so no test here touches the network.

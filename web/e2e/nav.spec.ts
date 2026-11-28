@@ -31,7 +31,7 @@ for (const width of [360, 390, 768, 1024, 1440, 1920]) {
     const link = (scope: Locator, name: string) => scope.getByRole("link", { name, exact: true });
 
     // Keyboard order: the home link, then the bar's links in reading order, or on a phone the Menu, opened with Enter,
-    // and its pages; the GitHub pill last.
+    // and its pages; then the repository: the pill from 721 px, the foot of the menu below that.
     const order = phone ? [summary, ...MENU.map((n) => link(pages, n))] : BAR.map((n) => link(nav, n));
     await home.focus();
     for (const next of [...order, github]) {
@@ -55,6 +55,9 @@ for (const width of [360, 390, 768, 1024, 1440, 1920]) {
       expect(box.x + box.width, label).toBeLessThanOrEqual(width);
     }
     for (const el of order.filter((l) => l !== summary)) expect(await lineCount(el), (await el.textContent()) ?? "").toBe(1);
+    // Spec 2026-11-28 section 3: on a phone the bar holds the wordmark and Menu alone, so it is one row even at 360 px
+    // (two rows, 125 px, while the pill was there).
+    if (phone) expect((await page.locator("[data-nav-bar]").boundingBox())!.height).toBeLessThanOrEqual(82);
     // From lg the bar is pinned, and the page pads its scrollport by the bar's height: it stays one row that tall.
     if (width >= 1024) {
       const { bar, padding } = await page.evaluate(() => ({

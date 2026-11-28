@@ -124,7 +124,10 @@ describe("the /now page", () => {
     expect(menu.getByRole("link", { name: "Now" })).toHaveAttribute("href", "/now");
     expect(within(nav).queryByRole("link", { name: "How Maat decides" })).toBeNull();
     expect(within(nav).getAllByRole("link", { name: "Docs" })[0]).toHaveAttribute("href", SITE.docsUrl);
-    expect(within(nav).getByRole("link", { name: /View on GitHub/ })).toHaveAttribute("href", SITE.repoUrl);
+    // The pill (from 721 px) and the foot of the phone menu (spec 2026-11-28 section 3) both open the repository.
+    const github = within(nav).getAllByRole("link", { name: /View on GitHub/ });
+    expect(github).toHaveLength(2);
+    for (const a of github) expect(a).toHaveAttribute("href", SITE.repoUrl);
     expect([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href"))).toEqual(["#main"]);
   });
 

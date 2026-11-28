@@ -22,13 +22,22 @@ describe("announcement bar", () => {
   });
 });
 
-/** The nav's links outside the phone menu and inside it, as [text, href]. */
+/**
+ * The nav's links outside the phone menu, the menu's Pages list, and the menu's foot (the repository, since spec
+ * 2026-11-28 section 3), as [text, href].
+ */
 function navLinks() {
   const nav = screen.getByRole("navigation", { name: "Main" });
   const menu = nav.querySelector<HTMLElement>("[data-phone-menu]")!;
+  const list = within(menu).getByRole("list", { name: "Pages" });
   const pair = (a: HTMLElement) => [a.textContent, a.getAttribute("href")];
   const all = within(nav).getAllByRole("link");
-  return { bar: all.filter((a) => !menu.contains(a)).map(pair), menu: within(menu).getAllByRole("link").map(pair), all };
+  return {
+    bar: all.filter((a) => !menu.contains(a)).map(pair),
+    menu: within(list).getAllByRole("link").map(pair),
+    foot: within(menu).getAllByRole("link").filter((a) => !list.contains(a)).map(pair),
+    all,
+  };
 }
 
 // Pages first (spec 2026-11-23 section 2, decision 3): the bar and the phone menu list the same pages, and the landing's
@@ -49,8 +58,13 @@ describe("nav", () => {
     render(<Nav askOpen={false} />);
     const nav = screen.getByRole("navigation", { name: "Main" });
     const menu = nav.querySelector<HTMLElement>("[data-phone-menu]")!;
-    const { bar, menu: pages, all } = navLinks();
+    const { bar, menu: pages, foot, all } = navLinks();
     expect(bar).toEqual([["maat", "#top"], ...PAGES, ["View on GitHub ↗", SITE.repoUrl]]);
+    // Spec 2026-11-28 section 3: the pill shows from 721 px only, and the phone menu ends on the same link, under the
+    // pages, so a phone's bar holds the wordmark and Menu alone.
+    const pill = all.find((a) => a.classList.contains("pill-dark"))!;
+    expect(pill.className.split(" ")).toContain("max-[721px]:hidden");
+    expect(foot).toEqual([["View on GitHub ↗", SITE.repoUrl]]);
     expect(within(nav).getByRole("link", { name: "Maat home" })).toBeInTheDocument();
     expect(nav.querySelector("svg")).toHaveAttribute("aria-hidden", "true");
     expect(all.map((a) => a.getAttribute("href")).filter((h) => h?.startsWith("#") || h?.startsWith("/#"))).toEqual(["#top"]);
@@ -63,26 +77,27 @@ describe("nav", () => {
     expect(pages).toEqual(PAGES);
     const navlinks = all.filter((a) => a.classList.contains("navlink") && !a.closest("[data-phone-menu]"));
     expect(navlinks.map((a) => a.textContent)).toEqual(PAGES.map(([label]) => label));
-    for (const a of navlinks) expect(a.className).toBe("navlink max-[720px]:hidden");
+    for (const a of navlinks) expect(a.className).toBe("navlink max-[721px]:hidden");
   });
 
   it("points its home link at the landing from any other page, and every page link as it is", () => {
     render(<Nav onLanding={false} askOpen={false} />);
     const hrefs = navLinks().all.map((a) => a.getAttribute("href"));
-    expect(hrefs).toEqual(["/", ...PAGES.map(([, href]) => href), ...PAGES.map(([, href]) => href), SITE.repoUrl]);
+    expect(hrefs).toEqual(["/", ...PAGES.map(([, href]) => href), ...PAGES.map(([, href]) => href), SITE.repoUrl, SITE.repoUrl]);
   });
 
   // The owner's switch, content/ask-open.ts, opens /ask; the same deploy adds Ask and Proof to the bar and the menu.
   it("adds Ask and Proof after Ledger, in the bar and in the phone menu, when the owner's switch is on", () => {
     render(<Nav askOpen />);
-    const { bar, menu, all } = navLinks();
+    const { bar, menu, foot, all } = navLinks();
     const pages = [...PAGES.slice(0, -1), ...ASK_PAGES, ...PAGES.slice(-1)];
     expect(bar).toEqual([["maat", "#top"], ...pages, ["View on GitHub ↗", SITE.repoUrl]]);
     expect(menu).toEqual(pages);
+    expect(foot).toEqual([["View on GitHub ↗", SITE.repoUrl]]);
     // In the bar they give way to the Menu up to 720 px, as the other pages do.
     const navlinks = all.filter((a) => a.classList.contains("navlink") && !a.closest("[data-phone-menu]"));
     expect(navlinks.map((a) => a.textContent)).toEqual(["Now", "Gap Index", "Ledger", "Ask", "Proof", "Docs"]);
-    for (const a of navlinks) expect(a.className).toBe("navlink max-[720px]:hidden");
+    for (const a of navlinks) expect(a.className).toBe("navlink max-[721px]:hidden");
   });
 
   it("links /ask and /proof as they are from any other page, and by default follows the owner's switch", () => {
@@ -129,11 +144,10 @@ describe("hero", () => {
     expect(HERO_STEPS).toHaveLength(3);
     // The site's description is the page's meta description, no longer a line in the hero.
     expect(screen.queryByText(SITE.description)).toBeNull();
-    const stat = (label: string) => screen.getByText(label).nextElementSibling?.textContent;
-    expect(stat("CHECKS PER TRADE")).toBe("9");
-    expect(stat("TYPED REFUSALS")).toBe("19");
-    expect(stat("RULE TIMELOCK")).toBe("24h");
-    // Spec 2026-11-27 section 1: the film first (its band is directly under the hero, section 2), then the simulator.
+    // Spec 2026-11-28 section 1: the spec plate left the hero for the foot of "On the record" (test/on-the-record.test.tsx).
+    expect(screen.queryByText("CHECKS PER TRADE")).toBeNull();
+    // Spec 2026-11-27 section 1: the film first (its band follows "On the record" under the hero, spec 2026-11-28
+    // section 2), then the simulator.
     const ctas = [...document.querySelectorAll<HTMLAnchorElement>("[data-hero-cta]")].map((a) => [a.textContent, a.getAttribute("href")]);
     expect(ctas).toEqual([
       ["Watch the film (1:40)", "#film"],

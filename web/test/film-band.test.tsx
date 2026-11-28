@@ -17,7 +17,8 @@ import {
   webvtt,
 } from "../../film/lib/vtt.mjs";
 
-// Spec 2026-11-27, landing "explain in 10 seconds", section 2: the film band under the hero, the files it serves from
+// Spec 2026-11-27, landing "explain in 10 seconds", section 2: the film band under the hero (after "On the record" since
+// spec 2026-11-28 section 2), the files it serves from
 // web/public/film/, and the two WebVTT tracks film/vtt.mjs writes: the captions of the sound, from film/narration.json,
 // and the on-screen text, from a render's manifest.
 

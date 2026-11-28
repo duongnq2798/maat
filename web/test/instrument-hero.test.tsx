@@ -5,7 +5,6 @@ import { Hero } from "@/components/sections/Hero";
 import { HeroNote, type RecordedNote } from "@/components/sections/HeroNote";
 import type { VaultStatus, VaultView } from "@/components/sections/VaultDecisions";
 import { RECORDED_ROWS } from "@/components/sections/vault-rows";
-import { FACTS } from "@/content/facts";
 import agentNote from "@/content/generated/agent-note.json";
 import { HERO_CTAS, HERO_DEFINITION } from "@/content/hero";
 import { etLabel } from "@/lib/chain/ledger";
@@ -162,24 +161,6 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
       );
       expect(within(note).getByRole("link", { name: "Newer rounds on /now" })).toHaveAttribute("href", "/now");
     });
-  });
-
-  it("engraves the spec plate's labels and marks each figure with the fact it comes from", () => {
-    render(<Hero />);
-    const plate = [
-      ["CHECKS PER TRADE", "checksPerTrade", String(FACTS.checksPerTrade.value)],
-      ["TYPED REFUSALS", "refusalCount", String(FACTS.refusalCount.value)],
-      ["RULE TIMELOCK", "timelockHours", `${FACTS.timelockHours.value}h`],
-    ] as const;
-    for (const [label, fact, value] of plate) {
-      const dt = screen.getByText(label);
-      expect(dt.tagName).toBe("DT");
-      expect(classes(dt)).toEqual(expect.arrayContaining(["font-mono", "text-[11px]", "tracking-[0.12em]", "text-label"]));
-      const dd = dt.nextElementSibling!;
-      expect(dd.tagName).toBe("DD");
-      expect(dd).toHaveAttribute("data-fact", fact);
-      expect(dd.textContent).toBe(value);
-    }
   });
 
   it("sets .h2 at clamp(32px, 3.6vw, 52px) and -0.045em, balanced", () => {

@@ -47,12 +47,14 @@ describe("landing page", () => {
 
   // Spec 2026-11-27, landing "explain in 10 seconds", section 3: what Maat is, the film, why it matters, how it works and
   // who can reuse it, then the simulator and the reference; the stack it is built on closes the page, above the footer.
-  it("orders the sections to explain before they prove, the film band directly under the hero (spec 2026-11-27 section 3)", () => {
+  // Spec 2026-11-28, landing "a calmer first screen", section 2: the vault's real answers sit between the hero and the film.
+  it("orders the sections to explain before they prove, the vault's real answers and then the film band under the hero", () => {
     const c = setup();
     const main = c.querySelector("main")!;
     const order = [...main.children].map((el) => el.id || el.getAttribute("aria-labelledby") || el.getAttribute("aria-label"));
     expect(order).toEqual([
       "top",
+      "record",
       "film",
       "problem-title",
       "how",
@@ -63,7 +65,8 @@ describe("landing page", () => {
       "loop-title",
       "Built with",
     ]);
-    expect(c.querySelector("#top")!.nextElementSibling).toBe(c.querySelector("#film"));
+    expect(c.querySelector("#top")!.nextElementSibling).toBe(c.querySelector("#record"));
+    expect(c.querySelector("#record")!.nextElementSibling).toBe(c.querySelector("#film"));
     expect(main.nextElementSibling!.tagName).toBe("FOOTER");
   });
 

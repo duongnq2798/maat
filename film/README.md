@@ -249,8 +249,8 @@ The verdict step then says what ties it to the brief: "brief-driven, adopts brie
 
 ## On the landing
 
-The landing's film band, `#film` directly under the hero (`web/components/sections/Film.tsx`, spec 2026-11-27 section
-2), plays the 16:9 cut from the site itself. Its four files are in `web/public/film/`:
+The landing's film band, `#film` under the hero after "On the record" (`web/components/sections/Film.tsx`, spec
+2026-11-27 section 2, amended by spec 2026-11-28 section 2), plays the 16:9 cut from the site itself. Its four files are in `web/public/film/`:
 
 | File | What it is |
 | --- | --- |

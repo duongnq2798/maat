@@ -1,6 +1,7 @@
 /**
- * The film on the landing (spec 2026-11-27, landing "explain in 10 seconds", section 2): the band `#film` directly
- * under the hero, which the hero's first CTA and the footer open. The site serves the 16:9 cut itself, re-encoded to
+ * The film on the landing (spec 2026-11-27, landing "explain in 10 seconds", section 2, amended by spec 2026-11-28
+ * section 2): the band `#film`, which follows "On the record" under the hero, and which the hero's first CTA and the
+ * footer open. The site serves the 16:9 cut itself, re-encoded to
  * 720p, with its poster and its two text tracks, from web/public/film/; film/README.md says how each file was made. The
  * player loads nothing of the cut before the visitor presses play (preload="none"), and nothing on the band loads from
  * a third party.

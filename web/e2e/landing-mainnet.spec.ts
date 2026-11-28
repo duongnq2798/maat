@@ -20,6 +20,13 @@ import { fixtureResults, routeLiveRpc, type Scenario, SESSION_TS, twapOf, WEEKEN
 import { installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
 import { collectErrors, expectTapTargets } from "./helpers";
 
+/**
+ * The tallest the "On the record" block may be on a phone, with its first moment open (spec 2026-11-28 section 2): it
+ * measures about 1,480 px at 390, the phone width this spec runs (Chromium on Windows), and the bound keeps about 5% of
+ * room for the engines and fonts CI lays out wider.
+ */
+const RECORD_MAX_PHONE = 1550;
+
 // The landing's first screen leads with the mainnet vault (plan 2026-11-25 Move 4). The live strip reads the recorded
 // weekend of e2e/fake-live-rpc.ts. The vault's read is /ledger's loader, whose batched calls go to the fake chain of
 // e2e/fake-rpc.ts where a test routes them; elsewhere the strip's fake answers them with an error, and the landing keeps
@@ -191,11 +198,12 @@ for (const vp of VIEWPORTS) {
     expect(NEWEST.sender).toBe("agent");
     await expect(firstRowLink(page)).toHaveAttribute("href", basescanDecision(NEWEST.transactionHash));
 
-    // The primary CTA opens the film band directly under the hero (spec 2026-11-27 section 2); never a dead link.
+    // The primary CTA opens the film band (spec 2026-11-27 section 2), which since spec 2026-11-28 section 2 follows the
+    // vault's real answers right under the hero; never a dead link.
     const primary = page.locator("[data-hero-cta]").first();
     await expect(primary).toHaveText(HERO_CTAS[0].label);
     await expect(primary).toHaveAttribute("href", "#film");
-    await expect(page.locator("#top + #film")).toHaveCount(1);
+    await expect(page.locator("#top + #record + #film")).toHaveCount(1);
 
     const words = await forkWordsInFirstScreen(page);
     expect(words.filter((w) => !w.tab)).toEqual([]);
@@ -372,12 +380,18 @@ for (const vp of VIEWPORTS) {
       return;
     }
     // Cold read of 2026-11-28, gap 6: below sm the card leaves the hero for How it works, so a phone reader reaches the
-    // problem, and then the "why", sooner.
+    // problem, and then the "why", sooner. Since spec 2026-11-28 ("a calmer first screen", section 2) the vault's real
+    // answers sit between the hero and the film and show the problem by example first. The guard is split in two, each
+    // measured once the fonts are in: everything above the Problem but that block keeps the bound it had before it, and
+    // the block keeps its own, RECORD_MAX_PHONE.
     await expect(inTop).toBeHidden();
     await expect(inHow).toBeVisible();
+    await page.evaluate(() => document.fonts.ready);
     const problem = page.getByRole("heading", { level: 2, name: "Tokenized stocks trade 24/7. Their prices don't." });
     const problemTop = await problem.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
-    expect(problemTop).toBeLessThanOrEqual(3200);
+    const record = (await page.locator("#record").boundingBox())!.height;
+    expect(problemTop - record).toBeLessThanOrEqual(3200);
+    expect(record).toBeLessThanOrEqual(RECORD_MAX_PHONE);
     const { violations } = await new AxeBuilder({ page }).include("#how [data-hero-reason]").analyze();
     expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")) }))).toEqual([]);
   });
