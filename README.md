@@ -233,12 +233,13 @@ a bigger bet. Where each piece stands:
   session is open, or Maat's live vault whether it would accept an intent, read-only and keyless, and answers with a
   typed reason. If you build agents, yours can ask Maat's calendar and live vault before it trades, today; the answer
   measures the trade against Maat's mandate, not yours.
-- **Next, tagged but not running yet.** At the 02:08 UTC read on 28 November, the agent on Base ran tag `agent-r2`.
-  The next release, `agent-r3`, tagged on 28 November, gives Claude every threshold the vault checks and asks it to
-  offer only what it expects the vault to allow; the vault still checks everything. It runs once the owner restarts
-  the agent on it. `MaatInbox`, the onchain
-  inbox for briefs to the agent, held none at the 02:08 UTC read on 28 November, and `/ask` stays closed until the
-  agent runs a release that reads briefs.
+- **`agent-r3`, running since 28 November, with `/ask` still closed.** On 28 November the owner restarted Maat's agent
+  on `agent-r3`, the release after `agent-r2`; its first round ran at 04:05 UTC. `agent-r3` gives Claude every
+  threshold the vault checks and asks it to offer only what it expects the vault to allow; the vault still checks
+  everything. It also reads briefs from `MaatInbox`, the onchain inbox for briefs to the agent, as untrusted data, and
+  sends Claude at most 3 a round, 20 a UTC day and 2 per sender a UTC day. Up to about 04:26 UTC on 28 November the
+  inbox had emitted no `Brief` event. `/ask` stays closed: the owner plans to open it in its own pull request after
+  running the brief evaluation and sending one team brief, to check how the agent handles briefs end to end.
 - **Planned, not built.** `MandateFactory`, so any agent can deploy its own vault under its own written mandate, and an
   MCP server for the market-guard check. No dates are promised ([Roadmap](#roadmap)).
 
@@ -334,8 +335,10 @@ unaudited. On 2026-11-24, Basescan showed the source of all four as verified, wi
 deployed `MaatInbox`, the inbox for briefs to the agent, on 2026-11-27 from the same wallet, at block 62,792,948, with
 its own script, [`contracts/script/DeployMaatInbox.s.sol`](contracts/script/DeployMaatInbox.s.sol). Sourcify reports an
 exact match of its creation and runtime code since 03:09 UTC that day, and Basescan showed its source as verified,
-with an exact match, the same day. The agent that ran at the 02:08 UTC read on 28 November, from tag `agent-r2`, predates briefs and reads none, so
-`/ask` stays closed until the agent restarts on a release that reads them. The table
+with an exact match, the same day. The owner restarted the agent on tag `agent-r3` on 28 November (first round at
+04:05 UTC), and from that release on it reads the inbox's `Brief` logs as untrusted data. Up to block 63,248,172 (about
+04:26 UTC on 28 November) the inbox had emitted no `Brief` event, so the agent had read no brief by then, and `/ask` stays closed
+until the owner opens it in its own pull request. The table
 in [`deployments/README.md`](deployments/README.md) records each address and deploy transaction, with Basescan
 links; the docs show the same table on
 [Status and roadmap](https://maatonbase.xyz/docs/get-started/status#next-mainnet) and
@@ -547,6 +550,8 @@ website and its docs are online at [maatonbase.xyz](https://maatonbase.xyz).
   Service API are dropped for this season. An MCP server and `MandateFactory` stay planned, not built.
 - **2026-11-27, 17:58 and 18:01.** The two early-close probes: an AAPLc buy allowed two minutes before the 13:00 ET
   close, and a GOOGLc buy refused one minute after it.
+- **2026-11-28, 04:05.** The owner restarted Maat's agent on tag `agent-r3` (`abced26`), the first release that reads
+  briefs; its first round's journal row chains onto the last `agent-r2` row. `/ask` stays closed for now.
 
 | Component | Status | Where |
 | --- | --- | --- |
@@ -555,9 +560,9 @@ website and its docs are online at [maatonbase.xyz](https://maatonbase.xyz).
 | `MarketCalendar`: NYSE session in America/New_York, DST computed onchain, holidays and early closes | **Built and tested**. Preloaded with 12 holidays and 3 early closes up to 2027-12-24 (the NYSE calendar for 2027). **Deployed** on Base mainnet | [`contracts/src/MarketCalendar.sol`](contracts/src/MarketCalendar.sol) |
 | `AerodromeSwapAdapter`: exact-input swaps directly against Aerodrome Slipstream pools | **Built**, unit and fork tested. **Deployed** on Base mainnet | [`contracts/src/adapters/AerodromeSwapAdapter.sol`](contracts/src/adapters/AerodromeSwapAdapter.sol) |
 | `AaveV4CreditAdapter`: supply B20 collateral, borrow and repay USDC on the Aave V4 MAG7 Spoke | **Built**, unit and fork tested (full supply, borrow, repay, withdraw loop). **Deployed** on Base mainnet | [`contracts/src/adapters/AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol) |
-| `MaatInbox`: public briefs to the agent, one zero-value transaction each, logged as `Brief` events; no owner, no funds | **Built**, unit-tested, with a fork test (`test_deployThenBriefWithSuffix` in [`MaatInboxFork.t.sol`](contracts/test/fork/MaatInboxFork.t.sol)) added after the recorded fork run at `4492eed`, so not among its 14. **Deployed** on Base mainnet on 2026-11-27. The agent that ran at the 02:08 UTC read on 28 November (`agent-r2`) does not read briefs, so `/ask` stays closed until it restarts on a release that does | [`contracts/src/MaatInbox.sol`](contracts/src/MaatInbox.sol) |
+| `MaatInbox`: public briefs to the agent, one zero-value transaction each, logged as `Brief` events; no owner, no funds | **Built**, unit-tested, with a fork test (`test_deployThenBriefWithSuffix` in [`MaatInboxFork.t.sol`](contracts/test/fork/MaatInboxFork.t.sol)) added after the recorded fork run at `4492eed`, so not among its 14. **Deployed** on Base mainnet on 2026-11-27. Since the owner restarted the agent on `agent-r3` on 2026-11-28, the agent reads the inbox's `Brief` logs as untrusted data, within the caps in [`agent/src/briefs/caps.ts`](agent/src/briefs/caps.ts); up to block 63,248,172 (about 04:26 UTC that day) the inbox had emitted no `Brief` event. `/ask` stays closed until the owner opens it in its own pull request | [`contracts/src/MaatInbox.sol`](contracts/src/MaatInbox.sol) |
 | Deploy script and Base mainnet configuration | **Built**; simulated on a fork (`test_deployWiresEverything`). The dry-run command against live mainnet state is in [`deployments/README.md`](deployments/README.md). The owner deployed the four Maat contracts to Base mainnet on 2026-11-24, from `main` at `66bd0d0` | [`contracts/script`](contracts/script) |
-| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (734 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, with the real Claude API; at the 02:08 UTC read on 28 November it ran tag `agent-r2` (`b8c914a`), and its `Decision` events are under [Deployments and the onchain record](#deployments-and-the-onchain-record). The next release, `agent-r3` (tagged 2026-11-28 at `abced26`), runs only once the owner restarts the agent on it | [`agent/`](agent) |
+| Agent runtime: vault reader, rule-based policy, Claude proposer, preview, guarded sender, journal, pending-tx reconcile | **Built and tested** (734 unit tests, 3 fork integration tests; the unit tests use a fake Claude client and the fork run a scripted proposer). Running in live mode on Base mainnet since 2026-11-27, on the owner's PC, with the real Claude API. It ran tag `agent-r2` (`b8c914a`) until 2026-11-28, when the owner restarted it on `agent-r3` (`abced26`); the first `agent-r3` round, at 04:05:01 UTC, wrote a journal row that carries commit `abced26` and chains onto the last `agent-r2` row. Its `Decision` events are under [Deployments and the onchain record](#deployments-and-the-onchain-record) | [`agent/`](agent) |
 | ERC-8021 Builder Code on every agent transaction | **Built and tested** (unit tests and the fork run). Registered by the owner; the calldata of the vault's first `Decision` on Base mainnet carries it | [`agent/src/exec/builderCode.ts`](agent/src/exec/builderCode.ts) |
 | Coinbase CDP Server Wallet as the executor, with an account policy | **Built**, unit-tested against a fake CDP client. The vault's executor since 2026-11-27 (`0x9bC6E49d42e0659f3ef667B09B67506B348e115A`, [`setExecutor` tx](https://basescan.org/tx/0x6f866bf770c461962af222b0ee67d5cb40229917287c68789672be7c7ab9f483)), used by the live agent for every `Decision` it has sent | [`agent/src/exec/cdpSender.ts`](agent/src/exec/cdpSender.ts), [`agent/src/exec/cdpPolicy.ts`](agent/src/exec/cdpPolicy.ts) |
 | Website: landing page with the decision engine and the simulator, the [mainnet ledger](https://maatonbase.xyz/ledger), which reads the deployed vault from Base in the visitor's browser and keeps the labelled fork ledger under it, and the docs center. The landing's first screen leads with the vault's latest `Decision`, which the browser reads with the mainnet ledger's loader, and keeps the fork run as a tab labelled Before mainnet (fork test); every fork or simulated number on the landing carries a badge. The live strip under the landing H1 and `/now` read Base mainnet in the browser. The Weekend Gap Index (`/gap-index`) is built from edition files measured from Base logs and committed in `web/content/gap-index/` | **Online** at [maatonbase.xyz](https://maatonbase.xyz), a static export of `main`. **Built and tested** (3,719 unit tests and 480 Playwright tests passed, and 1 Playwright test that reads Base mainnet was skipped, in CI run [45947102120](https://github.com/duongnq2798/maat/actions/runs/45947102120) at `e578733`, 2026-11-27; step 5 of the [5-minute guide](#how-to-evaluate-maat-in-5-minutes) shows this tree's unit-test count) | [`web/`](web) |

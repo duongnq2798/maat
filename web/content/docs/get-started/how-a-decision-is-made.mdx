@@ -4,7 +4,7 @@ description: "Follow one trade from vault state to the Decision event: the polic
 type: concept
 audience: [newcomer, watcher, developer]
 status: fork-tested
-lastReviewed: 2026-11-27
+lastReviewed: 2026-11-28
 sources:
   - agent/src/loop/runOnce.ts
   - agent/src/policy.ts
@@ -243,7 +243,7 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
 }
 ```
 
-Every field comes from the agent's read of the vault, the policy's numbers and suggestions, or the unpaid bill in the agent's state file. No news, web page or journal text is sent. The one outside text is a MaatInbox brief: in an agent built from `main`, once `deployments/README.md` records the inbox, a round may add up to 3 briefs after this message, in a section marked untrusted ([What the agent does with a brief](/docs/guides/brief-the-agent#what-the-agent-does-with-a-brief)). The table has recorded the inbox since 2026-11-27, but the agent that runs on Maat's vault now, from the tag `agent-r2`, predates briefs and sends Claude none.
+Every field comes from the agent's read of the vault, the policy's numbers and suggestions, or the unpaid bill in the agent's state file. No news, web page or journal text is sent. The one outside text is a MaatInbox brief: from the tag `agent-r3` on, once `deployments/README.md` records the inbox, a round may add up to 3 briefs after this message, in a section marked untrusted ([What the agent does with a brief](/docs/guides/brief-the-agent#what-the-agent-does-with-a-brief)). The table has recorded the inbox since 2026-11-27, and Maat's agent has run on the vault from `agent-r3` since 2026-11-28, but up to block `63248172`, about 04:26 UTC that day, the inbox had emitted no `Brief` event, so the agent had sent Claude none.
 
 The request itself:
 
