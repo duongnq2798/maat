@@ -28,7 +28,7 @@ export function Hero() {
       <div aria-hidden="true" className="hero-glow absolute -right-[10%] -top-[10%] hidden h-[120%] w-3/5 lg:block" />
       <div className="wrap relative grid grid-cols-[repeat(auto-fit,minmax(min(100%,440px),1fr))] items-start gap-10 pb-16 pt-8 sm:pb-24 sm:pt-10 md:gap-14 xl:grid-cols-[minmax(0,1fr)_560px] xl:gap-12">
         <div className="flex min-w-0 flex-col gap-4 sm:gap-5">
-          <h1 className="m-0 text-[clamp(44px,5.4vw,78px)] font-semibold leading-[0.96] tracking-[-0.055em]">
+          <h1 className="m-0 text-[clamp(44px,5.4vw,78px)] font-semibold leading-[0.96] tracking-[-0.055em] [text-wrap:balance]">
             The AI agent that knows <span className="text-accent">when not to trade.</span>
           </h1>
           <p data-hero-definition="" className="lead max-w-[34em] text-[17px] leading-[1.55] text-ink-body sm:text-[19px]">
@@ -44,7 +44,7 @@ export function Hero() {
           <ol
             data-hero-steps=""
             aria-label="How a trade is weighed"
-            className="m-0 grid list-none grid-cols-3 gap-3 border-t border-line p-0"
+            className="m-0 grid list-none grid-cols-3 gap-3 border-t border-line p-0 [text-wrap:balance]"
           >
             {HERO_STEPS.map((step, i) => (
               <li key={step} className="min-w-0">

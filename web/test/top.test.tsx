@@ -178,10 +178,17 @@ describe("hero", () => {
     );
     expect(screen.getByRole("link", { name: "agent builders" })).toHaveAttribute("href", "#agents");
     const steps = within(screen.getByRole("list", { name: "How a trade is weighed" })).getAllByRole("link");
+    // No-break spaces keep "9 public" and "on Base" whole when a phone's column wraps the label (finding #36 of
+    // 2026-11-28); the words are the spec's.
     expect(steps.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
       ["1Maat's agent proposes a trade", "#how"],
-      ["2The vault checks 9 public rules", "#how"],
-      ["3Yes or no is recorded on Base", "#how"],
+      ["2The vault checks 9\u00a0public rules", "#how"],
+      ["3Yes or no is recorded on\u00a0Base", "#how"],
+    ]);
+    expect(HERO_STEPS.map((s) => s.replace(/\u00a0/g, " "))).toEqual([
+      "Maat's agent proposes a trade",
+      "The vault checks 9 public rules",
+      "Yes or no is recorded on Base",
     ]);
     expect(HERO_STEPS).toHaveLength(3);
     // The site's description is the page's meta description, no longer a line in the hero.

@@ -24,11 +24,15 @@ export const HERO_AUDIENCE = {
   after: ", not investors: only the owner can fund the vault.",
 } as const;
 
-/** The three steps, in one row; each links to How it works. */
+/**
+ * The three steps, in one row; each links to How it works. On a phone each column is about 100 px wide, so the labels
+ * wrap: a no-break space (\u00a0) keeps the count with its noun and "on Base" whole, and the row's balanced wrapping
+ * (components/sections/Hero.tsx) keeps a label from ending on one word.
+ */
 export const HERO_STEPS: readonly string[] = [
   "Maat's agent proposes a trade",
-  `The vault checks ${FACTS.checksPerTrade.value} public rules`,
-  "Yes or no is recorded on Base",
+  `The vault checks ${FACTS.checksPerTrade.value}\u00a0public rules`,
+  "Yes or no is recorded on\u00a0Base",
 ];
 
 export interface HeroCta {
