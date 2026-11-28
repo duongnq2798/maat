@@ -12,19 +12,36 @@ const FIGURE =
 /**
  * Claude's own reason for the first trade of Maat's agent that the vault allowed, word for word from that transaction's
  * input (content/hero-reason.ts decodes it at build time). The vault card shows what the vault decided; this shows why
- * Claude proposed it, so a visitor sees both halves of "Claude proposes. The vault decides." on one real trade. Under
- * the verdict, the caption names the other buy the vault allowed in that round, linked to Basescan, and a line under the
- * quote glosses its "pp" (cold read of 2026-11-28, gaps 3 and 4). From sm it is the hero's last row, spanning the grid
- * so neither column grows: the trade and its verdict on the left, the quote on the right. Below sm it shows in How it
- * works instead (gap 6), so it renders once per breakpoint and any selector for it must be scoped to #top or #how. A
- * server component: the quote is in the exported HTML, and nothing is read from Base to show it. The text is a string
- * child, so it is text, never markup.
+ * Claude proposed it, so a visitor sees both halves of "Claude proposes. The vault decides." on one real trade. Its
+ * round line names this trade's own hash and the other buy the vault allowed in that round, linked to Basescan, and a
+ * line under the quote glosses its "pp" (cold read of 2026-11-28, gaps 3 and 4). From sm it is the hero's last row,
+ * spanning the grid so neither column grows: the trade, its verdict and the round line on the left, the quote on the
+ * right. Below sm it shows in How it works instead (gap 6), with `roundLast`: the round line goes after the
+ * attribution, so on a phone it does not come between the verdict and Claude's words (review of PR #120). It renders
+ * once per breakpoint, so any selector for it must be scoped to #top or #how. A server component: the quote is in the
+ * exported HTML, and nothing is read from Base to show it. The text is a string child, so it is text, never markup.
  */
-export function HeroReason({ className }: { className?: string } = {}) {
+export function HeroReason({ className, roundLast = false }: { className?: string; roundLast?: boolean } = {}) {
   const tx = HERO_REASON_TX;
   const next = HERO_REASON_NEXT;
   const reason = heroReason();
   const gloss = reasonGloss(reason.text);
+  const round = (
+    <span data-hero-reason-round="" className="text-[13px] leading-normal text-ink-2">
+      This trade, <span className="font-mono text-[12px]">{shortTx(tx.txHash)}</span>, was the first of two buys the vault
+      allowed in one round; the second was BUY {next.symbol} · {formatUsd6(next.amount)},{" "}
+      <a
+        href={basescanDecision(next.txHash)}
+        aria-label={`${shortTx(next.txHash)} on Basescan`}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="tap font-mono text-[12px] font-medium"
+      >
+        {shortTx(next.txHash)}
+        <span aria-hidden="true"> ↗</span>
+      </a>
+    </span>
+  );
   return (
     <figure data-hero-reason="" className={[FIGURE, className].filter(Boolean).join(" ")}>
       <figcaption className="flex min-w-0 flex-col gap-2">
@@ -37,19 +54,7 @@ export function HeroReason({ className }: { className?: string } = {}) {
         <span className="text-[13px] font-medium text-ink">
           Allowed · <ReasonTag code="OK" layout="text" />
         </span>
-        <span data-hero-reason-round="" className="text-[13px] leading-normal text-ink-2">
-          First of two buys the vault allowed in one round; the second was BUY {next.symbol} · {formatUsd6(next.amount)},{" "}
-          <a
-            href={basescanDecision(next.txHash)}
-            aria-label={`${shortTx(next.txHash)} on Basescan`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="tap font-mono text-[12px] font-medium"
-          >
-            {shortTx(next.txHash)}
-            <span aria-hidden="true"> ↗</span>
-          </a>
-        </span>
+        {roundLast ? null : round}
       </figcaption>
       <div className="flex min-w-0 flex-col gap-2.5">
         <blockquote dir="auto" className="m-0 text-[17px] leading-[1.5] text-ink [overflow-wrap:anywhere] sm:text-[19px]">
@@ -73,6 +78,7 @@ export function HeroReason({ className }: { className?: string } = {}) {
             <span aria-hidden="true"> →</span>
           </a>
         </p>
+        {roundLast ? round : null}
       </div>
     </figure>
   );

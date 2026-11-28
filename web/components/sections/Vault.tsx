@@ -33,10 +33,12 @@ const shortHash = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
 /**
  * What "probe" means where the card first shows it (cold read of 2026-11-28, gap 2). A Decision is labelled "probe" by
  * /ledger's senderLabel (lib/chain/ledger.ts) when its maat:v1 blob has k "probe": one of the owner's MAAT_PROBES
- * instants, sized at agent/src/probes.ts PROBE_USD = 1, whose text starts "PROBE v1, not a Claude proposal"
- * (PROBE_TEXT_PREFIX). The label itself stays "probe", since /ledger and /proof count by it.
+ * instants, sized at agent/src/probes.ts PROBE_USD = 1 (a $1 BUY, or a $1 SELL of a holding), whose text starts "PROBE
+ * v1, not a Claude proposal" (PROBE_TEXT_PREFIX). It says "test trade", not "check": the vault's nine rules are its
+ * checks, and a "$1 check" reads as a payment (review of PR #120). The label itself stays "probe", since /ledger and
+ * /proof count by it.
  */
-export const PROBE_GLOSS = "A probe is a $1 check the owner scheduled, not a Claude proposal.";
+export const PROBE_GLOSS = "A probe is a $1 test trade the owner scheduled, not a Claude proposal.";
 
 /**
  * Where the card glosses "probe": under the latest Decision when that is a probe, under the list when only an older

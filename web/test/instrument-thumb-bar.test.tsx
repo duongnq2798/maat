@@ -139,13 +139,19 @@ describe("the ThumbBar (spec 2026-11-23 sections 6.2 and 11 item 12)", () => {
     const sat = readingAt(SAT, { wallAtReadSec: SAT + 14 });
     const pass = readingAt(FRI, { edit: passingBasket, wallAtReadSec: FRI + 14 });
     const mixed = readingAt(FRI, { edit: (r) => failSlot(passingBasket(r), "NVDAc", "observe"), wallAtReadSec: FRI + 14 });
+    const twoRefused = readingAt(FRI, {
+      edit: (r) => failSlot(failSlot(passingBasket(r), "NVDAc", "observe"), "GOOGLc", "observe"),
+      wallAtReadSec: FRI + 14,
+    });
     expect(thumbWord(undefined)).toBeNull();
     expect(thumbWord({ status: "reading" })).toBeNull();
     expect(thumbWord({ status: "error", message: "HTTP 503" })).toBeNull();
     expect(thumbWord(classify(sat, true, 30_000, SAT + 44))).toBeNull();
-    expect(thumbWord(classify(sat, false, 0, SAT + 14))).toBe("Refused");
+    // Every basket stock refused for one reason: the verdict and that reason's label (review of PR #120).
+    expect(thumbWord(classify(sat, false, 0, SAT + 14))).toBe("Refused · Market closed");
     expect(thumbWord(classify(pass, false, 0, FRI + 14))).toBe("Market checks pass");
     expect(thumbWord(classify(mixed, false, 0, FRI + 14))).toBe("Refused for NVDAc");
+    expect(thumbWord(classify(twoRefused, false, 0, FRI + 14))).toBe("Refused for NVDAc and GOOGLc");
   });
 
   it("renders nothing until both hero CTAs have scrolled out above the viewport", async () => {
@@ -219,7 +225,7 @@ describe("the ThumbBar (spec 2026-11-23 sections 6.2 and 11 item 12)", () => {
     scrollPast(ui);
     expect(ui.bar()!.querySelector("[data-lamp]")).toHaveAttribute("data-lamp", "refuse");
     // The verdict words of the hero's line, not the instrument's lamp word.
-    expect(ui.bar()!.querySelector("[data-thumb-verdict]")).toHaveTextContent("A buy right now: Refused");
+    expect(ui.bar()!.querySelector("[data-thumb-verdict]")!.textContent).toBe("A buy right now: Refused · Market closed");
     expect(ui.bar()!.textContent).not.toMatch(/Basket|REFUSE/);
     expect(ui.fake.multicalls()).toBe(1);
   });

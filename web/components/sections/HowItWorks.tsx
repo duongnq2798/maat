@@ -70,8 +70,9 @@ export function HowItWorks() {
           lead="Claude never holds the keys to the rules. It writes intents. The vault checks them against the mandate (the vault's public rule set), which Claude cannot change, then emits a Decision either way."
         />
         {/* Below sm, Claude's reason for its first allowed trade shows here, not at the foot of the hero, so a phone
-            reader reaches the "why" sooner (cold read of 2026-11-28, gap 6). From sm it stays in the hero. */}
-        <HeroReason className="bg-bg sm:hidden" />
+            reader reaches the "why" sooner (cold read of 2026-11-28, gap 6). From sm it stays in the hero. Here its round
+            line follows the attribution, so nothing comes between the verdict and Claude's words (review of PR #120). */}
+        <HeroReason className="bg-bg sm:hidden" roundLast />
         <ol className="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(min(100%,250px),1fr))] gap-4 p-0">
           {STEPS.map((s) => (
             <li key={s.n} className="card flex min-h-[220px] flex-col gap-3.5 p-6">

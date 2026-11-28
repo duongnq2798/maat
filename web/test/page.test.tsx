@@ -243,7 +243,10 @@ describe("landing page", () => {
     const inHow = c.querySelector("#how figure[data-hero-reason]")!;
     expect(inTop.getAttribute("class")!.split(" ")).toContain("max-sm:hidden");
     expect(inHow.getAttribute("class")!.split(" ")).toContain("sm:hidden");
-    expect(inHow.textContent).toBe(inTop.textContent);
+    // The same words: only the round line's place differs, after the attribution on a phone (review of PR #120).
+    const pieces = (fig: Element) => [...fig.querySelectorAll("figcaption > *, blockquote, figcaption + div > *")].map((e) => e.textContent).sort();
+    expect(pieces(inHow)).toEqual(pieces(inTop));
+    expect(inHow.textContent!.length).toBe(inTop.textContent!.length);
   });
 
   it("uses no raster images", () => {

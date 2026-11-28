@@ -1,9 +1,10 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, type Locator, type Page, test } from "@playwright/test";
+import { FACTS } from "../content/facts";
 import { REFRESH_MS } from "../lib/live/freshness";
 import { LIVE_RPCS } from "../lib/live/rpc";
-import { routeLiveRpc, WEEKEND_TS } from "./fake-live-rpc";
+import { fixtureResults, routeLiveRpc, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { collectErrors, measureFit } from "./helpers";
 
 // The landing's first viewport and the hero instrument end to end (spec 2026-11-23 sections 6.2, 11 and 13), against
@@ -88,7 +89,7 @@ test("on a phone the ThumbBar rises once both CTAs are above the screen, and ste
   await expect(bar).toBeVisible();
   await expect(bar.locator("[data-lamp]")).toHaveAttribute("data-lamp", "refuse");
   // Cold read of 2026-11-28, gap 5: the hero line's verdict words.
-  await expect(bar.locator("[data-thumb-verdict]")).toHaveText("A buy right now: Refused");
+  await expect(bar.locator("[data-thumb-verdict]")).toHaveText("A buy right now: Refused · Market closed");
   await expect(bar).not.toContainText("Basket");
   await expect(bar.getByRole("link", { name: "Try to make it say no" })).toHaveAttribute("href", "#try");
   await scrollTo(page, "#try");
@@ -115,6 +116,54 @@ test("nothing scrolls sideways at 360 px, with the live Readout and with the Thu
   expect(scrolled.overflow).toBeLessThanOrEqual(0);
   expect(scrolled.clipped).toEqual([]);
 });
+
+/**
+ * In session, the first two basket stocks refused on their pool premium and the third passing: the ThumbBar's longest
+ * live words, "Refused for NVDAc and GOOGLc" (review of PR #120).
+ */
+function twoRefusedOnePasses() {
+  const basket = FACTS.basket.value;
+  const { maxPremiumBps, twapWindowSec } = FACTS.mandate.value;
+  let results = fixtureResults(SESSION_TS);
+  for (const symbol of basket) {
+    const twap = twapOf(results, symbol, twapWindowSec);
+    const answer = symbol === basket[2] ? twap : (twap * 10_000n) / BigInt(10_000 + 2 * maxPremiumBps + 100);
+    results = withFeed(results, symbol, answer, SESSION_TS - 10);
+  }
+  return { results, open: true };
+}
+
+for (const width of [360, 320]) {
+  test(`at ${width} px the ThumbBar holds its longest live words inside its row, on screen, and nothing scrolls sideways`, async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width, height: 800 });
+    await page.clock.install({ time: (SESSION_TS + 5) * 1000 });
+    await routeLiveRpc(page, twoRefusedOnePasses());
+    await page.goto("/");
+    await expect(strip(page)).toHaveAttribute("data-live-strip", "live");
+    await page.evaluate(() => document.fonts.ready);
+    await scrollTo(page, "#how");
+    const bar = page.locator("[data-thumb-bar]");
+    await expect(bar).toHaveAttribute("data-thumb-bar", "shown");
+    const [a, b] = FACTS.basket.value;
+    const verdict = bar.locator("[data-thumb-verdict]");
+    await expect(verdict).toHaveText(`A buy right now: Refused for ${a} and ${b}`);
+    // Past the slide-up, the words sit inside the bar's own box, and the bar ends at the screen's bottom edge.
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const barBox = document.querySelector("[data-thumb-bar]")!.getBoundingClientRect();
+          const words = document.querySelector("[data-thumb-verdict]")!.getBoundingClientRect();
+          return { inside: words.top >= barBox.top && words.bottom <= barBox.bottom, onScreen: Math.round(barBox.bottom) <= window.innerHeight };
+        }),
+      )
+      .toEqual({ inside: true, onScreen: true });
+    const fit = await measureFit(page);
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.clipped).toEqual([]);
+  });
+}
 
 test("Pause holds the page at one read through two refresh intervals, and one interval after release adds one more", async ({
   page,

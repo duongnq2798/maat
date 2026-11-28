@@ -90,7 +90,7 @@ describe("the card's gloss of a probe (cold read of 2026-11-28, gap 2)", () => {
   });
 
   it("says a probe is $1, as the agent sizes it", () => {
-    expect(PROBE_GLOSS).toBe("A probe is a $1 check the owner scheduled, not a Claude proposal.");
+    expect(PROBE_GLOSS).toBe("A probe is a $1 test trade the owner scheduled, not a Claude proposal.");
     // Vitest runs in web/.
     expect(readFileSync("../agent/src/probes.ts", "utf8")).toContain("export const PROBE_USD = 1;");
   });

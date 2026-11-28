@@ -25,8 +25,8 @@ export const HERO_REASON_TX = {
 
 /**
  * The second buy of the same run (`r` 1795792534276-47ea132c), 22 blocks later: BUY AAPLc for $4.64 (4.637004 USDC),
- * which the vault also allowed, and which the engine card lists among the latest Decisions it reads from Base. The hero
- * names it under the quote, so the first allowed trade reads as one of the two buys of one round. `input` is copied
+ * which the vault also allowed, and which /ledger lists with every other Decision. The quote card names it in its
+ * round line, so the first allowed trade reads as one of the two buys of one round. `input` is copied
  * from Base as `HERO_REASON_TX.input` is, with `cast tx <txHash> input`; test/hero-reason.test.tsx holds it to the
  * snapshot of the vault's logs the same way, and holds the pair to being the only two Decisions of that round.
  */

@@ -14,8 +14,12 @@ import { basescanDecision } from "@/lib/live/basescan";
 /** keccak256("Decision(bytes32,uint8,address,uint256,bool,uint8,bytes32)"). */
 const DECISION_TOPIC = "0x31e6f801fe8c4e61fff662a75a05831c8f1341359c56a18463b2a33bfa2df322";
 
-/** The caption's line naming the other buy of the round (cold read of 2026-11-28, gap 3), word for word. */
-const ROUND_LINE = "First of two buys the vault allowed in one round; the second was BUY AAPLc · $4.64, 0xdd01…ff69 ↗";
+/**
+ * The line naming this trade's own hash and the other buy of the round (cold read of 2026-11-28, gap 3; review of PR
+ * #120), word for word.
+ */
+const ROUND_LINE =
+  "This trade, 0xff1f…c503, was the first of two buys the vault allowed in one round; the second was BUY AAPLc · $4.64, 0xdd01…ff69 ↗";
 
 /** The Decision log of a transaction in the committed snapshot of the vault's logs, its data split in words. */
 function snapshotDecision(txHash: string = HERO_REASON_TX.txHash) {
@@ -101,8 +105,8 @@ describe("Claude's reason in the hero (content/hero-reason.ts)", () => {
     const i = at(HERO_REASON_TX.txHash);
     expect(i).toBeGreaterThan(0);
     expect(at(HERO_REASON_NEXT.txHash)).toBe(i + 1);
-    // A round is one tick of the loop: the Decisions on either side are more than five loops away at 0.2 s a block,
-    // Base's fastest, so neither belongs to it.
+    // A round is one tick of the loop: the Decisions on either side are more than one loop (15 minutes) away even at
+    // 0.2 s a block, a tenth of Base's 2 s block time, so neither belongs to it.
     const loopBlocks = FACTS.loopMinutes.value * 60 * 5;
     const before = decisions[i - 1]!;
     const after = decisions[i + 2];
@@ -128,7 +132,8 @@ describe("Claude's reason in the hero (content/hero-reason.ts)", () => {
     expect(within(fig).getByText(/^Why Maat's agent made its first allowed trade · Fri 27 Nov 10:15 ET$/)).toBeInTheDocument();
     expect(fig).toHaveTextContent("BUY GOOGLc · $4.64");
     expect(fig).toHaveTextContent("Allowed · All checks passed OK");
-    expect(fig.querySelector("[data-hero-reason-round]")!.textContent).toBe(ROUND_LINE);
+    // The round line sits in the caption, under the verdict, and names this trade's own hash before the other's.
+    expect(fig.querySelector("figcaption > [data-hero-reason-round]")!.textContent).toBe(ROUND_LINE);
     const blockquote = fig.querySelector("blockquote")!;
     expect(blockquote).toHaveTextContent(`“${heroReason().text}”`);
     const gloss = fig.querySelector("[data-hero-reason-gloss]")!;
@@ -152,6 +157,20 @@ describe("Claude's reason in the hero (content/hero-reason.ts)", () => {
     expect(fig.previousElementSibling!.querySelector("#how-title")).not.toBeNull();
     expect(fig.nextElementSibling!.tagName).toBe("OL");
     expect(fig.querySelector("blockquote")!.textContent).toBe(`“${heroReason().text}”`);
+    // On a phone the round line follows the attribution, so nothing comes between the verdict and Claude's words
+    // (review of PR #120).
+    expect(fig.querySelector("figcaption [data-hero-reason-round]")).toBeNull();
+    const round = fig.querySelector("[data-hero-reason-round]")!;
+    expect(round.textContent).toBe(ROUND_LINE);
+    expect(round.parentElement!.lastElementChild).toBe(round);
+    expect(round.previousElementSibling!.textContent).toMatch(/Check the hash on \/ledger →$/);
+    expect(fig.querySelector("figcaption")!.nextElementSibling!.firstElementChild!.tagName).toBe("BLOCKQUOTE");
+    const links = [...fig.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    expect(links).toEqual([
+      ["0xff1f…c503 on Basescan ↗", basescanDecision(HERO_REASON_TX.txHash)],
+      ["Check the hash on /ledger →", "/ledger"],
+      ["0xdd01…ff69 ↗", basescanDecision(HERO_REASON_NEXT.txHash)],
+    ]);
   });
 
   it("puts the quote in as text, never markup", () => {
