@@ -212,10 +212,12 @@ that needs a clone.
    npm run verify -- --tx 0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503 --rpc https://mainnet.base.org --journal ../2026-11-27.jsonl
    ```
 
-   Run from a fresh clone on 2026-11-28, the last command took 14 seconds, and 8 on a second run; `npm ci` was the slow
-   part, 12 minutes on a busy Windows PC. It printed, with long hashes shortened here:
+   In fresh clones on 2026-11-28 the last command took 5 to 14 seconds; `npm ci` was the slow part, from 1.5 minutes
+   to 12 on a busy Windows PC. It printed, with long hashes shortened here:
 
    ```text
+   intent 0xca1a95ce…7728, rationaleHash 0x95696cf5…8f87
+   sender: agent
    PASS calldata  228-byte execute call to the vault 0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b, 499-byte blob, suffix codes bc_w7i5vjdv
    PASS blob      maat:v1, 499 bytes: block 63010793, run 1795792534276-47ea132c, m claude-sonnet-5-5, commit b8c914a7…275f, j 0x4546bd09…a8d0
    PASS hash      keccak256(blob) = rationaleHash 0x95696cf5…8f87

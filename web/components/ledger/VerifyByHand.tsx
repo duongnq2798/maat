@@ -139,7 +139,7 @@ function steps(t: VerifyTargets): Step[] {
     },
     {
       title: "Check that the agent decided, with the repository's verifier",
-      body: `Steps 1 to 6 check a refusal by hand. This one checks the agent's first allowed buy, BUY GOOGLc on Fri 27 Nov 2026, transaction ${AGENT_BUY.tx.slice(0, 10)}…${AGENT_BUY.tx.slice(-4)}, with agent/scripts/verify-decision.ts from a fresh clone. It re-derives the maat:v1 blob from the calldata, with the model and the agent's commit, hashes it, matches the hash to the vault's Decision log, and finds the blob's anchor in the agent's hash-chained journal, one day file of the public agent-journal branch. It needs git and Node 22.9 or later, and sends nothing. On Sat 28 Nov the last command took 14 seconds, and 8 on a second run; npm ci was the slow part.`,
+      body: `Steps 1 to 6 check a refusal by hand. This one checks the agent's first allowed buy, BUY GOOGLc on Fri 27 Nov 2026, transaction ${AGENT_BUY.tx.slice(0, 10)}…${AGENT_BUY.tx.slice(-4)}, with agent/scripts/verify-decision.ts from a fresh clone. It re-derives the maat:v1 blob from the calldata, with the model and the agent's commit, hashes it, matches the hash to the vault's Decision log, and finds the blob's anchor in the agent's hash-chained journal, one day file of the public agent-journal branch. It needs git and Node 22.9 or later, and sends nothing. In fresh clones on Sat 28 Nov the last command took 5 to 14 seconds; npm ci was the slow part.`,
       command: [
         "git clone --depth 1 https://github.com/duongnq2798/maat.git && cd maat",
         `git fetch --depth 1 origin agent-journal && git show FETCH_HEAD:journal/${AGENT_BUY.journal} > ${AGENT_BUY.journal}`,
@@ -147,6 +147,8 @@ function steps(t: VerifyTargets): Step[] {
         `npm run verify -- --tx ${AGENT_BUY.tx} --rpc https://mainnet.base.org --journal ../${AGENT_BUY.journal}`,
       ].join("\n"),
       output: [
+        "intent 0xca1a95ce…7728, rationaleHash 0x95696cf5…8f87",
+        "sender: agent",
         "PASS calldata  228-byte execute call to the vault 0x3F956072…699b, 499-byte blob, suffix codes bc_w7i5vjdv",
         "PASS blob      maat:v1, 499 bytes: block 63010793, run 1795792534276-47ea132c, m claude-sonnet-5-5, commit b8c914a7…275f, j 0x4546bd09…a8d0",
         "PASS hash      keccak256(blob) = rationaleHash 0x95696cf5…8f87",

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
+import { keccak256, slice, toBytes, type Address, type Hash, type Hex } from "viem";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import LedgerPage from "@/app/(site)/ledger/page";
 import { BlobView } from "@/components/ledger/AgentTrail";
@@ -553,15 +553,20 @@ describe("Verify it by hand", () => {
     const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-4)}`;
     const vault = FACTS.mainnetDecisions.value[0]!.address;
     const output = (screen.getByRole("region", { name: "Output of command 7" }).textContent ?? "").split("\n");
-    expect(output[0]).toBe(
+    // The intent's id is its first word, right after the selector.
+    expect(output[0]).toBe(`intent ${short(slice(HERO_REASON_TX.input, 4, 36))}, rationaleHash ${short(call.intentRationaleHash)}`);
+    // Not the owner (the executor sent it) and neither a probe nor a brief, so the verifier labels the sender agent.
+    expect([f.k, f.q]).toEqual([undefined, undefined]);
+    expect(output[1]).toBe("sender: agent");
+    expect(output[2]).toBe(
       `PASS calldata  ${EXECUTE_BYTES}-byte execute call to the vault ${short(vault)}, ${call.blob.text.length}-byte blob, suffix codes ${call.codes!.join(",")}`,
     );
-    expect(output[1]).toBe(
+    expect(output[3]).toBe(
       `PASS blob      maat:v1, ${call.blob.text.length} bytes: block ${f.b}, run ${f.r}, m ${f.m}, commit ${f.c.slice(0, 8)}…${f.c.slice(-4)}, j ${short(f.j)}`,
     );
     expect(call.blobHash).toBe(call.intentRationaleHash);
-    expect(output[2]).toBe(`PASS hash      keccak256(blob) = rationaleHash ${short(call.intentRationaleHash)}`);
-    expect(output[5]).toMatch(new RegExp(`^PASS anchor    j ${short(f.j)} is the hash of 2026-11-27\\.jsonl:\\d+, .*\\(the sent row for tx ${short(HERO_REASON_TX.txHash)}\\)$`));
+    expect(output[4]).toBe(`PASS hash      keccak256(blob) = rationaleHash ${short(call.intentRationaleHash)}`);
+    expect(output[7]).toMatch(new RegExp(`^PASS anchor    j ${short(f.j)} is the hash of 2026-11-27\\.jsonl:\\d+, .*\\(the sent row for tx ${short(HERO_REASON_TX.txHash)}\\)$`));
     expect(output.at(-1)).toBe("PASS");
   });
 
@@ -573,8 +578,9 @@ describe("Verify it by hand", () => {
     const command = screen.getByRole("region", { name: "Command 7" }).textContent ?? "";
     for (const line of command.split("\n")) expect(section).toContain(`   ${line}\n`);
     const output = (screen.getByRole("region", { name: "Output of command 7" }).textContent ?? "").split("\n");
-    // The README prints the vault in full; every other line is the same.
-    for (const line of output.slice(1)) expect(section).toContain(`   ${line}\n`);
+    expect(output).toHaveLength(9);
+    // The README prints the vault in full on the calldata line; every other line is the same.
+    for (const line of output.filter((l) => !l.startsWith("PASS calldata"))) expect(section).toContain(`   ${line}\n`);
   });
 
   it("sends nothing: read-only cast commands, then the repo's verifier", () => {
