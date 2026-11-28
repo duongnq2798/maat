@@ -10,8 +10,12 @@ import { collectErrors } from "./helpers";
 // `npm run build` writes before this spec runs. Run alone with: npm run e2e -- e2e/weight.spec.ts --project=chromium
 const OUT = fileURLToPath(new URL("../out/", import.meta.url));
 
-/** The budgets, in gzipped bytes. */
-const BUDGET = { total: 360_000, js: 185_000, css: 18_000 } as const;
+/**
+ * The budgets, in gzipped bytes. The total was 360,000 until the owner's ruling of 2026-11-28 raised it to 364,000 for
+ * "On the record", the landing's first interactive proof (spec 2026-11-28, landing "a calmer first screen", section
+ * "Weight"); the JS and CSS budgets did not move.
+ */
+const BUDGET = { total: 364_000, js: 185_000, css: 18_000 } as const;
 /** The two Geist woff2 files the landing preloads, gzipped, measured at P-1 (main at 66bd0d0 gives 140,786). */
 const FONT_BASELINE = 140_786;
 const FONT_TOLERANCE = 1_000;

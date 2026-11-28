@@ -79,6 +79,20 @@ Truth rules:
 - The bar's page links and the pill hide with `max-[721px]`, the exact pair of the Menu's `min-[721px]`; with
   `max-[720px]` both the links and the Menu showed at exactly 720 px.
 
+## Weight
+
+`e2e/weight.spec.ts` caps the landing's gzipped bytes (spec 2026-11-23 section 11, item 3). With this design the
+landing weighs 363,142 B: html 30,841, js 178,784, css 12,731, fonts 140,786. `main` weighed 358,707 B against a total
+of 360,000, so the block's cost, about 4.4 KB, did not fit in the 1.3 KB of room left. No cut kept the block and every
+other gate:
+- Only the open moment is drawn already.
+- The hero's hidden fork replay must stay in the export, because `lib/check-out.ts` requires its default moment.
+- Server components would write the block's text twice, into the HTML and again into the RSC data.
+
+Ruling, by the owner on 2026-11-28 ("Nâng lên 364 KB"): the total rises from 360,000 to 364,000 B, for "On the
+record", the landing's first interactive proof. The JS (185,000) and CSS (18,000) budgets do not move. The next landing
+change that needs more room needs a ruling of its own.
+
 ## Tests
 
 - Changed deliberately: the hero and spec plate tests (`instrument-hero`, `top`), the section order (`page.test`,
