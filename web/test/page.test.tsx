@@ -1,8 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
 import { FACTS } from "@/content/facts";
-import { REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
+import { REASON_GROUPS, REASON_LABEL, REASON_MEANING, REASONS, type RefusalCode } from "@/content/reasons";
 import { SITE } from "@/lib/site";
 
 function setup() {
@@ -44,17 +44,102 @@ describe("landing page", () => {
     expect(text.slice(at)).toMatch(/^mandate \(the vault's public rule set\)/);
   });
 
-  it("orders the sections like the comp, with the film band directly under the hero (spec 2026-11-27 section 2)", () => {
+  // Spec 2026-11-27, landing "explain in 10 seconds", section 3: what Maat is, the film, why it matters, how it works and
+  // who can reuse it, then the simulator and the reference; the stack it is built on closes the page, above the footer.
+  it("orders the sections to explain before they prove, the film band directly under the hero (spec 2026-11-27 section 3)", () => {
     const c = setup();
-    const ids = [...c.querySelectorAll("#top, #film, #how, #reasons, #try, #ledger, #mandate")].map((el) => el.id);
-    expect(ids).toEqual(["top", "film", "how", "reasons", "try", "ledger", "mandate"]);
+    const main = c.querySelector("main")!;
+    const order = [...main.children].map((el) => el.id || el.getAttribute("aria-labelledby") || el.getAttribute("aria-label"));
+    expect(order).toEqual([
+      "top",
+      "film",
+      "problem-title",
+      "how",
+      "agents",
+      "try",
+      "reasons",
+      "mandate",
+      "loop-title",
+      "Built with",
+    ]);
     expect(c.querySelector("#top")!.nextElementSibling).toBe(c.querySelector("#film"));
+    expect(main.nextElementSibling!.tagName).toBe("FOOTER");
   });
 
-  it("lists all nineteen refusals once, each titled by its plain label, and highlights only MARKET_CLOSED", () => {
+  it("leaves the fork run's ledger to /ledger: no ledger section, table or fork rows on the landing", () => {
+    const c = setup();
+    expect(c.querySelector("#ledger")).toBeNull();
+    expect(c.querySelector("table")).toBeNull();
+    expect(screen.queryByRole("region", { name: "Decision ledger" })).toBeNull();
+    expect(c.textContent).not.toContain("Every answer is public.");
+  });
+
+  // Spec 2026-11-27 section 3: every number of the fork test or the simulator carries a badge, "fork · 5-7 Nov" or
+  // "simulated", in the Problem charts and the simulator too; the hero's mainnet face carries none.
+  it("badges every fork or simulated number: the Problem's premiums and multiplier, the replay and the simulator", () => {
+    const c = setup();
+    const badges = (root: Element, kind: "fork" | "simulated") =>
+      [...root.querySelectorAll<HTMLElement>(`[data-badge="${kind}"]`)].map((b) => b.textContent);
+    const problem = c.querySelector('section[aria-labelledby="problem-title"]')!;
+    const replay = c.querySelector("#engine-panel-fork")!;
+    const sim = c.querySelector("#try")!;
+    const [week, premium, multiplier] = [...problem.querySelectorAll("article")];
+    expect(badges(premium!, "fork")).toEqual(["fork · 5-7 Nov"]);
+    expect(badges(multiplier!, "fork")).toEqual(["fork · 5-7 Nov"]);
+    // The week chart draws the contract's calendar, not a fork reading: no badge.
+    expect(week!.querySelector("[data-badge]")).toBeNull();
+    expect(badges(replay, "fork")).toEqual(["fork · 5-7 Nov · block 53,551,627"]);
+    expect(c.querySelector("#engine-panel-mainnet [data-badge]")).toBeNull();
+    expect(badges(sim, "simulated")).toEqual(["simulated", "simulated"]);
+    const fixed = [...sim.querySelectorAll("li[data-fixed]")];
+    expect(fixed.length).toBeGreaterThan(0);
+    for (const row of fixed) expect(badges(row, "fork")).toEqual(["fork · 5-7 Nov"]);
+    // The notes under the simulator that give the fork test's block, feed age, premiums and starting balance carry its
+    // badge too; the note on what the simulator simulates carries none.
+    const notes = [...sim.querySelectorAll<HTMLElement>("p[data-try-note]")];
+    expect(notes.map((n) => [n.dataset.tryNote, badges(n, "fork")])).toEqual([
+      ["Simulated", []],
+      ["Fixed at fork values", ["fork · 5-7 Nov"]],
+      ["Starting point", ["fork · 5-7 Nov"]],
+    ]);
+    // Every badge sits on a number of the fork test or the simulator: none elsewhere on the page.
+    const elsewhere = [...c.querySelectorAll("[data-badge]")].filter((b) => !problem.contains(b) && !sim.contains(b) && !replay.contains(b));
+    expect(elsewhere).toEqual([]);
+    for (const b of c.querySelectorAll("[data-badge]")) expect(b).toHaveAttribute("title");
+  });
+
+  // Spec 2026-11-27 section 3: the five groups show by default with their counts and plain labels; "Show all 19" opens
+  // the codes; MARKET_CLOSED stays highlighted in both views.
+  it("shows the five refusal groups by default, with their counts and labels, and MARKET_CLOSED filled", () => {
+    const c = setup();
+    const section = c.querySelector("#reasons") as HTMLElement;
+    const groups = [...section.querySelectorAll<HTMLElement>("[data-group]")];
+    expect(groups.map((g) => [g.querySelector("h3")!.textContent, g.querySelector("h3")!.nextElementSibling!.textContent])).toEqual(
+      REASON_GROUPS.map((g) => [g.title, String(g.codes.length)]),
+    );
+    for (const [i, g] of groups.entries()) {
+      const labels = g.querySelector<HTMLElement>("ul[data-labels]")!;
+      expect(labels).not.toHaveAttribute("hidden");
+      expect([...labels.children].map((li) => li.textContent)).toEqual(REASON_GROUPS[i]!.codes.map((code) => REASON_LABEL[code]));
+      expect(g.querySelector("ul[id]")).toHaveAttribute("hidden");
+    }
+    expect([...section.querySelectorAll<HTMLElement>("li[data-label][data-hot]")].map((li) => li.dataset.label)).toEqual(["MARKET_CLOSED"]);
+    const toggle = within(section).getByRole("button", { name: "Show all 19" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle.getAttribute("aria-controls")!.split(" ")).toEqual(groups.map((g) => g.querySelector("ul[id]")!.id));
+    // The toggle comes before the groups it opens, so opening them never moves it (e2e/smoke.spec.ts checks the screen).
+    for (const g of groups) expect(toggle.compareDocumentPosition(g) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("opens all nineteen refusals once on Show all 19, each titled by its plain label, and highlights only MARKET_CLOSED", () => {
     const c = setup();
     const section = c.querySelector("#reasons") as HTMLElement;
     expect(within(section).getByRole("heading", { level: 2 })).toHaveTextContent("Nineteen typed ways to say no.");
+    fireEvent.click(within(section).getByRole("button", { name: "Show all 19" }));
+    const toggle = within(section).getByRole("button", { name: "Show the groups only" });
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    for (const list of section.querySelectorAll("ul[data-labels]")) expect(list).toHaveAttribute("hidden");
+    for (const list of section.querySelectorAll("ul[id]")) expect(list).not.toHaveAttribute("hidden");
     const items = [...section.querySelectorAll<HTMLElement>("li[data-code]")];
     expect(items.map((li) => li.dataset.code).sort()).toEqual([...REASONS].sort());
     // Each item reads its plain label first, then its code as a tag, then the plain-English meaning.
@@ -67,7 +152,10 @@ describe("landing page", () => {
       expect(tag!.lastElementChild!.textContent).toBe(code);
       expect(meaning!.textContent).toBe(REASON_MEANING[code]);
     }
-    expect([...section.querySelectorAll<HTMLElement>("li[data-hot]")].map((li) => li.dataset.code)).toEqual(["MARKET_CLOSED"]);
+    expect([...section.querySelectorAll<HTMLElement>("li[data-code][data-hot]")].map((li) => li.dataset.code)).toEqual(["MARKET_CLOSED"]);
+    fireEvent.click(toggle);
+    expect(within(section).getByRole("button", { name: "Show all 19" })).toHaveAttribute("aria-expanded", "false");
+    for (const list of section.querySelectorAll("ul[id]")) expect(list).toHaveAttribute("hidden");
   });
 
   it("lets a visitor try the mandate, labeled as a simulation of the default one", () => {

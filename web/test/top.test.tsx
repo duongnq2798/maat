@@ -133,7 +133,8 @@ describe("hero", () => {
     expect(screen.getByRole("link", { name: "Verify it in 5 minutes" })).toHaveAttribute("href", SITE.quickstartUrl);
     // The engine card opens on the mainnet vault; the fork replay is the other tab, its moments in the hidden panel.
     expect(screen.getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tab", { name: "Fork replay" })).toHaveAttribute("aria-selected", "false");
+    // Spec 2026-11-27 section 3: the replay's tab says when it ran and what it was.
+    expect(screen.getByRole("tab", { name: "Before mainnet (fork test)" })).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("group", { name: "Choose a moment", hidden: true })).not.toBeVisible();
     expect(document.getElementById("top")).not.toBeNull();
   });

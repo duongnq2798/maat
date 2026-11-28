@@ -229,6 +229,42 @@ test.describe("/ledger reading a fake Base mainnet", () => {
     expect(fit.clipped).toEqual([]);
   });
 
+  // Spec 2026-11-27, landing "explain in 10 seconds", sections 3 and 4: the fork run's ledger moved here from the landing,
+  // badged as the fork test, and on a phone its 820 px table, whose DECISION column ran off the screen, gives way to one
+  // card per decision with the verdict whole on screen.
+  test("at 390 px the fork run's ledger shows a card per decision, each verdict on screen, under its fork badge", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/ledger#fork");
+    await expect(page.getByRole("list", { name: "Mainnet decisions" }).getByRole("listitem")).toHaveCount(3);
+    await page.evaluate(() => document.fonts.ready);
+    const fork = page.locator("#fork");
+    await expect(fork.locator('[data-badge="fork"]')).toHaveText("fork · 5-7 Nov");
+    await expect(fork.getByRole("region", { name: "Decision ledger" })).toBeHidden();
+    const cards = fork.getByRole("list", { name: "Decisions" }).getByRole("listitem");
+    await expect(cards).toHaveCount(4);
+    for (const card of await cards.all()) {
+      await card.scrollIntoViewIfNeeded();
+      const verdict = card.locator("[data-card-verdict]");
+      await expect(verdict).toHaveText(/^(Allowed|Refused) · /);
+      const box = (await verdict.boundingBox())!;
+      expect(box.x).toBeGreaterThanOrEqual(0);
+      expect(box.x + box.width).toBeLessThanOrEqual(390);
+      expect(await card.locator("code").boundingBox().then((b) => b!.x + b!.width)).toBeLessThanOrEqual(390);
+    }
+    await fork.getByRole("button", { name: "Refused", exact: true }).click();
+    await expect(cards).toHaveCount(1);
+    await expect(cards.first()).toContainText("Refused · Market closed");
+    await expect(cards.first().locator("code")).toHaveText("MARKET_CLOSED");
+    await expectTapTargets(await fork.getByRole("group", { name: "Filter decisions" }).getByRole("button").all());
+    await fork.getByRole("button", { name: "All", exact: true }).click();
+    await fork.screenshot({ path: "test-results/screens/ledger-fork-390.png" });
+    const fit = await measureFit(page);
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.clipped).toEqual([]);
+    const { violations } = await new AxeBuilder({ page }).include("#fork").analyze();
+    expect(violations.filter((v) => v.impact === "serious" || v.impact === "critical").map((v) => v.id)).toEqual([]);
+  });
+
   for (const width of [360, 1440] as const) {
     test(`fits ${width}px once the vault is read`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });

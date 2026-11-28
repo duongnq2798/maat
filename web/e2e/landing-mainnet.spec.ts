@@ -18,7 +18,7 @@ import { SITE } from "../lib/site";
 import { decisionLog, hash32 } from "../test/helpers/fake-ledger";
 import { fixtureResults, routeLiveRpc, type Scenario, SESSION_TS, twapOf, WEEKEND_TS, withFeed } from "./fake-live-rpc";
 import { installFakeChain, RPC_HOSTS, type FakeScenario } from "./fake-rpc";
-import { collectErrors } from "./helpers";
+import { collectErrors, expectTapTargets } from "./helpers";
 
 // The landing's first screen leads with the mainnet vault (plan 2026-11-25 Move 4). The live strip reads the recorded
 // weekend of e2e/fake-live-rpc.ts. The vault's read is /ledger's loader, whose batched calls go to the fake chain of
@@ -201,7 +201,8 @@ for (const vp of VIEWPORTS) {
     expect(words.filter((w) => !w.tab)).toEqual([]);
     if (vp.width === 1440) {
       // The engine card shares the hero's row: its mainnet face is on, the replay one tab away.
-      expect(words).toEqual([{ text: "Fork replay", tab: true }]);
+      // Spec 2026-11-27 section 3: the tab says when the replay ran and what it was.
+      expect(words).toEqual([{ text: "Before mainnet (fork test)", tab: true }]);
       await expect(page.locator("#top").getByRole("tab", { name: "Base mainnet" })).toHaveAttribute("aria-selected", "true");
       await expect(vaultCard(page)).toBeVisible();
       for (const cta of await page.locator("[data-hero-cta]").all()) expect(await bottom(cta)).toBeLessThanOrEqual(vp.height);
@@ -209,6 +210,12 @@ for (const vp of VIEWPORTS) {
       expect(await bottom(vaultCard(page).locator("[data-latest-line]"))).toBeLessThanOrEqual(vp.height);
       expect(await bottom(vaultCard(page).locator("[data-verdict]"))).toBeLessThanOrEqual(vp.height);
     }
+    // Both tabs of the engine card are 44 px targets (spec 2026-11-27, constraints), the fork one under its new name.
+    // The check scrolls each to the middle of the screen, so it runs last, without smooth scrolling.
+    const tabs = page.locator("#top").getByRole("tab");
+    await expect(tabs).toHaveText(["Base mainnet", "Before mainnet (fork test)"]);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await expectTapTargets(await tabs.all());
     expect(errors).toEqual([]);
   });
 }

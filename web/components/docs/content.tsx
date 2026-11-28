@@ -125,7 +125,7 @@ export function EventSignature({ name }: { name: string }) {
   );
 }
 
-/** The decisions the agent made in the fork run, as the landing page's ledger shows them. */
+/** The decisions the agent made in the fork run, as the fork ledger on /ledger shows them. */
 export function ForkLedger() {
   const { caption, rows } = forkLedger();
   return (

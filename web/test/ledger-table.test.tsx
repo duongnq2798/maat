@@ -2,13 +2,13 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { LedgerTable } from "@/components/LedgerTable";
-import { type DecisionRow, getDecisions } from "@/content/decisions";
+import { type DecisionRow, decisionLabel, gasLabel, getDecisions, intentLabel } from "@/content/decisions";
 import { REASON_MEANING } from "@/content/reasons";
 
 const NOTE = /Recorded by the agent loop on a fork of Base mainnet at block 53,551,627/;
 
 function setup(rows: readonly DecisionRow[] = getDecisions()) {
-  render(<LedgerTable rows={rows} heading={<h2>Every answer is public. Especially no.</h2>} />);
+  render(<LedgerTable rows={rows} heading={<h2>The fork run</h2>} />);
   const bodyRows = () => within(screen.getByRole("table")).getAllByRole("row").slice(1);
   return {
     bodyRows,
@@ -46,17 +46,44 @@ describe("LedgerTable", () => {
     }
   });
 
-  it("says so when a filter matches nothing", async () => {
+  it("says so when a filter matches nothing, in the table and in the phone's cards", async () => {
     const { bodyRows, chip } = setup(getDecisions().filter((r) => r.allowed));
     await userEvent.click(chip("Refused"));
     expect(bodyRows()).toHaveLength(1);
-    expect(screen.getByText("No refused decisions yet.")).toBeInTheDocument();
+    expect(within(screen.getByRole("table")).getByText("No refused decisions yet.")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Decisions" })).getByText("No refused decisions yet.")).toBeInTheDocument();
   });
 
-  it("says in the fork note that the vault's mainnet decisions are on the mainnet ledger, and promises no link", () => {
+  // Spec 2026-11-27, landing "explain in 10 seconds", section 4: on a phone the 820 px table hid its DECISION column off
+  // the screen. Below 640 px the table gives way to one card per decision (CSS: hidden sm:block and sm:hidden), each
+  // with its intent, time, verdict, code, note and gas, the verdict on the card's second line.
+  it("gives a phone one card per decision, with the verdict in it, and follows the filter", async () => {
+    const { chip } = setup();
+    const region = screen.getByRole("region", { name: "Decision ledger" });
+    const cards = screen.getByRole("list", { name: "Decisions" });
+    expect(region).toHaveClass("hidden", "sm:block");
+    expect(cards).toHaveClass("sm:hidden");
+    const items = () => within(cards).getAllByRole("listitem");
+    const rows = getDecisions();
+    expect(items()).toHaveLength(rows.length);
+    for (const [i, r] of rows.entries()) {
+      const item = items()[i]!;
+      expect(item).toHaveTextContent(intentLabel(r));
+      expect(item).toHaveTextContent(`${r.timeLabel} ET`);
+      expect(within(item).getByText(decisionLabel(r))).toBeInTheDocument();
+      expect(within(item).getByText(r.reason).tagName).toBe("CODE");
+      expect(item).toHaveTextContent(`gas used ${gasLabel(r)}`);
+    }
+    await userEvent.click(chip("Refused"));
+    expect(items()).toHaveLength(1);
+    expect(items()[0]).toHaveTextContent("Refused · Market closed");
+  });
+
+  // The table is on /ledger only, under the mainnet ledger (spec 2026-11-27 section 3), so its note points up to it.
+  it("says in the fork note that the vault's mainnet decisions are in the mainnet ledger above, and promises no link", () => {
     setup();
     expect(screen.getByText(NOTE).textContent).toBe(
-      "Recorded by the agent loop on a fork of Base mainnet at block 53,551,627, against the real B20 tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault's mainnet decisions, each linked to Basescan, are on the mainnet ledger.",
+      "Recorded by the agent loop on a fork of Base mainnet at block 53,551,627, against the real B20 tokens, Aerodrome pools and the Aave V4 Equities Hub. The vault's mainnet decisions, each linked to Basescan, are in the mainnet ledger above.",
     );
     expect(screen.queryByText(/will link/)).toBeNull();
   });

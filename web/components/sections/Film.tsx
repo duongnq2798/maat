@@ -15,7 +15,7 @@ import { type Film as FilmContent, FILM } from "@/content/film";
  */
 export function Film({ film = FILM }: { film?: FilmContent }) {
   return (
-    <section id="film" aria-labelledby="film-title" className="border-t border-line bg-surface-soft">
+    <section id="film" aria-labelledby="film-title" className="border-y border-line bg-surface-soft">
       <div className="wrap grid grid-cols-1 gap-x-12 gap-y-6 py-16 md:py-24 lg:grid-cols-[minmax(0,4fr)_minmax(0,7fr)] lg:grid-rows-[auto_1fr]">
         <div className="flex flex-col gap-[18px]">
           <span className="eyebrow">The film</span>

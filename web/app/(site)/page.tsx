@@ -7,7 +7,6 @@ import { Film } from "@/components/sections/Film";
 import { Footer } from "@/components/sections/Footer";
 import { Hero } from "@/components/sections/Hero";
 import { HowItWorks } from "@/components/sections/HowItWorks";
-import { Ledger } from "@/components/sections/Ledger";
 import { Mandate } from "@/components/sections/Mandate";
 import { Nav } from "@/components/sections/Nav";
 import { Problem } from "@/components/sections/Problem";
@@ -19,6 +18,11 @@ import { VaultDecisionsProvider } from "@/components/sections/VaultDecisions";
 // The landing reads Base twice, each once for the whole page. LiveSnapshotProvider reads the market (spec 2026-11-23
 // section 3.8): the strip, its Pause key and the ThumbBar's lamp read it. VaultDecisionsProvider reads the mainnet
 // vault's Decisions with /ledger's loader once the page has hydrated: the bar and the engine card read it.
+//
+// The order explains before it proves (spec 2026-11-27, landing "explain in 10 seconds", section 3): what Maat is, the
+// film, why it matters, how it works and who can reuse it, then the simulator and the reference (the refusals, the
+// mandate, the treasury loop). The stack it is built on closes the page, just above the footer. The fork test's ledger
+// is on /ledger, under the mainnet one.
 export default function Page() {
   return (
     <LiveSnapshotProvider>
@@ -31,15 +35,14 @@ export default function Page() {
         <main id="main" tabIndex={-1} className="outline-none">
           <Hero />
           <Film />
-          <BuiltOn />
           <Problem />
           <HowItWorks />
-          <Refusals />
+          <AgentBuilders />
           <TryIt />
-          <Ledger />
+          <Refusals />
           <Mandate />
           <TreasuryLoop />
-          <AgentBuilders />
+          <BuiltOn />
         </main>
         <Footer onLanding />
         <ThumbBar />

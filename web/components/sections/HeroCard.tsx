@@ -4,10 +4,13 @@ import { type KeyboardEvent, useRef, useState } from "react";
 import { DecisionEngine } from "@/components/DecisionEngine";
 import { VaultCard } from "./Vault";
 
-/** The engine card's two faces: the mainnet vault first, the scripted fork run as a labeled replay. */
+/**
+ * The engine card's two faces: the mainnet vault first, then the scripted fork run, named for when it ran and what it was
+ * (spec 2026-11-27, landing "explain in 10 seconds", section 3): before mainnet, a fork test.
+ */
 const TABS = [
   { id: "mainnet", label: "Base mainnet" },
-  { id: "fork", label: "Fork replay" },
+  { id: "fork", label: "Before mainnet (fork test)" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -49,7 +52,8 @@ export function HeroCard() {
               aria-controls={`engine-panel-${t.id}`}
               tabIndex={on ? 0 : -1}
               onClick={() => setTab(t.id)}
-              className={`min-h-9 cursor-pointer rounded-full border-0 px-3.5 py-2 text-xs font-medium ${
+              // .tap (app/globals.css) draws a 44 px target around the 36 px tab, so the pill keeps its size.
+              className={`tap min-h-9 cursor-pointer rounded-full border-0 px-3.5 py-2 text-xs font-medium ${
                 on
                   ? "bg-white text-ink shadow-[0_1px_2px_color-mix(in_srgb,var(--color-ink)_12%,transparent)]"
                   : "bg-transparent text-ink-2 hover:text-ink"

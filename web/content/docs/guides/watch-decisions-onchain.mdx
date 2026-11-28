@@ -364,7 +364,7 @@ Adding a holiday or an earlier close to the vault's calendar is instant too, for
 - **Reading `eta` as the time a change takes effect.** It is the earliest time. The change takes effect only when the owner sends the apply, with the same values, before the window closes.
 - **Waiting for notice of a withdrawal.** `withdraw`, `setPaused` and `setExecutor` are instant, so their events come after the fact.
 - **Querying too wide a range at once.** A provider may refuse it. Use `--query-size` (in Foundry 1.9.0), or start from the deploy block.
-- **Taking the landing page's ledger for mainnet events.** The ledger on the landing page shows the decisions of the fork run only. Read a mainnet vault's own events with [step 1](#read-the-events-with-cast), or Maat's vault on the [mainnet ledger](/ledger).
+- **Taking the fork ledger for mainnet events.** The [fork ledger](/ledger#fork), under the mainnet ledger on `/ledger`, shows the decisions of the fork run only. Read a mainnet vault's own events with [step 1](#read-the-events-with-cast), or Maat's vault on the [mainnet ledger](/ledger).
 
 ## Next steps
 
