@@ -83,7 +83,7 @@ test("the captions track loads the voice-over, and the descriptions track the on
     v.textTracks[0]!.mode = "hidden";
     v.textTracks[1]!.mode = "hidden";
   });
-  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => [v.textTracks[0]!.cues?.length ?? 0, v.textTracks[1]!.cues?.length ?? 0])).toEqual([19, 18]);
+  await expect.poll(() => video.evaluate((v: HTMLVideoElement) => [v.textTracks[0]!.cues?.length ?? 0, v.textTracks[1]!.cues?.length ?? 0])).toEqual([19, 20]);
 
   // The captions say what the voice says, on the top line of the picture, clear of the captions burned in below.
   const said = await video.evaluate((v: HTMLVideoElement) => {
@@ -101,6 +101,14 @@ test("the captions track loads the voice-over, and the descriptions track the on
     end: 56,
     text: "On Base: Maat's agent's own intent on Thanksgiving. Refused · Market closed (MARKET_CLOSED), and recorded.",
   });
+
+  // The end card has no burned-in caption, so the descriptions track carries its words, the builder line among them.
+  const end = await video.evaluate((v: HTMLVideoElement) => {
+    const cue = v.textTracks[1]!.cues!.getCueById("card-end") as VTTCue;
+    return { start: cue.startTime, end: cue.endTime, text: cue.text };
+  });
+  expect(end).toMatchObject({ start: 93.5, end: 100 });
+  expect(end.text).toContain("Built by one developer with Claude Code.");
 });
 
 for (const vp of VIEWPORTS) {
