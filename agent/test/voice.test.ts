@@ -170,7 +170,7 @@ describe("the voice of the prompt", () => {
     }
   });
 
-  it("gives the summary and the replies one calm voice, and keeps the instruction to say when a refusal is expected", () => {
+  it("gives the summary and the replies one calm voice, and says plainly when a trade is left out because a refusal is expected", () => {
     for (const creditActions of [false, true]) {
       const sys = systemPrompt({ creditActions }).replace(/\s+/g, " ");
       for (const rule of [
@@ -178,11 +178,14 @@ describe("the voice of the prompt", () => {
         "Name the rule that decides and give one reason.",
         "Never predict a price, and never apologize for a no.",
         "At most one wry clause.",
-        "When you propose a trade you expect the vault to refuse, say so plainly in its rationale and in the summary.",
-        "you may still propose one if the refusal itself is worth recording, but say so in the rationale.",
+        "When you leave out a trade because you expect the vault to refuse it, say so plainly in the summary, or in the reply to the brief that asked for it.",
       ]) {
         expect(sys, rule).toContain(rule);
       }
+      // A trade Claude expects the vault to refuse is left out, not proposed with a note: the prompt keeps no sentence
+      // that assumes such a proposal.
+      expect(sys).not.toContain("When you propose a trade you expect the vault to refuse");
+      expect(sys).not.toMatch(/refusal itself is worth recording/i);
     }
   });
 

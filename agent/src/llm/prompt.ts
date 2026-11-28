@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import type { ProposerInput } from "./proposer.js";
 import { usdc6ToUsd } from "../units.js";
+import { SESSION_MODES } from "../types.js";
 import { MAX_BRIEFS_PER_INTENT, MAX_REPLY_CHARS } from "../briefs/caps.js";
 import { promptText } from "../briefs/text.js";
 import { MAX_INTENTS, MAX_RATIONALE_CHARS, MAX_SUMMARY_CHARS } from "./schema.js";
@@ -11,7 +12,9 @@ const CREDIT = {
     vault: "and can borrow USDC against them on Aave V4",
     policy: `- Stocks held in the vault should be supplied as collateral; withdraw collateral before selling it.
 - Borrow USDC only to keep 7 days of compute costs plus unpaid bills in USDC, and only against supplied collateral.
-- Repay debt when new revenue arrives, keeping the 7-day runway.`,
+- Repay debt when new revenue arrives, keeping the 7-day runway.
+- A BORROW or a WITHDRAW_COLLATERAL must leave the health factor at or above minHealthFactor, and at or above
+  targetHealthFactor in the last deriskWindowSec seconds before 20:00 ET on a Friday or on the day before a holiday.`,
   },
   off: {
     vault: "and has an Aave V4 credit line, which is switched off",
@@ -36,19 +39,26 @@ ${credit.policy}
 
 You receive the current state, the policy's computed weights and a list of suggestions. Suggestions are arithmetic, not
 orders: adopt, resize or drop them. Proposing nothing is a valid and often correct answer: return an empty list.
-When the market is closed or a feed is stale, the contract will refuse trades; you may still propose one if the refusal
-itself is worth recording, but say so in the rationale. Compute bills are settled automatically; do not propose them.
+Propose an intent when you expect the vault to allow it and it fits the policy; leave out any other. The vault checks a
+trade against maxStalenessSec and the limits in the state: marketOpen is its calendar's answer for sessionMode
+(REGULAR: the NYSE session, 09:30 to 16:00 ET or an earlier close; FEED_24_5: Sunday 20:00 to Friday 20:00 ET; both
+closed on holidays); a feed is stale when its feedAgeSeconds is above maxStalenessSec; a trade must fit perTradeUsd and
+what spentTodayUsd leaves of dailyUsd; a buy must leave the stock at or below its maxWeightPct of the vault's net
+equity; the pool's TWAP must sit within maxPremiumBps of the feed price; and a swap whose output is more than
+maxSlippageBps below what the feed price implies fails. While the market is closed the vault refuses every trade, and
+while a feed is stale it refuses trades in that stock: propose none of those.
+Compute bills are settled automatically; do not propose them.
 
-Feed age and the session: the vault calls a feed stale when its age is above maxStalenessSec, the limit the state gives
-in seconds. Each token's feedAgeSeconds is its feed's age, and feedStale says whether that age is past the limit. A feed
-under the limit is fresh, however many hours old it is: never call it stale or give it as a reason for a refusal. When
-marketOpen is false the market is closed, and that is the reason the vault would refuse a trade (it checks the session
-before feed age): name that one reason. A feed with feedStale true may be mentioned as a fact, not as a second refusal
-reason.
+Feed age and the session: each token's feedAgeSeconds is its feed's age in seconds, and feedStale says whether that age
+is past maxStalenessSec. A feed under the limit is fresh, however many hours old it is: never call it stale or give it
+as a reason for a refusal. When marketOpen is false the market is closed, and that is the reason the vault would refuse
+a trade (it checks the session before feed age): name that one reason. A feed with feedStale true may be mentioned as a
+fact, not as a second refusal reason.
 
 Voice, for the summary and for each reply to a brief: calm, dry, in the first person, with no exclamation marks and no
 emoji. Name the rule that decides and give one reason. Never predict a price, and never apologize for a no. At most one
-wry clause. When you propose a trade you expect the vault to refuse, say so plainly in its rationale and in the summary.
+wry clause. When you leave out a trade because you expect the vault to refuse it, say so plainly in the summary, or in
+the reply to the brief that asked for it.
 
 Reply only with the JSON object the response schema describes. Amounts are in US dollars. Keep rationales short, factual
 and in English. Hard limits (an answer that breaks one is rejected whole): at most ${MAX_INTENTS} intents, each rationale
@@ -81,8 +91,21 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       healthFactor: s.credit.debt === 0n ? null : Number(s.credit.healthFactor) / 1e18,
       minHealthFactor: Number(s.mandate.minHealthFactor) / 1e18,
       targetHealthFactor: Number(s.mandate.targetHealthFactor) / 1e18,
+      // The last seconds before 20:00 ET on a Friday or before a holiday, in which a credit action that adds risk must
+      // leave targetHealthFactor rather than minHealthFactor (MandateVault._inDeriskWindow, DERISK_WINDOW).
+      deriskWindowSec: s.mandate.deriskWindow,
     },
-    limits: { perTradeUsd: usd(s.mandate.perTradeCapUsd), dailyUsd: usd(s.mandate.dailyCapUsd), spentTodayUsd: usd(s.spentToday) },
+    // The thresholds the vault checks a trade against, from its mandate() and tokenConfig() at the state block, and
+    // today's spend so far, from spentOnDay(today).
+    limits: {
+      perTradeUsd: usd(s.mandate.perTradeCapUsd),
+      dailyUsd: usd(s.mandate.dailyCapUsd),
+      spentTodayUsd: usd(s.spentToday),
+      sessionMode: SESSION_MODES[s.mandate.sessionMode] ?? s.mandate.sessionMode,
+      maxPremiumBps: s.mandate.maxPremiumBps,
+      maxSlippageBps: s.mandate.maxSlippageBps,
+      maxWeightPct: Object.fromEntries(s.tokens.map((t) => [t.symbol ?? t.address, t.config.maxWeightBps / 100])),
+    },
     tokens: s.tokens.map((t) => ({
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,

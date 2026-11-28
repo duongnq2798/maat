@@ -122,8 +122,8 @@ describe("prompt", () => {
       for (const sys of [systemPrompt({ creditActions: false }), systemPrompt({ creditActions: true }), briefSystemPrompt({ creditActions: false })]) {
         const flat = sys.replace(/\s+/g, " ");
         for (const rule of [
-          "the vault calls a feed stale when its age is above maxStalenessSec, the limit the state gives in seconds.",
-          "Each token's feedAgeSeconds is its feed's age, and feedStale says whether that age is past the limit.",
+          "a feed is stale when its feedAgeSeconds is above maxStalenessSec;",
+          "Feed age and the session: each token's feedAgeSeconds is its feed's age in seconds, and feedStale says whether that age is past maxStalenessSec.",
           "A feed under the limit is fresh, however many hours old it is: never call it stale or give it as a reason for a refusal.",
           "When marketOpen is false the market is closed, and that is the reason the vault would refuse a trade (it checks the session before feed age): name that one reason.",
           "A feed with feedStale true may be mentioned as a fact, not as a second refusal reason.",
@@ -133,6 +133,10 @@ describe("prompt", () => {
         // GuardLib.checkMarket checks the session before feed age, so a closed market never refuses with FEED_STALE:
         // the prompt must not ask for a stale feed as a second refusal reason.
         expect(flat).not.toMatch(/add a stale feed as a second reason/i);
+        // The rule that makes a feed stale is stated once, in the list of what the vault checks; the feed-age paragraph
+        // names the fields that carry it and does not restate it.
+        expect(flat.match(/stale when/g)).toHaveLength(1);
+        expect(flat).not.toContain("the vault calls a feed stale");
       }
       // The rule sits with the other rules for the round, before the voice paragraph.
       expect(SYSTEM_PROMPT.indexOf("Feed age and the session:")).toBeGreaterThan(SYSTEM_PROMPT.indexOf("do not propose them."));

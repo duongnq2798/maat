@@ -137,7 +137,7 @@ novel ways." It lists four ideas. Where Maat stands on each, as of 2026-11-27:
 | Idea (quest page) | What Maat does | Status | Where |
 | --- | --- | --- | --- |
 | Agents that earn a stock treasury | Holds its own USDC and stocks; since 2026-11-27 Maat's agent buys stock for that treasury on Base mainnet. USDC that arrives is recorded as `RevenueReceived`, and new revenue repays debt. No paid route brings income in: x402 fees for safety checks were dropped for this season (PR #2, closed unmerged on 2026-11-27). What other agents can use today is free and read-only: the market-guard skill below | **Partly**: its own treasury, no income source | [`notifyRevenue`](contracts/src/MandateVault.sol#L124-L131), [`policy.ts`](agent/src/policy.ts#L72-L79) |
-| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L31-L35) |
+| Research-to-portfolio agents | Claude reads the vault's state, the policy's weights and its arithmetic suggestions, then proposes portfolio changes. There is no research step: the prompt forbids price prediction and news chasing | **Partly**: portfolio only, no research | [`prompt.ts`](agent/src/llm/prompt.ts#L34-L38) |
 | Stock-backed credit for agents | Supplies stocks to the Aave V4 MAG7 Spoke, borrows USDC against them, repays and withdraws. A borrow needs an open market and a health factor of 1.5, or 2.0 in the de-risk window | **Built and fork-tested** | [`AaveV4CreditAdapter.sol`](contracts/src/adapters/AaveV4CreditAdapter.sol), [`MandateVaultCreditFork.t.sol`](contracts/test/fork/MandateVaultCreditFork.t.sol) |
 | Agent-managed rebalancing | Equal weights after a 30% USDC reserve (23.3% per stock), rebalanced past a 5-point drift. The vault refuses a buy that takes one stock above 40% | **Live on Base mainnet** since 2026-11-27, buys only so far. Claude proposed $4.64 buys of GOOGLc ([tx](https://basescan.org/tx/0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503#eventlog)) and AAPLc ([tx](https://basescan.org/tx/0xdd01af80020bcf80fd4e71aca45b539a2c78d807607cd785edd8cd31b808ff69#eventlog)), because each was at 0% against its 23.3% target, and the vault allowed both; its earlier GOOGLc buy on Thanksgiving was refused as market closed ([tx](https://basescan.org/tx/0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6#eventlog)). Unit-tested; the fork run's trades came from a scripted proposer | [`policy.ts`](agent/src/policy.ts#L14), [`test_concentration`](contracts/test/MandateVault.t.sol#L106) |
 
@@ -652,8 +652,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  53 passed (53)
-         Tests  750 passed (750)
+    Test Files  54 passed (54)
+         Tests  766 passed (766)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed

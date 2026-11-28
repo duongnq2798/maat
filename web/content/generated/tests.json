@@ -380,6 +380,21 @@
     "finds the refusal in a viem error's details and causes": 130,
     "does not take a rate limit or anything else for a range error": 137
   },
+  "agent/test/mandateLimits.test.ts": {
+    "the mandate's limits in the user message": 55,
+    "carry the thresholds the vault checks a trade against, at the standard scene's mandate": 56,
+    "are read from the vault's mandate() and tokenConfig(), not typed into the agent": 71,
+    "name the session mode as the vault's SessionMode enum does, and keep a number the enum does not have": 87,
+    "are the same in the user message of a round that carries briefs": 92,
+    "hold every threshold the system prompt names, as a number": 97,
+    "reach a fake model in the request's user message": 109,
+    "show a feed's age next to the vault's limit, as in the 15:15 UTC round of 27 Nov": 129,
+    "the system prompt on refusals and the vault's thresholds": 140,
+    "no longer invites a trade the vault would refuse because the refusal is worth recording": 148,
+    "asks for intents the vault is expected to allow and that fit the policy, and none while a refusal is certain": 157,
+    "says what each session mode means, as MarketCalendar.isOpen reads it": 176,
+    "with credit actions on, says what the credit block's health factors and derisk window mean": 182
+  },
   "agent/test/policy.test.ts": {
     "evaluatePolicy": 60,
     "all cash: buys each token toward 23.33%, capped by spendable cash": 61,
@@ -535,7 +550,7 @@
     "feedStale is null where no valid answer was read, as feedAgeSeconds is": 104,
     "the brief message carries the same limit and ages": 115,
     "the system prompt calls a feed stale past maxStalenessSec and no sooner, and names the closed market as the reason": 121,
-    "a fake model receives the rule in the system prompt and the limit and ages in the user message": 142
+    "a fake model receives the rule in the system prompt and the limit and ages in the user message": 146
   },
   "agent/test/proposer.test.ts": {
     "ClaudeProposer": 30,
@@ -891,8 +906,8 @@
     "never instructs a banned word, in any text the agent sends Claude": 142,
     "uses 'only' as a limit and never as a claim: each use is one a reader has checked": 146,
     "calls the AI Maat's agent, and never Maat alone: Maat is the vault, and MaatInbox a contract": 165,
-    "gives the summary and the replies one calm voice, and keeps the instruction to say when a refusal is expected": 173,
-    "puts the voice before the brief rules, so the rules for untrusted briefs still come last and unchanged": 189
+    "gives the summary and the replies one calm voice, and says plainly when a trade is left out because a refusal is expected": 173,
+    "puts the voice before the brief rules, so the rules for untrusted briefs still come last and unchanged": 192
   },
   "contracts/test/AaveV4CreditAdapter.t.sol": {
     "test_constructorBindsReserves": 73,
