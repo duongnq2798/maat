@@ -8,7 +8,7 @@ import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { BEATS, CLIPS, FPS, forFormat, keepClearProblem, scrollFrames, scrollGoal, shotCues, timeline, txState, unsliceGoal } from "./lib/beats.mjs";
+import { BEATS, CLIPS, FPS, chosenTxShot, forFormat, keepClearProblem, scrollFrames, scrollGoal, shotCues, timeline, txState, unsliceGoal } from "./lib/beats.mjs";
 import {
   CAPTION_BAND,
   CARD_READING,
@@ -43,6 +43,7 @@ import {
   verifiedNote,
 } from "./lib/sources.mjs";
 import {
+  cutoffProblem,
   persuasionCardHtml,
   persuasionParts,
   persuasionProblems,
@@ -246,9 +247,29 @@ export async function capture({ work, input, formats, site, final = false }) {
     if (problems.length > 0) throw new Error(`film/txs.json: ${problems.join("; ")}`);
     txModels[key] = model;
   }
-  // A final cut shows no placeholder: --final stops the render while any tx of beats 5 to 7 has no hash.
+  // Beat 7's rule (film/README.md, dated 28 Nov 2026): a tx shot with stand-ins shows its own txs only while every one
+  // is set, and an outside brief only when the vault decided the intent that adopted it by beat7.cutoff; otherwise its
+  // first stand-in whose txs are all set (lib/beats.mjs chosenTxShot), so it never shows a placeholder.
+  const isSet = (/** @type {string} */ key) => txModels[key]?.kind === "tx";
+  /** @type {Record<string, any>} */
+  const chosen = {};
+  for (const [b, beat] of BEATS.entries()) {
+    for (const planned of beat.shots.filter((x) => x.kind === "tx")) {
+      const pick = chosenTxShot(planned, isSet);
+      if (pick === null) throw new Error(`film/txs.json, beat ${b + 1}: neither ${planned.txs.join(" and ")} nor any stand-in's txs are all set, so the beat has nothing to show`);
+      if (planned.standIns && pick.standIn === null && pick.layout === "persuasion") {
+        const late = cutoffProblem(pick.txs.map((/** @type {string} */ k) => txModels[k]), config.beat7?.cutoff);
+        if (late) throw new Error(`film/txs.json, beat ${b + 1}: ${late}`);
+      }
+      chosen[`${beat.id}/${planned.id}`] = pick;
+    }
+  }
+  // A final cut shows no placeholder: --final stops the render while any tx the cut would show has no hash. A stand-in
+  // is not a placeholder: it is real txs on Base, under a caption that says what it stands in for.
   if (final) {
-    const missing = Object.values(txModels).filter((m) => m.kind === "placeholder").map((m) => m.key);
+    const missing = Object.values(chosen)
+      .flatMap((shot) => shot.txs)
+      .filter((key) => !isSet(key));
     if (missing.length > 0) throw new Error(`--final: film/txs.json has no hash yet for ${missing.join(", ")}, so the cut would show a PLACEHOLDER card`);
   }
 
@@ -261,11 +282,13 @@ export async function capture({ work, input, formats, site, final = false }) {
   const replies = {};
   const answers = {};
   for (const [b, beat] of BEATS.entries()) {
-    for (const shot of beat.shots.filter((x) => x.kind === "tx" && x.layout === "persuasion")) {
-      const models = shot.txs.map((k) => txModels[k]);
+    for (const planned of beat.shots.filter((x) => x.kind === "tx")) {
+      const shot = chosen[`${beat.id}/${planned.id}`];
+      if (shot.layout !== "persuasion") continue;
+      const models = shot.txs.map((/** @type {string} */ k) => txModels[k]);
       if (txState(models) !== "all") continue;
       const { brief, verdict } = persuasionParts(models);
-      const answer = { input: await fetchInput(verdict.model.hash), owner: await fetchOwner(verdict.event.address), team };
+      const answer = { input: await fetchInput(verdict.model.hash), owner: await fetchOwner(verdict.event.address), team, briefFrom: shot.standIn === "team" ? "team" : "outside" };
       const reply = briefReply(await readJournal(), { id: brief.event.id, txHash: brief.model.hash, logIndex: brief.event.logIndex });
       const problems = persuasionProblems(models, { ...answer, reply });
       if (problems.length > 0) throw new Error(`film/txs.json, beat ${b + 1}: ${problems.join("; ")}`);
@@ -282,7 +305,7 @@ export async function capture({ work, input, formats, site, final = false }) {
   const probed = {};
   const { chromium } = playwright();
   const browser = await chromium.launch();
-  const manifest = { site, total, fps: FPS, clips, captured, formats: {}, placeholders: [], fallbacks: [], warnings };
+  const manifest = { site, total, fps: FPS, clips, captured, formats: {}, placeholders: [], fallbacks: [], standIns: [], warnings };
   try {
     for (const format of formats) {
       const f = FORMATS[format];
@@ -296,7 +319,8 @@ export async function capture({ work, input, formats, site, final = false }) {
       const entries = [];
       for (const [i, s] of shots.entries()) {
         const name = `${String(i + 1).padStart(2, "0")}-${s.beat}-${s.slot}`;
-        const shot = s.shot;
+        // A tx shot is the one beat 7's rule chose: its own txs, or a stand-in's.
+        const shot = s.shot.kind === "tx" ? chosen[`${s.beat}/${s.shot.id}`] : s.shot;
         const entry = { index: i + 1, beat: s.beat, beatIndex: s.beatIndex, slot: s.slot, kind: shot.kind, duration: s.duration };
         process.stdout.write(`[${format}] ${name} (${shot.kind}, ${s.duration} s)\n`);
         if (shot.kind === "page") entry.input = { kind: "frames", list: await capturePage(page, { site, shot, format, dir: join(dir, name), captured, probed, warnings }) };
@@ -320,14 +344,19 @@ export async function capture({ work, input, formats, site, final = false }) {
         } else if (shot.kind === "tx") {
           const models = shot.txs.map((k) => txModels[k]);
           const beat = BEATS.find((b) => b.id === s.beat);
+          const title = shot.title ?? beat.title;
           const html =
             shot.layout === "persuasion"
-              ? persuasionCardHtml(models, { format, title: beat.title, fontsDir, reply: replies[`${s.beat}/${shot.id}`], answer: answers[`${s.beat}/${shot.id}`] })
-              : txCardHtml(models, { format, title: beat.title, fontsDir });
+              ? persuasionCardHtml(models, { format, title, fontsDir, reply: replies[`${s.beat}/${shot.id}`], answer: answers[`${s.beat}/${shot.id}`], briefFrom: shot.standIn === "team" ? "team" : "outside" })
+              : txCardHtml(models, { format, title, fontsDir });
           const still = await renderStill(stillPage, join(dir, "stills"), name, html, { measure: contentBottomInPage });
           entry.input = { kind: "image", file: still.png };
           entry.contentBottom = still.measured;
           entry.txState = txState(models);
+          if (shot.standIn) {
+            entry.standIn = shot.standIn;
+            if (format === formats[0]) manifest.standIns.push({ beat: s.beatIndex, id: s.beat, standIn: shot.standIn, txs: shot.txs });
+          }
           // What a viewer reads on beat 7's real card besides its caption, for the pace check below.
           if (shot.layout === "persuasion" && entry.txState === "all") entry.reading = persuasionReading(models, replies[`${s.beat}/${shot.id}`]);
           if (format === formats[0] && entry.txState !== "all") {

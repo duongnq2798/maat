@@ -36,7 +36,15 @@ const fixture = JSON.parse(read("web/test/fixtures/film-tx-decision.json")) as {
 };
 const captions = (JSON.parse(read("film/captions.json")) as { captions: Record<string, unknown> }).captions;
 const files = fileSources(ROOT);
-const values: Record<string, string> = { ...files.values, "ledger.perTrade": "$50", "ledger.perDay": "$100", "ledger.weightCapPct": "40" };
+// /proof's counts as beat 7's stand-in caption gives them, wide enough to wrap the most.
+const values: Record<string, string> = {
+  ...files.values,
+  "ledger.perTrade": "$50",
+  "ledger.perDay": "$100",
+  "ledger.weightCapPct": "40",
+  "proof.outsideBriefs": "1,204",
+  "proof.briefDecisions": "1,204",
+};
 const captionText = (id: string) => renderCaption(pickCaption(captions, id, values).text, values).text;
 
 /** The inbox's limit on a brief, from MaatInbox.sol. */
@@ -150,6 +158,21 @@ for (const format of ["wide", "tall"] as const) {
             for (const [replyKind, reply] of Object.entries(REPLIES)) {
               const html = persuasionCardHtml(pair, { format, title: beat.title, fontsDir, reply, answer: { input: ANSWER.input, owner: OWNER, team: [] } });
               problems.push(...(await measure(page, dir, `${beat.id}-${kind}-${replyKind}`, html, [shot.caption], format)));
+            }
+            // Beat 7's stand-ins (film/README.md, "Beat 7: the rule"): the same brief from a team wallet, tagged TEAM
+            // BRIEF, and Maat's agent's own pair of Decisions, each under its own caption and card title.
+            for (const standIn of shot.standIns ?? []) {
+              if (standIn.layout === "persuasion") {
+                const team = [txCardModel(standIn.txs[0], { label: "A team brief", hash: BRIEF_TX }, strangerBrief(text), { tokens: {}, contracts: CONTRACTS }), answerModel];
+                for (const [replyKind, reply] of Object.entries(REPLIES)) {
+                  const answer = { input: ANSWER.input, owner: OWNER, team: [`0x${"ab".repeat(20)}`] };
+                  const html = persuasionCardHtml(team, { format, title: standIn.title, fontsDir, reply, answer, briefFrom: "team" });
+                  problems.push(...(await measure(page, dir, `${beat.id}-${standIn.id}-${kind}-${replyKind}`, html, [standIn.caption], format)));
+                }
+              } else if (kind === "words") {
+                const own = standIn.txs.map((key: string) => decision(key));
+                problems.push(...(await measure(page, dir, `${beat.id}-${standIn.id}`, txCardHtml(own, { format, title: standIn.title, fontsDir }), [standIn.caption], format)));
+              }
             }
           }
         }

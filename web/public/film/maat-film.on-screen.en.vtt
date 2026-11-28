@@ -1,5 +1,9 @@
 WEBVTT
 
+card-title
+00:00:00.000 --> 00:00:06.000
+The AI agent that knows when not to trade. Claude proposes. The vault decides. A treasury of tokenized stocks on Base, kept to a written mandate.
+
 gap-held
 00:00:06.000 --> 00:00:10.500
 Fri 6 Nov 16:00 ET → Mon 9 Nov 09:30 ET. NYSE is closed, and the NVDAc price feed held one answer for 51.35 h.
@@ -56,9 +60,9 @@ brief-ask-soon
 00:01:06.500 --> 00:01:11.500
 The inbox contract is on Base. Once /ask opens, any wallet can try to talk Maat's agent into a bad trade.
 
-brief-placeholder
+brief-agent
 00:01:11.500 --> 00:01:23.000
-Placeholder: no outside brief to Maat's agent, and no verdict on its answer, on Base yet.
+On /proof: 0 outside briefs, 0 brief-driven Decisions. In their place, two of Maat's agent's own intents, both allowed.
 
 receipts-contracts
 00:01:23.000 --> 00:01:27.000
@@ -71,3 +75,7 @@ Every figure links its CI job in the README.
 receipts-proof
 00:01:30.000 --> 00:01:33.500
 Every count on /proof has a written rule, and anyone can recount it from Base.
+
+card-end
+00:01:33.500 --> 00:01:40.000
+Every trade is weighed. Named for Ma'at, whose feather every heart was weighed against. Here the feather is the mandate. Built by one developer with Claude Code.

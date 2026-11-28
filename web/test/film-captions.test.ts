@@ -31,7 +31,7 @@ const lf = (rel: string) => readRepo(rel).replace(/\r\n/g, "\n");
 const captionsFile = JSON.parse(lf("film/captions.json")) as { captions: Record<string, unknown> };
 const files = fileSources(REPO_ROOT);
 /** What the capture read from /ledger on a day the default mandate was onchain, as the render feeds it in. */
-const CAPTURED_DEFAULTS = { "ledger.perTrade": "$50", "ledger.perDay": "$100", "ledger.weightCapPct": "40" };
+const CAPTURED_DEFAULTS = { "ledger.perTrade": "$50", "ledger.perDay": "$100", "ledger.weightCapPct": "40", "proof.outsideBriefs": "0", "proof.briefDecisions": "0" };
 const CAPTURED_RESERVE = { ...CAPTURED_DEFAULTS, "ledger.weightCapPct": "25" };
 /** Every key a caption may name: what the files give today, what the capture reads, and what a file gives only in some states. */
 const KNOWN = new Set([...Object.keys(files.values), ...Object.keys(CAPTURED), ...Object.keys(OPTIONAL_KEYS)]);
@@ -394,6 +394,23 @@ describe("the values the capture reads from the live site", () => {
     expect(capturedValue("ledger.weightCapPct", "4000 bps · 40%")).toBe("40");
     // After the owner's change the cell also names the default it replaced; the first figure is the onchain one.
     expect(capturedValue("ledger.weightCapPct", "2500 bps · 25%changed · default 4000 bps · 40%")).toBe("25");
+  });
+
+  it("takes /proof's outside briefs and brief-driven Decisions as numbers, zero as zero, for beat 7's stand-in caption", () => {
+    expect(capturedValue("proof.outsideBriefs", "0")).toBe("0");
+    expect(capturedValue("proof.briefDecisions", "1,204")).toBe("1,204");
+    expect(CAPTURED["proof.outsideBriefs"].selector).toBe('[data-proof-state="read"] [data-testid="proof-outside-briefs"]');
+    expect(CAPTURED["proof.briefDecisions"].selector).toBe('[data-proof-state="read"] [data-testid="proof-brief-decisions"]');
+    // A count with no number says why: the render stops rather than show it as zero.
+    for (const text of ["not read", "incomplete", "…"]) expect(() => capturedValue("proof.outsideBriefs", text)).toThrow(/proof\.outsideBriefs/);
+    const proof = BEATS.find((b) => b.id === "receipts")?.shots.find((s) => s.id === "proof");
+    const steps = (proof?.steps ?? []) as { wait?: string; capture?: string }[];
+    const read = steps.findIndex((s) => s.wait === '[data-proof-state="read"]');
+    expect(read).toBeGreaterThanOrEqual(0);
+    expect(steps.slice(read + 1).map((s) => s.capture).filter(Boolean)).toEqual(["proof.outsideBriefs", "proof.briefDecisions"]);
+    expect(renderCaption(String(captionsFile.captions["brief-agent"]), { "proof.outsideBriefs": "0", "proof.briefDecisions": "0" }).text).toBe(
+      "On /proof: 0 outside briefs, 0 brief-driven Decisions. In their place, two of Maat's agent's own intents, both allowed.",
+    );
   });
 
   it("refuses a cell it cannot read rather than guessing", () => {

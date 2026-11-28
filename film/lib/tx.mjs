@@ -87,9 +87,16 @@ export function senderLabel(/** @type {string} */ from, /** @type {string} */ ow
   return "agent";
 }
 
-/** film/txs.json, checked for shape. Every entry names who must have sent its tx (expect.sender, one of SENDERS). */
+/**
+ * film/txs.json, checked for shape. Every entry names who must have sent its tx (expect.sender, one of SENDERS), and
+ * beat7.cutoff, when given, is a UTC time like 2026-12-07T21:00:00Z.
+ */
 export function readTxConfig(root) {
   const config = JSON.parse(readFileSync(join(root, "film/txs.json"), "utf8"));
+  const cutoff = config.beat7?.cutoff;
+  if (cutoff !== undefined && !(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$/.test(cutoff) && Number.isFinite(Date.parse(cutoff)))) {
+    throw new Error("film/txs.json beat7.cutoff must be a UTC time like 2026-12-07T21:00:00Z");
+  }
   for (const [key, entry] of Object.entries(config.txs ?? {})) {
     if (entry.hash !== null && !/^0x[0-9a-fA-F]{64}$/.test(entry.hash)) throw new Error(`film/txs.json ${key}: hash must be null or a 0x tx hash`);
     const senders = SENDERS[entry.expect?.event] ?? [];
@@ -197,6 +204,7 @@ export function txCardModel(key, entry, data, ctx = { tokens: {}, contracts: {} 
     from: String(receipt.from).toLowerCase(),
     to: receipt.to ? String(receipt.to).toLowerCase() : null,
     block: Number(receipt.blockNumber),
+    timestamp: Number(block.timestamp),
     date: when.date,
     time: when.time,
     status: receipt.status,
@@ -318,7 +326,8 @@ export function persuasionParts(models) {
     }
     throw new Error(`the persuasion beat needs a ${event} tx: ${key} in film/txs.json must name a tx whose receipt holds one`);
   };
-  return { brief: find("Brief", "strangerBrief"), verdict: find("Decision", "vaultAnswer") };
+  const keys = models.map((m) => m.key);
+  return { brief: find("Brief", keys[0] ?? "strangerBrief"), verdict: find("Decision", keys[1] ?? "vaultAnswer") };
 }
 
 /** "0123456789abcdef…" (a journal row's commit, the agent code's) as "0123456", keeping a "-dirty" suffix. */
@@ -351,7 +360,8 @@ const lower = (/** @type {unknown} */ a) => String(a ?? "").toLowerCase();
 
 /**
  * Why beat 7's pair is not an outside wallet's brief and the vault's verdict on Maat's agent's answer to it, one line
- * each; [] when it is. The vaultAnswer Decision must be a direct execute call to the vault, which only the vault's
+ * each; [] when it is. With `briefFrom: "team"` (beat 7's team stand-in) the brief must instead come from a team wallet,
+ * and the card labels it a team brief. The vaultAnswer Decision must be a direct execute call to the vault, which only the vault's
  * executor can make, not sent by its owner, whose maat:v1 blob hashes to the Decision's rationaleHash and adopts the
  * brief by its id (q), in a block after the brief's: /ledger's "brief-driven" sender label, and /ask's brief-to-Decision
  * map. The brief must not come from a team wallet: the /proof team list (web/content/proof-team.ts), the vault's owner,
@@ -359,32 +369,48 @@ const lower = (/** @type {unknown} */ a) => String(a ?? "").toLowerCase();
  * Decision's calldata, `owner` the vault's owner(), `team` the team list's addresses, `reply` a lib/journal.mjs
  * briefReply model.
  * @param {any[]} models
- * @param {{ input?: string, owner?: string, team?: string[], reply?: any }} [answer]
+ * @param {{ input?: string, owner?: string, team?: string[], reply?: any, briefFrom?: "outside" | "team" }} [answer]
  */
-export function persuasionProblems(models, { input, owner, team = [], reply } = {}) {
+export function persuasionProblems(models, { input, owner, team = [], reply, briefFrom = "outside" } = {}) {
   const { brief, verdict } = persuasionParts(models);
+  const [b, v] = [brief.model.key, verdict.model.key];
   const id = Number(brief.event.id);
   const sender = lower(brief.event.from);
   const executor = verdict.model.from;
   const out = [];
-  if (new Set([...team.map(lower), lower(owner), executor]).has(sender)) out.push(`strangerBrief: brief #${id} comes from ${shortHex(sender)}, a team wallet, not an outside one`);
+  const teamWallet = new Set([...team.map(lower), lower(owner), executor]).has(sender);
+  if (briefFrom === "team" && !teamWallet) out.push(`${b}: brief #${id} comes from ${shortHex(sender)}, not a team wallet, so it cannot be shown as a team brief`);
+  if (briefFrom !== "team" && teamWallet) out.push(`${b}: brief #${id} comes from ${shortHex(sender)}, a team wallet, not an outside one`);
   const call = verdict.model.to === verdict.event.address ? decodeExecuteInput(/** @type {`0x${string}`} */ (input ?? "0x")) : null;
-  if (call === null) out.push("vaultAnswer: its tx is not a direct execute call to MandateVault, so its sender does not say who sent the intent");
+  if (call === null) out.push(`${v}: its tx is not a direct execute call to MandateVault, so its sender does not say who sent the intent`);
   else {
-    if (executor === lower(owner)) out.push(`vaultAnswer: the vault's owner ${shortHex(executor)} sent it (owner, by hand), so it is not Maat's agent's answer`);
-    if (call.blob.status !== "v1") out.push(`vaultAnswer: its calldata carries no maat:v1 blob (${call.blob.status}), so nothing ties it to brief #${id}`);
+    if (executor === lower(owner)) out.push(`${v}: the vault's owner ${shortHex(executor)} sent it (owner, by hand), so it is not Maat's agent's answer`);
+    if (call.blob.status !== "v1") out.push(`${v}: its calldata carries no maat:v1 blob (${call.blob.status}), so nothing ties it to brief #${id}`);
     else {
-      if (lower(call.blobHash) !== lower(verdict.event.rationaleHash)) out.push("vaultAnswer: keccak256 of its blob is not the Decision's rationaleHash, so the vault did not record that blob");
+      if (lower(call.blobHash) !== lower(verdict.event.rationaleHash)) out.push(`${v}: keccak256 of its blob is not the Decision's rationaleHash, so the vault did not record that blob`);
       const q = call.blob.fields.q ?? [];
-      if (!q.includes(id)) out.push(`vaultAnswer: its blob adopts ${q.length === 0 ? "no brief" : `brief ${q.join(", ")}`}, not brief #${id}`);
+      if (!q.includes(id)) out.push(`${v}: its blob adopts ${q.length === 0 ? "no brief" : `brief ${q.join(", ")}`}, not brief #${id}`);
     }
   }
   const at = (/** @type {number} */ n) => n.toLocaleString("en-US");
-  if (!(verdict.model.block > brief.model.block)) out.push(`vaultAnswer: its block ${at(verdict.model.block)} is not after the brief's block ${at(brief.model.block)}`);
+  if (!(verdict.model.block > brief.model.block)) out.push(`${v}: its block ${at(verdict.model.block)} is not after the brief's block ${at(brief.model.block)}`);
   if (reply?.kind === "reply" && reply.adopted !== true) {
-    out.push(`the journal's row for brief #${id} (${reply.file} line ${reply.line}) says no intent adopted it, but vaultAnswer's blob adopts it`);
+    out.push(`the journal's row for brief #${id} (${reply.file} line ${reply.line}) says no intent adopted it, but ${v}'s blob adopts it`);
   }
   return out;
+}
+
+/**
+ * Why beat 7 cannot show its outside brief under the rule of film/README.md, dated 28 Nov 2026; null when it can. The
+ * brief counts only when the vault decided the intent that adopted it by `cutoff` (beat7.cutoff in film/txs.json, a UTC
+ * time); later, the beat keeps its stand-in, so the hashes must come out of txs.json again.
+ * @param {any[]} models @param {string | undefined} cutoff
+ */
+export function cutoffProblem(models, cutoff) {
+  if (cutoff === undefined) return null;
+  const { verdict } = persuasionParts(models);
+  if (verdict.model.timestamp * 1000 <= Date.parse(cutoff)) return null;
+  return `${verdict.model.key}: the vault decided the intent that adopted the brief at ${new Date(verdict.model.timestamp * 1000).toISOString()}, after beat 7's cutoff ${cutoff}, so the beat keeps its stand-in: set ${models.map((m) => m.key).join(" and ")} back to null`;
 }
 
 /** The words beat 7's card asks a viewer to read, in order: the brief, what Maat's agent said, the verdict. */
@@ -401,16 +427,17 @@ export function persuasionReading(/** @type {any[]} */ models, /** @type {any} *
  * `reply` is a lib/journal.mjs briefReply model, and `answer` what persuasionProblems checks the pair with: the card
  * stops on any problem it finds, so it never calls a Decision the answer to a brief it does not answer.
  * @param {any[]} models
- * @param {{ format: string, title: string, fontsDir?: string, reply?: any, answer?: { input: string, owner: string, team: string[] } }} options
+ * With `briefFrom: "team"` the brief must come from a team wallet, and the card says so: "TEAM BRIEF" on the brief.
+ * @param {{ format: string, title: string, fontsDir?: string, reply?: any, answer?: { input: string, owner: string, team: string[] }, briefFrom?: "outside" | "team" }} options
  */
-export function persuasionCardHtml(models, { format, title, fontsDir, reply, answer }) {
+export function persuasionCardHtml(models, { format, title, fontsDir, reply, answer, briefFrom = "outside" }) {
   if (models.some((m) => m.kind !== "tx")) return txCardHtml(models, { format, title, fontsDir });
   const { brief, verdict } = persuasionParts(models);
   if (typeof answer?.input !== "string" || typeof answer.owner !== "string") {
     throw new Error("beat 7's card needs the Decision's calldata and the vault's owner to check that the Decision answers the brief (lib/rpc.mjs fetchInput and fetchOwner)");
   }
-  const problems = persuasionProblems(models, { ...answer, reply });
-  if (problems.length > 0) throw new Error(`beat 7 would not show the vault's verdict on Maat's agent's answer to an outside brief: ${problems.join("; ")}`);
+  const problems = persuasionProblems(models, { ...answer, reply, briefFrom });
+  if (problems.length > 0) throw new Error(`beat 7 would not show the vault's verdict on Maat's agent's answer to ${briefFrom === "team" ? "a team" : "an outside"} brief: ${problems.join("; ")}`);
   const wide = format === "wide";
   const row = (/** @type {any} */ m, /** @type {string} */ k) => m.rows.find((/** @type {any} */ r) => r.k === k)?.v ?? "";
   const css = `.frame{padding:${wide ? 44 : 30}px ${wide ? 140 : 22}px ${CAPTION_BAND[format]}px;justify-content:safe center;gap:${wide ? 22 : 12}px}
@@ -424,6 +451,7 @@ blockquote,.said{font-size:${wide ? 24 : 13}px;line-height:1.35;overflow-wrap:an
 .missing{display:flex;flex-direction:column;gap:${wide ? 8 : 4}px}
 .missing .tag{font-size:${wide ? 18 : 10}px;padding:${wide ? "3px 10px" : "2px 6px"};align-self:flex-start}
 .missing p{font-size:${wide ? 21 : 11}px;color:var(--ink2)}
+.team{font-family:"Geist Mono",ui-monospace,monospace;font-size:${wide ? 16 : 9}px;font-weight:600;letter-spacing:.04em;border:1px solid var(--ink);border-radius:6px;padding:${wide ? "2px 8px" : "1px 5px"};align-self:flex-start;color:var(--ink)}
 .step.verdict{display:grid;grid-template-columns:${wide ? "minmax(0,1fr) 440px" : "1fr"};gap:${wide ? 24 : 8}px;align-items:center}
 .verdict > div{display:flex;flex-direction:column;gap:${wide ? 8 : 4}px;min-width:0}
 .v{font-family:"Geist Mono",ui-monospace,monospace;font-size:${wide ? 30 : 16}px;font-weight:600;overflow-wrap:anywhere}
@@ -434,7 +462,7 @@ blockquote,.said{font-size:${wide ? 24 : 13}px;line-height:1.35;overflow-wrap:an
 .link-card span{font-family:"Geist Mono",ui-monospace,monospace;font-size:${wide ? 16 : 9}px;color:var(--accent);overflow-wrap:anywhere}`;
   const e = verdict.event;
   const steps = [
-    `<li class="step"><div class="k">${esc(`1 · ${brief.model.label} · #${brief.event.id} from ${shortHex(brief.event.from)}`)}</div><blockquote dir="auto">${esc(`“${plainText(brief.event.text)}”`)}</blockquote><div class="src mono">${esc(`block ${row(brief.model, "Block")} · tx ${shortHex(brief.model.hash)}`)}</div></li>`,
+    `<li class="step">${briefFrom === "team" ? `<span class="team">TEAM BRIEF</span>` : ""}<div class="k">${esc(`1 · ${brief.model.label} · #${brief.event.id} from ${shortHex(brief.event.from)}`)}</div><blockquote dir="auto">${esc(`“${plainText(brief.event.text)}”`)}</blockquote><div class="src mono">${esc(`block ${row(brief.model, "Block")} · tx ${shortHex(brief.model.hash)}`)}</div></li>`,
     replyStep(reply),
     `<li class="step verdict"><div><div class="k">${esc(`3 · ${verdict.model.label}`)}</div><div class="v ${e.allowed ? "ok" : "no"}">${esc(verdictLine(e))}</div><div class="src mono">${esc(
       `${row(verdict.model, "Intent")} · brief-driven, adopts brief #${brief.event.id} · sent by ${shortHex(verdict.model.from)}, the vault's executor · block ${row(verdict.model, "Block")}`,

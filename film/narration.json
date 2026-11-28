@@ -60,7 +60,7 @@
     {
       "shot": "early-close/tx",
       "cues": [
-        { "from": 0.4, "to": 6.9, "text": "The plan: ask the vault twice that day, once before the close and once after." }
+        { "from": 0.4, "to": 6.0, "text": "Two probes asked the vault that day: allowed before the close, refused after." }
       ]
     },
     {

@@ -2,7 +2,8 @@
 // The one command: capture the live site with Playwright, then assemble both cuts with ffmpeg.
 // Local only (it needs Chromium, ffmpeg and the network). Usage, from the repository root:
 //   node film/render.mjs [--out <dir>] [--input <dir>] [--formats wide,tall] [--site <url>] [--final]
-// --final stops before capturing while any transaction of beats 5 to 7 is still a placeholder.
+// --final stops before capturing while any transaction the cut would show is still a placeholder; beat 7's stand-in
+// (film/README.md, "Beat 7: the rule") is not one.
 
 import { join, resolve } from "node:path";
 import { parseArgs } from "node:util";
@@ -30,6 +31,11 @@ lines.push(
   report.placeholders.length === 0
     ? "  placeholders: none"
     : `  placeholders: ${report.placeholders.map((p) => `beat ${p.beat} ${p.id} (${p.missing.join(", ")})`).join("; ")}`,
+);
+lines.push(
+  report.standIns.length === 0
+    ? "  stand-ins: none"
+    : `  stand-ins: ${report.standIns.map((x) => `beat ${x.beat} ${x.id} shows its ${x.standIn} stand-in (${x.txs.join(", ")})`).join("; ")}`,
 );
 lines.push(
   report.fallbacks.length === 0 ? "  owner clips: both used" : `  owner clips missing, fallback shown: ${report.fallbacks.map((f) => `beat ${f.beat} ${f.slot} → ${f.used}`).join("; ")}`,

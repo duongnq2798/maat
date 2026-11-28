@@ -99,7 +99,17 @@ describe("film/txs.json", () => {
       earlyCloseRefused: "probe",
       strangerBrief: "outside",
       vaultAnswer: "brief-driven",
+      // Beat 7's stand-ins (film/README.md, "Beat 7: the rule"): a team brief and its answer, then Maat's agent's own
+      // allowed pair of Fri 27 Nov, always on Base.
+      teamBrief: "team",
+      teamAnswer: "brief-driven",
+      agentAllowedGoogl: "agent",
+      agentAllowedAapl: "agent",
     });
+    for (const key of ["agentAllowedGoogl", "agentAllowedAapl"]) {
+      expect(config.txs[key]?.hash, key).toMatch(/^0x[0-9a-f]{64}$/);
+      expect(config.txs[key]?.expect, key).toMatchObject({ event: "Decision", contract: "MandateVault", reason: "OK", sender: "agent", etDate: "2026-11-27" });
+    }
     expect(config.txs.earlyCloseAllowed?.label).toMatch(/^Probe /);
     expect(config.txs.earlyCloseRefused?.label).toMatch(/^Probe /);
   });

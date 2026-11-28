@@ -68,7 +68,9 @@ export function scrollFrames(over) {
  * - tx: one card per key of film/txs.json in `txs`; `caption` when every hash is set, `placeholderCaption` when none
  *   is, and `partialCaption` (needed for two or more txs) when only some are. `layout: "persuasion"` (a brief and the
  *   vault's Decision) lays the pair out as brief, Maat's agent's reply from the published journal, then the verdict,
- *   once both hashes are set; until then it is the same placeholder card as any tx shot;
+ *   once both hashes are set; until then it is the same placeholder card as any tx shot. A tx shot with `standIns`
+ *   shows no placeholder: while any of its own hashes is missing it shows the first stand-in whose txs are all set,
+ *   with that stand-in's `txs`, `layout`, `caption` and card `title` (chosenTxShot);
  * - clip: an owner clip from film/input/, used when present; otherwise `fallback`, a shot of the same `duration`.
  * `captions` are cues: each caption id from film/captions.json shows from `at` seconds until the next cue or the end.
  * @typedef {{ id: string, kind: string, duration: number, [field: string]: any }} Shot
@@ -279,8 +281,13 @@ export const BEATS = Object.freeze([
         txs: ["strangerBrief", "vaultAnswer"],
         duration: 11.5,
         caption: "brief-tx",
-        placeholderCaption: "brief-placeholder",
-        partialCaption: "pair-partial",
+        // Beat 7's rule (film/README.md, dated 28 Nov 2026): until an outside brief qualifies, the first stand-in whose
+        // txs are all on Base, so the beat never shows a placeholder. A team brief is labelled as one; Maat's agent's
+        // own allowed pair of Fri 27 Nov is always on Base.
+        standIns: [
+          { id: "team", layout: "persuasion", txs: ["teamBrief", "teamAnswer"], caption: "brief-team", title: "A team brief and the vault's answer" },
+          { id: "agent", txs: ["agentAllowedGoogl", "agentAllowedAapl"], caption: "brief-agent", title: "Maat's agent's own intents, weighed" },
+        ],
       },
     ],
   },
@@ -303,6 +310,9 @@ export const BEATS = Object.freeze([
         steps: [
           { wait: "#counts-title" },
           { wait: PROOF_READ },
+          // Beat 7's stand-in caption says these two counts, zero as zero (lib/sources.mjs CAPTURED).
+          { capture: "proof.outsideBriefs" },
+          { capture: "proof.briefDecisions" },
           { scroll: { wide: "#counts-title", tall: PROOF_READ }, over: 1.5, top: { wide: TOP.wide, tall: 24 } },
         ],
         captions: [{ id: "receipts-proof", at: 0 }],
@@ -312,6 +322,21 @@ export const BEATS = Object.freeze([
     ],
   },
 ]);
+
+/**
+ * The tx shot the film shows: `shot` itself while every one of its txs has a hash (`isSet(key)`), or while it has no
+ * stand-ins; otherwise its first stand-in whose txs all have one, as a tx shot with the stand-in's txs, layout, caption
+ * and card title, and `standIn` naming it. null when a shot with stand-ins has none to show: the render then stops.
+ * @param {Shot} shot @param {(key: string) => boolean} isSet
+ */
+export function chosenTxShot(shot, isSet) {
+  const { standIns, ...own } = shot;
+  if (!standIns || shot.txs.every(isSet)) return { ...own, standIn: null };
+  const pick = standIns.find((/** @type {any} */ s) => s.txs.every(isSet));
+  if (!pick) return null;
+  const { layout: _own, ...rest } = own;
+  return { ...rest, ...(pick.layout ? { layout: pick.layout } : {}), txs: pick.txs, caption: pick.caption, title: pick.title, standIn: pick.id };
+}
 
 /** How many of a tx shot's cards show a real tx: "all", "some" or "none". `models` are lib/tx.mjs card models. */
 export function txState(models) {
@@ -414,13 +439,25 @@ export function validateBeats(beats = BEATS) {
         if (step.hold > 0 || step.over > 0) filmed = true;
       }
     } else if (shot.continue !== undefined || shot.keepClear !== undefined) problems.push(`${where}: only a page shot can continue or keep an element clear`);
-    if (shot.kind === "tx" && (!Array.isArray(shot.txs) || shot.txs.length === 0 || !shot.caption || !shot.placeholderCaption)) {
-      problems.push(`${where}: a tx shot needs txs, a caption and a placeholder caption`);
+    // A shot with stand-ins never shows a placeholder, so it needs no placeholder or partial caption.
+    const standIns = shot.standIns;
+    if (standIns !== undefined && (shot.kind !== "tx" || !Array.isArray(standIns) || standIns.length === 0)) problems.push(`${where}: only a tx shot has stand-ins, at least one`);
+    if (shot.kind === "tx" && (!Array.isArray(shot.txs) || shot.txs.length === 0 || !shot.caption || (!shot.placeholderCaption && !standIns))) {
+      problems.push(`${where}: a tx shot needs txs, a caption and a placeholder caption or stand-ins`);
     }
-    if (shot.kind === "tx" && shot.txs?.length > 1 && !shot.partialCaption) problems.push(`${where}: a tx shot of two or more txs needs a partial caption`);
-    if (shot.layout !== undefined) {
-      if (shot.kind !== "tx" || !LAYOUTS.includes(shot.layout)) problems.push(`${where}: unknown layout ${shot.layout}`);
-      else if (shot.layout === "persuasion" && shot.txs?.length !== 2) problems.push(`${where}: the persuasion layout needs two txs, a brief and the vault's Decision`);
+    if (shot.kind === "tx" && shot.txs?.length > 1 && !shot.partialCaption && !standIns) problems.push(`${where}: a tx shot of two or more txs needs a partial caption`);
+    const checkLayout = (/** @type {any} */ s, /** @type {string} */ at) => {
+      if (s.layout === undefined) return;
+      if (shot.kind !== "tx" || !LAYOUTS.includes(s.layout)) problems.push(`${at}: unknown layout ${s.layout}`);
+      else if (s.layout === "persuasion" && s.txs?.length !== 2) problems.push(`${at}: the persuasion layout needs two txs, a brief and the vault's Decision`);
+    };
+    checkLayout(shot, where);
+    if (shot.kind === "tx" && Array.isArray(standIns)) {
+      for (const s of standIns) {
+        const at = `${where} stand-in ${s.id}`;
+        if (!s.id || !Array.isArray(s.txs) || s.txs.length === 0 || !s.caption || !s.title) problems.push(`${at}: a stand-in needs an id, txs, a caption and a card title`);
+        checkLayout(s, at);
+      }
     }
     if (shot.kind === "clip") {
       if (!Object.values(CLIPS).includes(shot.clip)) problems.push(`${where}: unknown clip ${shot.clip}`);
@@ -459,7 +496,10 @@ export function validateBeats(beats = BEATS) {
 export function captionIds(beats = BEATS) {
   const ids = [];
   const add = (shot) => {
-    if (shot.kind === "tx") ids.push(shot.caption, shot.placeholderCaption, ...(shot.partialCaption ? [shot.partialCaption] : []));
+    if (shot.kind === "tx") {
+      ids.push(shot.caption, ...(shot.placeholderCaption ? [shot.placeholderCaption] : []), ...(shot.partialCaption ? [shot.partialCaption] : []));
+      for (const s of shot.standIns ?? []) ids.push(s.caption);
+    }
     else for (const cue of shot.captions ?? []) ids.push(cue.id);
     if (shot.fallback) add(shot.fallback);
   };
@@ -467,7 +507,11 @@ export function captionIds(beats = BEATS) {
   return ids;
 }
 
-/** Every key of film/txs.json the plan reads, with the beat that shows it. */
+/** Every key of film/txs.json the plan reads, with the beat that shows it: each tx shot's own, then its stand-ins'. */
 export function txKeys(beats = BEATS) {
-  return beats.flatMap((beat) => beat.shots.flatMap((shot) => (shot.kind === "tx" ? shot.txs.map((key) => ({ key, beat: beat.id })) : [])));
+  return beats.flatMap((beat) =>
+    beat.shots.flatMap((shot) =>
+      shot.kind === "tx" ? [...shot.txs, ...(shot.standIns ?? []).flatMap((/** @type {any} */ s) => s.txs)].map((key) => ({ key, beat: beat.id })) : [],
+    ),
+  );
 }
