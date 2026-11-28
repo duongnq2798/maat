@@ -11,6 +11,7 @@ import {
   excerpts,
   factNames,
   foreignCharacters,
+  foreignGithubLinks,
   frontmatterOf,
   handTypedFacts,
   headingIds,
@@ -426,6 +427,25 @@ describe("the launch list: once deployments/README.md records Maat's Base mainne
 
   it("finds none either with all five rows of the table filled with test values", () => {
     expect(launchList(recorded())).toEqual([]);
+  });
+});
+
+/** The repository's owner on GitHub, read from SITE.repoUrl. */
+const REPO_OWNER = new URL(SITE.repoUrl).pathname.split("/")[1] ?? "";
+/** The outside repositories the docs and READMEs cite, each checked to resolve on 2026-11-28. */
+const CITED_REPOS = new Set(["base/base-anvil", "Cyfrin/aderyn", "ethereum/solidity"]);
+
+describe("GitHub links in the docs and the READMEs", () => {
+  it("reads the owner from SITE.repoUrl", () => {
+    expect(REPO_OWNER).toBe("duongnq2798");
+  });
+
+  it("go to this repository's owner, or to an outside repository the pages cite", () => {
+    const readmes = tracked().filter((p) => /(^|\/)(README|SECURITY)\.md$/.test(p) && !p.startsWith("docs/superpowers/"));
+    expect(readmes).toContain("README.md");
+    const files = [...pages.map((p) => [`web/content/docs/${p.slug}.mdx`, p.source] as const), ...readmes.map((p) => [p, readRepo(p)] as const)];
+    const bad = files.flatMap(([file, source]) => foreignGithubLinks(source, REPO_OWNER, CITED_REPOS).map((f) => `${file}:${f.line} ${f.text}`));
+    expect(bad).toEqual([]);
   });
 });
 

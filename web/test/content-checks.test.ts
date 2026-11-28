@@ -6,6 +6,7 @@ import {
   excerpts,
   factNames,
   foreignCharacters,
+  foreignGithubLinks,
   frontmatterOf,
   handTypedFacts,
   headingIds,
@@ -102,6 +103,21 @@ describe("page parts", () => {
   it("repoPaths finds blob and tree links without line anchors", () => {
     const src = "[v](https://github.com/o/r/blob/main/contracts/src/MandateVault.sol#L10) [t](https://github.com/o/r/tree/main/agent)";
     expect(repoPaths(src, "https://github.com/o/r")).toEqual(["contracts/src/MandateVault.sol", "agent"]);
+  });
+
+  it("foreignGithubLinks flags a GitHub link under another owner unless its repo is cited", () => {
+    const src = [
+      "[a](https://github.com/me/maat/blob/main/x.sol#L1) `git clone https://github.com/me/maat.git`",
+      "[b](https://github.com/me7/maat/blob/main/x.sol) and https://raw.githubusercontent.com/me7/maat/x",
+      "[c](https://github.com/base/base-anvil) https://raw.githubusercontent.com/base/base-anvil/HEAD/i [d](https://github.com/base/other)",
+      "[e](https://docs.github.com/en/x) [f](https://github.com/you)",
+    ].join("\n");
+    expect(foreignGithubLinks(src, "me", new Set(["base/base-anvil"]))).toEqual([
+      { line: 2, text: "github.com/me7/maat" },
+      { line: 2, text: "raw.githubusercontent.com/me7/maat" },
+      { line: 3, text: "github.com/base/other" },
+      { line: 4, text: "github.com/you" },
+    ]);
   });
 
   it("headingIds gives the ids Fumadocs will use, skipping code", () => {
