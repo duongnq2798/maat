@@ -19,7 +19,7 @@ const CTA_LOOK = ["pill-dark", "pill-line"] as const;
  * instead (cold read of 2026-11-28, gap 6).
  *
  * Since 2026-11-28 (landing "a calmer first screen", section 1) the spec plate closes the "On the record" block right
- * under the hero (SpecPlate), so the left column ends on the CTAs and the way to verify, with more air between its parts.
+ * under the hero (SpecPlate), so the left column ends on the CTAs and the link to the tests, with more air between its parts.
  */
 export function Hero() {
   return (
@@ -68,9 +68,9 @@ export function Hero() {
               </a>
             ))}
           </div>
-          {/* Spec 2026-11-27 section 1, word for word: the quickstart runs the vault's tests. */}
+          {/* The quickstart runs the tests offline, touching no chain, so the link says so, in the footer's words. */}
           <a href={SITE.quickstartUrl} className="tap self-start text-[15px] font-medium">
-            Verify it in 5 minutes
+            Run the tests in 5 minutes
             <span aria-hidden="true"> →</span>
           </a>
         </div>
