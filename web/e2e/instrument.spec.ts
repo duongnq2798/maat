@@ -68,6 +68,50 @@ test("at 390x844 the H1, the definition, the three steps and the live verdict li
   writeFileSync("test-results/fold/cta-bottom-390.txt", `${Math.ceil(Math.max(...ctaBottoms))}\n`);
 });
 
+/**
+ * The words of an element by line: each word's top, read through a Range, grouped. Words split at ASCII whitespace
+ * only, so a no-break space keeps its pair one word. Text under aria-hidden (a step's number) is left out.
+ */
+const wordLines = (l: Locator) =>
+  l.evaluate((el) => {
+    const rows: { top: number; words: string[] }[] = [];
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      if (n.parentElement!.closest('[aria-hidden="true"]')) continue;
+      for (const m of n.textContent!.matchAll(/[^ \t\r\n]+/g)) {
+        const range = document.createRange();
+        range.setStart(n, m.index);
+        range.setEnd(n, m.index + m[0].length);
+        const top = Math.round(range.getClientRects()[0]!.top);
+        const row = rows.find((r) => Math.abs(r.top - top) < 4);
+        if (row) row.words.push(m[0]);
+        else rows.push({ top, words: [m[0]] });
+      }
+    }
+    return rows.sort((a, b) => a.top - b.top).map((r) => r.words.join(" "));
+  });
+
+test("at 360, 390, 768 and 1440 px neither the H1 nor a step label ends on a lone word", async ({ page }) => {
+  // Review finding #36 of 2026-11-28: "trade." sat alone under the H1 at 768 and 390, and at 360 each step label
+  // ended on one word. Balanced wrapping and the steps' no-break spaces fix both.
+  await liveWeekend(page, 1440, 900);
+  for (const width of [360, 390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const labels: [string, Locator][] = [
+      ["H1", page.getByRole("heading", { level: 1 })],
+      ...(await page.locator("#top [data-hero-steps] a").all()).map((a, i): [string, Locator] => [`step ${i + 1}`, a]),
+    ];
+    for (const [name, l] of labels) {
+      const lines = await wordLines(l);
+      // \s takes the no-break space too: "on Base" is two words kept together, not one.
+      expect.soft(lines.at(-1)!.split(/\s+/).length, `${width} px, ${name}: ${JSON.stringify(lines)}`).toBeGreaterThan(1);
+    }
+  }
+  // At 768 the H1 breaks where its accent begins.
+  await page.setViewportSize({ width: 768, height: 900 });
+  expect(await wordLines(page.getByRole("heading", { level: 1 }))).toEqual(["The AI agent that knows", "when not to trade."]);
+});
+
 test("#top keeps two status regions, the engine's verdict window is the only div in them, and the Balance is outside both", async ({
   page,
 }) => {

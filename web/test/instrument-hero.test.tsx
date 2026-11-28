@@ -25,11 +25,18 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
     expect(hero().querySelector(".hero-glow")).not.toBeNull();
   });
 
-  it("sets the H1 at clamp(44px,5.4vw,78px), line-height .96 and -0.055em, with its words unchanged", () => {
+  it("sets the H1 at clamp(44px,5.4vw,78px), line-height .96 and -0.055em, balanced, with its words unchanged", () => {
     render(<Hero />);
     const h1 = screen.getByRole("heading", { level: 1 });
+    // Balanced so no width leaves "trade." alone on the last line (review finding #36 of 2026-11-28).
     expect(classes(h1)).toEqual(
-      expect.arrayContaining(["text-[clamp(44px,5.4vw,78px)]", "leading-[0.96]", "tracking-[-0.055em]", "font-semibold"]),
+      expect.arrayContaining([
+        "text-[clamp(44px,5.4vw,78px)]",
+        "leading-[0.96]",
+        "tracking-[-0.055em]",
+        "font-semibold",
+        "[text-wrap:balance]",
+      ]),
     );
     expect(h1).toHaveTextContent("The AI agent that knows when not to trade.");
   });
@@ -53,7 +60,8 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
     expect(classes(audienceLinks[0]!)).toContain("tap");
     const steps = audience.nextElementSibling!;
     expect(steps.tagName).toBe("OL");
-    expect(classes(steps)).toEqual(expect.arrayContaining(["grid", "grid-cols-3"]));
+    // Balanced like the H1, so a narrow column never ends a label on one word (review finding #36 of 2026-11-28).
+    expect(classes(steps)).toEqual(expect.arrayContaining(["grid", "grid-cols-3", "[text-wrap:balance]"]));
     const links = [...steps.querySelectorAll("a")];
     expect(links.map((a) => a.getAttribute("href"))).toEqual(["#how", "#how", "#how"]);
     for (const a of links) expect(classes(a)).toContain("min-h-11");
