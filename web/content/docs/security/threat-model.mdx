@@ -163,7 +163,7 @@ With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to tha
 | Threat | What bounds it | What it does not cover |
 | --- | --- | --- |
 | **A bad Claude proposal**, from a wrong idea or from wrong numbers in what it reads ([What Claude reads](/docs/security/threat-model#what-claude-reads)) | The schema and the clamps in the agent, then the mandate: the session, the stock list, the caps, concentration and the health factor. Claude cannot set the slippage, choose a payee or pay a bill | A bad trade inside every limit is allowed. The vault does not judge whether a trade is a good idea |
-| **A stale price** | Check 5 refuses a feed answer that is not positive, or is older than `maxStaleness` (<Fact name="mandate.maxStalenessSec" /> by default): `FEED_STALE` or `BAD_PRICE`. For a buy or a sell, check 7 also refuses once the pool drifts more than `maxPremiumBps` from a frozen answer | Within that age, the vault trades on the last published price while the pool stays near it. A borrow, or a withdrawal against debt, has no premium check |
+| **A stale price** | Check 5 refuses a feed answer that is not positive, or is older than `maxStaleness` (<Fact name="mandate.maxStalenessSec" /> by default): `FEED_STALE` or `BAD_PRICE`. For a buy or a sell, check 7 also refuses once the pool drifts more than `maxPremiumBps` from the held answer | Within that age, the vault trades on the last published price while the pool stays near it. A borrow, or a withdrawal against debt, has no premium check |
 | **A manipulated pool price or a bad fill** | Check 7 refuses a pool [TWAP](/docs/help/glossary#twap) (<Fact name="mandate.twapWindowSec" /> window) that is more than `maxPremiumBps` (<Fact name="mandate.maxPremiumBps" /> by default) from the oracle. The slippage floor, set from the oracle (<Fact name="mandate.maxSlippageBps" /> by default), makes a swap that returns less fail with `SWAP_FAILED`. Under the default mandate, a swap at the per-trade cap can fill at most <Fact name="slippageLossPerTradeUsd" /> below its oracle value, and one UTC day's swaps at most <Fact name="slippageLossPerDayUsd" />, because the daily cap counts buys, sells and bill payments | A pool price inside the [premium](/docs/help/glossary#premium) limit is accepted. Check 7 reads the TWAP, not the pool's spot price at the swap, and the adapter swaps with the widest price limit and checks the output only against `minOut`. So any fill down to the floor is accepted: anyone who trades the pool just before the swap, as a sandwich attack does (a kind of MEV, maximal extractable value), can push it there, up to `maxSlippageBps` of the swap's oracle value. The bound is relative to the oracle, and a wrong but fresh oracle price is trusted |
 | **A missed holiday** | Only the price checks. A day missing from the calendar counts as a normal session, so check 4 passes. Check 5 refuses once the last answer is older than `maxStaleness` ([staleness](/docs/help/glossary#staleness)), and, for a buy or a sell, check 7 refuses if the pool's TWAP drifts more than `maxPremiumBps` from that answer | Until then, and while the pool stays inside the premium limit, the vault can trade on the last answer. With the default staleness limit, the last answer may stay under it for the whole holiday, and a borrow, or a withdrawal against debt, has no premium check. The owner has to add the day ([What happens if a holiday is missing](/docs/concepts/market-hours#what-happens-if-a-holiday-is-missing)) |
 | **A split or a dividend** | Check 6 blocks a stock when its multiplier differs from the vault's snapshot, has a change scheduled, or is inside the cooldown after a change | The assumption that the feed already includes the multiplier has not been observed across a real split |
@@ -176,12 +176,13 @@ With `BASE_RPC_URL_FALLBACK` set, a used-up quota moves the agent's reads to tha
 
 The agent sends Claude a system prompt and one user message, both built in [`prompt.ts`](https://github.com/duongnq2798/maat/blob/main/agent/src/llm/prompt.ts): `systemPrompt`, fixed text apart from its credit lines, which follow `MAAT_CREDIT_ACTIONS`, and `renderUserMessage`. The request gives Claude no tools. This is the whole user message of a round without briefs:
 
-```typescript title="agent/src/llm/prompt.ts#L52-L87"
+```typescript title="agent/src/llm/prompt.ts#L63-L101"
 export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions }: ProposerInput): string {
   const view = {
     block: s.blockNumber.toString(),
     utcTime: new Date(Number(s.timestamp) * 1000).toISOString(),
     marketOpen: s.marketOpen,
+    maxStalenessSec: s.mandate.maxStaleness,
     vaultPaused: s.paused,
     creditActions: creditActions ? "on" : "off",
     usdc: usd(s.usdcBalance),
@@ -203,6 +204,8 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
       symbol: t.symbol ?? t.address,
       price: t.price8 === null ? null : Number(t.price8) / 1e8,
       feedAgeSeconds: t.feedAge === null ? null : Number(t.feedAge),
+      // GuardLib's rule: stale when the age is above maxStaleness. Null when no valid answer was read.
+      feedStale: t.feedAge === null ? null : t.feedAge > BigInt(s.mandate.maxStaleness),
       valueUsd: usd(t.valueUsd6),
       ...(() => {
         const w = p.weights.find((x) => x.symbol === t.symbol);
@@ -217,7 +220,7 @@ export function renderUserMessage({ state: s, policy: p, billUsd6, creditActions
 
 It holds three kinds of input, all numbers, flags, addresses, fixed names or text the agent builds from them, and no text from outside the agent. Briefs, below, are the one exception:
 
-- **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the market and pause flags, the caps and today's spend, and the Aave position.
+- **The vault's state**, read through the RPC at one block: the USDC balance and new revenue, each stock's price, feed age and value, the vault's `maxStalenessSec` and whether each feed's age is past it, the market and pause flags, the caps and today's spend, and the Aave position.
 - **The agent's own unpaid Claude bill**, from its data folder.
 - **The rule-based policy's view**: equity, weights, the [runway](/docs/help/glossary#runway) it wants and its suggestions, which the agent computes from those numbers and from the Claude costs its data folder records for the week before today (`MAAT_DEFAULT_DAILY_COMPUTE_USD` when there are none). Each suggestion's `why` is built from numbers and fixed symbols.
 

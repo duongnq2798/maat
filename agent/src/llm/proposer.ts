@@ -133,7 +133,7 @@ export class ClaudeProposer implements Proposer {
         model: this.opts.model,
         max_tokens: 16000,
         // No cache_control: rounds start 15 to 60 minutes apart, past the 5-minute TTL, so a marker would only add the
-        // 1.25x write with no read. The prompt (about 1,750 to 1,800 characters) is also near the 512-token minimum.
+        // 1.25x write with no read. The prompt (about 2,650 to 2,700 characters) is also near the 512-token minimum.
         system: [{ type: "text", text: (briefs ? briefSystemPrompt : systemPrompt)({ creditActions: input.creditActions }) }],
         messages: [{ role: "user", content: briefs ? renderBriefMessage(input) : renderUserMessage(input) }],
         output_config: { effort: "medium", format: { type: "json_schema", schema: briefs ? BRIEF_BATCH_JSON_SCHEMA : BATCH_JSON_SCHEMA } },
