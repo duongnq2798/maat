@@ -9,6 +9,13 @@ import { ASK_OPEN } from "@/content/ask-open";
 import { HERO_AUDIENCE, HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 
+/** The bar's [short, long] phrases: CSS shows the short one below sm and the long one from sm. */
+const BAR_PHRASES = [
+  ["Live on Base", "Live on Base mainnet"],
+  ["Unaudited", "Unaudited · small treasury on purpose"],
+  ["Follow →", "Follow the build"],
+] as const;
+
 describe("announcement bar", () => {
   it("says the vault is live on Base mainnet, unaudited and small on purpose, and names no fork run", () => {
     const { container } = render(<AnnouncementBar />);
@@ -19,6 +26,41 @@ describe("announcement bar", () => {
     // The age of the last Decision shows only once a live read has landed; none runs here.
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
     expect(container.textContent).not.toMatch(/fork/i);
+    // The lexicon (docs/brand/lexicon.md): the site never calls the vault safe.
+    expect(container.textContent).not.toMatch(/safe/i);
+  });
+
+  it("holds a short phone line and the long line in the HTML, and lets CSS pick one, with no JavaScript", () => {
+    // PR #123 review, finding 37: the long line took three rows at 360 px.
+    const { container } = render(<AnnouncementBar />);
+    const bar = container.querySelector<HTMLElement>("[data-announcement-bar]")!;
+    for (const [short, long] of BAR_PHRASES) {
+      expect(within(bar).getByText(short).className, short).toBe("sm:hidden");
+      expect(within(bar).getByText(long).className, long).toBe("max-sm:hidden");
+    }
+    // The separators show on the phone line only, and a screen reader skips them.
+    const dots = [...bar.querySelectorAll<HTMLElement>('[aria-hidden="true"]')].filter((el) => el.textContent === "·");
+    expect(dots).toHaveLength(2);
+    for (const dot of dots) expect(dot.className).toBe("sm:hidden");
+    // The phone line as a phone shows it: every element hidden below sm left out.
+    const phoneText = (el: Element): string =>
+      el.classList.contains("max-sm:hidden")
+        ? ""
+        : [...el.childNodes].map((n) => (n instanceof Element ? phoneText(n) : (n.textContent ?? ""))).join("");
+    const phone = [...bar.firstElementChild!.children].map(phoneText).filter((t) => t !== "");
+    expect(phone).toEqual(["Live on Base", "·", "Unaudited", "·", "Follow →"]);
+    // At most 36 characters, so it fits one line at 360 px (premium-product-ui section 2.4).
+    expect(phone.join(" ").length).toBeLessThanOrEqual(36);
+  });
+
+  it("keeps one link to the build, named the same at every width, with a 44 px tap target", () => {
+    render(<AnnouncementBar />);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("href", SITE.xUrl);
+    // Its name is the long label even where it shows "Follow →", which the name contains (WCAG 2.5.3).
+    expect(link).toHaveAccessibleName("Follow the build");
+    expect(link.className.split(" ")).toContain("tap");
   });
 });
 
