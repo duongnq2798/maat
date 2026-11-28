@@ -1,4 +1,5 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import Page from "@/app/(site)/page";
 import { FACTS } from "@/content/facts";
@@ -202,19 +203,26 @@ describe("landing page", () => {
 
   it("explains the treasury loop with fact-backed numbers and where each step stands", () => {
     setup();
-    expect(screen.getByRole("heading", { level: 2, name: "One step is live." })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 2, name: "Buying is live. Paying is armed." })).toBeInTheDocument();
     expect(screen.getByText(/rebalanced past a 5% drift/)).toBeInTheDocument();
-    // README "Status": x402 was dropped for this season. On Base mainnet the vault has recorded buys only:
-    // supply and borrow ran in fork tests, and no PAY_EXPENSE has been sent.
+    // README "Status": x402 was dropped for this season. On Base mainnet the vault has recorded buys only: supply and
+    // borrow ran in fork tests. Paying is armed, not "not yet": every live round queues a PAY_EXPENSE once the unpaid
+    // Claude bill reaches the minimum, so the label stays true when the first bill lands.
     const labels = [...document.querySelectorAll("section[aria-labelledby=loop-title] li > span")].map((el) => el.textContent);
     expect(labels).toEqual([
       "01 · EARN · DROPPED",
       "02 · BUY · LIVE",
       "03 · SUPPLY · FORK ONLY",
       "04 · BORROW · FORK ONLY",
-      "05 · PAY · NOT YET",
+      "05 · PAY · ARMED",
     ]);
     expect(screen.queryByText(/pays its own way/)).toBeNull();
+    const runOnce = readFileSync("../agent/src/loop/runOnce.ts", "utf8");
+    expect(runOnce).toContain("if (unpaid >= d.billMinUsd6) {");
+    expect(runOnce).toContain('queue.push({ p: { action: "PAY_EXPENSE"');
+    // A borrow is refused below the floor, so "never below" (equal is allowed), not "above".
+    expect(screen.getByText("A loan covers compute, never below the health factor floor.")).toBeInTheDocument();
+    expect(readFileSync("../contracts/src/MandateVault.sol", "utf8")).toContain("if (hf < _mandate.minHealthFactor) return Reason.HEALTH_FACTOR_LOW;");
   });
 
   it("closes with the CTA, disclaimer and tagline verbatim", () => {
