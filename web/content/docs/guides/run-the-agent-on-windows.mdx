@@ -319,7 +319,7 @@ So check that no agent holds the folder before you start another agent on it or 
 Test-Path .\data\agent.lock
 ```
 
-`False` means no agent holds the folder. `True` means an agent still runs, or one was killed before it could remove the lock. `Get-Content .\data\agent.lock` prints the pid the lock names, and `Get-Process -Id <PID>` shows that process, or prints `Cannot find a process with the process identifier <PID>.` when it has gone. A lock left by a process that has exited is removed at the next start.
+`False` means no agent holds the folder. `True` means an agent still runs, or one was killed before it could remove the lock. `Get-Content .\data\agent.lock` prints the pid the lock names and the PC's name, and `Get-Process -Id <PID>` shows that process, or prints `Cannot find a process with the process identifier <PID>.` when it has gone. A lock left by a process that has exited is removed at the next start, and so is one that names the new agent's own pid, which Windows can hand out again.
 
 ### Pause the vault from another machine
 

@@ -652,8 +652,8 @@ it has not been re-timed.
    ```
 
    ```text
-    Test Files  54 passed (54)
-         Tests  766 passed (766)
+    Test Files  55 passed (55)
+         Tests  777 passed (777)
    ```
 
 5. **Run the website's tests and build it.** `facts.test.ts` reads the Solidity sources and the committed
