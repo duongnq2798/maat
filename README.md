@@ -895,9 +895,11 @@ Other useful commands: `forge build --sizes`, `npm run typecheck` in `agent/` an
 CI's web unit tests check the chain it writes, on its fixtures.
 `node film/render.mjs` renders the demo film from the live site; it needs ffmpeg and the network and runs by hand
 ([`film/README.md`](film/README.md)). It opens and closes on the mark. Its persuasion beat shows an outside wallet's
-brief, Maat's agent's reply from the published journal and the vault's verdict on the intent that adopted the brief once
-those exist, and a labelled placeholder until then. CI's web unit tests check its beat plan, caption sources, cards and
-ffmpeg arguments.
+brief, Maat's agent's reply from the published journal and the vault's verdict on the intent that adopted the brief,
+once those exist with that verdict on Base by Mon 7 Dec 2026 21:00 UTC. Until then it shows a stand-in, never a
+placeholder: a team brief labelled as one, or Maat's agent's own two allowed intents of Fri 27 Nov under `/proof`'s
+counts of outside briefs and brief-driven Decisions ([beat 7's rule](film/README.md#beat-7-the-rule)). CI's web unit tests check its beat plan, caption sources,
+cards and ffmpeg arguments.
 
 **Windows.** A `.gitattributes` keeps text files LF on checkout. Clone into a short path, or skip
 `--recursive`: v4-core's nested submodules hit the Windows path-length limit and are not needed.
