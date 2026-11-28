@@ -359,6 +359,30 @@ for (const vp of VIEWPORTS) {
   });
 }
 
+for (const vp of VIEWPORTS) {
+  test(`at ${vp.width}x${vp.height} Claude's reason shows once, ${vp.width < 640 ? "in How it works" : "at the foot of the hero"}`, async ({ page }) => {
+    await page.setViewportSize(vp);
+    await routeLiveRpc(page, "weekend");
+    await page.goto("/");
+    const inTop = page.locator("#top [data-hero-reason]");
+    const inHow = page.locator("#how [data-hero-reason]");
+    if (vp.width >= 640) {
+      await expect(inTop).toBeVisible();
+      await expect(inHow).toBeHidden();
+      return;
+    }
+    // Cold read of 2026-11-28, gap 6: below sm the card leaves the hero for How it works, so a phone reader reaches the
+    // problem, and then the "why", sooner.
+    await expect(inTop).toBeHidden();
+    await expect(inHow).toBeVisible();
+    const problem = page.getByRole("heading", { level: 2, name: "Tokenized stocks trade 24/7. Their prices don't." });
+    const problemTop = await problem.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    expect(problemTop).toBeLessThanOrEqual(3200);
+    const { violations } = await new AxeBuilder({ page }).include("#how [data-hero-reason]").analyze();
+    expect(violations.map((v) => ({ id: v.id, impact: v.impact, nodes: v.nodes.map((n) => n.target.join(" ")) }))).toEqual([]);
+  });
+}
+
 /**
  * Every visible run of text in the first screen with its computed font size, and where it sits: the H1, the live
  * strip's verdict line, a verdict plate of the vault card, or the strip's block number.

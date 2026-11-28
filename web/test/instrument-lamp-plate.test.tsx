@@ -26,6 +26,21 @@ describe("Lamp (components/instrument/Lamp.tsx)", () => {
     expect(LAMP_WORD[state]).toBe(word);
   });
 
+  it("prints the words its caller gives in place of its own, keeping its state", () => {
+    const { container } = render(<Lamp state="refuse" word="Refused" />);
+    const lamp = container.firstElementChild as HTMLElement;
+    expect(lamp.textContent).toBe("Refused");
+    expect(lamp).toHaveAttribute("data-lamp", "refuse");
+  });
+
+  it("sets its word at a 13 px label's type when asked, in sans and ink (review of PR #120)", () => {
+    const { container } = render(<Lamp state="refuse" word="Refused · Market closed" size="label" />);
+    const lamp = container.firstElementChild as HTMLElement;
+    expect(lamp.textContent).toBe("Refused · Market closed");
+    expect(lamp).toHaveAttribute("data-lamp", "refuse");
+    expect(lamp.className).toBe("lamp inline-flex items-center gap-1.5 text-[13px] font-semibold text-ink");
+  });
+
   it("prints no word while reading", () => {
     const { container } = render(<Lamp state="reading" />);
     expect(container.textContent).toBe("");

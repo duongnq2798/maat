@@ -57,6 +57,7 @@ const PAIRS: readonly Pair[] = [
   { fg: "label", bg: "bg", size: "small", use: "engraved labels, lamp words, plates and meter numbers on the white faceplate" },
   { fg: "label", bg: "surface-soft", size: "small", use: "the same on the surface-soft faceplate of #reasons" },
   { fg: "refuse-ink", bg: "refuse-tint", size: "text", use: "refusal text above 12 px on the refuse tint" },
+  { fg: "ink", bg: "bg", size: "text", use: "a lamp's 13 px label words, the ThumbBar's verdict, on the white bar (review of PR #120)" },
 ];
 
 // The pinned exception: the ReasonTag code keeps ink-2, which e2e/smoke.spec.ts:159 pins, at 11 px: 4.5:1 or more.

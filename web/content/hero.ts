@@ -9,6 +9,21 @@ import { FILM } from "./film";
 export const HERO_DEFINITION =
   "Maat is a vault on Base. Maat's agent proposes trades in tokenized US stocks; the vault checks each one against public rules and records yes or no onchain.";
 
+/**
+ * Who Maat is for, right under the definition (cold read of 2026-11-28, gap 1). "agent builders" links to the builders'
+ * section, whose eyebrow is "For agent builders" and whose heading is "Ask the vault before you trade.". The rest is
+ * what the vault's code holds: contracts/src/MandateVault.sol makes `fund` and `withdraw` both onlyOwner and has no
+ * deposit, mint or redeem (test/top.test.tsx reads the contract), and the FAQ answers "Can I invest in Maat or deposit
+ * into a vault?" with "No. Only the owner can fund a vault or withdraw from it." Advice and US persons stay in
+ * SITE.disclaimer, the one place that says them.
+ */
+export const HERO_AUDIENCE = {
+  before: "For ",
+  link: "agent builders",
+  href: "#agents",
+  after: ", not investors: only the owner can fund the vault.",
+} as const;
+
 /** The three steps, in one row; each links to How it works. */
 export const HERO_STEPS: readonly string[] = [
   "Maat's agent proposes a trade",

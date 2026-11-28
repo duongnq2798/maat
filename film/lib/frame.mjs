@@ -6,7 +6,7 @@
  * later, or what competes with the caption: the landing's "Last Decision … ago" line in its announcement bar and the
  * hero's plate with the same age, /ledger's "since your last look" line and its "New" marks (they are per viewer), the
  * desktop nav's live readout (a block number and the market session, such as "Friday · opens 09:30 ET", which are stale
- * the day after the render), and the phone layout's bottom bar ("Basket now … Try to make it say no"), which sits under the caption. Hidden elements
+ * the day after the render), and the phone layout's bottom bar ("A buy right now: … Try to make it say no"), which sits under the caption. Hidden elements
  * keep their place, so the layout does not move. It also wraps code blocks, so a cast command that scrolls sideways on
  * a phone is filmed whole instead of cut at the right edge.
  */
