@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { keccak256, toBytes, type Address, type Hash, type Hex } from "viem";
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,12 +9,14 @@ import { DecisionTimeline } from "@/components/ledger/DecisionTimeline";
 import { LedgerApp } from "@/components/ledger/LedgerApp";
 import { RoundsPanel } from "@/components/ledger/RoundsPanel";
 import type { LedgerState } from "@/components/ledger/useLedger";
-import { AGENT_DECISION, VerifyByHand } from "@/components/ledger/VerifyByHand";
+import { AGENT_BUY, AGENT_DECISION, VerifyByHand } from "@/components/ledger/VerifyByHand";
 import { FACTS } from "@/content/facts";
+import { HERO_REASON_TX } from "@/content/hero-reason";
 import { SCAN_FLOOR_BLOCK } from "@/lib/chain/config";
 import { briefMap, JOURNAL_RAW_URL, verifyJournal } from "@/lib/chain/ledger";
 import { loadLedger, type LedgerSnapshot } from "@/lib/chain/load";
-import { canon, decodeExecuteInput, GENESIS } from "@/lib/chain/rationale";
+import { canon, decodeExecuteInput, EXECUTE_BYTES, GENESIS } from "@/lib/chain/rationale";
+import { SITE } from "@/lib/site";
 import { decisionLog, FAKE_VAULT, fakeLedgerClient, hash32, memoryStorage, type FakeChain } from "./helpers/fake-ledger";
 import { AGENT_TEST_CODE, erc8021Suffix, executeCalldata, JOURNAL_HASHES, JOURNAL_LINES, SPEC_CODE, txInput, VECTORS } from "./helpers/maat-v1";
 
@@ -480,12 +484,12 @@ describe("the brief-to-Decision map", () => {
 });
 
 describe("Verify it by hand", () => {
-  it("is on the page, with the six read-only steps against the recorded vault", () => {
+  it("is on the page, with the seven read-only steps against the recorded vault", () => {
     hook.state = { mode: "loading-config" };
     render(<LedgerPage />);
     const panel = screen.getByRole("region", { name: "Verify it by hand" });
-    const steps = within(within(panel).getByRole("list", { name: "Six read-only steps" })).getAllByRole("listitem");
-    expect(steps).toHaveLength(6);
+    const steps = within(within(panel).getByRole("list", { name: "Seven read-only steps" })).getAllByRole("listitem");
+    expect(steps).toHaveLength(7);
     expect(steps.map((s) => s.querySelector("h3")?.textContent)).toEqual([
       "1. Check which contract the recorded deploy created",
       "2. Read the owner, the executor and the mandate",
@@ -493,6 +497,7 @@ describe("Verify it by hand", () => {
       "4. Ask the calendar at each Decision's block",
       "5. Hash the rationale text",
       "6. The agent's first Decision",
+      "7. Check that the agent decided, with the repository's verifier",
     ]);
     expect(within(panel).getByRole("region", { name: "Set the RPC and the addresses" })).toHaveTextContent(
       "export VAULT=0x3F956072d18ddD20d5eFb74e9CCabf8Deade699b",
@@ -530,13 +535,54 @@ describe("Verify it by hand", () => {
     expect(output.at(-1)).toBe(short(rationaleHash));
   });
 
-  it("uses only read-only cast commands: no send, no wallet, no broadcast", () => {
+  it("checks the agent's first allowed buy with the repo's verifier, its output held to the buy's calldata", () => {
+    render(<VerifyByHand targets={{ vault: FAKE_VAULT, deployTx: hash32(42), calendar: OTHER }} />);
+    expect(AGENT_BUY.tx).toBe(HERO_REASON_TX.txHash);
+    const command = (screen.getByRole("region", { name: "Command 7" }).textContent ?? "").split("\n");
+    expect(command).toEqual([
+      `git clone --depth 1 ${SITE.repoUrl}.git && cd maat`,
+      "git fetch --depth 1 origin agent-journal && git show FETCH_HEAD:journal/2026-11-27.jsonl > 2026-11-27.jsonl",
+      "cd agent && npm ci",
+      `npm run verify -- --tx ${HERO_REASON_TX.txHash} --rpc https://mainnet.base.org --journal ../2026-11-27.jsonl`,
+    ]);
+    // The day file is the UTC day of the buy's block.
+    expect(new Date(HERO_REASON_TX.timestamp * 1000).toISOString().slice(0, 10)).toBe("2026-11-27");
+    const call = decodeExecuteInput(HERO_REASON_TX.input)!;
+    if (call.blob.status !== "v1") throw new Error("the buy carries no maat:v1 blob");
+    const f = call.blob.fields;
+    const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-4)}`;
+    const vault = FACTS.mainnetDecisions.value[0]!.address;
+    const output = (screen.getByRole("region", { name: "Output of command 7" }).textContent ?? "").split("\n");
+    expect(output[0]).toBe(
+      `PASS calldata  ${EXECUTE_BYTES}-byte execute call to the vault ${short(vault)}, ${call.blob.text.length}-byte blob, suffix codes ${call.codes!.join(",")}`,
+    );
+    expect(output[1]).toBe(
+      `PASS blob      maat:v1, ${call.blob.text.length} bytes: block ${f.b}, run ${f.r}, m ${f.m}, commit ${f.c.slice(0, 8)}…${f.c.slice(-4)}, j ${short(f.j)}`,
+    );
+    expect(call.blobHash).toBe(call.intentRationaleHash);
+    expect(output[2]).toBe(`PASS hash      keccak256(blob) = rationaleHash ${short(call.intentRationaleHash)}`);
+    expect(output[5]).toMatch(new RegExp(`^PASS anchor    j ${short(f.j)} is the hash of 2026-11-27\\.jsonl:\\d+, .*\\(the sent row for tx ${short(HERO_REASON_TX.txHash)}\\)$`));
+    expect(output.at(-1)).toBe("PASS");
+  });
+
+  it("matches step 5 of the README's Check it yourself, which runs the same commands", () => {
+    render(<VerifyByHand targets={{ vault: FAKE_VAULT, deployTx: hash32(42), calendar: OTHER }} />);
+    // Vitest runs in web/, so the root README is one folder up.
+    const readme = readFileSync(join(process.cwd(), "..", "README.md"), "utf8").replace(/\r\n/g, "\n");
+    const section = readme.slice(readme.indexOf("## Check it yourself in 60 seconds"), readme.indexOf("With 100 more seconds"));
+    const command = screen.getByRole("region", { name: "Command 7" }).textContent ?? "";
+    for (const line of command.split("\n")) expect(section).toContain(`   ${line}\n`);
+    const output = (screen.getByRole("region", { name: "Output of command 7" }).textContent ?? "").split("\n");
+    // The README prints the vault in full; every other line is the same.
+    for (const line of output.slice(1)) expect(section).toContain(`   ${line}\n`);
+  });
+
+  it("sends nothing: read-only cast commands, then the repo's verifier", () => {
     const { container } = render(<VerifyByHand targets={{ vault: FAKE_VAULT, deployTx: hash32(42), calendar: OTHER }} />);
     const commands = [...container.querySelectorAll("[aria-label^='Command']")].map((c) => c.textContent ?? "");
-    expect(commands).toHaveLength(6);
-    for (const c of commands) {
-      expect(c).not.toMatch(/cast (send|wallet|mktx|publish)|--broadcast|--private-key|--account/);
-      expect(c).toMatch(/\bcast (receipt|call|logs|block|keccak)\b/);
-    }
+    expect(commands).toHaveLength(7);
+    for (const c of commands) expect(c).not.toMatch(/cast (send|wallet|mktx|publish)|--broadcast|--private-key|--account|--env-file|npm run agent/);
+    for (const c of commands.slice(0, 6)) expect(c).toMatch(/\bcast (receipt|call|logs|block|keccak)\b/);
+    expect(commands[6]).toMatch(/^npm run verify -- /m);
   });
 });

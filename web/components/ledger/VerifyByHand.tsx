@@ -1,9 +1,11 @@
 import type { Address, Hash } from "viem";
 
 /**
- * Six read-only steps of `cast` commands that check the vault without this page, with the output each printed (cast
- * from Foundry 1.9.0, against https://base-rpc.publicnode.com): steps 1 to 5 on 2026-11-25, as in the verify-by-hand
- * guide, and step 6, the agent's first Decision, on 2026-11-27. Long hashes and addresses are shortened with an ellipsis.
+ * Seven read-only steps that check the vault without this page, with the output each printed. Steps 1 to 6 are `cast`
+ * commands (Foundry 1.9.0, against https://base-rpc.publicnode.com): 1 to 5 on 2026-11-25, as in the verify-by-hand
+ * guide, and 6, the agent's first Decision, on 2026-11-27. Step 7 runs agent/scripts/verify-decision.ts from a fresh
+ * clone on the agent's first allowed buy, against https://mainnet.base.org, on 2026-11-28, as README step 5 does. Long
+ * hashes and addresses are shortened with an ellipsis.
  */
 export interface VerifyTargets {
   vault: Address;
@@ -16,6 +18,8 @@ const DECISION_BLOCKS = ["61700601", "61745836"] as const;
 const OWNER_TEXT = "Owner-sent first decision: BUY 5 USD of NVDAc";
 /** The first Decision of Maat's agent, sent through its CDP executor on 2026-11-27 (content/facts.ts mainnetDecisions). */
 export const AGENT_DECISION = { tx: "0xca9e2dfe58cea6dc033292a1733a64658e702c3de25627ee7af136d42a38bed6", block: "62776552" } as const;
+/** The agent's first allowed buy, BUY GOOGLc on 2026-11-27 (content/hero-reason.ts), and the journal day file that holds it. */
+export const AGENT_BUY = { tx: "0xff1f5a3bb87c5bb4dba236565f24e68146c3b0981d4942be965c21950b53c503", journal: "2026-11-27.jsonl" } as const;
 
 interface Step {
   title: string;
@@ -133,6 +137,25 @@ function steps(t: VerifyTargets): Step[] {
         "0xb8552684…a6c1",
       ].join("\n"),
     },
+    {
+      title: "Check that the agent decided, with the repository's verifier",
+      body: `Steps 1 to 6 check a refusal by hand. This one checks the agent's first allowed buy, BUY GOOGLc on Fri 27 Nov 2026, transaction ${AGENT_BUY.tx.slice(0, 10)}…${AGENT_BUY.tx.slice(-4)}, with agent/scripts/verify-decision.ts from a fresh clone. It re-derives the maat:v1 blob from the calldata, with the model and the agent's commit, hashes it, matches the hash to the vault's Decision log, and finds the blob's anchor in the agent's hash-chained journal, one day file of the public agent-journal branch. It needs git and Node 22.9 or later, and sends nothing. On Sat 28 Nov the last command took 14 seconds, and 8 on a second run; npm ci was the slow part.`,
+      command: [
+        "git clone --depth 1 https://github.com/duongnq2798/maat.git && cd maat",
+        `git fetch --depth 1 origin agent-journal && git show FETCH_HEAD:journal/${AGENT_BUY.journal} > ${AGENT_BUY.journal}`,
+        "cd agent && npm ci",
+        `npm run verify -- --tx ${AGENT_BUY.tx} --rpc https://mainnet.base.org --journal ../${AGENT_BUY.journal}`,
+      ].join("\n"),
+      output: [
+        "PASS calldata  228-byte execute call to the vault 0x3F956072…699b, 499-byte blob, suffix codes bc_w7i5vjdv",
+        "PASS blob      maat:v1, 499 bytes: block 63010793, run 1795792534276-47ea132c, m claude-sonnet-5-5, commit b8c914a7…275f, j 0x4546bd09…a8d0",
+        "PASS hash      keccak256(blob) = rationaleHash 0x95696cf5…8f87",
+        "PASS decision  the Decision log's rationaleHash is the intent's",
+        "PASS journal   46 chained rows, head 0xf3a54b1a…f810",
+        "PASS anchor    j 0x4546bd09…a8d0 is the hash of 2026-11-27.jsonl:20, before 2026-11-27.jsonl:21 (the sent row for tx 0xff1f5a3b…c503)",
+        "PASS",
+      ].join("\n"),
+    },
   ];
 }
 
@@ -150,23 +173,24 @@ function Code({ label, children, tone }: { label: string; children: string; tone
   );
 }
 
-/** The "Verify it by hand" panel: six steps of read-only cast commands, each with the output it printed. */
+/** The "Verify it by hand" panel: seven read-only steps, six of cast commands and one of the repo's verifier, each with its output. */
 export function VerifyByHand({ targets }: { targets: VerifyTargets }) {
   const list = steps(targets);
   return (
     <section id="verify" aria-labelledby="verify-title" className="border-t border-line">
       <div className="wrap flex flex-col gap-8 py-16 md:py-24">
         <div className="flex max-w-[760px] flex-col gap-3">
-          <span className="eyebrow">Only cast, read-only</span>
+          <span className="eyebrow">Read-only, no key</span>
           <h2 id="verify-title" className="text-2xl font-semibold tracking-[-0.02em] text-ink">
             Verify it by hand
           </h2>
           <p className="text-[15px] leading-relaxed text-ink-body">
-            Six steps of commands check the vault without this page, the agent&apos;s first Decision included. None needs a
-            key, a wallet or an account, and none sends a transaction. Each output below was printed by cast from Foundry
-            1.9.0 against base-rpc.publicnode.com, on 2026-11-25 for steps 1 to 5 and on 2026-11-27 for step 6; long
-            hashes and addresses are shortened, and your terminal prints them in full. The commands are written for bash
-            (Git Bash on Windows).
+            Seven steps of commands check the vault without this page, the agent&apos;s first Decision and its first allowed
+            buy included. None needs a key, a wallet or an account, and none sends a transaction. Steps 1 to 6 use only
+            cast: each of their outputs below was printed by cast from Foundry 1.9.0 against base-rpc.publicnode.com, on
+            2026-11-25 for steps 1 to 5 and on 2026-11-27 for step 6. Step 7 runs the repository&apos;s own verifier from a
+            fresh clone, against mainnet.base.org, on 2026-11-28. Long hashes and addresses are shortened, and your terminal
+            prints them in full. The commands are written for bash (Git Bash on Windows).
           </p>
           <p className="text-[15px] leading-relaxed text-ink-body">
             For a Decision whose calldata carries a maat:v1 blob, Basescan shows the words too: open the transaction, then
@@ -176,7 +200,7 @@ export function VerifyByHand({ targets }: { targets: VerifyTargets }) {
         <Code label="Set the RPC and the addresses" tone="command">
           {[`export RPC=https://base-rpc.publicnode.com`, `export VAULT=${targets.vault}      # MandateVault`, `export CALENDAR=${targets.calendar}   # MarketCalendar`].join("\n")}
         </Code>
-        <ol aria-label="Six read-only steps" className="m-0 flex list-none flex-col gap-8 p-0">
+        <ol aria-label="Seven read-only steps" className="m-0 flex list-none flex-col gap-8 p-0">
           {list.map((s, i) => (
             <li key={s.title} className="flex min-w-0 flex-col gap-3">
               <h3 className="text-base font-semibold text-ink">

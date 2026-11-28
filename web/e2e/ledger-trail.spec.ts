@@ -236,14 +236,16 @@ test.describe("/ledger agent trail before the journal branch exists", () => {
 });
 
 test.describe("/ledger Verify it by hand", () => {
-  test("shows the six read-only steps against the recorded vault, the agent's first Decision last", async ({ page }) => {
+  test("shows the seven read-only steps against the recorded vault, the verifier run on the agent's first allowed buy last", async ({ page }) => {
     await page.route((url) => RPC_HOSTS.includes(url.host), (route) => route.abort());
     await page.goto("/ledger");
     const panel = page.getByRole("region", { name: "Verify it by hand" });
-    const steps = panel.getByRole("list", { name: "Six read-only steps" }).getByRole("listitem");
-    await expect(steps).toHaveCount(6);
+    const steps = panel.getByRole("list", { name: "Seven read-only steps" }).getByRole("listitem");
+    await expect(steps).toHaveCount(7);
     await expect(steps.nth(2).getByRole("heading")).toHaveText("3. Read the owner's two smoke-test Decisions");
     await expect(steps.nth(5).getByRole("heading")).toHaveText("6. The agent's first Decision");
+    await expect(steps.nth(6).getByRole("heading")).toHaveText("7. Check that the agent decided, with the repository's verifier");
+    await expect(panel.getByRole("region", { name: "Output of command 7" })).toContainText("PASS anchor");
     await expect(panel.getByRole("region", { name: "Command 6", exact: true })).toContainText("cast tx \"$TX\" from");
     await expect(panel.getByRole("region", { name: "Output of command 6" })).toContainText("0xb8552684…a6c1");
     await expect(panel.getByRole("region", { name: "Set the RPC and the addresses" })).toContainText(`export VAULT=${VAULT}`);
