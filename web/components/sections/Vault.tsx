@@ -30,6 +30,23 @@ function whenText(row: VaultRow): string {
 /** "0x6162…23c8". */
 const shortHash = (h: string) => `${h.slice(0, 6)}…${h.slice(-4)}`;
 
+/**
+ * What "probe" means where the card first shows it (cold read of 2026-11-28, gap 2). A Decision is labelled "probe" by
+ * /ledger's senderLabel (lib/chain/ledger.ts) when its maat:v1 blob has k "probe": one of the owner's MAAT_PROBES
+ * instants, sized at agent/src/probes.ts PROBE_USD = 1, whose text starts "PROBE v1, not a Claude proposal"
+ * (PROBE_TEXT_PREFIX). The label itself stays "probe", since /ledger and /proof count by it.
+ */
+export const PROBE_GLOSS = "A probe is a $1 check the owner scheduled, not a Claude proposal.";
+
+/**
+ * Where the card glosses "probe": under the latest Decision when that is a probe, under the list when only an older
+ * listed row is, nowhere when none is.
+ */
+export function probeGlossAt(listed: readonly Pick<VaultRow, "sender">[]): "latest" | "list" | null {
+  if (listed[0]?.sender === "probe") return "latest";
+  return listed.some((r) => r.sender === "probe") ? "list" : null;
+}
+
 /** "Compute bill paid · $1.00 · to the owner's allowlisted address" for a paid bill; null for any other Decision. */
 function paidBill(row: VaultRow): string | null {
   return plateOf(row) === "bill" && row.bill !== null ? billLine(row.bill) : null;
@@ -113,7 +130,8 @@ function Footnote({ view }: { view: VaultView }) {
 
 /**
  * The engine card's mainnet face: the vault's latest Decision in the replay's own grammar (the intent, then the verdict
- * window), the most recent Decisions each linked to Basescan, and the way to the full ledger.
+ * window), the most recent Decisions each linked to Basescan, what a probe is when one is listed (PROBE_GLOSS), and the
+ * way to the full ledger.
  */
 export function VaultCard() {
   const view = useVault();
@@ -122,6 +140,8 @@ export function VaultCard() {
   const age = latest === undefined ? null : ageOf(view, latest, now);
   const latestBill = latest === undefined ? null : paidBill(latest);
   const latestGloss = latest === undefined || latest.bill !== null ? null : tickerGloss(latest.symbol);
+  const listed = view.decisions.slice(0, LISTED);
+  const probeAt = probeGlossAt(listed);
   return (
     <div
       data-vault-card={view.status}
@@ -167,12 +187,17 @@ export function VaultCard() {
               {age === null ? null : ` · ${age}`}
               {latest.sender === null ? null : ` · ${latest.sender}`}
             </span>
+            {probeAt === "latest" ? (
+              <span data-probe-gloss="" className="text-[13px] text-ink-2">
+                {PROBE_GLOSS}
+              </span>
+            ) : null}
           </div>
           <div className="mx-3 mt-4">
             <Verdict row={latest} />
           </div>
           <ol aria-label="Recent decisions" className="m-0 list-none px-3 pb-1 pt-3">
-            {view.decisions.slice(0, LISTED).map((r) => (
+            {listed.map((r) => (
               <li
                 key={r.key}
                 data-decision={plateOf(r)}
@@ -195,6 +220,11 @@ export function VaultCard() {
               </li>
             ))}
           </ol>
+          {probeAt === "list" ? (
+            <p data-probe-gloss="" className="m-0 px-5 pb-3 text-[13px] leading-normal text-ink-2">
+              {PROBE_GLOSS}
+            </p>
+          ) : null}
         </>
       )}
       <p className="m-0 border-t border-line-soft px-5 py-3 text-[13px] leading-relaxed text-ink-2">

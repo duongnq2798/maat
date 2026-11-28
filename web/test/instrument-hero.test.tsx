@@ -43,7 +43,16 @@ describe("the hero (spec 2026-11-23 sections 6.1, 6.2 and 9.1)", () => {
     expect(definition).toHaveAttribute("data-hero-definition");
     expect(definition.tagName).toBe("P");
     expect(definition).toHaveTextContent(HERO_DEFINITION);
-    const steps = definition.nextElementSibling!;
+    // Cold read of 2026-11-28, gap 1: who Maat is for, as the definition's second half, its builders linked.
+    const audience = definition.nextElementSibling!;
+    expect(audience.tagName).toBe("P");
+    expect(audience).toHaveAttribute("data-hero-audience");
+    expect(audience.textContent).toBe("For agent builders, not investors: only the owner can fund the vault.");
+    const audienceLinks = [...audience.querySelectorAll("a")];
+    expect(audienceLinks).toHaveLength(1);
+    expect(audienceLinks[0]).toHaveAttribute("href", "#agents");
+    expect(classes(audienceLinks[0]!)).toContain("tap");
+    const steps = audience.nextElementSibling!;
     expect(steps.tagName).toBe("OL");
     expect(classes(steps)).toEqual(expect.arrayContaining(["grid", "grid-cols-3"]));
     const links = [...steps.querySelectorAll("a")];

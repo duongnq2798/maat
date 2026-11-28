@@ -39,6 +39,7 @@ test("at 1440x900 the H1, the definition, the three steps, both CTAs, the live R
   const parts: [string, Locator][] = [
     ["H1", page.getByRole("heading", { level: 1 })],
     ["definition", page.locator("#top [data-hero-definition]")],
+    ["audience", page.locator("#top [data-hero-audience]")],
     ["steps", page.locator("#top [data-hero-steps]")],
     ["Readout", s],
     ["block", s.getByRole("link", { name: "Base block 60,013,066" })],
@@ -56,6 +57,8 @@ test("at 390x844 the H1, the definition, the three steps and the live verdict li
   expect(await bottom(page.getByRole("heading", { level: 1 })), "H1").toBeLessThanOrEqual(844);
   // Spec 2026-11-27 section 1: a phone reader learns what Maat is before scrolling.
   expect(await bottom(page.locator("#top [data-hero-definition]")), "definition").toBeLessThanOrEqual(844);
+  // Cold read of 2026-11-28, gap 1: and who it is for.
+  expect(await bottom(page.locator("#top [data-hero-audience]")), "audience").toBeLessThanOrEqual(844);
   expect(await bottom(page.locator("#top [data-hero-steps]")), "steps").toBeLessThanOrEqual(844);
   expect(await bottom(strip(page).locator("[data-verdict-line]")), "verdict line").toBeLessThanOrEqual(844);
   // Amendment A10 applies only if the CTAs end below the first screen here.
@@ -84,6 +87,9 @@ test("on a phone the ThumbBar rises once both CTAs are above the screen, and ste
   await expect(bar).toHaveAttribute("data-thumb-bar", "shown");
   await expect(bar).toBeVisible();
   await expect(bar.locator("[data-lamp]")).toHaveAttribute("data-lamp", "refuse");
+  // Cold read of 2026-11-28, gap 5: the hero line's verdict words.
+  await expect(bar.locator("[data-thumb-verdict]")).toHaveText("A buy right now: Refused");
+  await expect(bar).not.toContainText("Basket");
   await expect(bar.getByRole("link", { name: "Try to make it say no" })).toHaveAttribute("href", "#try");
   await scrollTo(page, "#try");
   await expect(bar).toHaveAttribute("data-thumb-bar", "hidden");

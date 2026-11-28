@@ -4,9 +4,9 @@ import { getAddress, keccak256, toBytes } from "viem";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LedgerDeps } from "@/components/ledger/useLedger";
 import { HeroCard } from "@/components/sections/HeroCard";
-import { VaultBarStatus, VaultCard, VERDICT_PLATE } from "@/components/sections/Vault";
+import { PROBE_GLOSS, probeGlossAt, VaultBarStatus, VaultCard, VERDICT_PLATE } from "@/components/sections/Vault";
 import { VaultDecisionsProvider } from "@/components/sections/VaultDecisions";
-import { intentText, RECORDED_ROWS, toVaultRow } from "@/components/sections/vault-rows";
+import { intentText, RECORDED_ROWS, toVaultRow, type VaultRow } from "@/components/sections/vault-rows";
 import { FACTS } from "@/content/facts";
 import { formatInt } from "@/content/format";
 import addresses from "@/content/generated/base-addresses.json";
@@ -18,7 +18,7 @@ import { decodeVaultLogs } from "@/lib/chain/events";
 import { toMainnetDecisions } from "@/lib/chain/ledger";
 import type { RationaleSource } from "@/lib/chain/rationale";
 import { basescanDecision } from "@/lib/live/basescan";
-import { executeInput, OWNER } from "./helpers/card";
+import { AGENT, executeInput, NVDAC, OWNER, v1Blob } from "./helpers/card";
 import { decisionLog, fakeLedgerClient, hash32, memoryStorage, type FakeChain } from "./helpers/fake-ledger";
 
 const RECORDED = FACTS.mainnetDecisions.value;
@@ -26,6 +26,8 @@ const USDC = getAddress(addresses.find((a) => a.name === "USDC")!.value);
 /** A compute bill's maat:v1 blob, as the agent's code writes it (kind "bill"). */
 const BILL_BLOB = `maat:v1:{"b":62500000,"c":"0123456789abcdef0123456789abcdef01234567","j":"0x${"0".repeat(64)}","k":"bill","r":"run-landing-test","s":[],"t":"Compute bill: $1.000000 of Claude API usage unpaid as of UTC day 20784"}`;
 const BILL_HASH = keccak256(toBytes(BILL_BLOB));
+/** A probe's maat:v1 blob, as the agent's code writes it (kind "probe", its text after PROBE_TEXT_PREFIX). */
+const PROBE_BLOB = v1Blob({ k: "probe", t: "PROBE v1, not a Claude proposal. Expected OK before the 13:00 ET early close." });
 const asLog = ({ blockNumber, logIndex, transactionHash, topics, data }: (typeof RECORDED)[number]): CachedLog => ({
   blockNumber,
   logIndex,
@@ -75,6 +77,22 @@ describe("the recorded Decisions", () => {
     });
     expect(allowed).toMatchObject({ allowed: true, reason: "OK", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", timeLabel: "Tue 24 Nov 11:59", sender: "owner, by hand" });
     expect(refused).toMatchObject({ allowed: false, reason: "MARKET_CLOSED", action: "BUY", symbol: "NVDAc", amountLabel: "$5.00", timeLabel: "Tue 24 Nov 09:28", sender: "owner, by hand" });
+  });
+});
+
+describe("the card's gloss of a probe (cold read of 2026-11-28, gap 2)", () => {
+  it("goes under the latest Decision when that is a probe, under the list when an older listed one is, else nowhere", () => {
+    const row = (sender: VaultRow["sender"]) => ({ sender });
+    expect(probeGlossAt([row("probe"), row("agent"), row("agent")])).toBe("latest");
+    expect(probeGlossAt([row("agent"), row("probe"), row("probe")])).toBe("list");
+    expect(probeGlossAt([row("agent"), row("owner, by hand"), row(null)])).toBeNull();
+    expect(probeGlossAt([])).toBeNull();
+  });
+
+  it("says a probe is $1, as the agent sizes it", () => {
+    expect(PROBE_GLOSS).toBe("A probe is a $1 check the owner scheduled, not a Claude proposal.");
+    // Vitest runs in web/.
+    expect(readFileSync("../agent/src/probes.ts", "utf8")).toContain("export const PROBE_USD = 1;");
   });
 });
 
@@ -168,6 +186,8 @@ describe("the landing's view of the mainnet vault", () => {
     expect(rows.map((r) => r.querySelector("[data-sender]")?.textContent)).toEqual([" · agent", " · owner, by hand", " · owner, by hand"]);
     expect(rows.map((r) => within(r).getByRole("link").getAttribute("href"))).toEqual(RECORDED_ROWS.map((r) => basescanDecision(r.txHash)));
     expect(card(container)).toHaveTextContent(`${RECORDED.length} Decisions recorded in this build. Reading the vault on Base…`);
+    // The recorded rows hold no probe, so the static card says nothing of one.
+    expect(card(container).querySelector("[data-probe-gloss]")).toBeNull();
     expect(container.querySelector("[data-vault-bar]")).toBeNull();
     expect(container.textContent).not.toMatch(/fork/i);
   });
@@ -242,6 +262,26 @@ describe("the landing's view of the mainnet vault", () => {
     expect(rows[0]).toHaveTextContent(line);
     // Never written as a trade.
     expect(container.textContent).not.toMatch(/PAY_EXPENSE|USDC/);
+  }, WAITS);
+
+  it("says what a probe is right under the latest Decision when that is one", async () => {
+    const vault = deploymentConfig(deployments)!.vault;
+    const rationaleHash = keccak256(toBytes(PROBE_BLOB));
+    const c0 = chain();
+    c0.logs = [...RECORDED.map(asLog), decisionLog(9, HEAD - 10n, { amount: 1_000_000n, rationaleHash })];
+    c0.owner = OWNER;
+    c0.txs = {
+      [hash32(9)]: { from: AGENT, to: vault, input: executeInput({ action: "BUY", token: NVDAC, amount: 1_000_000n, rationaleHash, blob: PROBE_BLOB }) },
+    };
+    const { container } = landing(deps(c0));
+    await waitFor(() => expect(card(container)).toHaveAttribute("data-vault-card", "live"), READ);
+
+    const when = latestWhen(container);
+    expect(when.textContent).toMatch(/ · probe$/);
+    const gloss = when.nextElementSibling!;
+    expect(gloss).toHaveAttribute("data-probe-gloss");
+    expect(gloss.textContent).toBe(PROBE_GLOSS);
+    expect(card(container).querySelectorAll("[data-probe-gloss]")).toHaveLength(1);
   }, WAITS);
 
   it("says the vault has made no Decision yet when Base has none", async () => {

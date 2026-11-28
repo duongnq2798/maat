@@ -16,20 +16,22 @@ export interface LampProps {
   /** The surface the lamp sits on, which sets its word's colour and its unlit core. */
   on?: Surface;
   className?: string;
+  /** The words to print in place of the state's own (ThumbBar's "Refused", "Market checks pass"). */
+  word?: string;
 }
 
 /**
- * A state lamp and its word. Colour is never the only signal: every lit state prints PASS, REFUSE or SKIP. A lamp never
- * prints a ReasonTag; reason codes stay in VerdictLine and the cards that carry them. The lamp itself is the `::before`
- * of `.lamp` in app/globals.css, keyed off data-lamp.
+ * A state lamp and its word. Colour is never the only signal: every lit lamp prints a word, PASS, REFUSE or SKIP by
+ * default, or the words its caller gives (`word`). A lamp never prints a ReasonTag; reason codes stay in VerdictLine
+ * and the cards that carry them. The lamp itself is the `::before` of `.lamp` in app/globals.css, keyed off data-lamp.
  */
-export function Lamp({ state, on = "faceplate", className }: LampProps) {
+export function Lamp({ state, on = "faceplate", className, word }: LampProps) {
   const classes = ["lamp inline-flex items-center gap-1.5 font-mono text-[11px] font-semibold", SMALL_TEXT[on], className]
     .filter(Boolean)
     .join(" ");
   return (
     <span data-lamp={state} data-on={on} className={classes}>
-      {LAMP_WORD[state]}
+      {word ?? LAMP_WORD[state]}
     </span>
   );
 }

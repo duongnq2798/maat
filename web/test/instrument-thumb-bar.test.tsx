@@ -3,13 +3,13 @@ import { act, render } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import Page from "@/app/(site)/page";
-import { ThumbBar, thumbLamp, thumbShown } from "@/components/instrument/ThumbBar";
+import { ThumbBar, thumbLamp, thumbShown, thumbWord } from "@/components/instrument/ThumbBar";
 import { LiveSnapshotProvider } from "@/components/live/LiveSnapshotProvider";
 import { LiveStrip } from "@/components/live/LiveStrip";
 import { classify } from "@/lib/live/freshness";
 import type { LiveReader } from "@/lib/live/rpc";
 import { type Answer, advance, fakeReader, FRI, installLiveClocks, readingAt, SAT } from "./helpers/fake-reader";
-import { passingBasket } from "./helpers/live";
+import { failSlot, passingBasket } from "./helpers/live";
 
 installLiveClocks();
 
@@ -135,6 +135,19 @@ describe("the ThumbBar (spec 2026-11-23 sections 6.2 and 11 item 12)", () => {
     expect(thumbLamp(classify(sat, true, 30_000, SAT + 44))).toBe("reading");
   });
 
+  it("prints the hero line's verdict words, never Allowed, and none while the reading is not live (cold read of 2026-11-28, gap 5)", () => {
+    const sat = readingAt(SAT, { wallAtReadSec: SAT + 14 });
+    const pass = readingAt(FRI, { edit: passingBasket, wallAtReadSec: FRI + 14 });
+    const mixed = readingAt(FRI, { edit: (r) => failSlot(passingBasket(r), "NVDAc", "observe"), wallAtReadSec: FRI + 14 });
+    expect(thumbWord(undefined)).toBeNull();
+    expect(thumbWord({ status: "reading" })).toBeNull();
+    expect(thumbWord({ status: "error", message: "HTTP 503" })).toBeNull();
+    expect(thumbWord(classify(sat, true, 30_000, SAT + 44))).toBeNull();
+    expect(thumbWord(classify(sat, false, 0, SAT + 14))).toBe("Refused");
+    expect(thumbWord(classify(pass, false, 0, FRI + 14))).toBe("Market checks pass");
+    expect(thumbWord(classify(mixed, false, 0, FRI + 14))).toBe("Refused for NVDAc");
+  });
+
   it("renders nothing until both hero CTAs have scrolled out above the viewport", async () => {
     const ui = await mount();
     expect(ui.bar()).toBeNull();
@@ -205,6 +218,9 @@ describe("the ThumbBar (spec 2026-11-23 sections 6.2 and 11 item 12)", () => {
     const ui = await mount();
     scrollPast(ui);
     expect(ui.bar()!.querySelector("[data-lamp]")).toHaveAttribute("data-lamp", "refuse");
+    // The verdict words of the hero's line, not the instrument's lamp word.
+    expect(ui.bar()!.querySelector("[data-thumb-verdict]")).toHaveTextContent("A buy right now: Refused");
+    expect(ui.bar()!.textContent).not.toMatch(/Basket|REFUSE/);
     expect(ui.fake.multicalls()).toBe(1);
   });
 

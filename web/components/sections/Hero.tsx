@@ -2,7 +2,7 @@ import { type FactKey, Fig } from "@/components/instrument/Fig";
 import { Ruler } from "@/components/instrument/Ruler";
 import { LiveStrip } from "@/components/live/LiveStrip";
 import { FACTS } from "@/content/facts";
-import { HERO_CTAS, HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
+import { HERO_AUDIENCE, HERO_CTAS, HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 import { HeroCard } from "./HeroCard";
 import { HeroNote } from "./HeroNote";
@@ -20,11 +20,12 @@ const CTA_LOOK = ["pill-dark", "pill-line"] as const;
 
 /**
  * The landing's first screen (spec 2026-11-27, landing "explain in 10 seconds", section 1): under the tick ruler, the
- * H1, then what Maat is in one sentence and the three steps of every trade, each linked to How it works. Then the one
- * live line, "Right now, a buy would be: ...", both CTAs (52 px and stacked on phones, 44 px in a row from sm) and the
- * spec plate. On the right, the engine card on its mainnet face holds the vault's latest Decision, dated, and under it
- * the agent's last recorded round. Under both columns, one full-width row quotes Claude's own reason for the first
- * trade the vault allowed (HeroReason).
+ * H1, then what Maat is in one sentence, who it is for (linked to the builders' section), and the three steps of every
+ * trade, each linked to How it works. Then the one live line, "Right now, a buy would be: ...", both CTAs (52 px and
+ * stacked on phones, 44 px in a row from sm) and the spec plate. On the right, the engine card on its mainnet face holds
+ * the vault's latest Decision, dated, and under it the agent's last recorded round. Under both columns, from sm, one
+ * full-width row quotes Claude's own reason for the first trade the vault allowed (HeroReason); below sm that row shows
+ * in How it works instead (cold read of 2026-11-28, gap 6).
  */
 export function Hero() {
   return (
@@ -38,6 +39,13 @@ export function Hero() {
           </h1>
           <p data-hero-definition="" className="lead max-w-[34em] text-[17px] leading-[1.55] text-ink-body sm:text-[19px]">
             {HERO_DEFINITION}
+          </p>
+          <p data-hero-audience="" className="-mt-2 max-w-[34em] text-[15px] leading-normal text-ink-2">
+            {HERO_AUDIENCE.before}
+            <a href={HERO_AUDIENCE.href} className="tap font-medium">
+              {HERO_AUDIENCE.link}
+            </a>
+            {HERO_AUDIENCE.after}
           </p>
           <ol
             data-hero-steps=""
@@ -86,7 +94,7 @@ export function Hero() {
           <HeroCard />
           <HeroNote />
         </div>
-        <HeroReason />
+        <HeroReason className="max-sm:hidden" />
       </div>
     </header>
   );

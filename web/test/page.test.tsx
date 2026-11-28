@@ -24,8 +24,9 @@ describe("landing page", () => {
     const ids = new Set([...c.querySelectorAll('a[href^="#"]')].map((a) => a.getAttribute("href")!.slice(1)));
     // The nav lists pages, not the landing's sections, so the in-page links are the skip link, the home link and the
     // hero's and the sections' own links. The hero's three steps open How it works (spec 2026-11-27 section 1); its first
-    // CTA and the footer's "Watch the film" open the film band (section 2).
-    expect([...ids].sort()).toEqual(["film", "how", "main", "reasons", "top", "try"]);
+    // CTA and the footer's "Watch the film" open the film band (section 2); its audience line's "agent builders" opens
+    // the builders' section (cold read of 2026-11-28, gap 1).
+    expect([...ids].sort()).toEqual(["agents", "film", "how", "main", "reasons", "top", "try"]);
     for (const id of ids) expect(c.querySelector(`#${id}`), `#${id}`).not.toBeNull();
   });
 
@@ -231,6 +232,18 @@ describe("landing page", () => {
     const agent = FACTS.mainnetDecisions.value.find((l) => l.sender === "agent")!;
     const rationaleHash = `0x${agent.data.slice(2 + 4 * 64)}`;
     expect(text).toContain(`rationaleHash${rationaleHash.slice(0, 10)}…${rationaleHash.slice(-4)}`);
+  });
+
+  // Cold read of 2026-11-28, gap 6: below sm Claude's reason shows in How it works, from sm at the foot of the hero.
+  it("shows Claude's reason once per breakpoint", () => {
+    const c = setup();
+    const figures = [...c.querySelectorAll("figure[data-hero-reason]")];
+    expect(figures).toHaveLength(2);
+    const inTop = c.querySelector("#top figure[data-hero-reason]")!;
+    const inHow = c.querySelector("#how figure[data-hero-reason]")!;
+    expect(inTop.getAttribute("class")!.split(" ")).toContain("max-sm:hidden");
+    expect(inHow.getAttribute("class")!.split(" ")).toContain("sm:hidden");
+    expect(inHow.textContent).toBe(inTop.textContent);
   });
 
   it("uses no raster images", () => {

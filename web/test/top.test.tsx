@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { cleanup, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { AnnouncementBar } from "@/components/sections/AnnouncementBar";
@@ -5,7 +6,7 @@ import { BuiltOn } from "@/components/sections/BuiltOn";
 import { Hero } from "@/components/sections/Hero";
 import { Nav } from "@/components/sections/Nav";
 import { ASK_OPEN } from "@/content/ask-open";
-import { HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
+import { HERO_AUDIENCE, HERO_DEFINITION, HERO_STEPS } from "@/content/hero";
 import { SITE } from "@/lib/site";
 
 describe("announcement bar", () => {
@@ -108,6 +109,17 @@ describe("hero", () => {
       "Maat is a vault on Base. Maat's agent proposes trades in tokenized US stocks; the vault checks each one against public rules and records yes or no onchain.",
     );
     expect(screen.getByText(HERO_DEFINITION)).toBeInTheDocument();
+    // Cold read of 2026-11-28, gap 1, word for word: who Maat is for.
+    expect(HERO_AUDIENCE).toEqual({
+      before: "For ",
+      link: "agent builders",
+      href: "#agents",
+      after: ", not investors: only the owner can fund the vault.",
+    });
+    expect(`${HERO_AUDIENCE.before}${HERO_AUDIENCE.link}${HERO_AUDIENCE.after}`).toBe(
+      "For agent builders, not investors: only the owner can fund the vault.",
+    );
+    expect(screen.getByRole("link", { name: "agent builders" })).toHaveAttribute("href", "#agents");
     const steps = within(screen.getByRole("list", { name: "How a trade is weighed" })).getAllByRole("link");
     expect(steps.map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
       ["1Maat's agent proposes a trade", "#how"],
@@ -137,6 +149,14 @@ describe("hero", () => {
     expect(screen.getByRole("tab", { name: "Before mainnet (fork test)" })).toHaveAttribute("aria-selected", "false");
     expect(screen.getByRole("group", { name: "Choose a moment", hidden: true })).not.toBeVisible();
     expect(document.getElementById("top")).not.toBeNull();
+  });
+
+  it("says only the owner can fund the vault because the vault's code holds it: fund and withdraw are onlyOwner, and no deposit", () => {
+    // Vitest runs in web/.
+    const vault = readFileSync("../contracts/src/MandateVault.sol", "utf8");
+    expect(vault).toMatch(/function fund\(uint256 amount\) external onlyOwner/);
+    expect(vault).toMatch(/function withdraw\(address token, uint256 amount\) external onlyOwner/);
+    expect(vault).not.toMatch(/function (?:deposit|mint|redeem)\b/);
   });
 });
 
